@@ -118,19 +118,58 @@ for entry in rows:
     print(f"{desc}\t{created}\t{where}")'
 }
 
-# Looks up the file "$2.key" under the top-level "corvid-devices" folder, printing
-# "id<TAB>blobId" or nothing if either is missing.
-find_key_file() {
-  local id="$1" name="$2" folder_id
-  folder_id="$(python3 -c '
+# Confirms a Foo/set destroy actually destroyed the id, rather than trusting a bare 200. A
+# refusal reported as success would be worse than no report at all.
+require_destroyed() {
+  local id="$1"
+  python3 -c '
+import json, sys
+id_ = sys.argv[1]
+result = json.load(sys.stdin)["methodResponses"][0][1]
+if id_ in result.get("destroyed", []):
+    sys.exit(0)
+sys.exit(json.dumps(result.get("notDestroyed", {}).get(id_, result)))' "$id"
+}
+
+credential_id_for() {
+  app_passwords "$1" | python3 -c '
+import json, sys
+name = sys.argv[1]
+for line in sys.stdin:
+    entry = json.loads(line)
+    if entry["description"] == name:
+        print(entry["credentialId"])
+        break' "$2"
+}
+
+# The id of the top-level "corvid-devices" folder, or nothing if it does not exist. A filter
+# of {"parentId": null} is refused as a malformed request, so root scoping is done by fetching
+# every match and keeping the ones whose own parentId reads back null; more than one is
+# ambiguous and refused rather than guessed.
+devices_folder_id() {
+  local id="$1"
+  python3 -c '
 import json, sys
 print(json.dumps({
     "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:filenode"],
-    "methodCalls": [["FileNode/query", {"accountId": sys.argv[1], "filter": {"name": sys.argv[2]}}, "q0"]],
+    "methodCalls": [["FileNode/query", {"accountId": sys.argv[1], "filter": {"name": sys.argv[2]}}, "q0"],
+        ["FileNode/get", {"accountId": sys.argv[1],
+        "#ids": {"resultOf": "q0", "name": "FileNode/query", "path": "/ids"},
+        "properties": ["id", "parentId"]}, "g0"]],
 }))' "$id" "$DEVICES_FOLDER" | jmap_call "$id" | python3 -c '
 import json, sys
-ids = json.load(sys.stdin)["methodResponses"][0][1]["ids"]
-print(ids[0] if ids else "")')"
+found = json.load(sys.stdin)["methodResponses"][1][1]["list"]
+roots = [f["id"] for f in found if f["parentId"] is None]
+if len(roots) > 1:
+    sys.exit(f"{len(roots)} top-level folders named {sys.argv[1]!r}; refusing to guess which")
+print(roots[0] if roots else "")' "$DEVICES_FOLDER"
+}
+
+# Looks up the file "$2.key" inside the top-level "corvid-devices" folder, printing
+# "id<TAB>blobId" or nothing if either is missing.
+find_key_file() {
+  local id="$1" name="$2" folder_id
+  folder_id="$(devices_folder_id "$id")"
   [[ -n "$folder_id" ]] || return 0
 
   python3 -c '
@@ -150,28 +189,36 @@ if found:
     print(f"{file_id}\t{blob_id}")'
 }
 
+# Revoking is not one atomic step, so a rerun after a partial failure must still make progress:
+# the credential and the key file are looked up first and handled independently, and only
+# neither existing counts as "no such device".
 cmd_revoke() {
   local name="$1" id="$2" credential_id found file_id blob_id status
 
-  credential_id="$(app_passwords "$id" | python3 -c '
-import json, sys
-name = sys.argv[1]
-for line in sys.stdin:
-    entry = json.loads(line)
-    if entry["description"] == name:
-        print(entry["credentialId"])
-        break' "$name")"
-  [[ -n "$credential_id" ]] || { echo "no such device: $name" >&2; exit 65; }
+  credential_id="$(credential_id_for "$id" "$name")"
+  found="$(find_key_file "$id" "$name")"
+  [[ -n "$credential_id" || -n "$found" ]] || { echo "no such device: $name" >&2; exit 65; }
 
-  python3 -c '
+  if [[ -n "$credential_id" ]]; then
+    python3 -c '
 import json, sys
 print(json.dumps({
     "using": ["urn:ietf:params:jmap:core", "urn:stalwart:jmap"],
     "methodCalls": [["x:AppPassword/set", {"accountId": sys.argv[1], "destroy": [sys.argv[2]]}, "d0"]],
-}))' "$id" "$credential_id" | jmap_call "$id" > /dev/null
-  echo "  credential revoked"
+}))' "$id" "$credential_id" | jmap_call "$id" | require_destroyed "$credential_id"
 
-  found="$(find_key_file "$id" "$name")"
+    if app_passwords "$id" | python3 -c '
+import json, sys
+target = sys.argv[1]
+sys.exit(0 if any(json.loads(l)["credentialId"] == target for l in sys.stdin) else 1)' "$credential_id"; then
+      echo "credential $credential_id still present after revoke" >&2
+      exit 1
+    fi
+    echo "  credential revoked"
+  else
+    echo "  no credential found for $name (already revoked)"
+  fi
+
   if [[ -n "$found" ]]; then
     file_id="${found%%$'\t'*}"
     blob_id="${found#*$'\t'}"
@@ -180,14 +227,17 @@ import json, sys
 print(json.dumps({
     "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:filenode"],
     "methodCalls": [["FileNode/set", {"accountId": sys.argv[1], "destroy": [sys.argv[2]]}, "d0"]],
-}))' "$id" "$file_id" | jmap_call "$id" > /dev/null
+}))' "$id" "$file_id" | jmap_call "$id" | require_destroyed "$file_id"
+
+    # curl exits nonzero on a connection failure even without -f, which would otherwise trip
+    # set -e before the status below is ever inspected.
     status="$(curl -s -o /dev/null -w '%{http_code}' -u "$STALWART_USER:$STALWART_PASSWORD" \
-      "$STALWART_URL/jmap/download/$id/$blob_id/$name.key")"
-    if [[ "$status" == "200" ]]; then
-      echo "  storage key file revoked, but its blob still downloads (status $status)" >&2
+      "$STALWART_URL/jmap/download/$id/$blob_id/$name.key" || true)"
+    if [[ "$status" != "404" ]]; then
+      echo "  storage key file revoked, but its blob did not confirm gone (status $status)" >&2
       exit 1
     fi
-    echo "  storage key file revoked, blob no longer downloads (status $status)"
+    echo "  storage key file revoked, blob no longer downloads"
   else
     echo "  no storage key file found for $name (nothing to remove)"
   fi
