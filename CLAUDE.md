@@ -46,7 +46,7 @@ namespace, so services reach each other on `127.0.0.1`:
 | `corvid-milter` | `corvid-milter` binary, called by Stalwart at DATA | 11332 |
 | `corvid-imgproxy` | serves the images the milter rewrote | 8081 |
 | `corvid-labeler` | polls JMAP, writes labels as keywords | none |
-| `corvid-caddy` | the web tier: JMAP, `/i/*` to imgproxy, `/idp/*` to Pocket-ID | `server.web_port`, 4443 by default |
+| `corvid-caddy` | the web tier: JMAP, `/i/*` to imgproxy; a second site proxies `server.idp_hostname` to Pocket-ID | `server.web_port`, 4443 by default |
 | `corvid-idp` | Pocket-ID, OIDC passkeys; applied separately via `oidc.plan.ndjson` | 1411 |
 
 `corvid-mirror` is the exception: a systemd timer on a separate machine that pulls over JMAP.
@@ -101,11 +101,12 @@ checks. A test fails if a plan uses a variable that `shell` does not supply. `re
 the server's set of objects exactly the plan's, so a listener missing from the plan is removed.
 
 Everything that names the web tier derives from `server.hostname` and `server.web_port`: the
-pod's published port (`corvid.pod` is rendered), Caddy's site address, Stalwart's hostname and
-Pocket-ID's `APP_URL` (all three in the generated `server.env`), the OIDC issuer, and the
-milter's default proxy base. `bootstrap.sh` and `deploy.sh` both render them. The web port must
-not be one the pod already uses (`POD_PORTS`), since every container shares one network
-namespace.
+pod's published port (`corvid.pod` is rendered), Caddy's main site address, Stalwart's hostname
+and the milter's default proxy base, all in the generated `server.env`. Pocket-ID's `APP_URL` and
+the OIDC issuer derive instead from `server.idp_hostname` (default `idp.<domain>`) and the same
+`web_port`, since Pocket-ID cannot share a path on the main site; Caddy gets a second site for it.
+`bootstrap.sh` and `deploy.sh` both render them. The web port must not be one the pod already
+uses (`POD_PORTS`), since every container shares one network namespace.
 
 Clients must rebase the URLs a JMAP session advertises onto the address they dialled, since the
 web tier is not on 443.
