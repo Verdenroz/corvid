@@ -3,6 +3,8 @@ package com.verdenroz.corvid.core.auth
 import com.verdenroz.corvid.core.jmap.AuthLatch
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.publicvalue.multiplatform.oidc.OpenIdConnectException
@@ -91,6 +93,36 @@ class TokenSourceTest {
 
             assertNull(source.currentBearerToken())
             assertEquals(1, attempts)
+        }
+
+    @Test
+    fun `a token expiring inside the refresh margin is refreshed early`() =
+        runTest {
+            val source = TokenSource(AuthLatch(), backgroundScope)
+            source.adopt(FakeOidcClient { freshToken(accessToken = "at2") }, freshToken(expiresIn = 30))
+
+            assertEquals("at2", source.currentBearerToken())
+        }
+
+    @Test
+    fun `two callers racing an expired token share a single refresh request`() =
+        runTest {
+            var refreshCount = 0
+            val source = TokenSource(AuthLatch(), backgroundScope)
+            source.adopt(
+                FakeOidcClient {
+                    refreshCount++
+                    delay(10)
+                    freshToken(accessToken = "at2")
+                },
+                freshToken(expiresIn = 0),
+            )
+
+            val first = async { source.currentBearerToken() }
+            val second = async { source.currentBearerToken() }
+
+            assertEquals(listOf("at2", "at2"), listOf(first.await(), second.await()))
+            assertEquals(1, refreshCount)
         }
 
     @Test

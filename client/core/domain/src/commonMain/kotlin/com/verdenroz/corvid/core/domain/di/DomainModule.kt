@@ -5,5 +5,7 @@ import org.koin.dsl.module
 
 val domainModule =
     module {
-        factory { SignInUseCase(authFlowFactory = get(), redirectUriProvider = get(), tokenSource = get()) }
+        factory {
+            SignInUseCase(authFlowFactory = get(), redirectUriProvider = get(), tokenSource = get(), authLatch = get())
+        }
     }

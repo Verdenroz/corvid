@@ -6,12 +6,17 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.publicvalue.multiplatform.oidc.ExperimentalOpenIdConnect
 import org.publicvalue.multiplatform.oidc.OpenIdConnectClient
 import org.publicvalue.multiplatform.oidc.OpenIdConnectException
 import org.publicvalue.multiplatform.oidc.types.remote.AccessTokenResponse
 import org.publicvalue.multiplatform.oidc.types.remote.ErrorResponse
 import org.publicvalue.multiplatform.oidc.util.accessTokenExpired
+import kotlin.time.Duration.Companion.seconds
+
+private val REFRESH_MARGIN = 60.seconds
 
 sealed interface AuthState {
     data object SignedOut : AuthState
@@ -34,6 +39,7 @@ class TokenSource(
     private val _state = MutableStateFlow<AuthState>(AuthState.SignedOut)
     val state: StateFlow<AuthState> = _state
 
+    private val refreshMutex = Mutex()
     private var client: OpenIdConnectClient? = null
     private var tokens: AccessTokenResponse? = null
 
@@ -61,11 +67,19 @@ class TokenSource(
         _state.value = AuthState.SignedOut
     }
 
-    /** Never returns an expired token: it refreshes first, once, or gives up. */
+    /**
+     * Never returns a token expiring within [REFRESH_MARGIN]: it refreshes
+     * first, once, or gives up. Two callers racing a refresh share one
+     * request, since a rotated refresh token would fail the second one.
+     */
     suspend fun currentBearerToken(): String? {
         val current = tokens ?: return null
-        if (!current.accessTokenExpired()) return current.access_token
-        return refresh(current)
+        if (!current.accessTokenExpired(REFRESH_MARGIN)) return current.access_token
+        return refreshMutex.withLock {
+            val stillCurrent = tokens ?: return@withLock null
+            if (!stillCurrent.accessTokenExpired(REFRESH_MARGIN)) return@withLock stillCurrent.access_token
+            refresh(stillCurrent)
+        }
     }
 
     private suspend fun refresh(current: AccessTokenResponse): String? {
