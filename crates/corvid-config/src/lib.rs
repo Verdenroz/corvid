@@ -28,6 +28,7 @@ pub struct Config {
     pub milter: Option<Milter>,
     pub imgproxy: Option<Imgproxy>,
     pub mirror: Option<Mirror>,
+    pub sentinel: Option<Sentinel>,
 }
 
 /// The deployment itself, read by the deploy scripts through `corvid-config shell`.
@@ -346,6 +347,16 @@ pub struct Mirror {
     pub root: PathBuf,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Sentinel {
+    #[serde(default = "sentinel_bind")]
+    pub bind: String,
+    pub jmap_url: String,
+    pub jmap_user: String,
+    pub state: PathBuf,
+}
+
 /// A whole-number percentage, 0 to 100.
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 #[serde(try_from = "u8")]
@@ -490,6 +501,9 @@ fn milter_bind() -> String {
 fn imgproxy_bind() -> String {
     "127.0.0.1:8081".to_owned()
 }
+fn sentinel_bind() -> String {
+    "127.0.0.1:11333".to_owned()
+}
 fn five_mib() -> usize {
     5 * 1024 * 1024
 }
@@ -527,6 +541,15 @@ mod tests {
         assert_eq!(model.confidence, Percent(80));
         assert_eq!(model.budget, 20);
         assert!(model.request_extra.is_empty());
+    }
+
+    #[test]
+    fn a_sentinel_section_defaults_its_bind_address() {
+        let config =
+            Config::parse("sentinel:\n  jmap_url: http://x\n  jmap_user: u\n  state: /s\n")
+                .unwrap();
+
+        assert_eq!(config.sentinel.unwrap().bind, "127.0.0.1:11333");
     }
 
     #[test]

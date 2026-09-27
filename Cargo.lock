@@ -419,6 +419,7 @@ dependencies = [
  "corvid-jmap",
  "corvid-store",
  "hmac",
+ "reqwest",
  "serde",
  "serde_json",
  "sha2",
