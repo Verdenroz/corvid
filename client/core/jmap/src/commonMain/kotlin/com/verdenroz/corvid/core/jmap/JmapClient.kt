@@ -33,18 +33,23 @@ class JmapClient private constructor(
     private val httpClient: HttpClient,
     private val authLatch: AuthLatch,
     private val baseUrl: String,
-    private val bearerToken: String?,
+    private val bearerToken: suspend () -> String?,
     session: JmapSession,
 ) {
     var session: JmapSession = session
         private set
 
     companion object {
+        /**
+         * [bearerToken] is read fresh on every request, not captured once: a
+         * [JmapClient] outlives a single access token for as long as the
+         * device stays unlocked, and [TokenSource] refreshes underneath it.
+         */
         suspend fun connect(
             httpClient: HttpClient,
             authLatch: AuthLatch,
             baseUrl: String,
-            bearerToken: String? = null,
+            bearerToken: suspend () -> String? = { null },
         ): JmapClient {
             val session = discoverSession(httpClient, authLatch, baseUrl, bearerToken)
             return JmapClient(httpClient, authLatch, baseUrl, bearerToken, session)
@@ -90,7 +95,7 @@ class JmapClient private constructor(
         val response =
             guarded(authLatch) {
                 httpClient.post(url) {
-                    bearerToken?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+                    bearerToken()?.let { header(HttpHeaders.Authorization, "Bearer $it") }
                     contentType(ContentType.parse(contentType))
                     setBody(bytes)
                 }
@@ -112,7 +117,7 @@ class JmapClient private constructor(
         val response =
             guarded(authLatch) {
                 httpClient.get(url) {
-                    bearerToken?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+                    bearerToken()?.let { header(HttpHeaders.Authorization, "Bearer $it") }
                 }
             }
         return response.body()
@@ -135,7 +140,7 @@ private suspend fun discoverSession(
     httpClient: HttpClient,
     authLatch: AuthLatch,
     baseUrl: String,
-    bearerToken: String?,
+    bearerToken: suspend () -> String?,
 ): JmapSession {
     val response = guardedGet(httpClient, authLatch, "$baseUrl/jmap/session", bearerToken)
     return parseSession(baseUrl, response.body())
@@ -145,11 +150,11 @@ internal suspend fun guardedGet(
     httpClient: HttpClient,
     authLatch: AuthLatch,
     url: String,
-    bearerToken: String?,
+    bearerToken: suspend () -> String?,
 ): HttpResponse =
     guarded(authLatch) {
         httpClient.get(url) {
-            bearerToken?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+            bearerToken()?.let { header(HttpHeaders.Authorization, "Bearer $it") }
         }
     }
 
@@ -157,12 +162,12 @@ private suspend fun guardedPost(
     httpClient: HttpClient,
     authLatch: AuthLatch,
     url: String,
-    bearerToken: String?,
+    bearerToken: suspend () -> String?,
     body: JmapRequest,
 ): HttpResponse =
     guarded(authLatch) {
         httpClient.post(url) {
-            bearerToken?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+            bearerToken()?.let { header(HttpHeaders.Authorization, "Bearer $it") }
             contentType(ContentType.Application.Json)
             setBody(body)
         }
