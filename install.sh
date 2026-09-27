@@ -23,6 +23,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/deploy/mta-sts-lib.sh"
+. "$HERE/deploy/idp-dns-lib.sh"
 VERSION="$(sed -nE 's/^version = "([^"]+)"/\1/p' "$HERE/Cargo.toml" | head -1)"
 IMAGE="ghcr.io/verdenroz/corvid:$VERSION"
 CLI_VERSION=1.0.12
@@ -289,6 +290,8 @@ preset_address=""
 address="$(ask "Address" is_address "$preset_address" "$current_address")"
 mail_user="${address%@*}"
 domain="${address#*@}"
+# Always inside $domain, which the token must already edit; no question of its own.
+idp_hostname="idp.$domain"
 if [[ -n "$(current domain)" && "$domain" != "$(current domain)" ]]; then
   explain "This adds $domain alongside $(current domain). Stalwart keeps $(current domain) and its DNS" \
     "records stay at Cloudflare until you remove them."
@@ -354,6 +357,7 @@ if [[ -z "$a_records" ]]; then
 elif ! grep -qx "$server_ip" <<<"$a_records"; then
   die "$hostname points to $(tr '\n' ' ' <<<"$a_records")at Cloudflare, not to this server's $server_ip; fix that record and rerun"
 fi
+idp_dns_preflight "$token" "$domain_zone_id" "$idp_hostname" "$server_ip"
 
 dnssec_off=()
 declare -A zone_id=([$domain]="$domain_zone_id" [$host_zone]="$host_zone_id")
@@ -401,6 +405,7 @@ cat <<EOF
   Password               $([[ -n "$password" ]] && echo "new" || echo "unchanged")
   Server name            $hostname$([[ $create_a == 1 ]] && echo " (A record to $server_ip will be created)")
   Web address            https://$hostname:$web_port
+  Identity provider      $idp_hostname$([[ $idp_create_a == 1 ]] && echo " (A record to $server_ip will be created)")
   Mail apps from         $(case "$client_access" in anywhere) echo "anywhere" ;; host) echo "this server only, such as its VPN" ;; *) echo "$client_access" ;; esac)
   Certificate notices    $acme_contact
   Cloudflare token       $([[ -n "$token" ]] && echo "new" || echo "unchanged")
@@ -418,6 +423,11 @@ if (( create_a )); then
   step "creating the A record"
   out="$(cloudflare "$token" create-a "$host_zone_id" "$hostname" "$server_ip" 2>&1)" || die "Cloudflare did not create it: $out"
   ok "$hostname now points to $server_ip"
+fi
+
+if (( idp_create_a )); then
+  step "creating the identity provider's A record"
+  idp_dns_create "$token" "$domain_zone_id" "$idp_hostname" "$server_ip"
 fi
 
 if (( enable_dnssec )); then

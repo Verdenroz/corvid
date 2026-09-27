@@ -32,6 +32,7 @@ fn shell_prints_the_server_section_of_the_template() {
             "ACME_CONTACT",
             "WEB_PORT",
             "HOST_ZONE",
+            "IDP_HOSTNAME",
             "PUBLISH_MTA_STS",
             "PUBLISH_TLSA",
             "MTA_STS_MODE",

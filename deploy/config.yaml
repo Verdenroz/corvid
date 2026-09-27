@@ -21,6 +21,9 @@ server:
   # Only when hostname lies outside domain, e.g. a host named n1.example.net serving mail for
   # example.com. Stalwart then keeps a certificate for this zone and publishes no records in it.
   # host_zone: example.net
+  # Where Pocket-ID answers, on web_port. Defaults to idp.<domain>; Pocket-ID refuses an APP_URL
+  # with a path, so it needs a hostname of its own.
+  # idp_hostname: idp.example.com
   # Who may reach the ports mail apps use (465, 587, 993 and web_port): anywhere; host, meaning
   # only programs on this server such as a VPN it runs; or a list like [192.0.2.0/24].
   # Ports 25 and 80 stay open to everyone, since other mail servers and Let's Encrypt need them.

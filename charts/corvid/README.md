@@ -100,7 +100,8 @@ account exists, replaces it in the Secret.
 ## Not yet verified
 
 - A production cluster, certificates, and Cloudflare DNS automation.
-- Pocket-ID: v1.6.2 refuses an `APP_URL` with a path, so `/idp` cannot work; see the RUNBOOK.
+- Pocket-ID's own hostname (`config.server.idp_hostname`, see the RUNBOOK): the chart renders it,
+  but nothing here automates its DNS record the way `install.sh` does for the Podman deploy.
 - The labeler in the chart.
 - The sentinel in the chart: rendered and schema-validated (`helm template` plus `kubeconform`),
   never run against a live cluster.

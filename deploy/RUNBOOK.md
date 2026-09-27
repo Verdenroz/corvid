@@ -203,12 +203,12 @@ is compared as a string and a mismatch fails only at the first login. So it is g
 `server.env` from the same values as the issuer, and `deploy.sh` refuses an `idp.env` that also
 sets it. `TRUST_PROXY` and `PORT` are set in the unit.
 
-**Pocket-ID cannot be served under a path.** v1.6.2 refuses to start with `APP_URL must not
-contain a path`, measured on the mail host. The `/idp` route in the Caddyfile, and the `APP_URL`
-that `server.env` and the chart derive with `/idp`, therefore do not work yet. Pocket-ID needs a
-hostname of its own (`idp.<domain>`, with a DNS record and its own Caddy site) or a port of its
-own, with the OIDC `issuerUrl` moved to match. Decide before the first passkey login, since the
-issuer is baked into the client registration.
+**Pocket-ID serves on its own hostname, not a path.** v1.6.2 refuses to start with `APP_URL must
+not contain a path`, measured on the mail host, so it cannot sit behind `/idp` on Stalwart's own
+web tier hostname. It gets `server.idp_hostname`, defaulting to `idp.<domain>`, on the same
+`server.web_port`: its own Caddy site, its own DNS record (`install.sh` publishes it), and
+`APP_URL` and the OIDC `issuerUrl` both `https://<idp_hostname>:<web_port>`, no path. Decide the
+hostname before the first passkey login, since the issuer is baked into the client registration.
 
 ## Proving the spam loop learns
 
