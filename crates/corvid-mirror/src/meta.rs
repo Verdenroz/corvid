@@ -80,8 +80,7 @@ pub fn replay(root: &Path, identities: &Identities) -> io::Result<BTreeMap<Strin
             .filter_map(|entry| entry.ok())
             .filter_map(|entry| {
                 let path = entry.path();
-                let seq = path.file_stem()?.to_str()?.parse().ok()?;
-                Some((seq, path))
+                segment_seq(&path).map(|seq| (seq, path))
             })
             .collect(),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Vec::new(),
@@ -105,10 +104,14 @@ pub fn replay(root: &Path, identities: &Identities) -> io::Result<BTreeMap<Strin
                     keywords,
                     mailboxes,
                 } => {
-                    if let Some(existing) = meta.get_mut(&id) {
-                        existing.keywords = keywords;
-                        existing.mailboxes = mailboxes;
-                    }
+                    let existing = meta.get_mut(&id).ok_or_else(|| {
+                        io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            format!("{id}: a keyword or mailbox update with no earlier record"),
+                        )
+                    })?;
+                    existing.keywords = keywords;
+                    existing.mailboxes = mailboxes;
                 }
             }
         }
@@ -119,14 +122,73 @@ pub fn replay(root: &Path, identities: &Identities) -> io::Result<BTreeMap<Strin
 fn next_seq(dir: &Path) -> io::Result<u64> {
     let mut max = None;
     for entry in fs::read_dir(dir)? {
-        if let Some(seq) = entry?
-            .path()
-            .file_stem()
-            .and_then(|stem| stem.to_str())
-            .and_then(|stem| stem.parse::<u64>().ok())
-        {
+        if let Some(seq) = segment_seq(&entry?.path()) {
             max = Some(max.map_or(seq, |current: u64| current.max(seq)));
         }
     }
     Ok(max.map_or(0, |current| current + 1))
+}
+
+/// A segment's sequence number, or `None` for anything that is not a committed segment: in
+/// particular the `.tmp` a crash mid-write can leave behind, which must count toward neither
+/// the next sequence number nor a replay.
+fn segment_seq(path: &Path) -> Option<u64> {
+    if path.extension().and_then(|ext| ext.to_str()) != Some("age") {
+        return None;
+    }
+    path.file_stem()?.to_str()?.parse().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TEST_SK: &str =
+        "AGE-SECRET-KEY-1GQ9778VQXMMJVE8SK7J6VT8UJ4HDQAJUVSFCWCM02D8GEWQ72PVQ2Y5J33";
+    const TEST_PK: &str = "age1t7rxyev2z3rw82stdlrrepyc39nvn86l5078zqkf5uasdy86jp6svpy7pa";
+
+    fn identities() -> Identities {
+        vec![Box::new(TEST_SK.parse::<age::x25519::Identity>().unwrap())]
+    }
+
+    fn recipient() -> age::x25519::Recipient {
+        TEST_PK.parse().unwrap()
+    }
+
+    fn new_entry(size: usize) -> Entry {
+        Entry::New(Meta {
+            digest: "d".to_owned(),
+            size,
+            received_at: "2026-09-07T00:00:00Z".to_owned(),
+            keywords: BTreeSet::new(),
+            mailboxes: BTreeSet::new(),
+        })
+    }
+
+    #[test]
+    fn a_stray_tmp_segment_does_not_break_replay() {
+        let root = tempfile::tempdir().unwrap();
+        let entries = BTreeMap::from([("m0".to_owned(), new_entry(4))]);
+        write_segment(root.path(), &entries, &recipient()).unwrap();
+        std::fs::write(root.path().join("meta").join("3.tmp"), b"garbage").unwrap();
+
+        let replayed = replay(root.path(), &identities()).unwrap();
+
+        assert_eq!(replayed["m0"].size, 4);
+    }
+
+    #[test]
+    fn a_touch_with_no_earlier_record_is_refused() {
+        let root = tempfile::tempdir().unwrap();
+        let touch = Entry::Touch {
+            keywords: BTreeSet::new(),
+            mailboxes: BTreeSet::new(),
+        };
+        let entries = BTreeMap::from([("m0".to_owned(), touch)]);
+        write_segment(root.path(), &entries, &recipient()).unwrap();
+
+        let error = replay(root.path(), &identities()).unwrap_err();
+
+        assert!(error.to_string().contains("no earlier record"));
+    }
 }

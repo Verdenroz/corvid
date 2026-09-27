@@ -97,10 +97,22 @@ struct LegacyLedger {
 fn an_existing_plaintext_archive_is_refused_not_migrated() {
     let (_dir, root) = scratch();
     std::fs::create_dir_all(&root).unwrap();
-    corvid_store::save(&root.join("index.json"), 1, &LegacyLedger::default()).unwrap();
+    corvid_store::save(&root.join("ledger.json"), 1, &LegacyLedger::default()).unwrap();
 
     match Archive::open(&root) {
-        Ok(_) => panic!("a schema 1 archive was opened as schema 2"),
+        Ok(_) => panic!("a plaintext archive was opened as encrypted"),
+        Err(error) => assert!(error.to_string().contains("encrypt-archive")),
+    }
+}
+
+#[test]
+fn an_index_of_the_wrong_schema_is_refused() {
+    let (_dir, root) = scratch();
+    std::fs::create_dir_all(&root).unwrap();
+    corvid_store::save(&root.join("index.json"), 99, &LegacyLedger::default()).unwrap();
+
+    match Archive::open(&root) {
+        Ok(_) => panic!("an index of the wrong schema was opened"),
         Err(error) => assert!(error.to_string().contains("different schema")),
     }
 }

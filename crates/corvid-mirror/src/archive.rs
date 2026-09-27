@@ -36,9 +36,9 @@ corvid_store::pin_shape!(Index {
 /// **Append-only.** A message deleted on the server stays here. The audit therefore checks that
 /// every server id is present rather than comparing counts, which differ after any deletion.
 ///
-/// **Encrypted at rest.** An archive written before encryption existed is schema 1 and this
-/// type is schema 2, so `corvid_store` refuses to open it: `encrypt-archive` is the only path
-/// from one to the other, and a partly-migrated archive is not a schema this type recognises.
+/// **Encrypted at rest.** A pre-encryption archive has a `ledger.json` this type refuses on
+/// sight, and a foreign or newer index schema is refused by `corvid_store` itself.
+/// `encrypt-archive` is the only path from one to the other.
 pub struct Archive {
     root: PathBuf,
     index: Index,
@@ -50,6 +50,15 @@ pub struct Archive {
 impl Archive {
     pub fn open(root: impl Into<PathBuf>) -> io::Result<Self> {
         let root = root.into();
+        // `ledger.json` is the pre-encryption archive's only state file. Its absence is not
+        // proof of a fresh archive on its own, but its presence always means one that
+        // `encrypt_archive` has not yet touched, before an index has even been considered.
+        if root.join("ledger.json").exists() {
+            return Err(io::Error::other(format!(
+                "{}: a plaintext archive exists (ledger.json); run encrypt-archive first",
+                root.display()
+            )));
+        }
         fs::create_dir_all(root.join("blobs"))?;
         let index = corvid_store::open(&index_path(&root), SCHEMA)?;
         Ok(Self {
@@ -225,7 +234,13 @@ impl Archive {
 }
 
 fn write_blob(root: &Path, digest: &str, bytes: &[u8]) -> io::Result<()> {
-    let path = blob_path(root, digest);
+    write_blob_into(&root.join("blobs"), digest, bytes)
+}
+
+/// Shared with the `encrypt-archive` migration, which builds a fresh blob directory before
+/// swapping it in as `blobs`, so it names it by hand rather than through an `Archive`.
+pub(crate) fn write_blob_into(blobs_dir: &Path, digest: &str, bytes: &[u8]) -> io::Result<()> {
+    let path = shard(blobs_dir, digest);
     fs::create_dir_all(path.parent().expect("blob paths have a parent"))?;
     let temporary = path.with_extension("tmp");
     let mut file = fs::File::create(&temporary)?;
@@ -234,10 +249,12 @@ fn write_blob(root: &Path, digest: &str, bytes: &[u8]) -> io::Result<()> {
     fs::rename(&temporary, &path)
 }
 
-/// Shared with the `encrypt-archive` migration, which writes blobs and the index before an
-/// `Archive` of the new schema can be opened.
 pub(crate) fn blob_path(root: &Path, digest: &str) -> PathBuf {
-    root.join("blobs").join(&digest[..2]).join(digest)
+    shard(&root.join("blobs"), digest)
+}
+
+fn shard(blobs_dir: &Path, digest: &str) -> PathBuf {
+    blobs_dir.join(&digest[..2]).join(digest)
 }
 
 pub(crate) fn index_path(root: &Path) -> PathBuf {

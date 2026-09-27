@@ -171,8 +171,15 @@ fn path_to_root(
     parent: &BTreeMap<String, String>,
 ) -> io::Result<Vec<String>> {
     let mut segments = vec![name[id].clone()];
+    let mut visited: BTreeSet<&str> = BTreeSet::from([id]);
     let mut current = id;
     while let Some(parent_id) = parent.get(current) {
+        if !visited.insert(parent_id.as_str()) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("mailbox {parent_id} is its own ancestor"),
+            ));
+        }
         segments.push(
             name.get(parent_id)
                 .cloned()
@@ -219,4 +226,38 @@ fn record(value: &Value, mailboxes: &BTreeMap<String, String>) -> io::Result<Opt
             .unwrap_or_default(),
         mailboxes: record_mailboxes,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_mailbox_cycle_is_refused_rather_than_looped_forever() {
+        let name = BTreeMap::from([
+            ("a".to_owned(), "A".to_owned()),
+            ("b".to_owned(), "B".to_owned()),
+        ]);
+        let parent = BTreeMap::from([
+            ("a".to_owned(), "b".to_owned()),
+            ("b".to_owned(), "a".to_owned()),
+        ]);
+
+        let error = path_to_root("a", &name, &parent).unwrap_err();
+
+        assert!(error.to_string().contains("ancestor"));
+    }
+
+    #[test]
+    fn a_plain_chain_walks_to_the_root() {
+        let name = BTreeMap::from([
+            ("a".to_owned(), "Child".to_owned()),
+            ("b".to_owned(), "Parent".to_owned()),
+        ]);
+        let parent = BTreeMap::from([("a".to_owned(), "b".to_owned())]);
+
+        let path = path_to_root("a", &name, &parent).unwrap();
+
+        assert_eq!(path, vec!["Parent".to_owned(), "Child".to_owned()]);
+    }
 }
