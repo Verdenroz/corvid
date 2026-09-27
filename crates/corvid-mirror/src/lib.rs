@@ -148,3 +148,9 @@ fn listing(source: &impl Source) -> io::Result<Listing> {
 pub fn verify(root: &Path) -> io::Result<Vec<String>> {
     Archive::open(root)?.verify()
 }
+
+/// Decrypts every held body and checks it against the plaintext digest and size recorded at
+/// fetch time. Needs no server, but does need the identity, unlike the nightly `verify`.
+pub fn verify_deep(root: &Path, identities: &Identities) -> io::Result<Vec<String>> {
+    Archive::open(root)?.verify_deep(identities)
+}

@@ -1,8 +1,12 @@
+//! With no arguments, the nightly path: sync, audit, then the ciphertext-only verify, neither
+//! of which ever touch the age identity. `verify --deep` is run by hand.
+
+use std::path::Path;
 use std::process::ExitCode;
 
 use corvid_config::{Config, or_exit, secret, section};
-use corvid_mirror::crypto;
-use corvid_mirror::{Mailbox, audit, sync, verify};
+use corvid_mirror::crypto::{self, Identities};
+use corvid_mirror::{Mailbox, audit, sync, verify, verify_deep};
 
 fn main() -> ExitCode {
     tracing_subscriber::fmt()
@@ -12,19 +16,53 @@ fn main() -> ExitCode {
         )
         .init();
 
+    let mut args = std::env::args().skip(1);
     let config = or_exit(Config::load());
     let mirror = or_exit(section(config.mirror, "mirror"));
+    let root = mirror.root;
+
+    match args.next().as_deref() {
+        None => nightly(
+            &root,
+            &mirror.jmap_url,
+            &mirror.jmap_user,
+            &mirror.age_recipient,
+        ),
+        Some("verify") => match args.next().as_deref() {
+            None => shallow_verify(&root),
+            Some("--deep") => match args.next() {
+                Some(identity_path) => deep_verify(&root, Path::new(&identity_path)),
+                None => usage(),
+            },
+            Some(_) => usage(),
+        },
+        Some(_) => usage(),
+    }
+}
+
+fn usage() -> ExitCode {
+    eprintln!("usage: corvid-mirror [verify [--deep <identity-file>]]");
+    ExitCode::from(64)
+}
+
+fn identities(path: &Path) -> Result<Identities, ExitCode> {
+    crypto::load_identities(path).map_err(|error| {
+        tracing::error!(%error, "cannot read the age identity");
+        ExitCode::FAILURE
+    })
+}
+
+fn nightly(root: &Path, url: &str, user: &str, age_recipient: &str) -> ExitCode {
     let password = or_exit(secret("CORVID_JMAP_PASSWORD"));
-    let recipient = match crypto::parse_recipient(&mirror.age_recipient) {
+    let recipient = match crypto::parse_recipient(age_recipient) {
         Ok(recipient) => recipient,
         Err(error) => {
             tracing::error!(%error, "mirror.age_recipient");
             return ExitCode::from(corvid_config::EX_CONFIG);
         }
     };
-    let (root, url, user) = (mirror.root, mirror.jmap_url, mirror.jmap_user);
 
-    let mailbox = match Mailbox::connect(&url, &user, &password) {
+    let mailbox = match Mailbox::connect(url, user, &password) {
         Ok(mailbox) => mailbox,
         Err(error) => {
             tracing::error!(%error, "cannot reach the mail server");
@@ -34,7 +72,7 @@ fn main() -> ExitCode {
 
     // Sync cannot see a message that never arrived, audit cannot see damage to what did, and
     // only verify runs without the server.
-    let fetched = match sync(&root, &mailbox, &recipient) {
+    let fetched = match sync(root, &mailbox, &recipient) {
         Ok(summary) => summary,
         Err(error) => {
             tracing::error!(%error, "sync failed");
@@ -50,7 +88,7 @@ fn main() -> ExitCode {
         tracing::warn!(%id, "listed but not returned; deleted since, or a fetch that failed");
     }
 
-    let report = match audit(&root, &mailbox) {
+    let report = match audit(root, &mailbox) {
         Ok(report) => report,
         Err(error) => {
             tracing::error!(%error, "audit failed");
@@ -69,7 +107,11 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    match verify(&root) {
+    shallow_verify(root)
+}
+
+fn shallow_verify(root: &Path) -> ExitCode {
+    match verify(root) {
         Ok(damaged) if damaged.is_empty() => {
             tracing::info!("archive verified");
             ExitCode::SUCCESS
@@ -80,6 +122,27 @@ fn main() -> ExitCode {
         }
         Err(error) => {
             tracing::error!(%error, "verification failed");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn deep_verify(root: &Path, identity_path: &Path) -> ExitCode {
+    let identities = match identities(identity_path) {
+        Ok(identities) => identities,
+        Err(code) => return code,
+    };
+    match verify_deep(root, &identities) {
+        Ok(damaged) if damaged.is_empty() => {
+            tracing::info!("archive decrypts and matches every plaintext digest and size");
+            ExitCode::SUCCESS
+        }
+        Ok(damaged) => {
+            tracing::error!(damaged = damaged.len(), first = %damaged[0], "a stored body does not decrypt to its recorded digest or size");
+            ExitCode::FAILURE
+        }
+        Err(error) => {
+            tracing::error!(%error, "deep verification failed");
             ExitCode::FAILURE
         }
     }

@@ -213,6 +213,26 @@ impl Archive {
         Ok(damaged)
     }
 
+    /// Decrypts every held body and checks it against the plaintext digest and size the
+    /// server reported at fetch time. Proves recoverability, not just that the disk agrees
+    /// with itself.
+    pub fn verify_deep(&self, identities: &Identities) -> io::Result<Vec<String>> {
+        let mut damaged = Vec::new();
+        for (id, held) in &self.ledger.held {
+            let matches = fs::read(self.blob_path(&held.digest))
+                .ok()
+                .and_then(|ciphertext| crypto::decrypt(identities, &ciphertext).ok())
+                .is_some_and(|plaintext| {
+                    plaintext.len() == held.size
+                        && hex::encode(Sha256::digest(&plaintext)) == held.digest
+                });
+            if !matches {
+                damaged.push(id.clone());
+            }
+        }
+        Ok(damaged)
+    }
+
     fn blob_path(&self, digest: &str) -> PathBuf {
         blob_path(&self.root, digest)
     }

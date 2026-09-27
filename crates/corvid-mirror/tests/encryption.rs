@@ -3,10 +3,10 @@ mod common;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use corvid_mirror::{Archive, sync, verify};
+use corvid_mirror::{Archive, sync, verify, verify_deep};
 use serde::Serialize;
 
-use common::{Server, recipient, scratch};
+use common::{Server, identities, recipient, scratch};
 
 #[test]
 fn a_stolen_archive_reveals_no_plaintext_bytes() {
@@ -56,6 +56,37 @@ fn a_flipped_ciphertext_byte_fails_the_nightly_verify() {
     std::fs::write(&blob, bytes).unwrap();
 
     assert_eq!(verify(&root).unwrap(), ["m0"]);
+}
+
+#[test]
+fn verify_deep_confirms_a_healthy_archive_decrypts() {
+    let (_dir, root) = scratch();
+    let server = Server::default();
+    server.deliver("m0", "body");
+    sync(&root, &server, &recipient()).unwrap();
+
+    assert!(verify_deep(&root, &identities()).unwrap().is_empty());
+}
+
+#[test]
+fn verify_deep_also_catches_a_flipped_ciphertext_byte() {
+    let (_dir, root) = scratch();
+    let server = Server::default();
+    server.deliver("m0", "body");
+    sync(&root, &server, &recipient()).unwrap();
+
+    let digest = Archive::open(&root)
+        .unwrap()
+        .held("m0")
+        .unwrap()
+        .digest
+        .clone();
+    let blob = root.join("blobs").join(&digest[..2]).join(&digest);
+    let mut bytes = std::fs::read(&blob).unwrap();
+    bytes[0] ^= 0xff;
+    std::fs::write(&blob, bytes).unwrap();
+
+    assert_eq!(verify_deep(&root, &identities()).unwrap(), ["m0"]);
 }
 
 // Schema 1, before ciphertext_digest and mailboxes existed. Built by hand rather than reused
