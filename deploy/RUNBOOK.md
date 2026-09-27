@@ -46,6 +46,31 @@ directly"). `device.sh` speaks JMAP directly with an explicit `accountId`, which
 credential may set for any account; the same call as a non-admin is refused ("you are not an
 owner of account").
 
+### The sentinel's own app password
+
+`corvid-sentinel` signs in over JMAP like any other client, so it needs one of these too, created
+the same way, authenticated as the account holder:
+
+    stalwart-cli create AppPassword --json '{"description":"corvid-sentinel","allowedIps":{}}'
+
+Put the secret in `sentinel.env`'s `CORVID_JMAP_PASSWORD`, never the account password: once TOTP
+guards the account, an app password is the only kind that still works, and every notice the
+sentinel imports would otherwise count as a sign-in with the account password. Expect one
+self-notice the first time it starts, for its own first sign-in.
+
+## Sign-in alerts
+
+`corvid-sentinel` and Stalwart's own `WebHook` share `CORVID_SENTINEL_SECRET`
+(`sentinel-webhook.env`, read by both `corvid-mail` and `corvid-sentinel`). Two limits worth
+knowing before relying on it:
+
+- Stalwart discards a queued webhook after `discardAfter` (24h). A sentinel outage longer than
+  that loses whatever signed in while it was down, with no record anywhere else. Check it with
+  `systemctl status corvid-sentinel`.
+- A notice delivered successfully but followed by a failed state save answers Stalwart with a
+  retryable status, so the retry imports a second copy of the same notice. Duplicates are
+  possible; a missing notice is not meant to be.
+
 ## Configuration
 
 Settings live in one file, `/opt/corvid/config.yaml`, mounted read-only into each container at
