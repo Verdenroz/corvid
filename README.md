@@ -1,4 +1,13 @@
-# Corvid
+<p align="center">
+  <img src="client/branding/corvid-icon.svg" width="120" height="120" alt="Corvid">
+</p>
+
+<h1 align="center">Corvid</h1>
+
+<p align="center">
+  <a href="https://github.com/Verdenroz/corvid/actions/workflows/ci.yml"><img src="https://github.com/Verdenroz/corvid/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
+</p>
 
 Self-hosted email for one person, built on [Stalwart Mail Server](https://stalw.art), with
 tracker stripping and local labeling that never send mail anywhere else.
@@ -18,7 +27,7 @@ Corvid is a deployment plus a set of small Rust services that run beside Stalwar
 
 Mail goes out from your own IP with no relay in between. The server can read your mail, because
 search and labeling run on it. Mail is encrypted in transit with TLS; encrypting the disk is up to
-you. [docs/design.md](docs/design.md) explains why each of these choices was made.
+you.
 
 ## Status
 
