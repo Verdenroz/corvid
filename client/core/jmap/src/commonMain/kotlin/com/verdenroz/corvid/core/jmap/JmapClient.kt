@@ -1,6 +1,7 @@
 package com.verdenroz.corvid.core.jmap
 
 import io.ktor.client.HttpClient
+import io.ktor.client.call.NoTransformationFoundException
 import io.ktor.client.call.body
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -12,6 +13,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
@@ -57,11 +59,26 @@ class JmapClient private constructor(
     suspend fun call(invocations: List<Invocation>): Map<String, MethodOutcome> {
         val request = JmapRequest(using = REQUIRED_CAPABILITIES, methodCalls = invocations)
         val response = guardedPost(httpClient, authLatch, session.apiUrl, bearerToken, request)
-        val parsed: JmapResponse = response.body()
-        if (parsed.sessionState != session.state) {
-            session = discoverSession(httpClient, authLatch, baseUrl, bearerToken)
+        val parsed =
+            try {
+                response.body<JmapResponse>()
+            } catch (e: NoTransformationFoundException) {
+                throw JmapException(JmapError.Request(type = "notJMAP", detail = e.message))
+            } catch (e: SerializationException) {
+                throw JmapException(JmapError.Request(type = "notJMAP", detail = e.message))
+            }
+        session =
+            when {
+                session.state == null -> session.copy(state = parsed.sessionState)
+                parsed.sessionState != session.state -> discoverSession(httpClient, authLatch, baseUrl, bearerToken)
+                else -> session
+            }
+        val outcomes = parsed.methodResponses.associate { it.callId to it.toOutcome() }
+        val missing = invocations.map { it.callId } - outcomes.keys
+        if (missing.isNotEmpty()) {
+            throw JmapException(JmapError.Request(type = "incompleteResponse", detail = "no response for $missing"))
         }
-        return parsed.methodResponses.associate { it.callId to it.toOutcome() }
+        return outcomes
     }
 }
 
@@ -144,6 +161,17 @@ private suspend fun guarded(
             val retryAfter = response.headers[HttpHeaders.RetryAfter]?.toLongOrNull()
             throw JmapException(JmapError.RateLimited(retryAfter))
         }
+    }
+    // Every other 4xx is an RFC 7807 problem body (unknownCapability, notJSON, notRequest,
+    // limit, ...): the request itself was rejected, so it must never be retried like a Server.
+    if (response.status.value in 400..499) {
+        val problem = runCatching { response.body<JsonObject>() }.getOrNull()
+        throw JmapException(
+            JmapError.Request(
+                type = problem?.get("type")?.jsonPrimitive?.contentOrNull ?: "unknown",
+                detail = problem?.get("detail")?.jsonPrimitive?.contentOrNull,
+            ),
+        )
     }
     if (!response.status.isSuccess()) throw JmapException(JmapError.Server(response.status.value))
     return response

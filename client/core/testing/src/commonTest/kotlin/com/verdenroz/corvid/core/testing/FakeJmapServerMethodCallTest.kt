@@ -3,6 +3,8 @@ package com.verdenroz.corvid.core.testing
 import com.verdenroz.corvid.core.jmap.AuthLatch
 import com.verdenroz.corvid.core.jmap.Invocation
 import com.verdenroz.corvid.core.jmap.JmapClient
+import com.verdenroz.corvid.core.jmap.JmapError
+import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.jmap.MethodOutcome
 import com.verdenroz.corvid.core.jmap.createJmapHttpClient
 import com.verdenroz.corvid.core.jmap.resultReference
@@ -17,6 +19,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -133,6 +136,63 @@ class FakeJmapServerMethodCallTest {
             val outcome = client.call(listOf(Invocation("Thread/get", buildJsonObject {}, "c0"))).getValue("c0")
 
             assertTrue(assertIs<MethodOutcome.Failure>(outcome).error.type.isNotEmpty())
+        }
+
+    @Test
+    fun `a limit problem response is refused outright, never backed off and retried`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.apiProblem = "urn:ietf:params:jmap:error:limit"
+            val client = connect(fake)
+
+            val thrown =
+                assertFailsWith<JmapException> {
+                    client.call(listOf(Invocation("Mailbox/get", buildJsonObject {}, "c0")))
+                }
+
+            val error = assertIs<JmapError.Request>(thrown.error)
+            assertEquals("urn:ietf:params:jmap:error:limit", error.type)
+        }
+
+    @Test
+    fun `a non-JMAP response body is a typed error, not a raw serialization crash`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.malformedApiResponse = true
+            val client = connect(fake)
+
+            val thrown =
+                assertFailsWith<JmapException> {
+                    client.call(listOf(Invocation("Mailbox/get", buildJsonObject {}, "c0")))
+                }
+
+            assertIs<JmapError.Request>(thrown.error)
+        }
+
+    @Test
+    fun `a session with no state adopts a call's sessionState instead of refetching`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.omitSessionState = true
+            val client = connect(fake)
+            val requestsAfterConnect = fake.requestCount
+
+            client.call(listOf(Invocation("Mailbox/get", buildJsonObject {}, "c0")))
+
+            assertEquals("s1", client.session.state)
+            assertEquals(requestsAfterConnect + 1, fake.requestCount)
+        }
+
+    @Test
+    fun `a response missing one call's result is refused rather than silently dropped`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.dropCallId = "c0"
+            val client = connect(fake)
+
+            assertFailsWith<JmapException> {
+                client.call(listOf(Invocation("Mailbox/get", buildJsonObject {}, "c0")))
+            }
         }
 }
 

@@ -58,6 +58,18 @@ class FakeJmapServer {
     /** Bumped by a test to simulate a mailbox change invalidating an open query. */
     var queryState: String = "qs1"
 
+    /** An RFC 7807 problem type (e.g. `urn:ietf:params:jmap:error:limit`) to answer every call with. */
+    var apiProblem: String? = null
+
+    /** Answers a call with a body that isn't JMAP at all, as a misconfigured proxy might. */
+    var malformedApiResponse: Boolean = false
+
+    /** Drops one callId from the response, as a buggy server might. */
+    var dropCallId: String? = null
+
+    /** Omits the session's `state`, to exercise adopting a call's sessionState instead of refetching. */
+    var omitSessionState: Boolean = false
+
     val mailboxes: MutableList<FakeMailbox> = mutableListOf()
     val emails: MutableList<FakeEmail> = mutableListOf()
 
@@ -94,6 +106,22 @@ class FakeJmapServer {
     }
 
     private suspend fun MockRequestHandleScope.apiResponse(request: HttpRequestData): HttpResponseData {
+        apiProblem?.let { type ->
+            val problem =
+                buildJsonObject {
+                    put("type", type)
+                    put("detail", "simulated problem")
+                }
+            return respond(
+                problem.toString(),
+                HttpStatusCode.BadRequest,
+                headersOf(HttpHeaders.ContentType, listOf("application/problem+json")),
+            )
+        }
+        if (malformedApiResponse) {
+            return respond("<html>not jmap</html>", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, listOf("text/html")))
+        }
+
         val requestBody = (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
         val calls =
             JmapJson.parseToJsonElement(requestBody).jsonObject
@@ -102,11 +130,13 @@ class FakeJmapServer {
 
         val results = mutableMapOf<String, JsonObject>()
         val responses =
-            calls.map { invocation ->
-                val (name, body) = dispatch(invocation.name, resolveReferences(invocation.arguments, results))
-                results[invocation.callId] = body
-                Invocation(name, body, invocation.callId)
-            }
+            calls
+                .map { invocation ->
+                    val (name, body) = dispatch(invocation.name, resolveReferences(invocation.arguments, results))
+                    results[invocation.callId] = body
+                    Invocation(name, body, invocation.callId)
+                }
+                .filter { it.callId != dropCallId }
 
         val responseBody =
             buildJsonObject {
@@ -233,7 +263,7 @@ class FakeJmapServer {
             ) {
                 if (key != missingUrl) put(key, value)
             }
-            put("state", "s1")
+            if (!omitSessionState) put("state", "s1")
         }
 }
 
