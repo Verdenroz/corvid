@@ -14,7 +14,10 @@ use crate::source::{Record, Source};
 
 const LEGACY_SCHEMA: u32 = 1;
 
+// Serialize is test-only: production code only ever loads this shape, never writes it, but a
+// test needs to write one by hand to simulate a pre-encryption archive.
 #[derive(Deserialize)]
+#[cfg_attr(test, derive(Serialize))]
 struct LegacyHeld {
     digest: String,
     received_at: String,
@@ -23,6 +26,7 @@ struct LegacyHeld {
 }
 
 #[derive(Default, Deserialize)]
+#[cfg_attr(test, derive(Serialize))]
 struct LegacyLedger {
     cursor: Option<String>,
     held: BTreeMap<String, LegacyHeld>,
@@ -191,5 +195,108 @@ fn index_schema(path: &Path) -> io::Result<Option<u32>> {
             }),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(error),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::archive::Archive;
+    use crate::source::{Changes, Listing};
+
+    const TEST_SK: &str =
+        "AGE-SECRET-KEY-1GQ9778VQXMMJVE8SK7J6VT8UJ4HDQAJUVSFCWCM02D8GEWQ72PVQ2Y5J33";
+    const TEST_PK: &str = "age1t7rxyev2z3rw82stdlrrepyc39nvn86l5078zqkf5uasdy86jp6svpy7pa";
+
+    struct FetchesInboxForEveryId;
+
+    impl Source for FetchesInboxForEveryId {
+        fn changes(&self, _since: Option<&str>) -> io::Result<Changes> {
+            unimplemented!("not used by encrypt_archive")
+        }
+
+        fn records(&self, ids: &[String]) -> io::Result<Vec<Record>> {
+            Ok(ids
+                .iter()
+                .map(|id| Record {
+                    id: id.clone(),
+                    blob_id: String::new(),
+                    received_at: String::new(),
+                    size: 0,
+                    keywords: BTreeSet::new(),
+                    mailboxes: BTreeSet::from(["Inbox".to_owned()]),
+                })
+                .collect())
+        }
+
+        fn blob(&self, _blob_id: &str) -> io::Result<Vec<u8>> {
+            unimplemented!("not used by encrypt_archive")
+        }
+
+        fn state(&self) -> io::Result<String> {
+            unimplemented!("not used by encrypt_archive")
+        }
+
+        fn all_ids(&self) -> io::Result<Listing> {
+            unimplemented!("not used by encrypt_archive")
+        }
+    }
+
+    fn plaintext_archive(root: &Path, id: &str, body: &[u8]) {
+        let digest = hex::encode(Sha256::digest(body));
+        let blob = archive::blob_path(root, &digest);
+        fs::create_dir_all(blob.parent().unwrap()).unwrap();
+        fs::write(&blob, body).unwrap();
+        let held = BTreeMap::from([(
+            id.to_owned(),
+            LegacyHeld {
+                digest,
+                received_at: "2026-09-07T00:00:00Z".to_owned(),
+                size: body.len(),
+                keywords: BTreeSet::new(),
+            },
+        )]);
+        let ledger = LegacyLedger {
+            cursor: None,
+            held,
+            vanished: BTreeSet::new(),
+        };
+        corvid_store::save(&root.join("ledger.json"), LEGACY_SCHEMA, &ledger).unwrap();
+    }
+
+    // A crash between meta::write_segment and the index save leaves a New segment for an id
+    // the index does not reference yet. A rerun writes a second, later segment for the same
+    // id; replay must resolve the two to one record rather than being confused by the orphan.
+    #[test]
+    fn an_orphan_segment_before_the_index_commits_does_not_break_a_rerun() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        plaintext_archive(root, "m0", b"body");
+        let recipient: age::x25519::Recipient = TEST_PK.parse().unwrap();
+        let identities: crate::crypto::Identities =
+            vec![Box::new(TEST_SK.parse::<age::x25519::Identity>().unwrap())];
+
+        let ciphertext = crypto::encrypt(&recipient, b"body").unwrap();
+        let stray_digest = hex::encode(Sha256::digest(&ciphertext));
+        archive::write_blob(root, &stray_digest, &ciphertext).unwrap();
+        let stray = BTreeMap::from([(
+            "m0".to_owned(),
+            Entry::New(Meta {
+                digest: hex::encode(Sha256::digest(b"body")),
+                size: b"body".len(),
+                received_at: "2026-09-07T00:00:00Z".to_owned(),
+                keywords: BTreeSet::new(),
+                mailboxes: BTreeSet::new(),
+            }),
+        )]);
+        meta::write_segment(root, &stray, &recipient).unwrap();
+
+        encrypt_archive(root, &FetchesInboxForEveryId, &recipient).unwrap();
+
+        let archive = Archive::open(root).unwrap();
+        assert!(archive.verify_deep(&identities).unwrap().is_empty());
+        let replayed = archive.meta(&identities).unwrap();
+        assert_eq!(replayed.len(), 1);
+        assert!(replayed["m0"].mailboxes.contains("Inbox"));
     }
 }
