@@ -14,6 +14,10 @@ config:
     state: /var/lib/corvid/labeler.json
   milter: {}
   imgproxy: {}
+  sentinel:
+    jmap_url: http://127.0.0.1:8080
+    jmap_user: alice@example.com
+    state: /var/lib/corvid/sentinel.json
 
 images:
   # Built from deploy/Containerfile and pushed to a registry the cluster can pull from.
@@ -41,10 +45,18 @@ secrets:
     CORVID_JMAP_PASSWORD: ""
     # openssl rand -base64 32. Pocket-ID's key encryption; required when idp.enabled.
     ENCRYPTION_KEY: ""
+    # openssl rand -hex 32. The plan's WebHook signs with it; the sentinel verifies with it.
+    CORVID_SENTINEL_SECRET: ""
 
 # Off until an app password exists for it: see the chart README.
 labeler:
   enabled: false
+
+# On by default, unlike labeler and idp: the plan's WebHook is a static, unconditional entry in
+# stalwart.plan.ndjson (applied by deploy/apply-plan.sh, not templated per Values), so turning
+# this off leaves it posting to a container that does not exist.
+sentinel:
+  enabled: true
 
 # Passkeys through Pocket-ID. Off until mail works; enabling the OIDC plan cuts over logins.
 idp:
@@ -78,6 +90,9 @@ resources:
     requests: {memory: 32Mi}
     limits: {memory: 256Mi}
   labeler:
+    requests: {memory: 32Mi}
+    limits: {memory: 256Mi}
+  sentinel:
     requests: {memory: 32Mi}
     limits: {memory: 256Mi}
   caddy:
