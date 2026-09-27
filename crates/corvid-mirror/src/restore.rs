@@ -52,16 +52,10 @@ pub struct Restored {
     pub missing: Vec<String>,
 }
 
-/// Imports every held, non-vanished message into `target`, creating mailboxes by path and
-/// recording each one's target id in a ledger at `ledger_path`, saved after every import so a
-/// crash loses at most the message in flight (a crash between the import and this save can
-/// leave one duplicate on the target: at-least-once, not exactly-once). Ends by asking the
-/// target which of the ledger's ids it still has, the same "compare ids, not counts" posture as
-/// the mirror's own audit, covering every held id whether or not it carries a usable
-/// `Message-Id`.
-///
-/// An existing ledger is refused unless `resume` is set, so reusing one across a different
-/// restore is always deliberate.
+/// Imports every held, non-vanished message into `target`, keyed and deduplicated by a ledger
+/// pinned to `target`'s URL, user and account, not by `Message-Id`. An existing ledger is
+/// refused unless `resume` is set. At-least-once: a crash between an import and the ledger
+/// save that follows it can leave one duplicate on the target.
 pub fn restore(
     root: &Path,
     ledger_path: &Path,
@@ -79,7 +73,8 @@ pub fn restore(
     let archive = Archive::open(root)?;
     let meta = archive.meta(identities)?;
     let mut ledger: Ledger = corvid_store::open(ledger_path, SCHEMA)?;
-    let (url, user, account) = (target.url(), target.user(), target.account_id());
+    let url = target.url().trim_end_matches('/').to_owned();
+    let (user, account) = (target.user(), target.account_id());
     match (
         &ledger.target_url,
         &ledger.target_user,
