@@ -258,26 +258,27 @@ In place:
   checking machine banned for good.
 - **DNSSEC offered for every zone, so DANE can protect inbound mail**, once the registrar
   publishes the DS record.
-- **Per-device credentials** (`deploy/device.sh add|list`): one Stalwart app password per device,
-  its `allowedIps` mirroring `server.client_access` (the server's own address for `host`, the
-  configured networks for a list, unrestricted for `anywhere`). Measured on a throwaway server:
-  a device scoped to one container's address authenticates over IMAPS from it and is refused from
-  a second container on the same network, without banning the second; a bare IP (no `/32`) is
-  accepted as an `ipNetwork`.
-- **Device revocation in one step** (`deploy/device.sh revoke`): destroys the app password and the
-  device's storage key file (see "Compromised devices" under Phase 3), verifying the key's blob no
-  longer downloads rather than trusting the destroy call's own report, and prints how to revoke
-  the device's VPN identity in vpn-chain. vpn-chain has no per-device identity, so that print
-  names `server/rotate-vless-identity.sh`, which rotates the one shared identity for every device.
 
 To do, in this order:
 
-1. **Backups**: the nightly mirror deployed off-host and encrypted, with a restore drill. Today a
+1. **Per-device credentials.** Built: `deploy/device.sh add|list`, one Stalwart app password per
+   device, `allowedIps` mirroring `server.client_access` (the server's own address for `host`,
+   the configured networks for a list, unrestricted for `anywhere`). Measured on a throwaway
+   v0.16.21: a device scoped to one container's address authenticates over IMAPS from it and is
+   refused from a second container on the same network, without banning the second; a bare IP
+   (no `/32`) is accepted as an `ipNetwork`. Moves to in place once used on the deployment.
+2. **Device revocation in one step.** Built: `deploy/device.sh revoke` destroys the app password
+   and the device's storage key file (see "Compromised devices" under Phase 3), verifying the
+   key's blob no longer downloads rather than trusting the destroy call's own report, and prints
+   how to revoke the device's VPN identity in vpn-chain. vpn-chain has one shared identity, not
+   one per device, so that print names `server/rotate-vless-identity.sh`, which rotates every
+   device's access at once (vpn-chain#22). Moves to in place once used on the deployment.
+3. **Backups**: the nightly mirror deployed off-host and encrypted, with a restore drill. Today a
    lost VPS loses the mail.
-2. **Sign-in alerts**: notice of a new device or an unfamiliar source address, from Stalwart's
+4. **Sign-in alerts**: notice of a new device or an unfamiliar source address, from Stalwart's
    sign-in log.
-3. **Two-factor sign-in** (TOTP) on the account for the web and JMAP, then passkeys (Phase 2).
-4. **MTA-STS where the web port cannot be 443.** Built: `install.sh` deploys a Cloudflare Worker
+5. **Two-factor sign-in** (TOTP) on the account for the web and JMAP, then passkeys (Phase 2).
+6. **MTA-STS where the web port cannot be 443.** Built: `install.sh` deploys a Cloudflare Worker
    on `mta-sts.<domain>` to serve it, and `server.mta_sts_mode` switches `testing` to `enforce`
    once mail delivery looks right, for whichever side serves the policy. Tested against a fake
    Cloudflare only; moves to "in place" once a real install shows

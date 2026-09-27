@@ -301,8 +301,10 @@ web tier is not on 443.
   items will not be archived and will be permanently deleted immediately"). Querying `ArchivedItem`
   on Community fails outright (`forbidden: Enterprise edition`). Verified: a destroyed FileNode's
   blob 404s on the next download.
-- **A default 5-app-password-per-account quota exists** and is not documented anywhere obvious;
-  `x:AppPassword/set` reports it as `overQuota` in `notCreated` rather than failing the request.
+- **A default 5-app-password-per-account quota exists**, reported as `overQuota` in `notCreated`
+  rather than failing the request outright. Raise it per account with `Account.quotas.
+  maxAppPasswords` (the `StorageQuota` enum), unset by default rather than defaulted to 5 in the
+  account object itself; verified by raising it to 20 and creating a 6th.
 
 ## Working method
 
