@@ -627,8 +627,8 @@ host an edge.
   loudly with `anchorNotFound`. The page size is small so the paging loop runs every night.
 - **Keywords are stored as last seen.** Machine labels are reproducible, not archival.
 - **Encrypted at rest, to an age recipient in `config.yaml`.** The identity never touches the
-  nightly path. Everything a stolen archive could read as content — subjects, keywords, mailbox
-  names — lives in age-encrypted segments under `meta/`, one appended per sync run; the plaintext
+  nightly path. Everything a stolen archive could read as content (subjects, keywords, mailbox
+  names) lives in age-encrypted segments under `meta/`, one appended per sync run; the plaintext
   index holds only a cursor, id-to-blob mapping and vanished ids. Blobs are named by their own
   ciphertext digest rather than the plaintext one, so a filename cannot confirm a known message is
   in the archive, at the cost of losing dedup by content (encryption is not deterministic, so
@@ -646,8 +646,8 @@ host an edge.
   cleanup finishes is resumed, not re-migrated, on the next run.
 - **Restore** imports every held, non-vanished message into a fresh JMAP account: upload plus
   `Email/import`, mailboxes recreated by full path (a name alone is not unique across parents),
-  keywords and `receivedAt` preserved. It dedups by its own ledger — archive id to the id the
-  target assigned it — rather than by `Message-Id`, since two distinct messages routinely share
+  keywords and `receivedAt` preserved. It dedups by its own ledger (archive id to the id the
+  target assigned it) rather than by `Message-Id`, since two distinct messages routinely share
   one (a sent copy and its bounce back, one post crossing two mailing lists); the ledger is pinned
   to the target's URL, user and account together, since Stalwart assigns account ids short and in
   sequence and two independently bootstrapped servers can share one by coincidence. It ends by

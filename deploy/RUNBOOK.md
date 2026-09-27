@@ -324,11 +324,10 @@ mailbox from the archive alone, on a throwaway Stalwart the same version as prod
 `restore`.
 
     container name    corvid-rig-backup
-    ports             loopback, offset into 38000-38999 (25->38025, 465->38465, 587->38587,
-                      993->38993, 8080->38080, 8443->38443); two other drivers' rigs sit in the
-                      18000s and 28000s, so this range must stay clear of theirs
-    engine            podman is the project's standard; substitute docker if podman is not
-                      installed and there is no way to add it (this drill used docker 29.8.1)
+    ports             loopback, offset into any free port range not already in use by another
+                      rig on the same machine (25->N+25, 465->N+465, 587->N+587, 993->N+993,
+                      8080->N+8080, 8443->N+8443)
+    engine            podman or docker, whichever is installed
 
 1. Start the rig, bootstrap it (`stalwart-cli update Bootstrap`, matching `bootstrap-server.sh`'s
    payload shape), and create one account.
@@ -347,14 +346,15 @@ mailbox from the archive alone, on a throwaway Stalwart the same version as prod
 6. Run the drill again with a crash: kill the `restore` process partway through (`timeout -s
    KILL`), confirm the ledger and the target both show partial progress, then rerun with
    `--resume` and confirm the audit is clean. Expect one duplicate message on the target from
-   whichever import landed between the crash and its ledger save — restore is at-least-once, not
+   whichever import landed between the crash and its ledger save: restore is at-least-once, not
    exactly-once.
 
 Measured running this: a `429 Too Many Requests` from Stalwart partway through a few hundred
-back-to-back `Email/import` calls (see the trap in `CLAUDE.md`) — the run failed loudly and the
-next one resumed cleanly, so this needs a wait-and-retry, not a fix. Also measured: the fresh
-replacement rig assigned its account the same id (`c`) the destroyed one had, confirming
-restore's ledger cannot pin on the account id alone (see `CLAUDE.md`).
+back-to-back `Email/import` calls (see the trap in `CLAUDE.md`). `restore` does not retry a `429`
+itself; it fails loudly and stops. If that happens mid-restore, wait a minute for the rate limit
+to clear and rerun with `--resume`, which picks up from the ledger rather than redoing anything.
+Also measured: the fresh replacement rig assigned its account the same id (`c`) the destroyed one
+had, confirming restore's ledger cannot pin on the account id alone (see `CLAUDE.md`).
 
 ## Checking it
 
