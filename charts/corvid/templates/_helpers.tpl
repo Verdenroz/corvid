@@ -34,3 +34,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- define "corvid.hostname" -}}
 {{- required "config.server.hostname is required" .Values.config.server.hostname -}}
 {{- end -}}
+
+{{- define "corvid.idpHostname" -}}
+{{- .Values.config.server.idp_hostname | default (printf "idp.%s" .Values.config.server.domain) -}}
+{{- end -}}

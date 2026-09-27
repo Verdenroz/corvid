@@ -61,7 +61,7 @@ export SERVER_IP="${SERVER_IP:-$(server_ip)}"
 # Restricted to named variables: a bare envsubst rewrites every $ in the plan, hashes included.
 # The fragments ride in the same apply so their #references resolve against this plan.
 render() {
-  local vars='${MAIL_DOMAIN} ${MAIL_HOSTNAME} ${MAIL_USER} ${ACME_CONTACT} ${WEB_PORT} ${HOST_ZONE} ${SERVER_IP} ${MTA_STS_MODE}'
+  local vars='${MAIL_DOMAIN} ${MAIL_HOSTNAME} ${MAIL_USER} ${ACME_CONTACT} ${WEB_PORT} ${HOST_ZONE} ${IDP_HOSTNAME} ${SERVER_IP} ${MTA_STS_MODE}'
   {
     envsubst "$vars" < "$PLAN"
     if [[ "$PLAN" == "$HERE/stalwart.plan.ndjson" ]]; then

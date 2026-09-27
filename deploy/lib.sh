@@ -50,8 +50,9 @@ require_image() {
   exit 69
 }
 
-# Sets and exports MAIL_DOMAIN, MAIL_HOSTNAME, MAIL_USER, ACME_CONTACT, WEB_PORT and HOST_ZONE
-# from config.yaml's server section. Tests set CORVID_CONFIG_CMD to run it without the container.
+# Sets and exports MAIL_DOMAIN, MAIL_HOSTNAME, MAIL_USER, ACME_CONTACT, WEB_PORT, HOST_ZONE and
+# IDP_HOSTNAME from config.yaml's server section. Tests set CORVID_CONFIG_CMD to run it without
+# the container.
 load_server() {
   local out key value
   if [[ -n "${CORVID_CONFIG_CMD:-}" ]]; then
@@ -63,7 +64,7 @@ load_server() {
   fi
   while IFS='=' read -r key value; do
     case "$key" in
-      MAIL_DOMAIN|MAIL_HOSTNAME|MAIL_USER|ACME_CONTACT|WEB_PORT|HOST_ZONE|PUBLISH_MTA_STS|PUBLISH_TLSA|MTA_STS_MODE|CLIENT_SOURCES)
+      MAIL_DOMAIN|MAIL_HOSTNAME|MAIL_USER|ACME_CONTACT|WEB_PORT|HOST_ZONE|IDP_HOSTNAME|PUBLISH_MTA_STS|PUBLISH_TLSA|MTA_STS_MODE|CLIENT_SOURCES)
         printf -v "$key" '%s' "$value"
         export "${key?}"
         ;;
@@ -85,8 +86,9 @@ STALWART_HOSTNAME=$MAIL_HOSTNAME
 CORVID_WEB_HOSTNAME=$MAIL_HOSTNAME
 CORVID_WEB_PORT=$WEB_PORT
 CORVID_MAIL_DOMAIN=$MAIL_DOMAIN
+CORVID_IDP_HOSTNAME=$IDP_HOSTNAME
 CORVID_MTA_STS_SITE=$([[ "$PUBLISH_MTA_STS" == true ]] && echo "mta-sts.$MAIL_DOMAIN:443")
-APP_URL=https://$MAIL_HOSTNAME:$WEB_PORT/idp
+APP_URL=https://$IDP_HOSTNAME:$WEB_PORT
 EOF
   chmod 644 "$CORVID_DIR/server.env"
 }

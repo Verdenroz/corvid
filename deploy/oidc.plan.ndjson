@@ -1,2 +1,2 @@
-{"@type":"upsert","object":"Directory","matchOn":["issuerUrl"],"value":{"idp":{"@type":"Oidc","description":"Corvid identity provider","issuerUrl":"https://${MAIL_HOSTNAME}:${WEB_PORT}/idp","claimUsername":"preferred_username","usernameDomain":"${MAIL_DOMAIN}","requireAudience":"corvid"}}}
+{"@type":"upsert","object":"Directory","matchOn":["issuerUrl"],"value":{"idp":{"@type":"Oidc","description":"Corvid identity provider","issuerUrl":"https://${IDP_HOSTNAME}:${WEB_PORT}","claimUsername":"preferred_username","usernameDomain":"${MAIL_DOMAIN}","requireAudience":"corvid"}}}
 {"@type":"update","object":"Authentication","value":{"directoryId":"#idp"}}

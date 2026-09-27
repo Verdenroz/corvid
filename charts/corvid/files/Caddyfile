@@ -10,10 +10,12 @@
 	handle /i/* {
 		reverse_proxy 127.0.0.1:8081
 	}
-	handle /idp/* {
-		reverse_proxy 127.0.0.1:1411
-	}
 	handle {
 		reverse_proxy 127.0.0.1:8080
 	}
+}
+
+# Pocket-ID refuses an APP_URL with a path, so it gets its own site on the same port.
+{$CORVID_IDP_HOSTNAME}:{$CORVID_WEB_PORT} {
+	reverse_proxy 127.0.0.1:1411
 }

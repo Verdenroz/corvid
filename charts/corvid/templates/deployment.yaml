@@ -1,5 +1,6 @@
 {{- $webPort := include "corvid.webPort" . | int -}}
 {{- $hostname := include "corvid.hostname" . -}}
+{{- $idpHostname := include "corvid.idpHostname" . -}}
 {{- $secret := include "corvid.secret" . -}}
 apiVersion: apps/v1
 kind: Deployment
@@ -145,6 +146,7 @@ spec:
             - {name: CORVID_WEB_HOSTNAME, value: {{ $hostname | quote }}}
             - {name: CORVID_WEB_PORT, value: {{ $webPort | quote }}}
             - {name: CORVID_MAIL_DOMAIN, value: {{ .Values.config.server.domain | quote }}}
+            - {name: CORVID_IDP_HOSTNAME, value: {{ $idpHostname | quote }}}
             {{- if eq $webPort 443 }}
             - {name: CORVID_MTA_STS_SITE, value: {{ printf "mta-sts.%s:443" .Values.config.server.domain | quote }}}
             {{- end }}
@@ -165,7 +167,7 @@ spec:
             - {name: TRUST_PROXY, value: "true"}
             # Otherwise it reports an instance ID and version to Pocket-ID's analytics server daily.
             - {name: ANALYTICS_DISABLED, value: "true"}
-            - {name: APP_URL, value: {{ printf "https://%s:%d/idp" $hostname $webPort | quote }}}
+            - {name: APP_URL, value: {{ printf "https://%s:%d" $idpHostname $webPort | quote }}}
             - name: ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef: {name: {{ $secret }}, key: ENCRYPTION_KEY}
