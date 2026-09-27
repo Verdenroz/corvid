@@ -233,14 +233,11 @@ impl Archive {
     }
 }
 
-fn write_blob(root: &Path, digest: &str, bytes: &[u8]) -> io::Result<()> {
-    write_blob_into(&root.join("blobs"), digest, bytes)
-}
-
-/// Shared with the `encrypt-archive` migration, which builds a fresh blob directory before
-/// swapping it in as `blobs`, so it names it by hand rather than through an `Archive`.
-pub(crate) fn write_blob_into(blobs_dir: &Path, digest: &str, bytes: &[u8]) -> io::Result<()> {
-    let path = shard(blobs_dir, digest);
+/// Shared with the `encrypt-archive` migration, which writes ciphertext blobs into the same
+/// `blobs` a plaintext archive already uses: the two never collide, since a plaintext body's
+/// digest and its own ciphertext's digest are different values.
+pub(crate) fn write_blob(root: &Path, digest: &str, bytes: &[u8]) -> io::Result<()> {
+    let path = blob_path(root, digest);
     fs::create_dir_all(path.parent().expect("blob paths have a parent"))?;
     let temporary = path.with_extension("tmp");
     let mut file = fs::File::create(&temporary)?;
@@ -250,11 +247,7 @@ pub(crate) fn write_blob_into(blobs_dir: &Path, digest: &str, bytes: &[u8]) -> i
 }
 
 pub(crate) fn blob_path(root: &Path, digest: &str) -> PathBuf {
-    shard(&root.join("blobs"), digest)
-}
-
-fn shard(blobs_dir: &Path, digest: &str) -> PathBuf {
-    blobs_dir.join(&digest[..2]).join(digest)
+    root.join("blobs").join(&digest[..2]).join(digest)
 }
 
 pub(crate) fn index_path(root: &Path) -> PathBuf {

@@ -7,7 +7,7 @@ use corvid_mirror::{Archive, encrypt_archive, verify};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
-use common::{files, identities, recipient, scratch};
+use common::{Server, files, identities, recipient, scratch};
 
 #[derive(Serialize)]
 struct LegacyHeld {
@@ -56,9 +56,9 @@ fn encrypt_archive_migrates_bodies_and_ledger() {
     let (_dir, root) = scratch();
     plaintext_archive(&root, &[("m0", "the body")]);
 
-    let migrated = encrypt_archive(&root, &recipient()).unwrap();
+    let migrated = encrypt_archive(&root, &Server::default(), &recipient()).unwrap();
 
-    assert_eq!(migrated, 1);
+    assert_eq!(migrated.total, 1);
     let archive = Archive::open(&root).unwrap();
     assert_eq!(
         archive.read_plaintext("m0", &identities()).unwrap(),
@@ -69,17 +69,49 @@ fn encrypt_archive_migrates_bodies_and_ledger() {
 }
 
 #[test]
-fn encrypt_archive_leaves_no_plaintext_or_ledger_on_disk() {
+fn encrypt_archive_fetches_current_mailboxes_and_keywords_from_the_server() {
+    let (_dir, root) = scratch();
+    plaintext_archive(&root, &[("m0", "the body")]);
+    let server = Server::default();
+    server.deliver_to("m0", "the body", &["Inbox"]);
+    server.set_keywords("m0", &["corvid-work"]);
+
+    encrypt_archive(&root, &server, &recipient()).unwrap();
+
+    let archive = Archive::open(&root).unwrap();
+    let meta = archive.meta(&identities()).unwrap();
+    assert!(meta["m0"].mailboxes.contains("Inbox"));
+    assert!(meta["m0"].keywords.contains("corvid-work"));
+}
+
+#[test]
+fn encrypt_archive_counts_ids_the_server_no_longer_has() {
+    let (_dir, root) = scratch();
+    plaintext_archive(&root, &[("m0", "the body")]);
+
+    let migrated = encrypt_archive(&root, &Server::default(), &recipient()).unwrap();
+
+    assert_eq!(migrated.without_mailboxes, 1);
+    let archive = Archive::open(&root).unwrap();
+    assert!(
+        archive.meta(&identities()).unwrap()["m0"]
+            .mailboxes
+            .is_empty()
+    );
+}
+
+#[test]
+fn encrypt_archive_leaves_no_plaintext_anywhere_on_disk() {
     let (_dir, root) = scratch();
     plaintext_archive(&root, &[("m0", "marker-c0ffee in the body")]);
 
-    encrypt_archive(&root, &recipient()).unwrap();
+    encrypt_archive(&root, &Server::default(), &recipient()).unwrap();
 
     assert!(!root.join("blobs.plaintext").exists());
     assert!(!root.join("ledger.json").exists());
-    for blob in files(&root.join("blobs")) {
-        let bytes = std::fs::read(&blob).unwrap();
-        assert!(!bytes.windows(6).any(|w| w == b"marker"), "{blob:?}");
+    for file in files(&root) {
+        let bytes = std::fs::read(&file).unwrap();
+        assert!(!bytes.windows(6).any(|w| w == b"marker"), "{file:?}");
     }
 }
 
@@ -87,9 +119,9 @@ fn encrypt_archive_leaves_no_plaintext_or_ledger_on_disk() {
 fn encrypt_archive_run_twice_is_refused() {
     let (_dir, root) = scratch();
     plaintext_archive(&root, &[("m0", "body")]);
-    encrypt_archive(&root, &recipient()).unwrap();
+    encrypt_archive(&root, &Server::default(), &recipient()).unwrap();
 
-    let error = encrypt_archive(&root, &recipient()).unwrap_err();
+    let error = encrypt_archive(&root, &Server::default(), &recipient()).unwrap_err();
 
     assert!(error.to_string().contains("already encrypted"));
 }
@@ -98,26 +130,37 @@ fn encrypt_archive_run_twice_is_refused() {
 fn encrypt_archive_on_an_empty_directory_is_refused() {
     let (_dir, root) = scratch();
 
-    let error = encrypt_archive(&root, &recipient()).unwrap_err();
+    let error = encrypt_archive(&root, &Server::default(), &recipient()).unwrap_err();
 
     assert!(error.to_string().contains("no archive to migrate"));
 }
 
-// A committed migration that crashed before removing ledger.json: the index is already
-// current, so a second run must not re-migrate, and Archive::open must keep refusing until
-// the leftover file is removed by hand.
+// A crash between committing the index and removing ledger.json: a rerun must finish that
+// cleanup rather than refuse or re-encrypt already-encrypted content.
 #[test]
-fn a_leftover_ledger_after_a_committed_migration_is_not_re_migrated() {
+fn a_leftover_ledger_after_a_committed_migration_is_cleaned_up_on_rerun() {
     let (_dir, root) = scratch();
     plaintext_archive(&root, &[("m0", "body")]);
-    encrypt_archive(&root, &recipient()).unwrap();
+    encrypt_archive(&root, &Server::default(), &recipient()).unwrap();
     plaintext_archive(&root, &[("m0", "body")]);
 
-    let error = encrypt_archive(&root, &recipient()).unwrap_err();
+    encrypt_archive(&root, &Server::default(), &recipient()).unwrap();
 
-    assert!(error.to_string().contains("already encrypted"));
-    assert!(
-        Archive::open(&root).is_err(),
-        "ledger.json still blocks opening the archive"
-    );
+    assert!(!root.join("ledger.json").exists());
+    Archive::open(&root).unwrap();
+}
+
+// A crash after some blobs were encrypted but before the index committed: a rerun re-encrypts
+// everything fresh, and the earlier attempt's blobs are simply never referenced.
+#[test]
+fn orphan_ciphertext_blobs_from_an_earlier_attempt_are_harmless() {
+    let (_dir, root) = scratch();
+    plaintext_archive(&root, &[("m0", "body")]);
+    std::fs::create_dir_all(root.join("blobs").join("ab")).unwrap();
+    std::fs::write(root.join("blobs").join("ab").join("ab1234"), b"orphan").unwrap();
+
+    let migrated = encrypt_archive(&root, &Server::default(), &recipient()).unwrap();
+
+    assert_eq!(migrated.total, 1);
+    assert!(verify(&root).unwrap().is_empty());
 }

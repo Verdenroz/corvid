@@ -10,6 +10,7 @@ use sha2::{Digest, Sha256};
 use crate::archive::{self, CURRENT_SCHEMA};
 use crate::crypto;
 use crate::meta::{self, Entry, Meta};
+use crate::source::{Record, Source};
 
 const LEGACY_SCHEMA: u32 = 1;
 
@@ -47,24 +48,44 @@ struct NewIndex {
     vanished: BTreeSet<String>,
 }
 
-/// One-shot migration of a plaintext archive (`ledger.json`) to an encrypted one. Encrypts
-/// every blob into a fresh directory, then swaps it in: a crash before the swap leaves the
-/// original archive untouched, and a crash after it fails loudly on retry rather than
-/// re-encrypting ciphertext as if it were plaintext.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Migrated {
+    pub total: usize,
+    /// Migrated with no mailbox, because the server no longer has the message to ask. Restore
+    /// falls back to the default mailbox for these.
+    pub without_mailboxes: usize,
+}
+
+/// One-shot migration of a plaintext archive (`ledger.json`) to an encrypted one.
 ///
-/// "Already encrypted" is decided from the index alone, never from whether `ledger.json` is
-/// still there: a crash between committing the index and removing it must not make a second
-/// run re-migrate. If that happens, `Archive::open` still refuses until the leftover
-/// `ledger.json` is removed by hand.
-pub fn encrypt_archive(root: &Path, recipient: &age::x25519::Recipient) -> io::Result<usize> {
+/// Ciphertext blobs are written into the same `blobs` the plaintext ones already occupy,
+/// never a staging directory: a ciphertext digest and its plaintext's digest are different
+/// values, so the two kinds never collide, and nothing needs renaming into place before the
+/// index can reference it. Saving the index is the only commit point; everything before it can
+/// be redone from `ledger.json` with no harm beyond orphaned (but never referenced) blobs and
+/// segments, and everything after it is cleanup that a rerun resumes rather than refuses.
+pub fn encrypt_archive(
+    root: &Path,
+    source: &impl Source,
+    recipient: &age::x25519::Recipient,
+) -> io::Result<Migrated> {
     let index_path = archive::index_path(root);
-    if index_schema(&index_path)? == Some(CURRENT_SCHEMA) {
-        return Err(io::Error::other(format!(
-            "{}: already encrypted; nothing to migrate",
-            root.display()
-        )));
-    }
     let ledger_path = root.join("ledger.json");
+    let committed = index_schema(&index_path)? == Some(CURRENT_SCHEMA);
+
+    if !ledger_path.exists() {
+        return if committed {
+            Err(io::Error::other(format!(
+                "{}: already encrypted; nothing to migrate",
+                root.display()
+            )))
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("{}: no archive to migrate", root.display()),
+            ))
+        };
+    }
     let legacy: LegacyLedger =
         corvid_store::load(&ledger_path, LEGACY_SCHEMA)?.ok_or_else(|| {
             io::Error::new(
@@ -73,46 +94,84 @@ pub fn encrypt_archive(root: &Path, recipient: &age::x25519::Recipient) -> io::R
             )
         })?;
 
-    let staging = root.join("blobs.enc");
+    if committed {
+        let total = retire_plaintext(root, &ledger_path, &legacy)?;
+        return Ok(Migrated {
+            total,
+            without_mailboxes: 0,
+        });
+    }
+
+    let live_ids: Vec<String> = legacy
+        .held
+        .keys()
+        .filter(|id| !legacy.vanished.contains(*id))
+        .cloned()
+        .collect();
+    let current: BTreeMap<String, Record> = source
+        .records(&live_ids)?
+        .into_iter()
+        .map(|record| (record.id.clone(), record))
+        .collect();
+
     let mut held = BTreeMap::new();
     let mut entries = BTreeMap::new();
+    let mut without_mailboxes = 0;
     for (id, legacy_held) in &legacy.held {
         let plaintext = fs::read(archive::blob_path(root, &legacy_held.digest))?;
         let ciphertext = crypto::encrypt(recipient, &plaintext)?;
         let ciphertext_digest = hex::encode(Sha256::digest(&ciphertext));
-        archive::write_blob_into(&staging, &ciphertext_digest, &ciphertext)?;
+        archive::write_blob(root, &ciphertext_digest, &ciphertext)?;
         held.insert(id.clone(), ciphertext_digest);
+
+        let (keywords, mailboxes) = match current.get(id) {
+            Some(record) => (record.keywords.clone(), record.mailboxes.clone()),
+            None => {
+                without_mailboxes += 1;
+                (legacy_held.keywords.clone(), BTreeSet::new())
+            }
+        };
         entries.insert(
             id.clone(),
             Entry::New(Meta {
                 digest: legacy_held.digest.clone(),
                 size: legacy_held.size,
                 received_at: legacy_held.received_at.clone(),
-                keywords: legacy_held.keywords.clone(),
-                mailboxes: BTreeSet::new(),
+                keywords,
+                mailboxes,
             }),
         );
     }
-    let migrated = held.len();
+    let total = held.len();
     let new_index = NewIndex {
-        cursor: legacy.cursor,
+        cursor: legacy.cursor.clone(),
         held,
-        vanished: legacy.vanished,
+        vanished: legacy.vanished.clone(),
     };
 
-    let plaintext_dir = root.join("blobs");
-    let backup = root.join("blobs.plaintext");
-    fs::rename(&plaintext_dir, &backup)?;
-    fs::rename(&staging, &plaintext_dir)?;
     meta::write_segment(root, &entries, recipient)?;
     corvid_store::save(&index_path, CURRENT_SCHEMA, &new_index)?;
-    // The index is the commit point. `ledger.json` goes next, since its mere presence is what
-    // `Archive::open` refuses on; the plaintext backup is the last, lowest-priority cleanup,
-    // since leaving it a little longer costs disk, not correctness.
-    fs::remove_file(&ledger_path)?;
-    fs::remove_dir_all(&backup)?;
+    retire_plaintext(root, &ledger_path, &legacy)?;
 
-    Ok(migrated)
+    Ok(Migrated {
+        total,
+        without_mailboxes,
+    })
+}
+
+/// Deletes the plaintext blobs `ledger.json` names, then `ledger.json` itself, tolerating
+/// either already being gone: this runs once right after a fresh migration commits, and again
+/// on a rerun that finds the index already committed but this cleanup unfinished.
+fn retire_plaintext(root: &Path, ledger_path: &Path, legacy: &LegacyLedger) -> io::Result<usize> {
+    for legacy_held in legacy.held.values() {
+        match fs::remove_file(archive::blob_path(root, &legacy_held.digest)) {
+            Ok(()) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+    }
+    fs::remove_file(ledger_path)?;
+    Ok(legacy.held.len())
 }
 
 /// Peeks at a state file's schema line without validating its checksum, so the caller can

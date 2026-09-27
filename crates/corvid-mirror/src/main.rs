@@ -36,7 +36,12 @@ fn main() -> ExitCode {
             },
             Some(_) => usage(),
         },
-        Some("encrypt-archive") => encrypt(&root, &mirror.age_recipient),
+        Some("encrypt-archive") => encrypt(
+            &root,
+            &mirror.jmap_url,
+            &mirror.jmap_user,
+            &mirror.age_recipient,
+        ),
         Some(_) => usage(),
     }
 }
@@ -149,7 +154,7 @@ fn deep_verify(root: &Path, identity_path: &Path) -> ExitCode {
     }
 }
 
-fn encrypt(root: &Path, age_recipient: &str) -> ExitCode {
+fn encrypt(root: &Path, url: &str, user: &str, age_recipient: &str) -> ExitCode {
     let recipient = match crypto::parse_recipient(age_recipient) {
         Ok(recipient) => recipient,
         Err(error) => {
@@ -157,9 +162,22 @@ fn encrypt(root: &Path, age_recipient: &str) -> ExitCode {
             return ExitCode::from(corvid_config::EX_CONFIG);
         }
     };
-    match encrypt_archive(root, &recipient) {
+    let password = or_exit(secret("CORVID_JMAP_PASSWORD"));
+    let mailbox = match Mailbox::connect(url, user, &password) {
+        Ok(mailbox) => mailbox,
+        Err(error) => {
+            tracing::error!(%error, "cannot reach the mail server");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    match encrypt_archive(root, &mailbox, &recipient) {
         Ok(migrated) => {
-            tracing::info!(migrated, "archive encrypted");
+            tracing::info!(
+                total = migrated.total,
+                without_mailboxes = migrated.without_mailboxes,
+                "archive encrypted"
+            );
             ExitCode::SUCCESS
         }
         Err(error) => {

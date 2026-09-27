@@ -13,7 +13,7 @@ pub use archive::Archive;
 pub use crypto::Identities;
 pub use jmap::Mailbox;
 pub use meta::Meta;
-pub use migrate::encrypt_archive;
+pub use migrate::{Migrated, encrypt_archive};
 pub use source::{Changes, Listing, Record, Source};
 
 #[derive(Debug, Default, PartialEq, Eq)]
