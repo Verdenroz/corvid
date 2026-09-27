@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.core.auth.AuthState
 import com.verdenroz.corvid.core.auth.TokenSource
+import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.jmap.AuthLatch
 import com.verdenroz.corvid.core.jmap.Invocation
 import com.verdenroz.corvid.core.jmap.JmapClient
@@ -173,8 +174,8 @@ class AppLockViewModel(
                     return
                 }
                 reconnectPolicy.reset()
-                _state.value = AppLockState.Unlocked
                 unlockedScopeHolder.open().declare(client)
+                _state.value = AppLockState.Unlocked(MailboxRepository(client))
                 heartbeatJob = viewModelScope.launch { heartbeatLoop() }
             }
             is KeyState.Locked -> {

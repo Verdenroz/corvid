@@ -15,6 +15,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
@@ -24,6 +25,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import java.io.IOException
 import javax.net.ssl.SSLHandshakeException
@@ -164,10 +166,19 @@ class FakeJmapServer {
                 .map { JmapJson.decodeFromJsonElement<Invocation>(it) }
 
         val results = mutableMapOf<String, JsonObject>()
+        val failedCallIds = mutableSetOf<String>()
         val responses =
             calls
                 .map { invocation ->
-                    val (name, body) = dispatch(invocation.name, resolveReferences(invocation.arguments, results))
+                    // A real server never dispatches a call whose #-reference names a call
+                    // that itself failed; it fails this one with invalidResultReference too.
+                    val (name, body) =
+                        if (invocation.referencesAnyOf(failedCallIds)) {
+                            "error" to buildJsonObject { put("type", "invalidResultReference") }
+                        } else {
+                            dispatch(invocation.name, resolveReferences(invocation.arguments, results))
+                        }
+                    if (name == "error") failedCallIds += invocation.callId
                     results[invocation.callId] = body
                     Invocation(name, body, invocation.callId)
                 }
@@ -335,6 +346,11 @@ class FakeJmapServer {
         put("description", description)
     }
 
+    private fun Invocation.referencesAnyOf(callIds: Set<String>): Boolean =
+        arguments.keys.filter { it.startsWith("#") }.any { key ->
+            arguments.getValue(key).jsonObject.getValue("resultOf").jsonPrimitive.content in callIds
+        }
+
     private fun resolveReferences(
         arguments: JsonObject,
         results: Map<String, JsonObject>,
@@ -411,7 +427,13 @@ private fun FakeEmail.toJson(): JsonObject =
         put("id", id)
         put("threadId", threadId)
         put("subject", subject)
-        put("from", from)
+        // A real Email/get returns an EmailAddress[], never a bare string.
+        putJsonArray("from") {
+            addJsonObject {
+                put("name", null as String?)
+                put("email", from)
+            }
+        }
         put("receivedAt", receivedAt)
         putJsonObject("keywords") { for (keyword in keywords) put(keyword, true) }
         put("preview", preview)

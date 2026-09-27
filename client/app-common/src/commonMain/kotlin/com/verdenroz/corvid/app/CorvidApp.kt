@@ -1,12 +1,12 @@
 package com.verdenroz.corvid.app
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -17,19 +17,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.ui.LockedPane
 import com.verdenroz.corvid.core.ui.RevokedPane
 import com.verdenroz.corvid.core.ui.UnreachablePane
+import com.verdenroz.corvid.feature.mailbox.InboxScreen
 import com.verdenroz.corvid.feature.signin.SignInScreen
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 
-/**
- * The lock gate: swaps every route for a pane per [AppLockState]. Unlocked's
- * own screens (mailbox, reader) are slices 7 and 8; this placeholder just
- * proves the gate opens and closes around them.
- */
+/** The lock gate: swaps every route for a pane per [AppLockState] (decision 2). */
 @Composable
 fun CorvidApp(viewModel: AppLockViewModel = koinViewModel()) {
     val state by viewModel.state.collectAsState()
@@ -43,7 +41,7 @@ fun CorvidApp(viewModel: AppLockViewModel = koinViewModel()) {
                 } else {
                     ConnectingPane()
                 }
-            is AppLockState.Unlocked -> UnlockedPlaceholder(onLock = viewModel::lock)
+            is AppLockState.Unlocked -> UnlockedContent(repository = current.mailboxRepository, onLock = viewModel::lock)
             is AppLockState.Unreachable -> UnreachablePane(reason = current.reason, onRetry = viewModel::retry)
             is AppLockState.Locked -> LockedPane(onUnlock = viewModel::unlock)
             is AppLockState.Revoked -> RevokedPane()
@@ -61,13 +59,10 @@ private fun ConnectingPane() {
     }
 }
 
-/**
- * Every pointer event here resets decision 11's idle timer: once slice 7
- * replaces this with the real Unlocked screens, the tracking modifier moves
- * with it rather than staying on a placeholder.
- */
+/** Every pointer event here resets decision 11's idle timer. */
 @Composable
-private fun UnlockedPlaceholder(
+private fun UnlockedContent(
+    repository: MailboxRepository,
     onLock: () -> Unit,
     idleTimeout: IdleTimeoutController = koinInject(),
 ) {
@@ -76,7 +71,7 @@ private fun UnlockedPlaceholder(
         onDispose { idleTimeout.stop() }
     }
 
-    Surface(
+    Column(
         modifier =
             Modifier.fillMaxSize().pointerInput(Unit) {
                 awaitPointerEventScope {
@@ -87,11 +82,9 @@ private fun UnlockedPlaceholder(
                 }
             },
     ) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text("Unlocked", style = MaterialTheme.typography.titleMedium)
-                Button(onClick = onLock) { Text("Lock") }
-            }
+        Box(modifier = Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.CenterEnd) {
+            Button(onClick = onLock) { Text("Lock") }
         }
+        InboxScreen(repository)
     }
 }
