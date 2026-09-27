@@ -12,6 +12,14 @@ kotlin {
             implementation(projects.core.jmap)
             implementation(libs.kotlinx.serialization.json)
         }
+        androidMain.dependencies {
+            implementation(libs.jsoup)
+        }
+        val desktopMain by getting {
+            dependencies {
+                implementation(libs.jsoup)
+            }
+        }
         commonTest.dependencies {
             implementation(projects.core.testing)
         }

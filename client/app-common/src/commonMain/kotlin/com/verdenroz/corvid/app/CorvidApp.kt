@@ -13,6 +13,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
@@ -23,6 +26,7 @@ import com.verdenroz.corvid.core.ui.LockedPane
 import com.verdenroz.corvid.core.ui.RevokedPane
 import com.verdenroz.corvid.core.ui.UnreachablePane
 import com.verdenroz.corvid.feature.mailbox.InboxScreen
+import com.verdenroz.corvid.feature.mailbox.ReaderScreen
 import com.verdenroz.corvid.feature.signin.SignInScreen
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
@@ -85,6 +89,12 @@ private fun UnlockedContent(
         Box(modifier = Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.CenterEnd) {
             Button(onClick = onLock) { Text("Lock") }
         }
-        InboxScreen(repository)
+        var openEmailId by remember { mutableStateOf<String?>(null) }
+        val emailId = openEmailId
+        if (emailId == null) {
+            InboxScreen(repository, onOpenEmail = { openEmailId = it })
+        } else {
+            ReaderScreen(repository, emailId, onBack = { openEmailId = null })
+        }
     }
 }

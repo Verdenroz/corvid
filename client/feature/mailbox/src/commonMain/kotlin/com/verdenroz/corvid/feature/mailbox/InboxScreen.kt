@@ -1,5 +1,6 @@
 package com.verdenroz.corvid.feature.mailbox
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,7 +27,10 @@ import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.model.EmailSummary
 
 @Composable
-fun InboxScreen(repository: MailboxRepository) {
+fun InboxScreen(
+    repository: MailboxRepository,
+    onOpenEmail: (String) -> Unit,
+) {
     val viewModel = remember(repository) { InboxViewModel(repository) }
     val state by viewModel.state.collectAsState()
 
@@ -36,7 +40,7 @@ fun InboxScreen(repository: MailboxRepository) {
         is InboxUiState.Loaded ->
             LazyColumn(modifier = Modifier.fillMaxSize()) {
                 items(current.emails, key = { it.id }) { email ->
-                    EmailRow(email)
+                    EmailRow(email, onClick = { onOpenEmail(email.id) })
                     HorizontalDivider()
                 }
                 if (current.canLoadMore) {
@@ -51,8 +55,11 @@ fun InboxScreen(repository: MailboxRepository) {
 }
 
 @Composable
-private fun EmailRow(email: EmailSummary) {
-    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+private fun EmailRow(
+    email: EmailSummary,
+    onClick: () -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(16.dp)) {
         Text(email.subject.ifEmpty { "(no subject)" }, style = MaterialTheme.typography.titleMedium)
         Text(email.from, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (email.preview.isNotEmpty()) {

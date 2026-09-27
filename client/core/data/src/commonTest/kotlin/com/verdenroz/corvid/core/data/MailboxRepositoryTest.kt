@@ -95,4 +95,71 @@ class MailboxRepositoryTest {
 
             assertIs<EmailPage.AnchorNotFound>(page)
         }
+
+    @Test
+    fun `a plain text message is read as is`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.emails +=
+                FakeEmail(
+                    "e1",
+                    "e1",
+                    setOf("inbox"),
+                    "hello",
+                    "a@example.test",
+                    "2024-01-01T00:00:00Z",
+                    to = listOf("b@example.test"),
+                    cc = listOf("c@example.test"),
+                    body = "plain text body",
+                )
+
+            val detail = repository(fake).getEmail("e1")
+
+            assertEquals("plain text body", detail.body)
+            assertEquals(listOf("b@example.test"), detail.to)
+            assertEquals(listOf("c@example.test"), detail.cc)
+            assertEquals(false, detail.bodyTruncated)
+        }
+
+    @Test
+    fun `an html-only message is flattened to text, never rendered`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.emails +=
+                FakeEmail(
+                    "e1",
+                    "e1",
+                    setOf("inbox"),
+                    "hello",
+                    "a@example.test",
+                    "2024-01-01T00:00:00Z",
+                    bodyType = "text/html",
+                    body = "<p>hello <b>world</b></p>",
+                )
+
+            val detail = repository(fake).getEmail("e1")
+
+            assertEquals("hello world", detail.body)
+        }
+
+    @Test
+    fun `a body cut at maxBodyValueBytes is reported truncated`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.emails +=
+                FakeEmail(
+                    "e1",
+                    "e1",
+                    setOf("inbox"),
+                    "hello",
+                    "a@example.test",
+                    "2024-01-01T00:00:00Z",
+                    body = "a long body cut short",
+                    bodyTruncated = true,
+                )
+
+            val detail = repository(fake).getEmail("e1")
+
+            assertEquals(true, detail.bodyTruncated)
+        }
 }

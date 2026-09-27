@@ -18,4 +18,9 @@ data class FakeEmail(
     val receivedAt: String,
     val keywords: Set<String> = emptySet(),
     val preview: String = "",
+    val to: List<String> = emptyList(),
+    val cc: List<String> = emptyList(),
+    val bodyType: String = "text/plain",
+    val body: String? = null,
+    val bodyTruncated: Boolean = false,
 )

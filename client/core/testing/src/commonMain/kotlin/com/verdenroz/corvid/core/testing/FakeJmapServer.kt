@@ -14,6 +14,7 @@ import io.ktor.http.headersOf
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -445,7 +446,46 @@ private fun FakeEmail.toJson(): JsonObject =
                 }
             }
         }
+        putAddressList("to", to)
+        putAddressList("cc", cc)
         put("receivedAt", receivedAt)
         putJsonObject("keywords") { for (keyword in keywords) put(keyword, true) }
         put("preview", preview)
+        if (body == null) {
+            put("textBody", null as String?)
+            putJsonObject("bodyValues") {}
+        } else {
+            putJsonArray("textBody") {
+                addJsonObject {
+                    put("partId", "1")
+                    put("type", bodyType)
+                    put("size", body.length)
+                }
+            }
+            putJsonObject("bodyValues") {
+                putJsonObject("1") {
+                    put("value", body)
+                    put("isTruncated", bodyTruncated)
+                    put("isEncodingProblem", false)
+                }
+            }
+        }
     }
+
+private fun JsonObjectBuilder.putAddressList(
+    key: String,
+    addresses: List<String>,
+) {
+    if (addresses.isEmpty()) {
+        put(key, null as String?)
+    } else {
+        putJsonArray(key) {
+            addresses.forEach { address ->
+                addJsonObject {
+                    put("name", null as String?)
+                    put("email", address)
+                }
+            }
+        }
+    }
+}
