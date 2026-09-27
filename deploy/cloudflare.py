@@ -36,7 +36,6 @@ import uuid
 API = os.environ.get("CORVID_CLOUDFLARE_API", "https://api.cloudflare.com/client/v4/")
 
 # Pinned rather than "today": a stable date means a rerun never changes what already works.
-# https://developers.cloudflare.com/workers/configuration/compatibility-dates/
 WORKER_COMPATIBILITY_DATE = "2024-01-01"
 
 
