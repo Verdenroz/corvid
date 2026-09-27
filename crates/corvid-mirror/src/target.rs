@@ -3,8 +3,11 @@ use std::io;
 
 /// The restore destination, kept behind a trait so restore is exercised without a server.
 pub trait Target {
-    /// Identifies the account, so a restore ledger built against one target refuses to run
-    /// against another.
+    /// The dialled API URL, the authenticated user, and the account id: together they pin a
+    /// restore ledger to the server it was built against. Stalwart assigns account ids short
+    /// and in sequence, so the id alone can collide between two different servers.
+    fn url(&self) -> String;
+    fn user(&self) -> String;
     fn account_id(&self) -> String;
     /// Every `Message-Id` header value already on the target. Informational only: restore
     /// dedups by its own ledger, since a `Message-Id` is not unique.

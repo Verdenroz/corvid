@@ -166,6 +166,14 @@ impl Mailbox {
 }
 
 impl Target for Mailbox {
+    fn url(&self) -> String {
+        self.client.api_url().to_owned()
+    }
+
+    fn user(&self) -> String {
+        self.client.user().to_owned()
+    }
+
     fn account_id(&self) -> String {
         self.account().to_owned()
     }

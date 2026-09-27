@@ -66,6 +66,8 @@ pub struct Server {
     pub forget_records: Cell<bool>,
     pub truncate_bodies: Cell<bool>,
     pub refuse_blobs: Cell<bool>,
+    url: RefCell<String>,
+    user: RefCell<String>,
     account_id: RefCell<String>,
     uploads: RefCell<BTreeMap<String, Vec<u8>>>,
     mailboxes: RefCell<BTreeMap<String, String>>,
@@ -119,8 +121,10 @@ impl Server {
         self.mailboxes.borrow().get(path).cloned()
     }
 
-    pub fn set_account_id(&self, id: &str) {
-        *self.account_id.borrow_mut() = id.to_owned();
+    pub fn set_identity(&self, url: &str, user: &str, account_id: &str) {
+        *self.url.borrow_mut() = url.to_owned();
+        *self.user.borrow_mut() = user.to_owned();
+        *self.account_id.borrow_mut() = account_id.to_owned();
     }
 
     /// Simulates a message imported earlier being deleted on the target since.
@@ -191,6 +195,14 @@ impl Source for Server {
 }
 
 impl Target for Server {
+    fn url(&self) -> String {
+        self.url.borrow().clone()
+    }
+
+    fn user(&self) -> String {
+        self.user.borrow().clone()
+    }
+
     fn account_id(&self) -> String {
         self.account_id.borrow().clone()
     }

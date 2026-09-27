@@ -18,15 +18,24 @@ const FALLBACK_MAILBOX: &str = "Restored";
 /// nothing twice. A `Message-Id` cannot serve this: two distinct messages routinely share one
 /// (a sent copy and its bounce back, a message crossing two mailing lists), so keying on it
 /// would silently drop the second.
+///
+/// Pinned to the target's URL, user and account id together: Stalwart assigns account ids
+/// short and in sequence, so a ledger from a drill run against a freshly bootstrapped server
+/// can plausibly match a real one's id by coincidence.
 #[derive(Default, Serialize, Deserialize)]
 struct Ledger {
-    /// The account this ledger was built against. A ledger applied to a different target
-    /// would otherwise report `already_present` for ids that were never sent there.
-    target: Option<String>,
+    target_url: Option<String>,
+    target_user: Option<String>,
+    target_account: Option<String>,
     imported: BTreeMap<String, String>,
 }
 
-corvid_store::pin_shape!(Ledger { target, imported });
+corvid_store::pin_shape!(Ledger {
+    target_url,
+    target_user,
+    target_account,
+    imported
+});
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Restored {
@@ -45,27 +54,51 @@ pub struct Restored {
 
 /// Imports every held, non-vanished message into `target`, creating mailboxes by path and
 /// recording each one's target id in a ledger at `ledger_path`, saved after every import so a
-/// crash loses at most the message in flight. Ends by asking the target which of the ledger's
-/// ids it still has, the same "compare ids, not counts" posture as the mirror's own audit,
-/// covering every held id whether or not it carries a usable `Message-Id`.
+/// crash loses at most the message in flight (a crash between the import and this save can
+/// leave one duplicate on the target: at-least-once, not exactly-once). Ends by asking the
+/// target which of the ledger's ids it still has, the same "compare ids, not counts" posture as
+/// the mirror's own audit, covering every held id whether or not it carries a usable
+/// `Message-Id`.
+///
+/// An existing ledger is refused unless `resume` is set, so reusing one across a different
+/// restore is always deliberate.
 pub fn restore(
     root: &Path,
     ledger_path: &Path,
+    resume: bool,
     target: &impl Target,
     identities: &Identities,
 ) -> io::Result<Restored> {
+    if !resume && ledger_path.exists() {
+        return Err(io::Error::other(format!(
+            "{}: a restore ledger already exists; pass resume if reusing it is deliberate",
+            ledger_path.display()
+        )));
+    }
+
     let archive = Archive::open(root)?;
     let meta = archive.meta(identities)?;
     let mut ledger: Ledger = corvid_store::open(ledger_path, SCHEMA)?;
-    let account_id = target.account_id();
-    match &ledger.target {
-        Some(expected) if *expected != account_id => {
+    let (url, user, account) = (target.url(), target.user(), target.account_id());
+    match (
+        &ledger.target_url,
+        &ledger.target_user,
+        &ledger.target_account,
+    ) {
+        (Some(u), Some(usr), Some(acct))
+            if (u.as_str(), usr.as_str(), acct.as_str())
+                != (url.as_str(), user.as_str(), account.as_str()) =>
+        {
             return Err(io::Error::other(format!(
-                "{}: this ledger was built against {expected}, not {account_id}",
+                "{}: this ledger was built against {u} ({usr}, account {acct}), not {url} ({user}, account {account})",
                 ledger_path.display()
             )));
         }
-        _ => ledger.target = Some(account_id),
+        _ => {
+            ledger.target_url = Some(url);
+            ledger.target_user = Some(user);
+            ledger.target_account = Some(account);
+        }
     }
 
     let present_message_ids = target.message_ids()?;

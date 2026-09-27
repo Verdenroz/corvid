@@ -18,7 +18,7 @@ fn restore_imports_every_held_message_with_its_metadata() {
 
     let target = Server::default();
     let ledger = dir.path().join("ledger.json");
-    let report = restore(&root, &ledger, &target, &identities()).unwrap();
+    let report = restore(&root, &ledger, false, &target, &identities()).unwrap();
 
     assert_eq!(report.imported, 1);
     assert!(report.missing.is_empty());
@@ -40,8 +40,8 @@ fn restore_twice_creates_no_duplicates() {
 
     let target = Server::default();
     let ledger = dir.path().join("ledger.json");
-    restore(&root, &ledger, &target, &identities()).unwrap();
-    let report = restore(&root, &ledger, &target, &identities()).unwrap();
+    restore(&root, &ledger, false, &target, &identities()).unwrap();
+    let report = restore(&root, &ledger, true, &target, &identities()).unwrap();
 
     assert_eq!(report.already_present, 1);
     assert_eq!(report.imported, 0);
@@ -50,6 +50,22 @@ fn restore_twice_creates_no_duplicates() {
         1,
         "no duplicate landed on the target"
     );
+}
+
+#[test]
+fn an_existing_ledger_without_resume_is_refused() {
+    let (dir, root) = scratch();
+    let source = Server::default();
+    source.deliver("m0", &message("<m0@test>"));
+    sync(&root, &source, &recipient()).unwrap();
+
+    let target = Server::default();
+    let ledger = dir.path().join("ledger.json");
+    restore(&root, &ledger, false, &target, &identities()).unwrap();
+
+    let error = restore(&root, &ledger, false, &target, &identities()).unwrap_err();
+
+    assert!(error.to_string().contains("resume"));
 }
 
 #[test]
@@ -62,7 +78,7 @@ fn two_messages_sharing_a_message_id_both_land() {
 
     let target = Server::default();
     let ledger = dir.path().join("ledger.json");
-    let report = restore(&root, &ledger, &target, &identities()).unwrap();
+    let report = restore(&root, &ledger, false, &target, &identities()).unwrap();
 
     assert_eq!(report.imported, 2, "a shared Message-Id is not a duplicate");
     assert!(report.missing.is_empty());
@@ -80,7 +96,7 @@ fn a_crash_after_some_imports_is_resumed_by_a_rerun() {
     let target = Server::default();
     let ledger = dir.path().join("ledger.json");
     target.fail_import_at_call.set(Some(1));
-    assert!(restore(&root, &ledger, &target, &identities()).is_err());
+    assert!(restore(&root, &ledger, false, &target, &identities()).is_err());
     assert_eq!(
         target.imported().len(),
         1,
@@ -88,7 +104,7 @@ fn a_crash_after_some_imports_is_resumed_by_a_rerun() {
     );
 
     target.fail_import_at_call.set(None);
-    let report = restore(&root, &ledger, &target, &identities()).unwrap();
+    let report = restore(&root, &ledger, true, &target, &identities()).unwrap();
 
     assert_eq!(
         report.imported, 1,
@@ -106,32 +122,32 @@ fn a_target_email_deleted_after_import_fails_the_audit_by_archive_id() {
 
     let target = Server::default();
     let ledger = dir.path().join("ledger.json");
-    restore(&root, &ledger, &target, &identities()).unwrap();
+    restore(&root, &ledger, false, &target, &identities()).unwrap();
     let target_id = target.imported().keys().next().unwrap().clone();
     target.delete_target_email(&target_id);
 
-    let report = restore(&root, &ledger, &target, &identities()).unwrap();
+    let report = restore(&root, &ledger, true, &target, &identities()).unwrap();
 
     assert_eq!(report.missing, ["m0"]);
 }
 
 #[test]
-fn restore_refuses_a_ledger_built_against_a_different_target() {
+fn restore_refuses_a_resumed_ledger_built_against_a_different_target() {
     let (dir, root) = scratch();
     let source = Server::default();
     source.deliver("m0", &message("<m0@test>"));
     sync(&root, &source, &recipient()).unwrap();
 
     let first = Server::default();
-    first.set_account_id("acct-a");
+    first.set_identity("https://a.test", "alice", "acct-a");
     let ledger = dir.path().join("ledger.json");
-    restore(&root, &ledger, &first, &identities()).unwrap();
+    restore(&root, &ledger, false, &first, &identities()).unwrap();
 
     let second = Server::default();
-    second.set_account_id("acct-b");
-    let error = restore(&root, &ledger, &second, &identities()).unwrap_err();
+    second.set_identity("https://b.test", "bob", "acct-b");
+    let error = restore(&root, &ledger, true, &second, &identities()).unwrap_err();
 
-    assert!(error.to_string().contains("acct-a"));
+    assert!(error.to_string().contains("a.test"));
 }
 
 #[test]
@@ -143,7 +159,7 @@ fn restore_falls_back_to_the_default_mailbox_when_none_is_recorded() {
 
     let target = Server::default();
     let ledger = dir.path().join("ledger.json");
-    restore(&root, &ledger, &target, &identities()).unwrap();
+    restore(&root, &ledger, false, &target, &identities()).unwrap();
 
     let restored_id = target.mailbox_id("Restored").unwrap();
     let imported = target.imported();
@@ -160,7 +176,7 @@ fn restore_audits_a_message_with_no_message_id_like_any_other() {
 
     let target = Server::default();
     let ledger = dir.path().join("ledger.json");
-    let report = restore(&root, &ledger, &target, &identities()).unwrap();
+    let report = restore(&root, &ledger, false, &target, &identities()).unwrap();
 
     assert_eq!(report.unidentifiable, 1);
     assert_eq!(report.imported, 1);
@@ -182,7 +198,7 @@ fn restore_skips_a_vanished_message() {
 
     let target = Server::default();
     let ledger = dir.path().join("ledger.json");
-    let report = restore(&root, &ledger, &target, &identities()).unwrap();
+    let report = restore(&root, &ledger, false, &target, &identities()).unwrap();
 
     assert_eq!(report.imported, 1, "the vanished message is not restored");
 }

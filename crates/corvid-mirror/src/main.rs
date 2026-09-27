@@ -44,10 +44,12 @@ fn main() -> ExitCode {
         ),
         Some("restore") => match (args.next(), args.next(), args.next(), args.next()) {
             (Some(identity_path), Some(ledger_path), Some(target_url), Some(target_user)) => {
+                let resume = args.next().as_deref() == Some("--resume");
                 do_restore(
                     &root,
                     Path::new(&identity_path),
                     Path::new(&ledger_path),
+                    resume,
                     &target_url,
                     &target_user,
                 )
@@ -60,7 +62,7 @@ fn main() -> ExitCode {
 
 fn usage() -> ExitCode {
     eprintln!(
-        "usage: corvid-mirror [verify [--deep <identity-file>] | encrypt-archive | restore <identity-file> <ledger-file> <jmap-url> <jmap-user>]"
+        "usage: corvid-mirror [verify [--deep <identity-file>] | encrypt-archive | restore <identity-file> <ledger-file> <jmap-url> <jmap-user> [--resume]]"
     );
     ExitCode::from(64)
 }
@@ -205,6 +207,7 @@ fn do_restore(
     root: &Path,
     identity_path: &Path,
     ledger_path: &Path,
+    resume: bool,
     target_url: &str,
     target_user: &str,
 ) -> ExitCode {
@@ -221,7 +224,7 @@ fn do_restore(
         }
     };
 
-    match restore(root, ledger_path, &target, &identities) {
+    match restore(root, ledger_path, resume, &target, &identities) {
         Ok(report) => {
             tracing::info!(
                 imported = report.imported,
