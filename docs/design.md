@@ -302,19 +302,17 @@ To do, in this order:
    authenticator proves a code against it (a wrong code writes nothing). Refuses to enable
    without an app password that is not loopback-only, so turning TOTP on can never itself lock
    every mail app out; `--force` overrides. Measured on a throwaway v0.16.21: with `otpAuth` set,
-   IMAP, SMTP and JMAP Basic auth refuse the account password outright on every attempt — none of
-   them has a way to supply a code, appending one to the password with any separator just reads
-   as a wrong password — so a mail app or service must already carry an app password, and doing
-   so keeps signing in exactly as before. The only protocol that can complete a TOTP-gated
-   sign-in is Stalwart's own OAuth login (`POST /api/auth`: its web UI and OAuth clients); the
-   Corvid client signs in through Pocket-ID, not `/api/auth`, so this TOTP guards neither IMAP,
-   SMTP nor JMAP Basic auth nor the client, only Stalwart's own OAuth surface. What it does buy:
-   a leaked account password alone opens nothing, on any protocol, without the second factor.
-   `corvid-sentinel` alerts once per (account, listener, address) on `auth.mfa-required` — the
-   account password entered correctly, sign-in stopped at the code, which is also what a mail app
-   still on the account password looks like — sharing `NewSignIn`'s seen-set so a normal two-step
-   OAuth login still produces one notice, in either delivery order. Not yet run on a real
-   deployment.
+   none of IMAP, SMTP or JMAP Basic auth has any way to supply a code: appending one to the
+   password with any separator just reads as a wrong password. On these three the account
+   password stops working entirely, and only an app password signs in. The code itself is only
+   ever asked for on Stalwart's own OAuth login (`POST /api/auth`: its web UI and OAuth clients).
+   The Corvid client signs in through Pocket-ID, where passkeys, not this TOTP, protect it. What
+   this TOTP buys: a leaked account password alone opens nothing, on any protocol, without the
+   second factor. `corvid-sentinel` alerts once per (account, listener, address) on
+   `auth.mfa-required`: the account password entered correctly, sign-in stopped at the code,
+   which is also what a mail app still on the account password looks like. It shares
+   `NewSignIn`'s seen-set, so a normal two-step OAuth login still produces one notice, in either
+   delivery order. Not yet run on a real deployment.
 6. **MTA-STS where the web port cannot be 443.** Built: `install.sh` deploys a Cloudflare Worker
    on `mta-sts.<domain>` to serve it, and `server.mta_sts_mode` switches `testing` to `enforce`
    once mail delivery looks right, for whichever side serves the policy. Tested against a fake

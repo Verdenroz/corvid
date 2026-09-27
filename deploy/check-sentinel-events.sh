@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Fails when corvid-sentinel matches a Stalwart event type to a named Kind but the plan's
-# WebHook does not subscribe to it: Stalwart never posts an event outside eventsPolicy's include
-# list, so an unsubscribed one is dead code on a real deployment, never exercised by a real batch.
+# Fails when corvid-sentinel matches an event type to a named Kind but the plan's WebHook does
+# not subscribe to it: unsubscribed, Stalwart never posts it, so the handling is dead code.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
