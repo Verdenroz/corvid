@@ -5,12 +5,14 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import com.verdenroz.corvid.app.BackgroundDropController
 import com.verdenroz.corvid.app.CorvidApp
 import org.koin.android.ext.android.inject
 import org.publicvalue.multiplatform.oidc.appsupport.AndroidCodeAuthFlowFactory
 
 class MainActivity : ComponentActivity() {
     private val authFlowFactory: AndroidCodeAuthFlowFactory by inject()
+    private val backgroundDropController: BackgroundDropController by inject()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -20,5 +22,17 @@ class MainActivity : ComponentActivity() {
         authFlowFactory.registerActivity(this)
         enableEdgeToEdge()
         setContent { CorvidApp() }
+    }
+
+    // Single-activity app, so this activity's own stop/start is the app's
+    // background/foreground signal (decision 11's ON_STOP trigger).
+    override fun onStop() {
+        super.onStop()
+        backgroundDropController.enteredBackground()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        backgroundDropController.enteredForeground()
     }
 }
