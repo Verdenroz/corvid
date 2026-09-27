@@ -12,6 +12,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.OutgoingContent
 import io.ktor.http.headersOf
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -72,6 +73,10 @@ class FakeJmapServer {
 
     val mailboxes: MutableList<FakeMailbox> = mutableListOf()
     val emails: MutableList<FakeEmail> = mutableListOf()
+    val fileNodes: MutableList<FakeFileNode> = mutableListOf()
+    val blobs: MutableMap<String, ByteArray> = mutableMapOf()
+    private var nextFileNodeId = 1
+    private var nextBlobId = 1
 
     var requestCount: Int = 0
         private set
@@ -82,11 +87,35 @@ class FakeJmapServer {
         requestCount++
         if (unreachable) throw IOException("simulated network failure")
         if (tlsFailure) throw SSLHandshakeException("simulated certificate failure")
+        val path = request.url.encodedPath
         return when {
-            request.url.encodedPath.endsWith("/jmap/session") -> sessionResponse()
-            request.url.encodedPath.endsWith("/jmap/api/") -> apiResponse(request)
+            path.endsWith("/jmap/session") -> sessionResponse()
+            path.endsWith("/jmap/api/") -> apiResponse(request)
+            path.startsWith("/jmap/upload/") -> uploadResponse(request)
+            path.startsWith("/jmap/download/") -> downloadResponse(path)
             else -> respond("not found", HttpStatusCode.NotFound)
         }
+    }
+
+    private fun MockRequestHandleScope.uploadResponse(request: HttpRequestData): HttpResponseData {
+        val content = request.body as OutgoingContent.ByteArrayContent
+        val bytes = content.bytes()
+        val blobId = "blob${nextBlobId++}"
+        blobs[blobId] = bytes
+        val body =
+            buildJsonObject {
+                put("accountId", ACCOUNT_ID)
+                put("blobId", blobId)
+                put("type", content.contentType?.toString() ?: "application/octet-stream")
+                put("size", bytes.size)
+            }
+        return respond(body.toString(), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, listOf("application/json")))
+    }
+
+    private fun MockRequestHandleScope.downloadResponse(path: String): HttpResponseData {
+        val blobId = path.removePrefix("/jmap/download/").split("/").getOrNull(1)
+        val bytes = blobs[blobId] ?: return respond("blob not found", HttpStatusCode.NotFound)
+        return respond(bytes, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, listOf("application/octet-stream")))
     }
 
     private fun MockRequestHandleScope.sessionResponse(): HttpResponseData {
@@ -158,6 +187,9 @@ class FakeJmapServer {
             "Mailbox/get" -> "Mailbox/get" to mailboxGet(arguments)
             "Email/query" -> emailQuery(arguments)
             "Email/get" -> "Email/get" to emailGet(arguments)
+            "FileNode/query" -> fileNodeQuery(arguments)
+            "FileNode/get" -> "FileNode/get" to fileNodeGet(arguments)
+            "FileNode/set" -> "FileNode/set" to fileNodeSet(arguments)
             else -> "error" to buildJsonObject { put("type", "unknownMethod") }
         }
 
@@ -218,6 +250,69 @@ class FakeJmapServer {
         }
     }
 
+    /** Mirrors a real quirk: Stalwart rejects `parentId: null` in a filter rather than treating it as "root". */
+    private fun fileNodeQuery(arguments: JsonObject): Pair<String, JsonObject> {
+        val filter = arguments["filter"]?.jsonObject ?: JsonObject(emptyMap())
+        if (filter["parentId"] is JsonNull) {
+            return "error" to
+                buildJsonObject {
+                    put("type", "invalidArguments")
+                    put("description", "invalid type: null, expected a borrowed string")
+                }
+        }
+        val parentId = filter["parentId"]?.jsonPrimitive?.contentOrNull
+        val name = filter["name"]?.jsonPrimitive?.contentOrNull
+        val matching =
+            fileNodes.filter { node ->
+                (parentId == null || node.parentId == parentId) && (name == null || node.name == name)
+            }
+        return "FileNode/query" to
+            buildJsonObject {
+                put("accountId", ACCOUNT_ID)
+                put("queryState", "fs1")
+                put("canCalculateChanges", true)
+                put("position", 0)
+                put("ids", JsonArray(matching.map { JsonPrimitive(it.id) }))
+            }
+    }
+
+    private fun fileNodeGet(arguments: JsonObject): JsonObject {
+        val ids = arguments["ids"]?.jsonArray?.map { it.jsonPrimitive.content }
+        val properties = arguments["properties"]?.jsonArray?.map { it.jsonPrimitive.content }
+        val selected = if (ids == null) fileNodes else ids.mapNotNull { id -> fileNodes.find { it.id == id } }
+        val notFound = ids.orEmpty().filter { id -> fileNodes.none { it.id == id } }
+        return buildJsonObject {
+            put("accountId", ACCOUNT_ID)
+            put("state", "fs1")
+            put("list", JsonArray(selected.map { it.toJson(properties) }))
+            put("notFound", JsonArray(notFound.map { JsonPrimitive(it) }))
+        }
+    }
+
+    private fun fileNodeSet(arguments: JsonObject): JsonObject {
+        val created = mutableMapOf<String, JsonObject>()
+        arguments["create"]?.jsonObject?.forEach { (creationId, spec) ->
+            val specObj = spec.jsonObject
+            val name = specObj.getValue("name").jsonPrimitive.content
+            val parentId = specObj["parentId"]?.jsonPrimitive?.contentOrNull
+            val blobId = specObj["blobId"]?.jsonPrimitive?.contentOrNull
+            val id = "f${nextFileNodeId++}"
+            fileNodes += FakeFileNode(id, parentId, name, if (blobId != null) "file" else "directory", blobId)
+            created[creationId] = buildJsonObject { put("id", id) }
+        }
+        val destroyed =
+            arguments["destroy"]?.jsonArray?.map { it.jsonPrimitive.content }?.filter { id ->
+                fileNodes.removeAll { it.id == id }
+            }.orEmpty()
+        return buildJsonObject {
+            put("accountId", ACCOUNT_ID)
+            put("oldState", "fs0")
+            put("newState", "fs1")
+            if (created.isNotEmpty()) putJsonObject("created") { created.forEach { (k, v) -> put(k, v) } }
+            if (destroyed.isNotEmpty()) put("destroyed", JsonArray(destroyed.map { JsonPrimitive(it) }))
+        }
+    }
+
     private fun resolveReferences(
         arguments: JsonObject,
         results: Map<String, JsonObject>,
@@ -265,6 +360,18 @@ class FakeJmapServer {
             }
             if (!omitSessionState) put("state", "s1")
         }
+}
+
+private fun FakeFileNode.toJson(properties: List<String>?): JsonObject {
+    val full =
+        buildJsonObject {
+            put("id", id)
+            put("parentId", parentId)
+            put("nodeType", nodeType)
+            put("blobId", blobId)
+            put("name", name)
+        }
+    return if (properties == null) full else JsonObject(full.filterKeys { it in properties || it == "id" })
 }
 
 private fun FakeMailbox.toJson(): JsonObject =

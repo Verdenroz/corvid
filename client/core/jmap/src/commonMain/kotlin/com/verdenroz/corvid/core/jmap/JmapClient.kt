@@ -80,6 +80,43 @@ class JmapClient private constructor(
         }
         return outcomes
     }
+
+    /** Not a method call: blobs move over plain HTTP through the templates the session advertises. */
+    suspend fun uploadBlob(
+        bytes: ByteArray,
+        contentType: String,
+    ): String {
+        val url = session.uploadUrl.replace("{accountId}", session.accountId.orEmpty())
+        val response =
+            guarded(authLatch) {
+                httpClient.post(url) {
+                    bearerToken?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+                    contentType(ContentType.parse(contentType))
+                    setBody(bytes)
+                }
+            }
+        return response.body<JsonObject>().getValue("blobId").jsonPrimitive.content
+    }
+
+    suspend fun downloadBlob(
+        blobId: String,
+        name: String,
+        type: String,
+    ): ByteArray {
+        val url =
+            session.downloadUrl
+                .replace("{accountId}", session.accountId.orEmpty())
+                .replace("{blobId}", blobId)
+                .replace("{name}", name)
+                .replace("{type}", type)
+        val response =
+            guarded(authLatch) {
+                httpClient.get(url) {
+                    bearerToken?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+                }
+            }
+        return response.body()
+    }
 }
 
 private fun Invocation.toOutcome(): MethodOutcome =
