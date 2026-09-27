@@ -246,10 +246,8 @@ print(json.dumps({
 
   cat <<EOF
 
-To revoke $name's VPN identity: vpn-chain has no per-device identity, so rotating it
-affects every device, not just this one.
-  server/rotate-vless-identity.sh [--reality] [user@vps]
-  vpn-chain down && vpn-chain up   # on every other device, once secrets.env is updated
+If $name also reaches this server through a VPN, revoke its VPN access there too:
+Corvid cannot, and a copy of that identity still reaches the mail ports.
 EOF
 }
 

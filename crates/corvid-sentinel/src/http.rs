@@ -108,7 +108,7 @@ mod tests {
 
     impl Notifier for Arc<FakeMailbox> {
         fn account_email(&self) -> &str {
-            "verde@corvid.test"
+            "alice@corvid.test"
         }
 
         fn send(&self, message: &[u8]) -> io::Result<()> {
@@ -145,7 +145,7 @@ mod tests {
     }
 
     fn success_body() -> Vec<u8> {
-        br#"{"events":[{"id":"1","createdAt":"2026-09-27T02:08:58Z","type":"auth.success","data":{"accountName":"verde@corvid.test","remoteIp":"203.0.113.9","listenerId":"imaps"}}]}"#.to_vec()
+        br#"{"events":[{"id":"1","createdAt":"2026-09-27T02:08:58Z","type":"auth.success","data":{"accountName":"alice@corvid.test","remoteIp":"203.0.113.9","listenerId":"imaps"}}]}"#.to_vec()
     }
 
     #[tokio::test]

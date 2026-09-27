@@ -1,1 +1,1 @@
-{"events":[{"id":"1790474842235","createdAt":"2026-09-27T02:07:22Z","type":"auth.failed","data":{"accountName":"verde@corvid.test","accountId":2,"spanId":331758629667473408,"reason":"Authentication failed","remoteIp":"172.24.0.1","listenerId":"http","localPort":8080,"remotePort":57456}}]}
+{"events":[{"id":"1790474842235","createdAt":"2026-09-27T02:07:22Z","type":"auth.failed","data":{"accountName":"alice@corvid.test","accountId":2,"spanId":331758629667473408,"reason":"Authentication failed","remoteIp":"172.24.0.1","listenerId":"http","localPort":8080,"remotePort":57456}}]}

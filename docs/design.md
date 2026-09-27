@@ -250,10 +250,11 @@ In place:
 - **TLS on every client port** (993, 465, 587 with STARTTLS, the web port). Measured: TLS 1.3 to
   and from other providers.
 - **SPF, DKIM and DMARC `p=reject`** for the mail domain, passing at Proton and GitHub.
-- **Mail app ports limited to chosen networks** (`server.client_access`). With `host`, only a VPN
-  on the mail host reaches them; checked from outside with check-host.net.
-- **The server's own address is exempt from Stalwart's automatic bans**, so a VPN on the same host
-  cannot be locked out by one misbehaving client.
+- **Mail app ports limited to chosen networks** (`server.client_access`). With `host`, only
+  programs on the mail host (such as a VPN it runs) reach them; checked from outside with
+  check-host.net.
+- **The server's own address is exempt from Stalwart's automatic bans**, so a VPN on the same host,
+  where one is used, cannot be locked out by one misbehaving client.
 - **The installer's checks speak each protocol correctly**, since one invalid command gets the
   checking machine banned for good.
 - **DNSSEC offered for every zone, so DANE can protect inbound mail**, once the registrar
@@ -266,19 +267,17 @@ To do, in this order:
    the configured networks for a list, unrestricted for `anywhere`). Measured on a throwaway
    v0.16.21: a device scoped to one container's address authenticates over IMAPS from it and is
    refused from a second container on the same network, without banning the second; a bare IP
-   (no `/32`) is accepted as an `ipNetwork`. Moves to in place once used on the deployment.
+   (no `/32`) is accepted as an `ipNetwork`. Not yet run on a real deployment.
 2. **Device revocation in one step.** Built: `deploy/device.sh revoke` destroys the app password
    and the device's storage key file (see "Compromised devices" under Phase 3), verifying the
-   key's blob no longer downloads rather than trusting the destroy call's own report, and prints
-   how to revoke the device's VPN identity in vpn-chain. vpn-chain has one shared identity, not
-   one per device, so that print names `server/rotate-vless-identity.sh`, which rotates every
-   device's access at once (vpn-chain#22). Moves to in place once used on the deployment.
+   key's blob no longer downloads rather than trusting the destroy call's own report. It ends
+   by reminding the operator to revoke the device's VPN access too: a VPN is outside Corvid, so
+   that step is the operator's. Not yet run on a real deployment.
 3. **Backups**: the nightly mirror deployed off-host and encrypted, with a restore drill. Today a
    lost VPS loses the mail. Built and measured on a throwaway Stalwart: age encryption of bodies
    and metadata, `encrypt-archive` for an existing plaintext archive, and a restore drill (500+
    seeded messages, mailbox hierarchy, keywords) whose audit came back clean after a killed and
-   resumed run. Moves to in place once the mirror runs on the laptop and a restore drill passes
-   there.
+   resumed run. Not yet run against a real deployment's mailbox.
 4. **Sign-in alerts.** Built: `corvid-sentinel` receives Stalwart's auth events over an
    HMAC-signed WebHook and puts an unread notice in the Inbox for a never-seen (credential kind,
    listener, address) combination per account, plus one for a too-many-attempts burst and every
@@ -286,16 +285,17 @@ To do, in this order:
    and a repeat delivers nothing; an unsigned or altered body is rejected before anything is
    read. **What it cannot tell apart:** the webhook body carries no credential id or description
    at all, only a fixed string present solely when a secondary credential was used, so "new
-   device" is only ever "the account password" versus "an app password", never which one. With
-   `client_access: host`, every legitimate sign-in already arrives from the VPN's exit address,
-   so "new address" in practice means "not the exit", not per-device geolocation.
+   device" is only ever "the account password" versus "an app password", never which one. Under
+   `client_access: host`, only programs on the mail host reach the client ports, so every
+   legitimate sign-in arrives from the server's own address and "new address" in practice means
+   "not this server", not per-device geolocation.
    `auth.credential-expired` is subscribed but unhandled by name, so it alerts every time as an
    unrecognised event rather than going quiet. The sentinel signs in with its own app password
    (never the account password, or it would both lock out under TOTP and count as a sign-in
    itself); expect one self-notice the first time it starts. Stalwart discards a queued webhook
    after `discardAfter` (24h): an outage longer than that loses whatever signed in while the
    sentinel was down with no record anywhere. `systemctl status corvid-sentinel` is the check.
-   Moves to in place once running on the deployment.
+   Not yet run on a real deployment.
 5. **Two-factor sign-in** (TOTP) on the account for the web and JMAP, then passkeys (Phase 2).
 6. **MTA-STS where the web port cannot be 443.** Built: `install.sh` deploys a Cloudflare Worker
    on `mta-sts.<domain>` to serve it, and `server.mta_sts_mode` switches `testing` to `enforce`
@@ -707,15 +707,12 @@ screen or decrypted at that moment, and no client design prevents it; the aim th
 how much it gets and to make revocation end it.
 
 - **The mail credential and the storage key are per device and revocable in one step**
-  (`deploy/device.sh revoke`). The VPN identity is not: vpn-chain has one shared VLESS identity
-  for every device, so `revoke` can only print the command that rotates it
-  (`server/rotate-vless-identity.sh`), and running that disconnects every other device too. A
-  lost phone is not yet one action; it is two credentials revoked and a decision about whether
-  the VPN is worth re-keying everyone else over. Per-device VPN identities are tracked as
-  vpn-chain issue [#22](https://github.com/Verdenroz/vpn-chain/issues/22).
+  (`deploy/device.sh revoke`). A VPN identity, where `client_access` relies on one, is outside
+  Corvid: `revoke` reminds the operator to revoke it, and a lost device is only one action if the
+  VPN also issues one identity per device.
 - **Stolen credentials should be useless elsewhere.** Stalwart app passwords can be limited to
-  source networks (`allowedIps`); limited to the VPN's exit, a copied password fails from anywhere
-  else. With `client_access: host` the ports already refuse outside connections.
+  source networks (`allowedIps`); limited to the networks `client_access` allows, a copied
+  password fails from anywhere else. With `client_access: host` the ports already refuse outside connections.
 - **Device secrets stay in hardware where the platform allows it**: the Android Keystore, backed by
   StrongBox when present, requiring the user's unlock to use the key. Malware on the device may be
   able to use such a key while it runs, but cannot copy it out, so revocation ends its access.

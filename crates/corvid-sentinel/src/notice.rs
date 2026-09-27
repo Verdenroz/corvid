@@ -97,7 +97,7 @@ mod tests {
     fn alert(reason: Reason) -> Alert {
         Alert {
             at: "2026-09-27T02:08:58Z".to_owned(),
-            account: Some("verde@corvid.test".to_owned()),
+            account: Some("alice@corvid.test".to_owned()),
             remote_ip: Some("203.0.113.9".to_owned()),
             listener: Some("imaps".to_owned()),
             reason,
@@ -112,7 +112,7 @@ mod tests {
     fn one_alert_gets_a_singular_subject() {
         let message = text(&render(
             &[alert(Reason::NewSignIn(CredentialKind::Primary))],
-            "verde@corvid.test",
+            "alice@corvid.test",
         ));
         assert!(message.contains("Subject: Corvid Sentinel: 1 sign-in alert\r\n"));
     }
@@ -121,7 +121,7 @@ mod tests {
     fn several_alerts_get_a_plural_subject_and_one_line_each() {
         let message = text(&render(
             &[alert(Reason::TooManyAttempts), alert(Reason::Banned)],
-            "verde@corvid.test",
+            "alice@corvid.test",
         ));
         assert!(message.contains("Subject: Corvid Sentinel: 2 sign-in alerts\r\n"));
         assert_eq!(message.matches("2026-09-27T02:08:58Z").count(), 2);
@@ -131,7 +131,7 @@ mod tests {
     fn the_date_header_is_the_first_alerts_time() {
         let message = text(&render(
             &[alert(Reason::NewSignIn(CredentialKind::Primary))],
-            "verde@corvid.test",
+            "alice@corvid.test",
         ));
         assert!(message.contains("Date: Sun, 27 Sep 2026 02:08:58 +0000\r\n"));
     }
@@ -140,7 +140,7 @@ mod tests {
     fn an_app_password_is_named_as_such_not_by_a_description() {
         let message = text(&render(
             &[alert(Reason::NewSignIn(CredentialKind::AppPassword))],
-            "verde@corvid.test",
+            "alice@corvid.test",
         ));
         assert!(message.contains("signed in with an app password"));
     }
@@ -151,7 +151,7 @@ mod tests {
             "Authenticated with a magic link".to_owned(),
         ));
         alert.account = None;
-        let message = text(&render(&[alert], "verde@corvid.test"));
+        let message = text(&render(&[alert], "alice@corvid.test"));
         assert!(message.contains("Authenticated with a magic link"));
         assert!(message.contains("an unreported account"));
     }
@@ -160,7 +160,7 @@ mod tests {
     fn the_from_address_is_a_corvid_identity() {
         let message = text(&render(
             &[alert(Reason::NewSignIn(CredentialKind::Primary))],
-            "verde@corvid.test",
+            "alice@corvid.test",
         ));
         assert!(message.starts_with("From: Corvid Sentinel <corvid-sentinel@corvid.local>\r\n"));
     }

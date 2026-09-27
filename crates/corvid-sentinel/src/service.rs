@@ -40,7 +40,7 @@ mod tests {
 
     impl Notifier for FakeMailbox {
         fn account_email(&self) -> &str {
-            "verde@corvid.test"
+            "alice@corvid.test"
         }
 
         fn send(&self, message: &[u8]) -> io::Result<()> {
@@ -56,7 +56,7 @@ mod tests {
         AuthEvent {
             created_at: "2026-09-27T02:08:58Z".to_owned(),
             kind: Kind::Success,
-            account: Some("verde@corvid.test".to_owned()),
+            account: Some("alice@corvid.test".to_owned()),
             remote_ip: Some("203.0.113.9".to_owned()),
             listener: Some("imaps".to_owned()),
             details: None,
@@ -72,7 +72,7 @@ mod tests {
 
         assert_eq!(mailbox.sent.borrow().len(), 1);
         assert!(next.identities.contains(&Identity {
-            account: "verde@corvid.test".to_owned(),
+            account: "alice@corvid.test".to_owned(),
             kind: CredentialKind::Primary,
             listener: "imaps".to_owned(),
             remote_ip: "203.0.113.9".to_owned(),
@@ -84,7 +84,7 @@ mod tests {
         let mailbox = FakeMailbox::default();
         let mut seen = Seen::default();
         seen.identities.insert(Identity {
-            account: "verde@corvid.test".to_owned(),
+            account: "alice@corvid.test".to_owned(),
             kind: CredentialKind::Primary,
             listener: "imaps".to_owned(),
             remote_ip: "203.0.113.9".to_owned(),
