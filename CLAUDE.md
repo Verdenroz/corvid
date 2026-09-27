@@ -91,8 +91,8 @@ Crates, grouped by the service that uses them:
 JMAP only. `core/jmap`, `core/auth`, `core/data`, `core/keyring` and `core/model` hold the
 platform-independent logic; `feature/*` holds one screen and its ViewModel each; `app-common`
 wires them through the lock gate (`AppLockState`) that Phase 3 of `docs/design.md` describes.
-`androidApp` and `desktopApp` are thin per-platform shells. It has its own `CLAUDE.md`-equivalent
-gates (above) and does not participate in the Cargo workspace.
+`androidApp` and `desktopApp` are thin per-platform shells. Its gates are the three Gradle
+commands above; it is not part of the Cargo workspace.
 
 **Keyword provenance keeps the labeler from training on its own output.** Nothing in JMAP
 records who set a keyword, so everything the labeler writes is prefixed `corvid-`, and model
