@@ -55,7 +55,7 @@ for line in sys.stdin:
 
 # Stalwart bans an address for scanning or failed logins. Traffic that leaves this host through
 # its own address, as a VPN on the same machine sends it, would ban every one of its users.
-export SERVER_IP="${SERVER_IP:-$(curl -4 -s --max-time 10 https://1.1.1.1/cdn-cgi/trace | sed -n 's/^ip=//p')}"
+export SERVER_IP="${SERVER_IP:-$(server_ip)}"
 [[ -n "$SERVER_IP" ]] || echo "  could not find this server's public IP, so it is not exempt from bans" >&2
 
 # Restricted to named variables: a bare envsubst rewrites every $ in the plan, hashes included.

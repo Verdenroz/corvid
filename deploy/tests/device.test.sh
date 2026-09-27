@@ -73,16 +73,16 @@ printf '{"methodResponses":[["x:AppPassword/set",{"accountId":"c1","created":{"n
 run any add openair
 check "exits 0" '[[ $status -eq 0 ]]'
 check "the secret is the first line of stdout" '[[ "$(head -1 "$work/out")" == app_test1 ]]'
-check "no other line carries the secret" '[[ $(grep -c app_test1 "$work/out") -eq 1 ]]'
+check "stdout carries nothing but the secret" '[[ $(wc -l < "$work/out") -eq 1 ]]'
 check "the request carries no source restriction" 'request 1 | grep -q "\"allowedIps\": *{}"'
 check "the request names the device" 'request 1 | grep -q "\"description\": *\"openair\""'
-check "the note says unrestricted" 'grep -q "no source restriction" "$work/out"'
+check "the note says unrestricted" 'grep -q "no source restriction" "$work/err"'
 
 echo "== add, client_access: host"
 run "" add tablet
 check "exits 0" '[[ $status -eq 0 ]]'
 check "the request restricts to the looked-up server IP" 'request 1 | grep -q "\"203.0.113.9\": *true"'
-check "the note names the IP" 'grep -q "203.0.113.9" "$work/out"'
+check "the note names the IP" 'grep -q "203.0.113.9" "$work/err"'
 
 echo "== add, client_access: a network list"
 run "192.0.2.0/24 198.51.100.7" add lan

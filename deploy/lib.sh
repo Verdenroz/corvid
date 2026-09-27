@@ -6,6 +6,13 @@ CORVID_DIR="${CORVID_DIR:-/opt/corvid}"
 # Written by install.sh; a hand-built image loaded as localhost/corvid:latest needs no file.
 CORVID_IMAGE="$(cat "$CORVID_DIR/image.ref" 2>/dev/null || echo localhost/corvid:latest)"
 
+# The address this host's own traffic, such as a VPN, leaves through. apply-plan.sh exempts it
+# from Stalwart's automatic bans; device.sh is the only source a "host" app password may be
+# used from. One lookup, so the two can never disagree about what that address is.
+server_ip() {
+  curl -4 -s --max-time 10 https://1.1.1.1/cdn-cgi/trace | sed -n 's/^ip=//p'
+}
+
 require_image() {
   podman image exists "$CORVID_IMAGE" && return
   echo "image $CORVID_IMAGE is not on this host; it carries corvid-config and three of the services" >&2

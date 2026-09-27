@@ -68,7 +68,7 @@ sys.exit(0 if any(json.loads(l)["description"] == sys.argv[1] for l in sys.stdin
       restriction="no source restriction (client_access: anywhere)"
       ;;
     '')
-      SERVER_IP="${SERVER_IP:-$(curl -4 -s --max-time 10 https://1.1.1.1/cdn-cgi/trace | sed -n 's/^ip=//p')}"
+      SERVER_IP="${SERVER_IP:-$(server_ip)}"
       [[ -n "$SERVER_IP" ]] || {
         echo "could not find this server's public IP; refusing to issue an unrestricted credential" >&2
         exit 1
@@ -100,7 +100,7 @@ if not created:
     sys.exit(json.dumps(result.get("notCreated", result)))
 print(created["secret"])')"
   echo "$secret"
-  echo "  device $name added, $restriction"
+  echo "  device $name added, $restriction" >&2
 }
 
 cmd_list() {
