@@ -51,8 +51,8 @@ pub struct Server {
     /// Who may reach the ports mail apps use: 465, 587, 993 and `web_port`.
     #[serde(default)]
     pub client_access: ClientAccess,
-    /// Start in testing; switch to enforce once mail delivery looks right. Only reachable when
-    /// `web_port` is not 443, where a Cloudflare Worker serves the policy instead of Stalwart.
+    /// Start in testing; switch to enforce once mail delivery looks right. Applies whether the
+    /// policy is served by Stalwart on 443 or by a Cloudflare Worker elsewhere.
     #[serde(default)]
     pub mta_sts_mode: MtaStsMode,
 }
@@ -689,17 +689,21 @@ mod server_tests {
     }
 
     #[test]
-    fn the_mta_sts_id_changes_exactly_when_the_policy_changes() {
-        let testing = Config::parse(SERVER).unwrap().server.unwrap().mta_sts_id();
-        let same_again = Config::parse(SERVER).unwrap().server.unwrap().mta_sts_id();
-        let enforced = Config::parse(&(SERVER.to_owned() + "  mta_sts_mode: enforce\n"))
-            .unwrap()
-            .server
-            .unwrap()
-            .mta_sts_id();
+    fn the_mta_sts_id_is_stable_unless_mode_or_hostname_changes() {
+        let id = |text: &str| Config::parse(text).unwrap().server.unwrap().mta_sts_id();
 
-        assert_eq!(testing, same_again);
-        assert_ne!(testing, enforced);
+        let original = id(SERVER);
+        assert_eq!(original, id(SERVER), "an unchanged policy keeps its id");
+
+        let enforced = SERVER.to_owned() + "  mta_sts_mode: enforce\n";
+        assert_ne!(original, id(&enforced), "a mode change must change the id");
+
+        let renamed = SERVER.replace("mail.example.com", "mx.example.com");
+        assert_ne!(
+            original,
+            id(&renamed),
+            "a hostname change must change the id"
+        );
     }
 
     #[test]

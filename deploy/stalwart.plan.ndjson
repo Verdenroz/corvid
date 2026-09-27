@@ -8,4 +8,5 @@
 {"@type":"upsert","object":"MtaMilter","matchOn":["hostname"],"value":{"corvid-rewriter":{"hostname":"127.0.0.1","port":11332,"protocolVersion":"v6","stages":{"data":true},"enable":{"else":"is_empty(authenticated_as)","match":{}},"tempFailOnError":true,"timeoutConnect":10000,"timeoutCommand":30000,"timeoutData":60000,"maxResponseSize":5242880,"useTls":false,"allowInvalidCerts":false,"flagsProtocol":null,"flagsAction":null}}}
 {"@type":"update","object":"SpamClassifier","value":{"model":{"@type":"FtrlFh"},"trainFrequency":43200000,"holdSamplesFor":15552000000,"minSpamSamples":100,"minHamSamples":100,"reservoirCapacity":1024,"learnHamFromCard":true,"learnHamFromReply":true,"learnSpamFromRblHits":2,"learnSpamFromTraps":true}}
 {"@type":"update","object":"Http","value":{"useXForwarded":true}}
+{"@type":"update","object":"MtaSts","value":{"mode":"${MTA_STS_MODE}"}}
 {"@type":"upsert","object":"Account","matchOn":["name"],"value":{"acct":{"@type":"User","name":"${MAIL_USER}","description":"${MAIL_USER}","domainId":"#dom","roles":{"@type":"User"},"aliases":{"0":{"name":"postmaster","domainId":"#dom"},"1":{"name":"abuse","domainId":"#dom"}}}}}
