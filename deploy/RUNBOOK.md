@@ -76,6 +76,22 @@ run, with every record type in `publishRecords` off, so nothing in that zone is 
 accounts in it, mail to that zone is refused. The Cloudflare token must reach both zones. Any
 records the zone already has, such as an old MX, stay until changed by hand.
 
+### MTA-STS off 443
+
+When `server.web_port` is not 443, `install.sh` deploys a Cloudflare Worker on
+`mta-sts.<domain>` to serve the policy, since senders fetch it only on 443 and Stalwart's own
+web tier is not there. The Cloudflare token needs two more permissions beyond the DNS ones this
+installer already asks for: **Workers Scripts: Edit**, scoped to the account, and **Workers
+Routes: Edit**, scoped to the zone that holds `server.domain`. Add them at
+https://dash.cloudflare.com/profile/api-tokens before running `install.sh` off 443; a token
+missing one fails naming it, not with a bare 403. Switching `server.web_port` back to 443 on a
+later run removes the Worker and its `_mta-sts` TXT record, leaving Stalwart to serve MTA-STS
+itself.
+
+`server.mta_sts_mode` starts `testing` and applies to whichever side serves the policy. Watch
+mail delivery before switching it to `enforce`; senders that see enforce and cannot complete a
+TLS handshake to a listed MX drop the message rather than deliver it unencrypted.
+
 ### The labeler's model
 
 `labeler.model` is optional. Without it the labeler still labels mail from the per-sender prior

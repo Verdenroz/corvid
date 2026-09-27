@@ -155,12 +155,20 @@ web tier is not on 443.
   records DANE needs. The plan lists the set explicitly and `apply-plan.sh` narrows it: TLSA on the
   mail domain only when the hostname is inside it, MTA-STS only when the web tier holds 443.
 - **MTA-STS is fetched from `https://mta-sts.<domain>` on 443 only**, never another port and never
-  through a redirect. Stalwart serves the policy but publishes its record regardless of whether
-  anything answers there, so an install off 443 advertised a policy nobody could fetch.
+  through a redirect. Off 443 Stalwart cannot serve it, so `install.sh` deploys a Cloudflare
+  Worker on that hostname as a custom domain instead; Cloudflare terminates TLS on 443 for it
+  regardless of `server.web_port`.
 - **Turning a record type off in `publishRecords` leaves its records in DNS.** Stalwart stops
   managing them and deletes nothing, so `install.sh` removes the MTA-STS pair itself, and only
   while it still points `mta-sts` at this server. Measured: the applied set dropped `mtaSts` and
   Cloudflare still served both records.
+- **A Worker custom domain bind fails while a plain DNS record already occupies that hostname.**
+  A stale `mta-sts` CNAME left by a prior 443 install must be removed before binding the Worker,
+  not after. Stalwart's and the Worker's `_mta-sts` TXT records look identical, so ownership is a
+  Cloudflare record `comment`, never the content.
+- **The Workers script upload API takes multipart/form-data with a `metadata` part naming
+  `main_module`.** The older single-file body with `Content-Type: application/javascript` is for
+  the deprecated service-worker syntax and does not accept an ES module.
 - **Perfect authentication still lands in spam on day zero.** Reputation is time and
   engagement, not configuration.
 - **A fresh v0.16.21 refuses `ReloadSettings`.** It ships three `SpamDnsblServer` objects whose
