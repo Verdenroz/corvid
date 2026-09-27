@@ -47,6 +47,7 @@ fun CorvidApp(viewModel: AppLockViewModel = koinViewModel()) {
             is AppLockState.Unreachable -> UnreachablePane(reason = current.reason, onRetry = viewModel::retry)
             is AppLockState.Locked -> LockedPane(onUnlock = viewModel::unlock)
             is AppLockState.Revoked -> RevokedPane()
+            is AppLockState.NeedsEnrollment -> EnrollmentPrompt(deviceName = current.deviceName, onConfirm = viewModel::confirmEnroll)
         }
     }
 }

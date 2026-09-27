@@ -70,6 +70,12 @@ class AppLockViewModel(
         deviceName?.let { name -> viewModelScope.launch { resolveKey(name) } }
     }
 
+    fun confirmEnroll() {
+        val needsEnrollment = _state.value as? AppLockState.NeedsEnrollment ?: return
+        val repository = deviceKeyRepository ?: return
+        viewModelScope.launch { enroll(repository, needsEnrollment.deviceName) }
+    }
+
     fun lock() = keyHolder.drop()
 
     /** Throttled by [reconnectPolicy], the same policy an automatic reconnect would use. */
@@ -95,7 +101,9 @@ class AppLockViewModel(
                 enrolledThisSession = false
                 reconnectPolicy.reset()
                 keyHolder.drop()
-                _state.value = AppLockState.SignedOut
+                // Revoked is a dead end by design: only relaunching the app, not
+                // this sign-out, gets a revoked device back to a sign-in screen.
+                if (_state.value !is AppLockState.Revoked) _state.value = AppLockState.SignedOut
             }
             is AuthState.SignedIn -> if (jmapClient == null) connectToServer(authState)
         }
@@ -127,9 +135,11 @@ class AppLockViewModel(
             is DeviceKeyLookup.Found -> keyHolder.unlock(lookup.key)
             is DeviceKeyLookup.Missing ->
                 if (enrolledThisSession) {
+                    keyHolder.drop()
+                    tokenSource.signOut()
                     _state.value = AppLockState.Revoked
                 } else {
-                    enroll(repository, name)
+                    _state.value = AppLockState.NeedsEnrollment(name)
                 }
             is DeviceKeyLookup.Damaged -> _state.value = AppLockState.Unreachable("the device key is damaged")
             is DeviceKeyLookup.Ambiguous -> _state.value = AppLockState.Unreachable("more than one device folder exists")
@@ -155,9 +165,16 @@ class AppLockViewModel(
     private fun onKeyState(keyState: KeyState) {
         when (keyState) {
             is KeyState.Unlocked -> {
+                // A sign-out can land between the key unlocking and this collector
+                // running, clearing jmapClient underneath it.
+                val client = jmapClient
+                if (client == null) {
+                    _state.value = AppLockState.SignedOut
+                    return
+                }
                 reconnectPolicy.reset()
                 _state.value = AppLockState.Unlocked
-                unlockedScopeHolder.open().declare(requireNotNull(jmapClient))
+                unlockedScopeHolder.open().declare(client)
                 heartbeatJob = viewModelScope.launch { heartbeatLoop() }
             }
             is KeyState.Locked -> {
@@ -176,12 +193,20 @@ class AppLockViewModel(
             try {
                 client.call(listOf(Invocation("Core/echo", JsonObject(emptyMap()), "hb")))
             } catch (e: JmapException) {
-                keyHolder.drop()
+                dropForUnreachableHeartbeat()
                 return
             } catch (e: JmapSessionException) {
-                keyHolder.drop()
+                dropForUnreachableHeartbeat()
                 return
             }
         }
+    }
+
+    // Set before drop(): onKeyState's Locked branch only overwrites an Unlocked
+    // state, so this keeps the pane's "unreachable" message rather than
+    // reading as though the user tapped Lock.
+    private fun dropForUnreachableHeartbeat() {
+        _state.value = AppLockState.Unreachable("the heartbeat failed")
+        keyHolder.drop()
     }
 }

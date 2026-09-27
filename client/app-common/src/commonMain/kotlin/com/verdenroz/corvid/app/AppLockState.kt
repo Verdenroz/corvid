@@ -16,4 +16,8 @@ sealed interface AppLockState {
     data object Locked : AppLockState
 
     data object Revoked : AppLockState
+
+    /** No key exists for [deviceName] yet: could be its first sign-in, or a revoke.
+     *  Enrolling needs an explicit tap, never an automatic call (decision 10). */
+    data class NeedsEnrollment(val deviceName: String) : AppLockState
 }

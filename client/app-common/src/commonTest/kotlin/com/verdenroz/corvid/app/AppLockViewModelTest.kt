@@ -1,6 +1,7 @@
 package com.verdenroz.corvid.app
 
 import androidx.lifecycle.viewModelScope
+import com.verdenroz.corvid.core.auth.AuthState
 import com.verdenroz.corvid.core.auth.TokenSource
 import com.verdenroz.corvid.core.jmap.AuthLatch
 import com.verdenroz.corvid.core.jmap.createJmapHttpClient
@@ -75,6 +76,16 @@ private class Harness(scope: CoroutineScope, fake: FakeJmapServer) {
     fun signIn() = tokenSource.adopt(FakeOidcClient { freshToken() }, freshToken(), ServerAddress(BASE_URL))
 }
 
+/** The full two-tap enrollment path: name the device, then confirm creating it. */
+private suspend fun Harness.enrollAndUnlock(name: String) {
+    signIn()
+    viewModel.state.awaitState { it is AppLockState.Connecting && it.needsDeviceName }
+    viewModel.submitDeviceName(name)
+    viewModel.state.awaitState { it is AppLockState.NeedsEnrollment }
+    viewModel.confirmEnroll()
+    viewModel.state.awaitState { it is AppLockState.Unlocked }
+}
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class AppLockViewModelTest {
     // Shared with runTest below so advanceTimeBy can reach the heartbeat's
@@ -119,16 +130,31 @@ class AppLockViewModelTest {
         }
 
     @Test
-    fun `naming a new device enrolls it and unlocks`() =
+    fun `a missing key is never enrolled without an explicit confirmation`() =
         runTest(testDispatcher) {
-            val harness = harness(backgroundScope, FakeJmapServer())
+            val fake = FakeJmapServer()
+            val harness = harness(backgroundScope, fake)
             harness.signIn()
             harness.viewModel.state.awaitState { it is AppLockState.Connecting && it.needsDeviceName }
 
             harness.viewModel.submitDeviceName("laptop-1")
-            harness.viewModel.state.awaitState { it is AppLockState.Unlocked }
+            val needsEnrollment =
+                assertIs<AppLockState.NeedsEnrollment>(harness.viewModel.state.awaitState { it is AppLockState.NeedsEnrollment })
+
+            assertEquals("laptop-1", needsEnrollment.deviceName)
+            assertEquals(0, fake.fileNodes.size)
+        }
+
+    @Test
+    fun `confirming enrollment after the prompt creates the key and unlocks`() =
+        runTest(testDispatcher) {
+            val fake = FakeJmapServer()
+            val harness = harness(backgroundScope, fake)
+
+            harness.enrollAndUnlock("laptop-1")
 
             assertIs<KeyState.Unlocked>(harness.keyHolder.state.value)
+            assertEquals(1, fake.fileNodes.count { it.name == "laptop-1.key" })
         }
 
     @Test
@@ -151,10 +177,7 @@ class AppLockViewModelTest {
         runTest(testDispatcher) {
             val fake = FakeJmapServer()
             val harness = harness(backgroundScope, fake)
-            harness.signIn()
-            harness.viewModel.state.awaitState { it is AppLockState.Connecting && it.needsDeviceName }
-            harness.viewModel.submitDeviceName("laptop-1")
-            harness.viewModel.state.awaitState { it is AppLockState.Unlocked }
+            harness.enrollAndUnlock("laptop-1")
             harness.keyHolder.drop()
             harness.viewModel.state.awaitState { it is AppLockState.Locked }
 
@@ -184,30 +207,26 @@ class AppLockViewModelTest {
         }
 
     @Test
-    fun `a key missing after this session already enrolled one reads as revoked`() =
+    fun `a key missing after this session already enrolled one reads as revoked and signs out`() =
         runTest(testDispatcher) {
             val fake = FakeJmapServer()
             val harness = harness(backgroundScope, fake)
-            harness.signIn()
-            harness.viewModel.state.awaitState { it is AppLockState.Connecting && it.needsDeviceName }
-            harness.viewModel.submitDeviceName("laptop-1")
-            harness.viewModel.state.awaitState { it is AppLockState.Unlocked }
+            harness.enrollAndUnlock("laptop-1")
             harness.keyHolder.drop()
             harness.viewModel.state.awaitState { it is AppLockState.Locked }
 
             fake.fileNodes.removeAll { it.name == "laptop-1.key" }
             harness.viewModel.unlock()
             harness.viewModel.state.awaitState { it is AppLockState.Revoked }
+
+            assertIs<AuthState.SignedOut>(harness.tokenSource.state.value)
         }
 
     @Test
     fun `the lock button drops the key and a 401 anywhere does the same`() =
         runTest(testDispatcher) {
             val harness = harness(backgroundScope, FakeJmapServer())
-            harness.signIn()
-            harness.viewModel.state.awaitState { it is AppLockState.Connecting && it.needsDeviceName }
-            harness.viewModel.submitDeviceName("laptop-1")
-            harness.viewModel.state.awaitState { it is AppLockState.Unlocked }
+            harness.enrollAndUnlock("laptop-1")
 
             harness.viewModel.lock()
             harness.viewModel.state.awaitState { it is AppLockState.Locked }
@@ -220,17 +239,17 @@ class AppLockViewModelTest {
         }
 
     @Test
-    fun `a heartbeat failure drops the key like any other unreachable call`() =
+    fun `a heartbeat failure reads as unreachable, not a user lock`() =
         runTest(testDispatcher) {
             val fake = FakeJmapServer()
             val harness = harness(backgroundScope, fake)
-            harness.signIn()
-            harness.viewModel.state.awaitState { it is AppLockState.Connecting && it.needsDeviceName }
-            harness.viewModel.submitDeviceName("laptop-1")
-            harness.viewModel.state.awaitState { it is AppLockState.Unlocked }
+            harness.enrollAndUnlock("laptop-1")
 
             fake.unreachable = true
             advanceTimeBy(61.seconds)
-            harness.viewModel.state.awaitState { it is AppLockState.Locked }
+            val unreachable = assertIs<AppLockState.Unreachable>(harness.viewModel.state.awaitState { it is AppLockState.Unreachable })
+
+            assertEquals("the heartbeat failed", unreachable.reason)
+            assertIs<KeyState.Locked>(harness.keyHolder.state.value)
         }
 }
