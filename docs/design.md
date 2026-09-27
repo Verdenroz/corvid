@@ -258,10 +258,6 @@ In place:
   checking machine banned for good.
 - **DNSSEC offered for every zone, so DANE can protect inbound mail**, once the registrar
   publishes the DS record.
-- **MTA-STS where the web port cannot be 443**, served by a Cloudflare Worker on
-  `mta-sts.<domain>` instead of Stalwart, which only Corvid's own installer or CI ever deploys.
-  Starts in `testing`; `server.mta_sts_mode` switches it to `enforce` once mail delivery looks
-  right, and drives Stalwart's own copy the same way for when the web port is 443.
 
 To do, in this order:
 
@@ -275,6 +271,12 @@ To do, in this order:
 4. **Sign-in alerts**: notice of a new device or an unfamiliar source address, from Stalwart's
    sign-in log.
 5. **Two-factor sign-in** (TOTP) on the account for the web and JMAP, then passkeys (Phase 2).
+6. **MTA-STS where the web port cannot be 443.** Built: `install.sh` deploys a Cloudflare Worker
+   on `mta-sts.<domain>` to serve it, and `server.mta_sts_mode` switches `testing` to `enforce`
+   once mail delivery looks right, for whichever side serves the policy. Tested against a fake
+   Cloudflare only; moves to "in place" once a real install shows
+   `curl https://mta-sts.<domain>/.well-known/mta-sts.txt` serving the policy and exactly one
+   `_mta-sts` TXT record.
 
 Open decision: **disk encryption on the mail host.** Phase 1 below assumes LUKS, but deployments
 so far run on an unencrypted disk. On a VPS it guards against discarded disks and snapshots, not

@@ -162,13 +162,6 @@ web tier is not on 443.
   managing them and deletes nothing, so `install.sh` removes the MTA-STS pair itself, and only
   while it still points `mta-sts` at this server. Measured: the applied set dropped `mtaSts` and
   Cloudflare still served both records.
-- **A Worker custom domain bind fails while a plain DNS record already occupies that hostname.**
-  A stale `mta-sts` CNAME left by a prior 443 install must be removed before binding the Worker,
-  not after. Stalwart's and the Worker's `_mta-sts` TXT records look identical, so ownership is a
-  Cloudflare record `comment`, never the content.
-- **The Workers script upload API takes multipart/form-data with a `metadata` part naming
-  `main_module`.** The older single-file body with `Content-Type: application/javascript` is for
-  the deprecated service-worker syntax and does not accept an ES module.
 - **Perfect authentication still lands in spam on day zero.** Reputation is time and
   engagement, not configuration.
 - **A fresh v0.16.21 refuses `ReloadSettings`.** It ships three `SpamDnsblServer` objects whose
