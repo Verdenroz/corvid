@@ -3,7 +3,7 @@
 # kept separate so both can be unit tested against a fake Cloudflare without SSH.
 
 # Marks the _mta-sts TXT this script publishes, so it is never confused with Stalwart's own
-# "v=STSv1" copy. Must match cloudflare.py's WORKER_TXT_COMMENT.
+# "v=STSv1" copy, which looks identical otherwise.
 MTA_STS_TXT_COMMENT="corvid-mta-sts-worker"
 
 # A Cloudflare Workers script name derived from DOMAIN: letters, digits and hyphens only.
@@ -92,7 +92,7 @@ mta_sts_preflight() {
 mta_sts_apply() {
   local token="$1" web_port="$2" domain="$3" domain_zone_id="$4" account_id="$5" worker_name="$6" \
     worker_owned="$7" policy="$8" policy_id="$9"
-  local owned_txt out content count
+  local owned_txt out content records_out count
 
   if [[ "$web_port" != 443 ]]; then
     step "publishing the MTA-STS policy"
@@ -101,7 +101,7 @@ mta_sts_apply() {
     out="$(cloudflare "$token" deploy-worker "$account_id" "$domain_zone_id" "$worker_name" "mta-sts.$domain" 2>&1)" ||
       die "Cloudflare did not deploy the Worker: $out"
     unset CLOUDFLARE_STDIN
-    owned_txt="$(cloudflare "$token" worker-txt "$domain_zone_id" "_mta-sts.$domain")" ||
+    owned_txt="$(cloudflare "$token" worker-txt "$domain_zone_id" "_mta-sts.$domain" "$MTA_STS_TXT_COMMENT")" ||
       die "could not check _mta-sts.$domain: $owned_txt"
     content="v=STSv1; id=$policy_id"
     if [[ -z "$owned_txt" ]]; then
@@ -111,7 +111,9 @@ mta_sts_apply() {
       out="$(cloudflare "$token" update-record "$domain_zone_id" "${owned_txt%% *}" "$content" 2>&1)" ||
         die "Cloudflare did not update _mta-sts.$domain: $out"
     fi
-    count="$(cloudflare "$token" records "$domain_zone_id" "_mta-sts.$domain" TXT | grep -c 'v=STSv1')"
+    records_out="$(cloudflare "$token" records "$domain_zone_id" "_mta-sts.$domain" TXT)" ||
+      die "could not read _mta-sts.$domain: $records_out"
+    count="$(grep -c 'v=STSv1' <<<"$records_out" || true)"
     [[ "$count" == 1 ]] ||
       die "_mta-sts.$domain now has $count v=STSv1 TXT records; a sender treats more than one as no policy at all. Remove the extra one at Cloudflare and rerun."
     ok "mta-sts.$domain serves the policy; _mta-sts.$domain publishes id $policy_id"
@@ -119,7 +121,7 @@ mta_sts_apply() {
     step "removing the MTA-STS Worker"
     out="$(cloudflare "$token" remove-worker "$account_id" "$worker_name" "mta-sts.$domain" 2>&1)" ||
       die "Cloudflare did not remove the Worker: $out"
-    owned_txt="$(cloudflare "$token" worker-txt "$domain_zone_id" "_mta-sts.$domain")" ||
+    owned_txt="$(cloudflare "$token" worker-txt "$domain_zone_id" "_mta-sts.$domain" "$MTA_STS_TXT_COMMENT")" ||
       die "could not check _mta-sts.$domain: $owned_txt"
     if [[ -n "$owned_txt" ]]; then
       out="$(cloudflare "$token" delete "$domain_zone_id" "${owned_txt%% *}" 2>&1)" ||
