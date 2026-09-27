@@ -49,6 +49,9 @@ pub struct Server {
     /// The zone `hostname` belongs to, when it lies outside `domain`. Stalwart keeps a certificate
     /// for it through the same DNS provider and publishes no records there.
     pub host_zone: Option<Name>,
+    /// Where Pocket-ID answers, on the same `web_port`. Defaults to `idp.<domain>`; Pocket-ID
+    /// refuses an `APP_URL` with a path, so it needs a hostname of its own.
+    pub idp_hostname: Option<Name>,
     /// Who may reach the ports mail apps use: 465, 587, 993 and `web_port`.
     #[serde(default)]
     pub client_access: ClientAccess,
@@ -440,13 +443,18 @@ impl Config {
         let server = section(self.server.as_ref(), "server")?;
         Ok(format!(
             "MAIL_DOMAIN={}\nMAIL_HOSTNAME={}\nMAIL_USER={}\nACME_CONTACT={}\nWEB_PORT={}\nHOST_ZONE={}\n\
-             PUBLISH_MTA_STS={}\nPUBLISH_TLSA={}\nMTA_STS_MODE={}\nMTA_STS_ID={}\nCLIENT_SOURCES={}\n",
+             IDP_HOSTNAME={}\nPUBLISH_MTA_STS={}\nPUBLISH_TLSA={}\nMTA_STS_MODE={}\nMTA_STS_ID={}\n\
+             CLIENT_SOURCES={}\n",
             server.domain.0,
             server.hostname.0,
             server.mail_user.0,
             server.acme_contact.0,
             server.web_port.0,
             server.host_zone.as_ref().map_or("", |zone| zone.as_str()),
+            server
+                .idp_hostname
+                .as_ref()
+                .map_or_else(|| format!("idp.{}", server.domain.0), |name| name.0.clone()),
             server.web_port.0 == 443,
             server.host_zone.is_none(),
             server.mta_sts_mode.as_str(),
@@ -625,10 +633,37 @@ mod server_tests {
             format!(
                 "MAIL_DOMAIN=example.com\nMAIL_HOSTNAME=mail.example.com\nMAIL_USER=alice\n\
                  ACME_CONTACT=you@elsewhere.example\nWEB_PORT=4443\nHOST_ZONE=\n\
-                 PUBLISH_MTA_STS=false\nPUBLISH_TLSA=true\nMTA_STS_MODE=testing\nMTA_STS_ID={id}\n\
-                 CLIENT_SOURCES=any\n"
+                 IDP_HOSTNAME=idp.example.com\nPUBLISH_MTA_STS=false\nPUBLISH_TLSA=true\n\
+                 MTA_STS_MODE=testing\nMTA_STS_ID={id}\nCLIENT_SOURCES=any\n"
             )
         );
+    }
+
+    #[test]
+    fn idp_hostname_defaults_to_idp_dot_domain() {
+        let shell = Config::parse(SERVER).unwrap().shell().unwrap();
+        assert!(
+            shell.lines().any(|l| l == "IDP_HOSTNAME=idp.example.com"),
+            "{shell}"
+        );
+    }
+
+    #[test]
+    fn a_stated_idp_hostname_overrides_the_default() {
+        let text = SERVER.to_owned() + "  idp_hostname: passkeys.example.com\n";
+        let shell = Config::parse(&text).unwrap().shell().unwrap();
+        assert!(
+            shell
+                .lines()
+                .any(|l| l == "IDP_HOSTNAME=passkeys.example.com"),
+            "{shell}"
+        );
+    }
+
+    #[test]
+    fn an_idp_hostname_with_bad_characters_is_refused() {
+        let text = SERVER.to_owned() + "  idp_hostname: \"pass;keys.example.com\"\n";
+        assert!(Config::parse(&text).is_err());
     }
 
     #[test]
