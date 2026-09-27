@@ -55,9 +55,12 @@ account password.
 
 It needs one restricted to `127.0.0.1`, since the sentinel calls JMAP from inside the pod on
 loopback, not from the VPN exit an app password `device.sh add NAME` creates is scoped to.
-Creating a loopback-scoped service credential this way is not built yet; put the secret in
-`sentinel.env`'s `CORVID_JMAP_PASSWORD` once it is. Expect one self-notice the first time the
-sentinel starts, for its own first sign-in.
+`device.sh add --local NAME` scopes one to loopback instead:
+
+    ssh host /opt/corvid/deploy/device.sh add --local corvid-sentinel
+
+Put the secret in `sentinel.env`'s `CORVID_JMAP_PASSWORD`. Expect one self-notice the first time
+the sentinel starts, for its own first sign-in.
 
 ## Sign-in alerts
 
