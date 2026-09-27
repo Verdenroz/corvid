@@ -165,7 +165,14 @@ private suspend fun guarded(
     // Every other 4xx is an RFC 7807 problem body (unknownCapability, notJSON, notRequest,
     // limit, ...): the request itself was rejected, so it must never be retried like a Server.
     if (response.status.value in 400..499) {
-        val problem = runCatching { response.body<JsonObject>() }.getOrNull()
+        val problem =
+            try {
+                response.body<JsonObject>()
+            } catch (e: NoTransformationFoundException) {
+                null
+            } catch (e: SerializationException) {
+                null
+            }
         throw JmapException(
             JmapError.Request(
                 type = problem?.get("type")?.jsonPrimitive?.contentOrNull ?: "unknown",
