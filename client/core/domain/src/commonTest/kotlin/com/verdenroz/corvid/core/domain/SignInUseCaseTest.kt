@@ -48,6 +48,6 @@ class SignInUseCaseTest {
             useCase(ServerAddress("https://mail.example.test"))
 
             assertFalse(latch.tripped.value)
-            assertEquals(AuthState.SignedIn("at1"), tokenSource.state.value)
+            assertEquals(AuthState.SignedIn("at1", ServerAddress("https://mail.example.test")), tokenSource.state.value)
         }
 }

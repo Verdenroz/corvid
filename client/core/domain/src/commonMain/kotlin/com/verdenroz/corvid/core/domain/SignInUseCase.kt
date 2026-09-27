@@ -30,7 +30,7 @@ class SignInUseCase(
             )
         val flow = authFlowFactory.createAuthFlow(client)
         val tokens = flow.getAccessToken()
-        tokenSource.adopt(client, tokens)
+        tokenSource.adopt(client, tokens, server)
         authLatch.clear()
     }
 }

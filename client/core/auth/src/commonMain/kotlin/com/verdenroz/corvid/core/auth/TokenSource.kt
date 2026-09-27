@@ -1,6 +1,7 @@
 package com.verdenroz.corvid.core.auth
 
 import com.verdenroz.corvid.core.jmap.AuthLatch
+import com.verdenroz.corvid.core.model.ServerAddress
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,7 +22,7 @@ private val REFRESH_MARGIN = 60.seconds
 sealed interface AuthState {
     data object SignedOut : AuthState
 
-    data class SignedIn(val bearerToken: String) : AuthState
+    data class SignedIn(val bearerToken: String, val server: ServerAddress) : AuthState
 }
 
 /**
@@ -42,6 +43,7 @@ class TokenSource(
     private val refreshMutex = Mutex()
     private var client: OpenIdConnectClient? = null
     private var tokens: AccessTokenResponse? = null
+    private var server: ServerAddress? = null
 
     init {
         // Unconfined so a trip wipes the token in the same call, not on the
@@ -55,15 +57,18 @@ class TokenSource(
     fun adopt(
         client: OpenIdConnectClient,
         tokens: AccessTokenResponse,
+        server: ServerAddress,
     ) {
         this.client = client
         this.tokens = tokens
-        _state.value = AuthState.SignedIn(tokens.access_token)
+        this.server = server
+        _state.value = AuthState.SignedIn(tokens.access_token, server)
     }
 
     fun signOut() {
         client = null
         tokens = null
+        server = null
         _state.value = AuthState.SignedOut
     }
 
@@ -84,10 +89,12 @@ class TokenSource(
 
     private suspend fun refresh(current: AccessTokenResponse): String? {
         val activeClient = client ?: return signOutAndReturnNull()
+        val activeServer = server ?: return signOutAndReturnNull()
         val refreshToken = current.refresh_token ?: return signOutAndReturnNull()
         return try {
             val refreshed = activeClient.refreshToken(refreshToken)
-            adopt(activeClient, refreshed)
+            this.tokens = refreshed
+            _state.value = AuthState.SignedIn(refreshed.access_token, activeServer)
             refreshed.access_token
         } catch (e: OpenIdConnectException.UnsuccessfulTokenRequest) {
             if (e.errorResponse?.error == ErrorResponse.Error.invalid_grant) signOut()

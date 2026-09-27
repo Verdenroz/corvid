@@ -1,6 +1,7 @@
 package com.verdenroz.corvid.core.auth
 
 import com.verdenroz.corvid.core.jmap.AuthLatch
+import com.verdenroz.corvid.core.model.ServerAddress
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
@@ -31,6 +32,8 @@ private fun freshToken(
     received_at = Clock.System.now().epochSeconds,
 )
 
+private val TEST_SERVER = ServerAddress("https://mail.corvid.test")
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class TokenSourceTest {
     @Test
@@ -46,7 +49,7 @@ class TokenSourceTest {
     fun `a fresh token is returned without going through the client at all`() =
         runTest {
             val source = TokenSource(AuthLatch(), backgroundScope)
-            source.adopt(FakeOidcClient { error("refresh must not be called") }, freshToken())
+            source.adopt(FakeOidcClient { error("refresh must not be called") }, freshToken(), TEST_SERVER)
 
             assertEquals("at1", source.currentBearerToken())
         }
@@ -55,10 +58,10 @@ class TokenSourceTest {
     fun `an expired token is refreshed once, and the new one is returned`() =
         runTest {
             val source = TokenSource(AuthLatch(), backgroundScope)
-            source.adopt(FakeOidcClient { freshToken(accessToken = "at2") }, freshToken(expiresIn = 0))
+            source.adopt(FakeOidcClient { freshToken(accessToken = "at2") }, freshToken(expiresIn = 0), TEST_SERVER)
 
             assertEquals("at2", source.currentBearerToken())
-            assertEquals(AuthState.SignedIn("at2"), source.state.value)
+            assertEquals(AuthState.SignedIn("at2", TEST_SERVER), source.state.value)
         }
 
     @Test
@@ -72,7 +75,7 @@ class TokenSourceTest {
                     cause = Exception("invalid_grant"),
                 )
             val source = TokenSource(AuthLatch(), backgroundScope)
-            source.adopt(FakeOidcClient { throw failure }, freshToken(expiresIn = 0))
+            source.adopt(FakeOidcClient { throw failure }, freshToken(expiresIn = 0), TEST_SERVER)
 
             assertNull(source.currentBearerToken())
             assertEquals(AuthState.SignedOut, source.state.value)
@@ -89,6 +92,7 @@ class TokenSourceTest {
                     throw OpenIdConnectException.TechnicalFailure("offline", Exception("offline"))
                 },
                 freshToken(expiresIn = 0),
+                TEST_SERVER,
             )
 
             assertNull(source.currentBearerToken())
@@ -99,7 +103,7 @@ class TokenSourceTest {
     fun `a token expiring inside the refresh margin is refreshed early`() =
         runTest {
             val source = TokenSource(AuthLatch(), backgroundScope)
-            source.adopt(FakeOidcClient { freshToken(accessToken = "at2") }, freshToken(expiresIn = 30))
+            source.adopt(FakeOidcClient { freshToken(accessToken = "at2") }, freshToken(expiresIn = 30), TEST_SERVER)
 
             assertEquals("at2", source.currentBearerToken())
         }
@@ -116,6 +120,7 @@ class TokenSourceTest {
                     freshToken(accessToken = "at2")
                 },
                 freshToken(expiresIn = 0),
+                TEST_SERVER,
             )
 
             val first = async { source.currentBearerToken() }
@@ -130,7 +135,7 @@ class TokenSourceTest {
         runTest {
             val latch = AuthLatch()
             val source = TokenSource(latch, backgroundScope)
-            source.adopt(FakeOidcClient { freshToken() }, freshToken())
+            source.adopt(FakeOidcClient { freshToken() }, freshToken(), TEST_SERVER)
 
             latch.trip()
             advanceUntilIdle()

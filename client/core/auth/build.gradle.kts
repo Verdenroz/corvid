@@ -9,6 +9,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(projects.core.jmap)
+            api(projects.core.model)
             api(libs.kalinjul.oidc.core)
             api(libs.kalinjul.oidc.appsupport)
             api(libs.kalinjul.oidc.preferences)
