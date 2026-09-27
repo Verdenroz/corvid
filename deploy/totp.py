@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """RFC 6238 TOTP, the codes totp.sh checks a fresh enrolment against before it writes anything.
 
-    totp.py code SECRET [TIME] [DIGITS]     the code SECRET produces at TIME (now if omitted)
-    totp.py verify SECRET CODE [TIME] [DIGITS]   exit 0 if CODE is valid for SECRET within one
-                                          30s step of TIME (now if omitted), else 1
+    totp.py code [TIME] [DIGITS]     the code the secret on stdin produces at TIME (now if
+                                      omitted)
+    totp.py verify CODE [TIME] [DIGITS]   exit 0 if CODE is valid for the secret on stdin
+                                      within one 30s step of TIME (now if omitted), else 1
 
-SECRET is base32. TIME is a Unix timestamp; DIGITS defaults to 6.
+The secret (base32) is read from stdin, never an argument, so it never reaches argv. TIME is a
+Unix timestamp; DIGITS defaults to 6.
 """
 import base64
 import hashlib
@@ -38,15 +40,15 @@ def verify(secret_b32, code, for_time, digits=6):
 
 def main():
     command, args = sys.argv[1], sys.argv[2:]
+    secret = sys.stdin.readline().strip()
     if command == "code":
-        secret = args[0]
-        for_time = float(args[1]) if len(args) > 1 else time.time()
-        digits = int(args[2]) if len(args) > 2 else 6
+        for_time = float(args[0]) if len(args) > 0 else time.time()
+        digits = int(args[1]) if len(args) > 1 else 6
         print(code_at(secret, for_time, digits))
     elif command == "verify":
-        secret, code = args[0], args[1]
-        for_time = float(args[2]) if len(args) > 2 else time.time()
-        digits = int(args[3]) if len(args) > 3 else 6
+        code = args[0]
+        for_time = float(args[1]) if len(args) > 1 else time.time()
+        digits = int(args[2]) if len(args) > 2 else 6
         sys.exit(0 if verify(secret, code, for_time, digits) else 1)
     else:
         sys.exit(f"unknown command {command}")
