@@ -367,29 +367,8 @@ for zone in $(printf '%s\n' "$domain" "$host_zone" | sort -u); do
 done
 # Stalwart leaves records in place when it stops publishing them. Its MTA-STS pair points
 # mta-sts at this server, so a pair pointing anywhere else is someone's own policy, left alone.
-# A Corvid Worker is identified by its custom domain's service name, not by record content,
-# since its own "_mta-sts" TXT looks identical to Stalwart's.
-worker_name="$(mta_sts_worker_name "$domain")"
-account_id="$(cloudflare "$token" account "$domain_zone_id")" || die "could not read the account that owns $domain: $account_id"
-owner="$(cloudflare "$token" worker-owner "$account_id" "mta-sts.$domain")" || die "could not check mta-sts.$domain: $owner"
-worker_owned=0
-[[ "$owner" == "$worker_name" ]] && worker_owned=1
-
 stale_mta_sts=()
-if [[ "$web_port" != 443 ]]; then
-  cname="$(cloudflare "$token" records "$domain_zone_id" "mta-sts.$domain" CNAME)" || die "could not read mta-sts.$domain: $cname"
-  case "$(mta_sts_record_status "$cname" "$hostname" "$worker_owned")" in
-    stale)
-      stale_mta_sts+=("${cname%% *}")
-      while read -r id content; do
-        [[ "$content" == *v=STSv1* ]] && stale_mta_sts+=("$id")
-      done < <(cloudflare "$token" records "$domain_zone_id" "_mta-sts.$domain" TXT)
-      ;;
-    foreign)
-      die "mta-sts.$domain already points to ${cname#* }, not $hostname or a Corvid Worker; remove it before installing off 443"
-      ;;
-  esac
-fi
+mta_sts_preflight "$token" "$domain" "$hostname" "$domain_zone_id" "$web_port"
 
 enable_dnssec=0
 off_zones="$(printf '%s and ' "${dnssec_off[@]}")"
@@ -543,33 +522,14 @@ if (( ${#stale_mta_sts[@]} )); then
   ok "mta-sts.$domain and _mta-sts.$domain removed"
 fi
 
+policy="" policy_id=""
 if [[ "$web_port" != 443 ]]; then
-  step "publishing the MTA-STS policy"
   cfg_cmd="podman run --rm --network=none -v /opt/corvid/config.yaml:/etc/corvid/config.yaml:ro '$IMAGE' corvid-config"
   policy="$(on_host "$cfg_cmd mta-sts-policy")" || die "could not render the MTA-STS policy: $policy"
   policy_id="$(on_host "$cfg_cmd shell" | awk -F= '$1=="MTA_STS_ID"{print $2}')"
   [[ -n "$policy_id" ]] || die "corvid-config did not report MTA_STS_ID; rebuild the image"
-  CLOUDFLARE_STDIN="$(mta_sts_worker_script "$policy")"
-  out="$(cloudflare "$token" deploy-worker "$account_id" "$domain_zone_id" "$worker_name" "mta-sts.$domain" 2>&1)" ||
-    die "Cloudflare did not deploy the Worker: $out"
-  unset CLOUDFLARE_STDIN
-  existing="$(cloudflare "$token" records "$domain_zone_id" "_mta-sts.$domain" TXT)" || die "could not read _mta-sts.$domain: $existing"
-  content="v=STSv1; id=$policy_id"
-  if [[ -z "$existing" ]]; then
-    out="$(cloudflare "$token" create-txt "$domain_zone_id" "_mta-sts.$domain" "$content" 2>&1)" || die "Cloudflare did not publish _mta-sts.$domain: $out"
-  else
-    out="$(cloudflare "$token" update-record "$domain_zone_id" "${existing%% *}" "$content" 2>&1)" || die "Cloudflare did not update _mta-sts.$domain: $out"
-  fi
-  ok "mta-sts.$domain serves the policy; _mta-sts.$domain publishes id $policy_id"
-elif (( worker_owned )); then
-  step "removing the MTA-STS Worker"
-  out="$(cloudflare "$token" remove-worker "$account_id" "$worker_name" "mta-sts.$domain" 2>&1)" || die "Cloudflare did not remove the Worker: $out"
-  existing="$(cloudflare "$token" records "$domain_zone_id" "_mta-sts.$domain" TXT)" || die "could not read _mta-sts.$domain: $existing"
-  if [[ -n "$existing" ]]; then
-    out="$(cloudflare "$token" delete "$domain_zone_id" "${existing%% *}" 2>&1)" || die "Cloudflare did not remove _mta-sts.$domain: $out"
-  fi
-  ok "the Worker and its records are removed; Stalwart now serves MTA-STS on 443"
 fi
+mta_sts_apply "$token" "$web_port" "$domain" "$domain_zone_id" "$account_id" "$worker_name" "$worker_owned" "$policy" "$policy_id"
 
 # Stalwart names its keys v1-TYPE-DATE and never deletes one it has replaced, so every reinstall
 # leaves a pair behind. Only records in that form that Stalwart no longer holds are removed.

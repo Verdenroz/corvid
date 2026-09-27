@@ -4,7 +4,7 @@
     cloudflare.py zones                  one line per zone: NAME ID edit|read-only
     cloudflare.py a-records ZONE NAME    the addresses NAME's A records point to
     cloudflare.py create-a ZONE NAME IP  adds an A record, not proxied
-    cloudflare.py create-txt ZONE NAME CONTENT   adds a TXT record
+    cloudflare.py create-txt ZONE NAME CONTENT [COMMENT]   adds a TXT record
     cloudflare.py update-record ZONE ID CONTENT  replaces a record's content
     cloudflare.py records ZONE NAME TYPE one line per record: ID CONTENT
     cloudflare.py delete ZONE ID         removes one record
@@ -13,6 +13,8 @@
     cloudflare.py enable-dnssec ZONE     turns DNSSEC on, then prints the same
     cloudflare.py account ZONE           the id of the account that owns ZONE
     cloudflare.py worker-owner ACCOUNT HOSTNAME    the service name bound to HOSTNAME, or empty
+    cloudflare.py worker-txt ZONE NAME    "ID CONTENT" of the Worker's own TXT record at NAME,
+                                          identified by comment rather than content, or empty
     cloudflare.py deploy-worker ACCOUNT ZONE NAME HOSTNAME   uploads the module on stdin
                                           (after the token line) and binds it to HOSTNAME. Fails
                                           naming the permission it lacks, not a bare 403.
@@ -35,6 +37,10 @@ API = os.environ.get("CORVID_CLOUDFLARE_API", "https://api.cloudflare.com/client
 # Pinned rather than "today": a stable date means a rerun never changes what already works.
 # https://developers.cloudflare.com/workers/configuration/compatibility-dates/
 WORKER_COMPATIBILITY_DATE = "2024-01-01"
+
+# Marks the _mta-sts TXT this script publishes, so it is never confused with Stalwart's own
+# "v=STSv1" copy: install.sh must keep this in step with mta-sts-lib.sh's MTA_STS_TXT_COMMENT.
+WORKER_TXT_COMMENT = "corvid-mta-sts-worker"
 
 
 def multipart(fields):
@@ -116,9 +122,11 @@ def main():
         call(token, f"zones/{zone}/dns_records",
              {"type": "A", "name": name, "content": ip, "ttl": 1, "proxied": False})
     elif command == "create-txt":
-        zone, name, content = args
-        call(token, f"zones/{zone}/dns_records",
-             {"type": "TXT", "name": name, "content": content, "ttl": 1})
+        zone, name, content = args[:3]
+        record = {"type": "TXT", "name": name, "content": content, "ttl": 1}
+        if len(args) > 3:
+            record["comment"] = args[3]
+        call(token, f"zones/{zone}/dns_records", record)
     elif command == "update-record":
         zone, record, content = args
         call(token, f"zones/{zone}/dns_records/{record}", {"content": content}, method="PATCH")
@@ -130,6 +138,13 @@ def main():
         query = urllib.parse.urlencode({"hostname": hostname})
         domains = call(token, f"accounts/{account}/workers/domains?{query}")
         print(domains[0]["service"] if domains else "")
+    elif command == "worker-txt":
+        zone, name = args
+        query = urllib.parse.urlencode({"type": "TXT", "name": name})
+        for record in call(token, f"zones/{zone}/dns_records?{query}"):
+            if record.get("comment") == WORKER_TXT_COMMENT:
+                print(record["id"], record["content"])
+                break
     elif command == "deploy-worker":
         account, zone, name, hostname = args
         module = f"{name}.mjs"
