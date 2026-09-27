@@ -23,6 +23,7 @@ kotlin {
 dependencies {
     implementation(projects.appCommon)
     implementation(projects.core.common)
+    implementation(projects.core.auth)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.swing)
     implementation(libs.koin.core)

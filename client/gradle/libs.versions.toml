@@ -49,6 +49,7 @@ ktor-server-netty = { group = "io.ktor", name = "ktor-server-netty", version.ref
 ktor-server-content-negotiation = { group = "io.ktor", name = "ktor-server-content-negotiation", version.ref = "ktor" }
 kalinjul-oidc-core = { group = "io.github.kalinjul.kotlin.multiplatform", name = "oidc-core", version.ref = "kalinjulOidc" }
 kalinjul-oidc-appsupport = { group = "io.github.kalinjul.kotlin.multiplatform", name = "oidc-appsupport", version.ref = "kalinjulOidc" }
+kalinjul-oidc-preferences = { group = "io.github.kalinjul.kotlin.multiplatform", name = "oidc-preferences", version.ref = "kalinjulOidc" }
 tink-android = { group = "com.google.crypto.tink", name = "tink-android", version.ref = "tink" }
 tink = { group = "com.google.crypto.tink", name = "tink", version.ref = "tink" }
 jsoup = { group = "org.jsoup", name = "jsoup", version.ref = "jsoup" }
