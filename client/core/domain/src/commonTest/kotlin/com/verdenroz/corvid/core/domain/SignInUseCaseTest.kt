@@ -45,7 +45,7 @@ class SignInUseCaseTest {
                     authLatch = latch,
                 )
 
-            useCase(ServerAddress("https://mail.example.test"))
+            useCase(ServerAddress("https://mail.example.test"), "https://idp.example.test")
 
             assertFalse(latch.tripped.value)
             assertEquals(AuthState.SignedIn("at1", ServerAddress("https://mail.example.test")), tokenSource.state.value)

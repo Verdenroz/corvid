@@ -21,11 +21,14 @@ class SignInViewModel(private val signInUseCase: SignInUseCase) : ViewModel() {
     private val _state = MutableStateFlow<SignInUiState>(SignInUiState.Idle)
     val state: StateFlow<SignInUiState> = _state
 
-    fun signIn(server: String) {
+    fun signIn(
+        server: String,
+        issuer: String,
+    ) {
         viewModelScope.launch {
             _state.value = SignInUiState.SigningIn
             try {
-                signInUseCase(ServerAddress(server.trimEnd('/')))
+                signInUseCase(ServerAddress(server.trimEnd('/')), issuer.trimEnd('/'))
                 _state.value = SignInUiState.Idle
             } catch (e: OpenIdConnectException) {
                 _state.value = SignInUiState.Failed(e.message)

@@ -9,11 +9,14 @@ import org.publicvalue.multiplatform.oidc.ExperimentalOpenIdConnect
 import org.publicvalue.multiplatform.oidc.flows.CodeAuthFlowFactory
 
 /**
- * Runs the PKCE authorization-code flow against the Pocket-ID instance the
- * server advertises at `/idp`, and hands the resulting tokens to
- * [TokenSource]. Never touches disk: the tokens live in [TokenSource] only.
- * Clears the [AuthLatch] on success, since a stale trip from before this
- * sign-in would otherwise short-circuit every call forever.
+ * Runs the PKCE authorization-code flow against Pocket-ID and hands the
+ * resulting tokens to [TokenSource]. Never touches disk: the tokens live in
+ * [TokenSource] only. Clears the [AuthLatch] on success, since a stale trip
+ * from before this sign-in would otherwise short-circuit every call forever.
+ *
+ * [issuer] is a separate input rather than derived from [server]: Pocket-ID
+ * refuses an issuer URL with a path, so whether it sits at a subdomain or a
+ * separate port is a deployment choice, not something this code can assume.
  */
 @OptIn(ExperimentalOpenIdConnect::class)
 class SignInUseCase(
@@ -22,10 +25,13 @@ class SignInUseCase(
     private val tokenSource: TokenSource,
     private val authLatch: AuthLatch,
 ) {
-    suspend operator fun invoke(server: ServerAddress) {
+    suspend operator fun invoke(
+        server: ServerAddress,
+        issuer: String,
+    ) {
         val client =
             createOidcClient(
-                discoveryUri = "${server.baseUrl}/idp/.well-known/openid-configuration",
+                discoveryUri = "$issuer/.well-known/openid-configuration",
                 redirectUri = redirectUriProvider.redirectUri(),
             )
         val flow = authFlowFactory.createAuthFlow(client)

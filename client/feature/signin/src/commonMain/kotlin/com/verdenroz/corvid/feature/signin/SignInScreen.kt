@@ -21,6 +21,7 @@ import org.koin.compose.viewmodel.koinViewModel
 @Composable
 fun SignInScreen(viewModel: SignInViewModel = koinViewModel()) {
     var server by rememberSaveable { mutableStateOf("") }
+    var issuer by rememberSaveable { mutableStateOf("") }
     val state by viewModel.state.collectAsState()
 
     Column(
@@ -32,8 +33,13 @@ fun SignInScreen(viewModel: SignInViewModel = koinViewModel()) {
             onValueChange = { server = it },
             label = { Text("Server") },
         )
+        OutlinedTextField(
+            value = issuer,
+            onValueChange = { issuer = it },
+            label = { Text("Identity provider") },
+        )
         Button(
-            onClick = { viewModel.signIn(server) },
+            onClick = { viewModel.signIn(server, issuer) },
             enabled = state !is SignInUiState.SigningIn,
         ) {
             Text(if (state is SignInUiState.SigningIn) "Signing in..." else "Sign in")
