@@ -164,6 +164,69 @@ class MailboxRepositoryTest {
         }
 
     @Test
+    fun `entities in an html-only body are decoded, not shown escaped`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.emails +=
+                FakeEmail(
+                    "e1",
+                    "e1",
+                    setOf("inbox"),
+                    "hello",
+                    "a@example.test",
+                    "2024-01-01T00:00:00Z",
+                    bodyType = "text/html",
+                    body = "<p>Tom &amp; Jerry, a &lt; b</p>",
+                )
+
+            val detail = assertIs<EmailLookup.Found>(repository(fake).getEmail("e1")).detail
+
+            assertEquals("Tom & Jerry, a < b", detail.body)
+        }
+
+    @Test
+    fun `a literal backslash-n in the mail's own text is not mistaken for a line break`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.emails +=
+                FakeEmail(
+                    "e1",
+                    "e1",
+                    setOf("inbox"),
+                    "hello",
+                    "a@example.test",
+                    "2024-01-01T00:00:00Z",
+                    bodyType = "text/html",
+                    body = """<p>path is C:\ndir</p>""",
+                )
+
+            val detail = assertIs<EmailLookup.Found>(repository(fake).getEmail("e1")).detail
+
+            assertEquals("""path is C:\ndir""", detail.body)
+        }
+
+    @Test
+    fun `a script or style element's contents are never shown`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.emails +=
+                FakeEmail(
+                    "e1",
+                    "e1",
+                    setOf("inbox"),
+                    "hello",
+                    "a@example.test",
+                    "2024-01-01T00:00:00Z",
+                    bodyType = "text/html",
+                    body = "<style>p { color: red }</style><script>alert('hi')</script><p>visible text</p>",
+                )
+
+            val detail = assertIs<EmailLookup.Found>(repository(fake).getEmail("e1")).detail
+
+            assertEquals("visible text", detail.body)
+        }
+
+    @Test
     fun `a body cut at maxBodyValueBytes is reported truncated`() =
         runTest {
             val fake = FakeJmapServer()
