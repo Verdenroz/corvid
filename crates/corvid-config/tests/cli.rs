@@ -34,8 +34,22 @@ fn shell_prints_the_server_section_of_the_template() {
             "HOST_ZONE",
             "PUBLISH_MTA_STS",
             "PUBLISH_TLSA",
+            "MTA_STS_MODE",
+            "MTA_STS_ID",
             "CLIENT_SOURCES"
         ]
+    );
+}
+
+#[test]
+fn mta_sts_policy_prints_the_templates_rendered_policy() {
+    let out = run(&template(), &["mta-sts-policy"]);
+
+    assert_eq!(out.status.code(), Some(0));
+    let text = String::from_utf8(out.stdout).unwrap();
+    assert!(
+        text.starts_with("version: STSv1\nmode: testing\nmx: "),
+        "{text}"
     );
 }
 
@@ -45,7 +59,7 @@ fn a_config_that_does_not_parse_exits_78() {
     let path = dir.path().join("config.yaml");
     std::fs::write(&path, "server:\n  web_port: 8443\n").unwrap();
 
-    for command in ["check", "shell"] {
+    for command in ["check", "shell", "mta-sts-policy"] {
         assert_eq!(
             run(path.to_str().unwrap(), &[command]).status.code(),
             Some(78)
