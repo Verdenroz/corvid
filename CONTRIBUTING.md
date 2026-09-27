@@ -14,6 +14,7 @@ bash deploy/tests/apply-plan.test.sh
 bash deploy/tests/install.test.sh
 bash deploy/tests/set-password.test.sh
 bash deploy/tests/device.test.sh
+bash deploy/tests/totp.test.sh
 bash deploy/tests/lib.test.sh
 ./deploy/check-plan.py
 ./deploy/check-env.sh
