@@ -47,6 +47,8 @@ secrets:
     ENCRYPTION_KEY: ""
     # openssl rand -hex 32. The plan's WebHook signs with it; the sentinel verifies with it.
     CORVID_SENTINEL_SECRET: ""
+    # A separate app password for the sentinel, so revoking one does not revoke the other.
+    CORVID_SENTINEL_JMAP_PASSWORD: ""
 
 # Off until an app password exists for it: see the chart README.
 labeler:

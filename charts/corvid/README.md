@@ -35,10 +35,10 @@ Podman deployment:
 2. Write a values file with `images.corvid.repository` and `tag`, the `config.server` section,
    and the secrets. Either name an existing Secret in `secrets.existingSecret`, with the keys
    listed under `secrets.values`, or fill `secrets.values`. The chart refuses to render without
-   the image-proxy secret, the sentinel's HMAC secret and the Cloudflare token, and without an
-   app password (the sentinel is enabled by default, so this is needed from the first install)
-   or Pocket-ID's secret when those are enabled. Set `STALWART_RECOVERY_ADMIN` to
-   `recovery:<password>` for the first run.
+   the image-proxy secret, the sentinel's HMAC secret and the Cloudflare token, and without the
+   sentinel's app password (it is enabled by default, so this is needed from the first install)
+   or the labeler's or Pocket-ID's secret when those are enabled. Set `STALWART_RECOVERY_ADMIN`
+   to `recovery:<password>` for the first run.
 
 3. `helm install corvid charts/corvid -f values.yaml`
 
@@ -71,7 +71,8 @@ Then remove `STALWART_RECOVERY_ADMIN` from the Secret and restart once more. Whi
 authenticates on every listener, ahead of the account directory. Keep `$dir/corvid.env`: it holds
 the admin credential for later applies.
 
-The sentinel's `CORVID_JMAP_PASSWORD` has the same problem the labeler's always had: it names an
+The sentinel's `CORVID_SENTINEL_JMAP_PASSWORD` (its own app password, distinct from the
+labeler's `CORVID_JMAP_PASSWORD`) has the same problem the labeler's always had: it names an
 app password that cannot exist before Stalwart is up. Install with a placeholder value; the
 sentinel container just fails to connect and restarts until the real one, created once the
 account exists, replaces it in the Secret.

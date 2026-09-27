@@ -124,9 +124,11 @@ spec:
           imagePullPolicy: {{ .Values.images.pullPolicy }}
           command: [/usr/local/bin/corvid-sentinel]
           env:
+            # A password of its own, distinct from the labeler's, so revoking one does not stop
+            # the other; the binary reads it under the same name either way.
             - name: CORVID_JMAP_PASSWORD
               valueFrom:
-                secretKeyRef: {name: {{ $secret }}, key: CORVID_JMAP_PASSWORD}
+                secretKeyRef: {name: {{ $secret }}, key: CORVID_SENTINEL_JMAP_PASSWORD}
             - name: CORVID_SENTINEL_SECRET
               valueFrom:
                 secretKeyRef: {name: {{ $secret }}, key: CORVID_SENTINEL_SECRET}

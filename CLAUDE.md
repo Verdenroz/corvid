@@ -27,7 +27,7 @@ cargo clippy --workspace --all-targets -- -D warnings   # currently clean; keep 
 podman build -f deploy/Containerfile -t localhost/corvid:latest .   # the image the pod runs
 podman save localhost/corvid:latest | ssh <host> podman load        # a small mail host cannot build it
 ./scripts/vet-ip.sh <ip>                     # run on a candidate VPS, off any VPN, before choosing it
-helm lint charts/corvid --set images.corvid.repository=x --set secrets.values.CORVID_IMGPROXY_SECRET=x --set secrets.values.CORVID_SENTINEL_SECRET=x --set secrets.values.CORVID_JMAP_PASSWORD=x --set-string 'secrets.values.cloudflare\.token=x'
+helm lint charts/corvid --set images.corvid.repository=x --set secrets.values.CORVID_IMGPROXY_SECRET=x --set secrets.values.CORVID_SENTINEL_SECRET=x --set secrets.values.CORVID_SENTINEL_JMAP_PASSWORD=x --set-string 'secrets.values.cloudflare\.token=x'
 ```
 
 On a host, in order: `deploy/bootstrap.sh` (host prep, quadlets, firewall, empty env files), fill

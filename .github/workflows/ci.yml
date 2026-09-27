@@ -50,10 +50,10 @@ jobs:
           set -- --set images.corvid.repository=ghcr.io/example/corvid \
                  --set secrets.values.CORVID_IMGPROXY_SECRET=x \
                  --set secrets.values.CORVID_SENTINEL_SECRET=x \
-                 --set secrets.values.CORVID_JMAP_PASSWORD=x \
+                 --set secrets.values.CORVID_SENTINEL_JMAP_PASSWORD=x \
                  --set-string 'secrets.values.cloudflare\.token=x'
           helm lint charts/corvid "$@"
           helm template ci charts/corvid "$@" --set labeler.enabled=true --set idp.enabled=true \
-            --set secrets.values.ENCRYPTION_KEY=x > rendered.yaml
+            --set secrets.values.CORVID_JMAP_PASSWORD=x --set secrets.values.ENCRYPTION_KEY=x > rendered.yaml
           test "$(grep -c '^kind:' rendered.yaml)" -gt 0
           kubeconform -strict -summary rendered.yaml
