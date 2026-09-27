@@ -9,4 +9,5 @@
 {"@type":"update","object":"SpamClassifier","value":{"model":{"@type":"FtrlFh"},"trainFrequency":43200000,"holdSamplesFor":15552000000,"minSpamSamples":100,"minHamSamples":100,"reservoirCapacity":1024,"learnHamFromCard":true,"learnHamFromReply":true,"learnSpamFromRblHits":2,"learnSpamFromTraps":true}}
 {"@type":"update","object":"Http","value":{"useXForwarded":true}}
 {"@type":"update","object":"MtaSts","value":{"mode":"${MTA_STS_MODE}"}}
-{"@type":"upsert","object":"Account","matchOn":["name"],"value":{"acct":{"@type":"User","name":"${MAIL_USER}","description":"${MAIL_USER}","domainId":"#dom","roles":{"@type":"User"},"aliases":{"0":{"name":"postmaster","domainId":"#dom"},"1":{"name":"abuse","domainId":"#dom"}},"quotas/maxAppPasswords":20}}}
+{"@type":"upsert","object":"Account","matchOn":["name"],"value":{"acct":{"@type":"User","name":"${MAIL_USER}","description":"${MAIL_USER}","domainId":"#dom","roles":{"@type":"User"},"aliases":{"0":{"name":"postmaster","domainId":"#dom"},"1":{"name":"abuse","domainId":"#dom"}}}}}
+{"@type":"upsert","object":"Account","matchOn":["name"],"value":{"acctquota":{"@type":"User","name":"${MAIL_USER}","quotas/maxAppPasswords":20}}}

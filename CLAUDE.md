@@ -309,6 +309,12 @@ web tier is not on 443.
   proven by applying the plan's Account upsert against a live account and finding a quota set
   independently untouched. `check-plan.py` now checks the base of a pointer-path property
   (`quotas/maxAppPasswords`) and marks the leaf unreachable rather than failing it outright.
+- **A pointer-path key in a `create` is `invalidPatch`, not a patch.** An `upsert` that finds no
+  match creates the object outright, and creation takes whole properties; `quotas/maxAppPasswords`
+  there fails every first install. `stalwart.plan.ndjson` sets the quota in a second `upsert`
+  entry, matched the same way, that runs after the account is known to exist. Verified on a
+  brand-new server with the account absent: both entries apply, the account is created, and its
+  quota is set in the same pass.
 
 ## Working method
 
