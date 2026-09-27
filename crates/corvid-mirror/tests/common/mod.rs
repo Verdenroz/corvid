@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 use std::path::{Path, PathBuf};
 
-use corvid_mirror::{Changes, Identities, Listing, Record, Source};
+use corvid_mirror::{Changes, Identities, Listing, Record, Source, Target};
 
 /// Published test vectors from the age crate, not secrets used anywhere real.
 pub const TEST_SK: &str =
@@ -47,6 +47,13 @@ pub fn scratch() -> (tempfile::TempDir, PathBuf) {
     (directory, root)
 }
 
+pub struct Imported {
+    pub body: Vec<u8>,
+    pub mailbox_ids: BTreeSet<String>,
+    pub received_at: String,
+    pub keywords: BTreeSet<String>,
+}
+
 #[derive(Default)]
 pub struct Server {
     bodies: RefCell<BTreeMap<String, Vec<u8>>>,
@@ -59,6 +66,9 @@ pub struct Server {
     pub forget_records: Cell<bool>,
     pub truncate_bodies: Cell<bool>,
     pub refuse_blobs: Cell<bool>,
+    uploads: RefCell<BTreeMap<String, Vec<u8>>>,
+    mailboxes: RefCell<BTreeMap<String, String>>,
+    imported: RefCell<Vec<Imported>>,
 }
 
 impl Server {
@@ -94,6 +104,14 @@ impl Server {
         let record = records.get_mut(id).unwrap();
         record.keywords = keywords.iter().map(|k| (*k).to_owned()).collect();
         self.touched.borrow_mut().push(id.to_owned());
+    }
+
+    pub fn imported(&self) -> std::cell::Ref<'_, Vec<Imported>> {
+        self.imported.borrow()
+    }
+
+    pub fn mailbox_id(&self, path: &str) -> Option<String> {
+        self.mailboxes.borrow().get(path).cloned()
     }
 }
 
@@ -156,4 +174,66 @@ impl Source for Server {
         }
         Ok(Listing { ids, total })
     }
+}
+
+impl Target for Server {
+    fn message_ids(&self) -> io::Result<BTreeSet<String>> {
+        Ok(self
+            .imported
+            .borrow()
+            .iter()
+            .filter_map(|entry| message_id(&entry.body))
+            .collect())
+    }
+
+    fn ensure_mailbox(&self, path: &str) -> io::Result<String> {
+        let mut mailboxes = self.mailboxes.borrow_mut();
+        if let Some(id) = mailboxes.get(path) {
+            return Ok(id.clone());
+        }
+        let id = format!("mb{}", mailboxes.len());
+        mailboxes.insert(path.to_owned(), id.clone());
+        Ok(id)
+    }
+
+    fn upload(&self, bytes: &[u8]) -> io::Result<String> {
+        let mut uploads = self.uploads.borrow_mut();
+        let id = format!("blob{}", uploads.len());
+        uploads.insert(id.clone(), bytes.to_vec());
+        Ok(id)
+    }
+
+    fn import(
+        &self,
+        blob_id: &str,
+        mailbox_ids: &BTreeSet<String>,
+        received_at: &str,
+        keywords: &BTreeSet<String>,
+    ) -> io::Result<()> {
+        let body = self
+            .uploads
+            .borrow()
+            .get(blob_id)
+            .cloned()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no such blob"))?;
+        self.imported.borrow_mut().push(Imported {
+            body,
+            mailbox_ids: mailbox_ids.clone(),
+            received_at: received_at.to_owned(),
+            keywords: keywords.clone(),
+        });
+        Ok(())
+    }
+}
+
+fn message_id(body: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(body);
+    text.lines()
+        .take_while(|line| !line.is_empty())
+        .find_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            name.trim()
+                .eq_ignore_ascii_case("message-id")
+                .then(|| value.trim().to_owned())
+        })
 }

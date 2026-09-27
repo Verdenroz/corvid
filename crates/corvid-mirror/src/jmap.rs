@@ -2,10 +2,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 
 use corvid_jmap::{Client, ids, missing, text};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 use crate::mailpath;
 use crate::source::{Changes, Listing, Record, Source};
+use crate::target::Target;
 
 /// The session advertises `maxObjectsInGet: 500`, so property fetches are chunked. A fetch that
 /// silently returned a prefix would look like a mailbox with fewer messages.
@@ -161,6 +162,96 @@ impl Mailbox {
             ids: ids(&page["ids"]),
             total: page["total"].as_u64().ok_or_else(|| missing("a total"))? as usize,
         })
+    }
+}
+
+impl Target for Mailbox {
+    fn message_ids(&self) -> io::Result<BTreeSet<String>> {
+        let ids = self.all_ids()?.ids;
+        let mut msgids = BTreeSet::new();
+        for chunk in ids.chunks(PER_GET) {
+            let result = self.client.call(
+                "Email/get",
+                json!({
+                    "accountId": self.account(),
+                    "ids": chunk,
+                    "properties": ["header:Message-Id:asText"],
+                }),
+            )?;
+            let list = result["list"]
+                .as_array()
+                .ok_or_else(|| missing("a message list"))?;
+            msgids.extend(
+                list.iter()
+                    .filter_map(|value| text(&value["header:Message-Id:asText"])),
+            );
+        }
+        Ok(msgids)
+    }
+
+    /// Walks `path` one segment at a time, creating whatever level is missing under the
+    /// parent the walk has reached so far.
+    fn ensure_mailbox(&self, path: &str) -> io::Result<String> {
+        let mut parent_id: Option<String> = None;
+        let mut mailbox_id = String::new();
+        for name in mailpath::split(path) {
+            let query = self.client.call(
+                "Mailbox/query",
+                json!({"accountId": self.account(), "filter": {"name": name, "parentId": parent_id}}),
+            )?;
+            mailbox_id = match ids(&query["ids"]).into_iter().next() {
+                Some(id) => id,
+                None => {
+                    let set = self.client.call(
+                        "Mailbox/set",
+                        json!({
+                            "accountId": self.account(),
+                            "create": {"nb": {"name": name, "parentId": parent_id}},
+                        }),
+                    )?;
+                    text(&set["created"]["nb"]["id"])
+                        .ok_or_else(|| missing("a created mailbox id"))?
+                }
+            };
+            parent_id = Some(mailbox_id.clone());
+        }
+        Ok(mailbox_id)
+    }
+
+    fn upload(&self, bytes: &[u8]) -> io::Result<String> {
+        self.client.upload("message/rfc822", bytes.to_vec())
+    }
+
+    fn import(
+        &self,
+        blob_id: &str,
+        mailbox_ids: &BTreeSet<String>,
+        received_at: &str,
+        keywords: &BTreeSet<String>,
+    ) -> io::Result<()> {
+        let mailboxes: Map<String, Value> = mailbox_ids
+            .iter()
+            .map(|id| (id.clone(), json!(true)))
+            .collect();
+        let kw: Map<String, Value> = keywords.iter().map(|k| (k.clone(), json!(true))).collect();
+        let result = self.client.call(
+            "Email/import",
+            json!({
+                "accountId": self.account(),
+                "emails": {
+                    "i": {
+                        "blobId": blob_id,
+                        "mailboxIds": mailboxes,
+                        "keywords": kw,
+                        "receivedAt": received_at,
+                    },
+                },
+            }),
+        )?;
+        match result["notCreated"].get("i") {
+            Some(error) => Err(io::Error::other(format!("Email/import refused: {error}"))),
+            None => Ok(()),
+        }
     }
 }
 

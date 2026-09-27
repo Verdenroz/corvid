@@ -9,6 +9,21 @@ pub fn join(segments: &[String]) -> String {
         .join("/")
 }
 
+pub fn split(path: &str) -> Vec<String> {
+    let mut segments = Vec::new();
+    let mut current = String::new();
+    let mut chars = path.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => current.extend(chars.next()),
+            '/' => segments.push(std::mem::take(&mut current)),
+            _ => current.push(c),
+        }
+    }
+    segments.push(current);
+    segments
+}
+
 fn escape(name: &str) -> String {
     name.replace('\\', "\\\\").replace('/', "\\/")
 }
@@ -18,15 +33,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn plain_segments_join_with_a_slash() {
-        assert_eq!(
-            join(&["Parent".to_owned(), "Child".to_owned()]),
-            "Parent/Child"
-        );
+    fn plain_segments_round_trip() {
+        let path = join(&["Parent".to_owned(), "Child".to_owned()]);
+
+        assert_eq!(path, "Parent/Child");
+        assert_eq!(split(&path), vec!["Parent".to_owned(), "Child".to_owned()]);
     }
 
     #[test]
-    fn a_slash_inside_a_name_is_escaped() {
-        assert_eq!(join(&["A/B".to_owned(), "Child".to_owned()]), "A\\/B/Child");
+    fn a_slash_inside_a_name_round_trips() {
+        let path = join(&["A/B".to_owned(), "Child".to_owned()]);
+
+        assert_eq!(split(&path), vec!["A/B".to_owned(), "Child".to_owned()]);
+    }
+
+    #[test]
+    fn a_backslash_inside_a_name_round_trips() {
+        let path = join(&["A\\B".to_owned()]);
+
+        assert_eq!(split(&path), vec!["A\\B".to_owned()]);
     }
 }

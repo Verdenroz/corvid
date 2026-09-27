@@ -6,7 +6,7 @@ use std::process::ExitCode;
 
 use corvid_config::{Config, or_exit, secret, section};
 use corvid_mirror::crypto::{self, Identities};
-use corvid_mirror::{Mailbox, audit, encrypt_archive, sync, verify, verify_deep};
+use corvid_mirror::{Mailbox, audit, encrypt_archive, restore, sync, verify, verify_deep};
 
 fn main() -> ExitCode {
     tracing_subscriber::fmt()
@@ -42,12 +42,20 @@ fn main() -> ExitCode {
             &mirror.jmap_user,
             &mirror.age_recipient,
         ),
+        Some("restore") => match (args.next(), args.next(), args.next()) {
+            (Some(identity_path), Some(target_url), Some(target_user)) => {
+                do_restore(&root, Path::new(&identity_path), &target_url, &target_user)
+            }
+            _ => usage(),
+        },
         Some(_) => usage(),
     }
 }
 
 fn usage() -> ExitCode {
-    eprintln!("usage: corvid-mirror [verify [--deep <identity-file>] | encrypt-archive]");
+    eprintln!(
+        "usage: corvid-mirror [verify [--deep <identity-file>] | encrypt-archive | restore <identity-file> <jmap-url> <jmap-user>]"
+    );
     ExitCode::from(64)
 }
 
@@ -182,6 +190,45 @@ fn encrypt(root: &Path, url: &str, user: &str, age_recipient: &str) -> ExitCode 
         }
         Err(error) => {
             tracing::error!(%error, "encrypt-archive failed");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn do_restore(root: &Path, identity_path: &Path, target_url: &str, target_user: &str) -> ExitCode {
+    let identities = match identities(identity_path) {
+        Ok(identities) => identities,
+        Err(code) => return code,
+    };
+    let password = or_exit(secret("CORVID_JMAP_PASSWORD"));
+    let target = match Mailbox::connect(target_url, target_user, &password) {
+        Ok(target) => target,
+        Err(error) => {
+            tracing::error!(%error, "cannot reach the restore target");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    match restore(root, &target, &identities) {
+        Ok(report) => {
+            tracing::info!(
+                imported = report.imported,
+                already_present = report.already_present,
+                unidentifiable = report.unidentifiable,
+                "restore complete"
+            );
+            if !report.missing.is_empty() {
+                tracing::error!(
+                    missing = report.missing.len(),
+                    first = %report.missing[0],
+                    "restored, but the target does not show every held message afterward"
+                );
+                return ExitCode::FAILURE;
+            }
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            tracing::error!(%error, "restore failed");
             ExitCode::FAILURE
         }
     }

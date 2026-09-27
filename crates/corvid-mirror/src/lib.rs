@@ -4,7 +4,9 @@ mod jmap;
 mod mailpath;
 mod meta;
 mod migrate;
+mod restore;
 pub mod source;
+mod target;
 
 use std::io;
 use std::path::Path;
@@ -14,7 +16,9 @@ pub use crypto::Identities;
 pub use jmap::Mailbox;
 pub use meta::Meta;
 pub use migrate::{Migrated, encrypt_archive};
+pub use restore::{Restored, restore};
 pub use source::{Changes, Listing, Record, Source};
+pub use target::Target;
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Audit {
