@@ -30,6 +30,7 @@ jobs:
       - run: bash deploy/tests/cloudflare.test.sh
       - run: bash deploy/tests/mta-sts-lib.test.sh
       - run: bash deploy/tests/set-password.test.sh
+      - run: bash deploy/tests/device.test.sh
       - run: cat deploy/stalwart.plan.ndjson deploy/stalwart.host-zone.ndjson > combined.ndjson && ./deploy/check-plan.py combined.ndjson
       - run: ./deploy/check-plan.py
       - run: ./deploy/check-env.sh

@@ -13,6 +13,7 @@ bash deploy/tests/bootstrap-server.test.sh
 bash deploy/tests/apply-plan.test.sh
 bash deploy/tests/install.test.sh
 bash deploy/tests/set-password.test.sh
+bash deploy/tests/device.test.sh
 ./deploy/check-plan.py
 ./deploy/check-env.sh
 helm lint charts/corvid ...   # and helm template | kubeconform; see the chart job in ci.yml
