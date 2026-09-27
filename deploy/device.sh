@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Issues and revokes one Stalwart app password per device for server.mail_user, plus the
-# device's storage key file (Phase 3) in the account's own JMAP file storage.
+# Corvid app's storage key file for that device in the account's own JMAP file storage.
 #
 # App password secrets are server-generated and per-account: Stalwart refuses to set them
 # through Account ("Secondary credentials cannot be set directly"), and stalwart-cli's own

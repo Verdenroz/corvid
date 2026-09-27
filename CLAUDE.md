@@ -4,8 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Corvid is a self-hosted, single-mailbox email deployment built around Stalwart Mail Server, plus
 Rust services that sit beside it: a tracker-stripping milter and image proxy, a labeler, and an
-off-host mirror. `docs/design.md` records why each decision was made; read it before changing
-architecture. `deploy/RUNBOOK.md` covers the steps a deploy cannot automate.
+off-host mirror. `deploy/RUNBOOK.md` covers the steps a deploy cannot automate.
 
 Site-specific values live only on the target host under `/opt/corvid/`: settings in
 `config.yaml`, secrets in env files. Nothing in this repo names a real deployment, and nothing
@@ -90,7 +89,7 @@ Crates, grouped by the service that uses them:
 `client/` is the Kotlin Multiplatform app (decision 5), Android and desktop from one shared core,
 JMAP only. `core/jmap`, `core/auth`, `core/data`, `core/keyring` and `core/model` hold the
 platform-independent logic; `feature/*` holds one screen and its ViewModel each; `app-common`
-wires them through the lock gate (`AppLockState`) that Phase 3 of `docs/design.md` describes.
+wires them through the lock gate (`AppLockState`).
 `androidApp` and `desktopApp` are thin per-platform shells. Its gates are the three Gradle
 commands above; it is not part of the Cargo workspace.
 

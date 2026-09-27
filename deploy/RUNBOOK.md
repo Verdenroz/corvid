@@ -29,7 +29,7 @@ the host as root:
     ssh host /opt/corvid/deploy/device.sh revoke phone
 
 The secret prints once, only in that terminal: not to a file, a log, or anywhere else. `add`
-refuses a name already in use; `revoke` also removes the device's storage key file (Phase 3, at
+refuses a name already in use; `revoke` also removes the device's storage key file (the Corvid app's, at
 `corvid-devices/<name>.key` in the account's own JMAP file storage) if one exists, and reminds
 you to revoke the device's VPN access too, if it has any.
 

@@ -29,8 +29,8 @@ Changes to `deploy/` also need a real run. `check-plan.py` checks field shapes a
 but it cannot tell whether Stalwart accepts a plan. Say in the pull request what host you applied it
 to, or that you did not.
 
-Read `docs/design.md` before changing architecture, and `CLAUDE.md` for how the workspace fits
-together and the Stalwart behaviour that has already caused outages.
+Read `CLAUDE.md` before changing architecture: it covers how the workspace fits together, the
+design decisions and the Stalwart behaviour that has already caused outages.
 
 ## Commits
 
