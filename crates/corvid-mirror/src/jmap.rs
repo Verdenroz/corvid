@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::io;
 
 use corvid_jmap::{Client, ids, missing, text};
@@ -44,6 +45,7 @@ impl Source for Mailbox {
     }
 
     fn records(&self, wanted: &[String]) -> io::Result<Vec<Record>> {
+        let mailboxes = self.mailbox_names()?;
         let mut records = Vec::with_capacity(wanted.len());
         for chunk in wanted.chunks(PER_GET) {
             let result = self.client.call(
@@ -51,13 +53,13 @@ impl Source for Mailbox {
                 json!({
                     "accountId": self.account(),
                     "ids": chunk,
-                    "properties": ["id", "blobId", "receivedAt", "size", "keywords"],
+                    "properties": ["id", "blobId", "receivedAt", "size", "keywords", "mailboxIds"],
                 }),
             )?;
             let list = result["list"]
                 .as_array()
                 .ok_or_else(|| missing("a message list"))?;
-            records.extend(list.iter().filter_map(record));
+            records.extend(list.iter().filter_map(|value| record(value, &mailboxes)));
         }
         Ok(records)
     }
@@ -104,6 +106,22 @@ impl Source for Mailbox {
 }
 
 impl Mailbox {
+    /// Every mailbox's id mapped to its name, refetched each call: cheap next to a page of
+    /// messages, and a rename must not stick to whatever name was cached from an earlier run.
+    fn mailbox_names(&self) -> io::Result<BTreeMap<String, String>> {
+        let result = self.client.call(
+            "Mailbox/get",
+            json!({"accountId": self.account(), "ids": null}),
+        )?;
+        let list = result["list"]
+            .as_array()
+            .ok_or_else(|| missing("a mailbox list"))?;
+        Ok(list
+            .iter()
+            .filter_map(|value| Some((text(&value["id"])?, text(&value["name"])?)))
+            .collect())
+    }
+
     fn page(&self, window: Value) -> io::Result<Listing> {
         let mut arguments = json!({
             "accountId": self.account(),
@@ -124,7 +142,7 @@ impl Mailbox {
     }
 }
 
-fn record(value: &Value) -> Option<Record> {
+fn record(value: &Value, mailboxes: &BTreeMap<String, String>) -> Option<Record> {
     Some(Record {
         id: text(&value["id"])?,
         blob_id: text(&value["blobId"])?,
@@ -133,6 +151,14 @@ fn record(value: &Value) -> Option<Record> {
         keywords: value["keywords"]
             .as_object()
             .map(|map| map.keys().cloned().collect())
+            .unwrap_or_default(),
+        mailboxes: value["mailboxIds"]
+            .as_object()
+            .map(|ids| {
+                ids.keys()
+                    .filter_map(|id| mailboxes.get(id).cloned())
+                    .collect()
+            })
             .unwrap_or_default(),
     })
 }

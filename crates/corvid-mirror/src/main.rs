@@ -1,6 +1,7 @@
 use std::process::ExitCode;
 
 use corvid_config::{Config, or_exit, secret, section};
+use corvid_mirror::crypto;
 use corvid_mirror::{Mailbox, audit, sync, verify};
 
 fn main() -> ExitCode {
@@ -14,6 +15,13 @@ fn main() -> ExitCode {
     let config = or_exit(Config::load());
     let mirror = or_exit(section(config.mirror, "mirror"));
     let password = or_exit(secret("CORVID_JMAP_PASSWORD"));
+    let recipient = match crypto::parse_recipient(&mirror.age_recipient) {
+        Ok(recipient) => recipient,
+        Err(error) => {
+            tracing::error!(%error, "mirror.age_recipient");
+            return ExitCode::from(corvid_config::EX_CONFIG);
+        }
+    };
     let (root, url, user) = (mirror.root, mirror.jmap_url, mirror.jmap_user);
 
     let mailbox = match Mailbox::connect(&url, &user, &password) {
@@ -26,7 +34,7 @@ fn main() -> ExitCode {
 
     // Sync cannot see a message that never arrived, audit cannot see damage to what did, and
     // only verify runs without the server.
-    let fetched = match sync(&root, &mailbox) {
+    let fetched = match sync(&root, &mailbox, &recipient) {
         Ok(summary) => summary,
         Err(error) => {
             tracing::error!(%error, "sync failed");
@@ -67,7 +75,7 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Ok(damaged) => {
-            tracing::error!(damaged = damaged.len(), first = %damaged[0], "stored bodies do not match their digests");
+            tracing::error!(damaged = damaged.len(), first = %damaged[0], "stored ciphertext does not match its digest");
             ExitCode::FAILURE
         }
         Err(error) => {

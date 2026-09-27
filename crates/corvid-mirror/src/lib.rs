@@ -1,4 +1,5 @@
 mod archive;
+pub mod crypto;
 mod jmap;
 pub mod source;
 
@@ -6,6 +7,7 @@ use std::io;
 use std::path::Path;
 
 pub use archive::{Archive, Held};
+pub use crypto::Identities;
 pub use jmap::Mailbox;
 pub use source::{Changes, Listing, Record, Source};
 
@@ -33,7 +35,11 @@ pub struct Summary {
 ///
 /// A first run takes the whole mailbox, unlike the labeler, which adopts the position and
 /// labels nothing historical.
-pub fn sync(root: &Path, source: &impl Source) -> io::Result<Summary> {
+pub fn sync(
+    root: &Path,
+    source: &impl Source,
+    recipient: &age::x25519::Recipient,
+) -> io::Result<Summary> {
     let mut archive = Archive::open(root)?;
     let mut summary = Summary::default();
 
@@ -64,7 +70,7 @@ pub fn sync(root: &Path, source: &impl Source) -> io::Result<Summary> {
 
     for record in records {
         if archive.holds(&record.id) {
-            archive.note_keywords(&record.id, &record.keywords);
+            archive.note_seen(&record.id, &record.keywords, &record.mailboxes);
             summary.already_held += 1;
             continue;
         }
@@ -82,7 +88,7 @@ pub fn sync(root: &Path, source: &impl Source) -> io::Result<Summary> {
                 ),
             ));
         }
-        archive.store(&record, &body)?;
+        archive.store(&record, &body, recipient)?;
         summary.fetched += 1;
     }
 
@@ -138,7 +144,7 @@ fn listing(source: &impl Source) -> io::Result<Listing> {
     ))
 }
 
-/// Rehashes every held body. Needs no server.
+/// Rehashes every held ciphertext. Needs no server and no identity.
 pub fn verify(root: &Path) -> io::Result<Vec<String>> {
     Archive::open(root)?.verify()
 }

@@ -13,6 +13,9 @@ pub struct Record {
     /// bytes would accept a truncated or padded download.
     pub size: usize,
     pub keywords: BTreeSet<String>,
+    /// Mailbox names, as of the last sight. Restore recreates mailboxes by name, since a
+    /// rebuilt server's mailbox ids never match the ones the archive was written against.
+    pub mailboxes: BTreeSet<String>,
 }
 
 pub struct Listing {
