@@ -9,6 +9,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -30,6 +31,9 @@ sealed interface DeviceKeyLookup {
     data object Missing : DeviceKeyLookup
 
     data object Damaged : DeviceKeyLookup
+
+    /** More than one root `corvid-devices` folder exists; never resolved by picking one. */
+    data object Ambiguous : DeviceKeyLookup
 
     class Unreachable(val error: JmapError) : DeviceKeyLookup
 }
@@ -55,11 +59,21 @@ class DeviceKeyRepository(private val jmapClient: JmapClient) {
             parseKey(jmapClient.downloadBlob(blobId, fileName(deviceName), KEY_CONTENT_TYPE))
         } catch (e: JmapException) {
             DeviceKeyLookup.Unreachable(e.error)
+        } catch (e: DeviceKeyConflict.AmbiguousRootFolder) {
+            DeviceKeyLookup.Ambiguous
         }
 
-    /** Always destroys any existing file first: decision 10 never adopts one. */
+    /**
+     * Always destroys any existing file first: decision 10 never adopts one.
+     * Fails typed rather than guessing if the destroy, the create, or a
+     * concurrent enrollment leaves the folder ambiguous.
+     */
     suspend fun enroll(deviceName: String): ByteArray {
-        val folderId = findRootNode(DEVICES_FOLDER_NAME) ?: createNode(name = DEVICES_FOLDER_NAME, parentId = null)
+        val folderId =
+            findRootNode(DEVICES_FOLDER_NAME) ?: run {
+                createNode(name = DEVICES_FOLDER_NAME, parentId = null)
+                checkNotNull(findRootNode(DEVICES_FOLDER_NAME)) { "corvid-devices folder vanished right after creation" }
+            }
         findChildNode(folderId, fileName(deviceName))?.let { destroyNode(it) }
 
         val key = Random.nextBytes(KEY_LENGTH)
@@ -72,7 +86,9 @@ class DeviceKeyRepository(private val jmapClient: JmapClient) {
 
     private fun parseKey(bytes: ByteArray): DeviceKeyLookup =
         if (bytes.size == KEY_LENGTH + 1 && bytes[0] == KEY_VERSION) {
-            DeviceKeyLookup.Found(bytes.copyOfRange(1, bytes.size))
+            val key = bytes.copyOfRange(1, bytes.size)
+            bytes.fill(0)
+            DeviceKeyLookup.Found(key)
         } else {
             DeviceKeyLookup.Damaged
         }
@@ -80,11 +96,14 @@ class DeviceKeyRepository(private val jmapClient: JmapClient) {
     private suspend fun findRootNode(name: String): String? {
         val candidates = queryByName(name)
         if (candidates.isEmpty()) return null
-        return getNodes(candidates, listOf("id", "parentId"))
-            .firstOrNull { it["parentId"] is JsonNull }
-            ?.getValue("id")
-            ?.jsonPrimitive
-            ?.content
+        val roots =
+            getNodes(candidates, listOf("id", "parentId"))
+                .filter { it["parentId"] is JsonNull }
+        return when (roots.size) {
+            0 -> null
+            1 -> roots.single().getValue("id").jsonPrimitive.content
+            else -> throw DeviceKeyConflict.AmbiguousRootFolder(roots.size)
+        }
     }
 
     private suspend fun findChildNode(
@@ -135,14 +154,23 @@ class DeviceKeyRepository(private val jmapClient: JmapClient) {
                 blobId?.let { put("blobId", it) }
             }
         val arguments = buildJsonObject { putJsonObject("create") { put("n", creation) } }
-        val created = call("FileNode/set", arguments).getValue("created").jsonObject
-        return created.getValue("n").jsonObject.getValue("id").jsonPrimitive.content
+        val result = call("FileNode/set", arguments)
+        val createdId = result["created"]?.jsonObject?.get("n")?.jsonObject?.get("id")?.jsonPrimitive?.content
+        return createdId ?: throw DeviceKeyConflict.CreateFailed(result.notCreatedReason("n"))
     }
 
     private suspend fun destroyNode(id: String) {
         val arguments = buildJsonObject { putJsonArray("destroy") { add(JsonPrimitive(id)) } }
-        call("FileNode/set", arguments)
+        val result = call("FileNode/set", arguments)
+        val destroyed = result["destroyed"]?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty()
+        if (id !in destroyed) throw DeviceKeyConflict.DestroyFailed(id, result.notDestroyedReason(id))
     }
+
+    private fun JsonObject.notCreatedReason(creationId: String) =
+        get("notCreated")?.jsonObject?.get(creationId)?.jsonObject?.get("description")?.jsonPrimitive?.contentOrNull
+
+    private fun JsonObject.notDestroyedReason(id: String) =
+        get("notDestroyed")?.jsonObject?.get(id)?.jsonObject?.get("description")?.jsonPrimitive?.contentOrNull
 
     private suspend fun call(
         method: String,

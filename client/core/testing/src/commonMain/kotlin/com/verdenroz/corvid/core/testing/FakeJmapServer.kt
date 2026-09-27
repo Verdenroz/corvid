@@ -78,6 +78,12 @@ class FakeJmapServer {
     private var nextFileNodeId = 1
     private var nextBlobId = 1
 
+    /** FileNode ids that fail `destroy` with `notDestroyed`, as a still-referenced node would. */
+    val refuseDestroy: MutableSet<String> = mutableSetOf()
+
+    /** Fails every FileNode `create` with `notCreated`, as a quota or permission refusal would. */
+    var refuseCreate: Boolean = false
+
     var requestCount: Int = 0
         private set
 
@@ -254,11 +260,7 @@ class FakeJmapServer {
     private fun fileNodeQuery(arguments: JsonObject): Pair<String, JsonObject> {
         val filter = arguments["filter"]?.jsonObject ?: JsonObject(emptyMap())
         if (filter["parentId"] is JsonNull) {
-            return "error" to
-                buildJsonObject {
-                    put("type", "invalidArguments")
-                    put("description", "invalid type: null, expected a borrowed string")
-                }
+            return "error" to problem("invalidArguments", "invalid type: null, expected a borrowed string")
         }
         val parentId = filter["parentId"]?.jsonPrimitive?.contentOrNull
         val name = filter["name"]?.jsonPrimitive?.contentOrNull
@@ -291,7 +293,12 @@ class FakeJmapServer {
 
     private fun fileNodeSet(arguments: JsonObject): JsonObject {
         val created = mutableMapOf<String, JsonObject>()
+        val notCreated = mutableMapOf<String, JsonObject>()
         arguments["create"]?.jsonObject?.forEach { (creationId, spec) ->
+            if (refuseCreate) {
+                notCreated[creationId] = problem("forbidden", "creation refused")
+                return@forEach
+            }
             val specObj = spec.jsonObject
             val name = specObj.getValue("name").jsonPrimitive.content
             val parentId = specObj["parentId"]?.jsonPrimitive?.contentOrNull
@@ -300,17 +307,32 @@ class FakeJmapServer {
             fileNodes += FakeFileNode(id, parentId, name, if (blobId != null) "file" else "directory", blobId)
             created[creationId] = buildJsonObject { put("id", id) }
         }
-        val destroyed =
-            arguments["destroy"]?.jsonArray?.map { it.jsonPrimitive.content }?.filter { id ->
-                fileNodes.removeAll { it.id == id }
-            }.orEmpty()
+        val destroyed = mutableListOf<String>()
+        val notDestroyed = mutableMapOf<String, JsonObject>()
+        arguments["destroy"]?.jsonArray?.map { it.jsonPrimitive.content }?.forEach { id ->
+            when {
+                id in refuseDestroy -> notDestroyed[id] = problem("forbidden", "destroy refused")
+                fileNodes.removeAll { it.id == id } -> destroyed += id
+                else -> notDestroyed[id] = problem("notFound", "no such node")
+            }
+        }
         return buildJsonObject {
             put("accountId", ACCOUNT_ID)
             put("oldState", "fs0")
             put("newState", "fs1")
             if (created.isNotEmpty()) putJsonObject("created") { created.forEach { (k, v) -> put(k, v) } }
+            if (notCreated.isNotEmpty()) putJsonObject("notCreated") { notCreated.forEach { (k, v) -> put(k, v) } }
             if (destroyed.isNotEmpty()) put("destroyed", JsonArray(destroyed.map { JsonPrimitive(it) }))
+            if (notDestroyed.isNotEmpty()) putJsonObject("notDestroyed") { notDestroyed.forEach { (k, v) -> put(k, v) } }
         }
+    }
+
+    private fun problem(
+        type: String,
+        description: String,
+    ) = buildJsonObject {
+        put("type", type)
+        put("description", description)
     }
 
     private fun resolveReferences(
