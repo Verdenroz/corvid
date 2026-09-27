@@ -32,3 +32,6 @@ sealed interface JmapError {
 }
 
 class JmapException(val error: JmapError) : Exception()
+
+/** The session response itself is unusable: not an outcome [JmapError] models, since no retry fixes it. */
+class JmapSessionException(message: String) : Exception(message)

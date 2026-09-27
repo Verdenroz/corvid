@@ -8,7 +8,16 @@ import io.ktor.client.request.HttpResponseData
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
 import java.io.IOException
+import javax.net.ssl.SSLHandshakeException
+
+private const val CORE_CAPABILITY = "urn:ietf:params:jmap:core"
+private const val MAIL_CAPABILITY = "urn:ietf:params:jmap:mail"
+private const val FILENODE_CAPABILITY = "urn:ietf:params:jmap:filenode"
 
 /**
  * Interprets JMAP against an in-memory mailbox, advertising
@@ -20,6 +29,19 @@ import java.io.IOException
 class FakeJmapServer {
     var unauthorized: Boolean = false
     var unreachable: Boolean = false
+    var tlsFailure: Boolean = false
+
+    /** Seconds sent back in `Retry-After`; non-null also switches the response to 429. */
+    var rateLimitedFor: Long? = null
+
+    /** No token presented: capabilities only, no account (decision 5's anonymous session). */
+    var unauthenticated: Boolean = false
+
+    /** Drops one capability from the advertised session, to exercise the required-capability check. */
+    var missingCapability: String? = null
+
+    /** Drops one URL field from the advertised session, to exercise the required-endpoint check. */
+    var missingUrl: String? = null
 
     var requestCount: Int = 0
         private set
@@ -29,35 +51,56 @@ class FakeJmapServer {
     private fun MockRequestHandleScope.handle(request: HttpRequestData): HttpResponseData {
         requestCount++
         if (unreachable) throw IOException("simulated network failure")
+        if (tlsFailure) throw SSLHandshakeException("simulated certificate failure")
         return when {
-            request.url.encodedPath.endsWith("/.well-known/jmap") -> sessionResponse()
+            request.url.encodedPath.endsWith("/jmap/session") -> sessionResponse()
             else -> respond("not found", HttpStatusCode.NotFound)
         }
     }
 
     private fun MockRequestHandleScope.sessionResponse(): HttpResponseData {
         if (unauthorized) return respond("", HttpStatusCode.Unauthorized)
+        rateLimitedFor?.let { seconds ->
+            return respond(
+                "",
+                HttpStatusCode.TooManyRequests,
+                headersOf(HttpHeaders.RetryAfter, listOf(seconds.toString())),
+            )
+        }
         return respond(
-            SESSION_BODY,
+            sessionBody().toString(),
             HttpStatusCode.OK,
             headersOf(HttpHeaders.ContentType, listOf("application/json")),
         )
     }
 
-    private companion object {
-        val SESSION_BODY =
-            """
-            {
-              "capabilities": {"urn:ietf:params:jmap:core": {}, "urn:ietf:params:jmap:mail": {}},
-              "accounts": {"u1": {"name": "verde"}},
-              "primaryAccounts": {"urn:ietf:params:jmap:mail": "u1"},
-              "username": "verde",
-              "apiUrl": "https://mail.corvid.test/jmap/api/",
-              "downloadUrl": "https://mail.corvid.test/jmap/download/{accountId}/{blobId}/{name}?accept={type}",
-              "uploadUrl": "https://mail.corvid.test/jmap/upload/{accountId}/",
-              "eventSourceUrl": "https://mail.corvid.test/jmap/eventsource/",
-              "state": "s1"
+    private fun sessionBody(): JsonObject =
+        buildJsonObject {
+            putJsonObject("capabilities") {
+                for (capability in listOf(CORE_CAPABILITY, MAIL_CAPABILITY, FILENODE_CAPABILITY)) {
+                    if (capability != missingCapability) putJsonObject(capability) {}
+                }
             }
-            """.trimIndent()
-    }
+            if (unauthenticated) {
+                putJsonObject("accounts") {}
+                putJsonObject("primaryAccounts") {}
+                put("username", "")
+            } else {
+                putJsonObject("accounts") { putJsonObject("u1") { put("name", "verde") } }
+                putJsonObject("primaryAccounts") { put(MAIL_CAPABILITY, "u1") }
+                put("username", "verde")
+            }
+            for (
+            (key, value) in
+            mapOf(
+                "apiUrl" to "https://mail.corvid.test/jmap/api/",
+                "downloadUrl" to "https://mail.corvid.test/jmap/download/{accountId}/{blobId}/{name}?accept={type}",
+                "uploadUrl" to "https://mail.corvid.test/jmap/upload/{accountId}/",
+                "eventSourceUrl" to "https://mail.corvid.test/jmap/eventsource/",
+            )
+            ) {
+                if (key != missingUrl) put(key, value)
+            }
+            put("state", "s1")
+        }
 }

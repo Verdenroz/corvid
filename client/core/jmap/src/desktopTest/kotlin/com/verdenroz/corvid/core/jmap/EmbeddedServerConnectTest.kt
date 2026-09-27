@@ -30,7 +30,7 @@ class EmbeddedServerConnectTest {
         server =
             embeddedServer(Netty, port = 0) {
                 routing {
-                    get("/.well-known/jmap") {
+                    get("/jmap/session") {
                         call.respondText(SESSION_BODY, ContentType.Application.Json)
                     }
                 }
@@ -59,6 +59,11 @@ class EmbeddedServerConnectTest {
         val SESSION_BODY =
             """
             {
+              "capabilities": {
+                "urn:ietf:params:jmap:core": {},
+                "urn:ietf:params:jmap:mail": {},
+                "urn:ietf:params:jmap:filenode": {}
+              },
               "primaryAccounts": {"urn:ietf:params:jmap:mail": "u1"},
               "apiUrl": "https://mail.corvid.test/jmap/api/",
               "downloadUrl": "https://mail.corvid.test/jmap/download/{accountId}/{blobId}/{name}?accept={type}",
