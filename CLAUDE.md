@@ -28,6 +28,10 @@ podman build -f deploy/Containerfile -t localhost/corvid:latest .   # the image 
 podman save localhost/corvid:latest | ssh <host> podman load        # a small mail host cannot build it
 ./scripts/vet-ip.sh <ip>                     # run on a candidate VPS, off any VPN, before choosing it
 helm lint charts/corvid --set images.corvid.repository=x --set secrets.values.CORVID_IMGPROXY_SECRET=x --set secrets.values.CORVID_SENTINEL_SECRET=x --set secrets.values.CORVID_SENTINEL_JMAP_PASSWORD=x --set-string 'secrets.values.cloudflare\.token=x'
+
+cd client && ./gradlew check --max-workers=2       # ktlint, unit tests, android lint
+./gradlew :androidApp:assembleDebug --max-workers=2
+./gradlew :desktopApp:compileKotlin --max-workers=2
 ```
 
 On a host, in order: `deploy/bootstrap.sh` (host prep, quadlets, firewall, empty env files), fill
@@ -82,6 +86,13 @@ Crates, grouped by the service that uses them:
   checksum, schema line, atomic write; each caller pins its own payload).
 - `corvid-audit` (sampling, reweighting, redaction for a blind audit) is a library with no
   binary yet.
+
+`client/` is the Kotlin Multiplatform app (decision 5), Android and desktop from one shared core,
+JMAP only. `core/jmap`, `core/auth`, `core/data`, `core/keyring` and `core/model` hold the
+platform-independent logic; `feature/*` holds one screen and its ViewModel each; `app-common`
+wires them through the lock gate (`AppLockState`) that Phase 3 of `docs/design.md` describes.
+`androidApp` and `desktopApp` are thin per-platform shells. Its gates are the three Gradle
+commands above; it is not part of the Cargo workspace.
 
 **Keyword provenance keeps the labeler from training on its own output.** Nothing in JMAP
 records who set a keyword, so everything the labeler writes is prefixed `corvid-`, and model

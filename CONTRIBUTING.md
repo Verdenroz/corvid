@@ -20,6 +20,9 @@ bash deploy/tests/lib.test.sh
 ./deploy/check-env.sh
 ./deploy/check-sentinel-events.sh
 helm lint charts/corvid ...   # and helm template | kubeconform; see the chart job in ci.yml
+cd client && ./gradlew check --max-workers=2
+./gradlew :androidApp:assembleDebug --max-workers=2
+./gradlew :desktopApp:compileKotlin --max-workers=2
 ```
 
 Changes to `deploy/` also need a real run. `check-plan.py` checks field shapes and references,

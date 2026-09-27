@@ -1,0 +1,213 @@
+package com.verdenroz.corvid.app
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.verdenroz.corvid.core.auth.AuthState
+import com.verdenroz.corvid.core.auth.TokenSource
+import com.verdenroz.corvid.core.data.MailboxRepository
+import com.verdenroz.corvid.core.jmap.AuthLatch
+import com.verdenroz.corvid.core.jmap.Invocation
+import com.verdenroz.corvid.core.jmap.JmapClient
+import com.verdenroz.corvid.core.jmap.JmapException
+import com.verdenroz.corvid.core.jmap.JmapSessionException
+import com.verdenroz.corvid.core.jmap.ReconnectPolicy
+import com.verdenroz.corvid.core.keyring.DeviceKeyConflict
+import com.verdenroz.corvid.core.keyring.DeviceKeyLookup
+import com.verdenroz.corvid.core.keyring.DeviceKeyRepository
+import com.verdenroz.corvid.core.keyring.KeyHolder
+import com.verdenroz.corvid.core.keyring.KeyState
+import io.ktor.client.HttpClient
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonObject
+import kotlin.time.Duration.Companion.seconds
+
+private val HEARTBEAT_INTERVAL = 60.seconds
+
+/**
+ * Drives [AppLockState] from [TokenSource], [KeyHolder] and a device key
+ * lookup built fresh for each signed-in server (decision 10). Owns the one
+ * [JmapClient] a session gets: constructed once on sign-in, outlived by
+ * nothing, declared into [UnlockedScopeHolder] once Unlocked so a scoped
+ * repository can reuse it without knowing how it was built.
+ */
+class AppLockViewModel(
+    private val tokenSource: TokenSource,
+    private val keyHolder: KeyHolder,
+    private val authLatch: AuthLatch,
+    private val httpClient: HttpClient,
+    private val unlockedScopeHolder: UnlockedScopeHolder,
+) : ViewModel() {
+    private val _state = MutableStateFlow<AppLockState>(AppLockState.SignedOut)
+    val state: StateFlow<AppLockState> = _state
+
+    private val reconnectPolicy = ReconnectPolicy()
+    private var jmapClient: JmapClient? = null
+    private var deviceKeyRepository: DeviceKeyRepository? = null
+    private var deviceName: String? = null
+    private var enrolledThisSession = false
+    private var heartbeatJob: Job? = null
+
+    init {
+        viewModelScope.launch { tokenSource.state.collect(::onAuthState) }
+        // Unconfined for the same reason TokenSource observes the latch this way: a
+        // trip must drop the key in the same call, not on this scope's next turn.
+        viewModelScope.launch(Dispatchers.Unconfined) {
+            authLatch.tripped.collect { tripped -> if (tripped) keyHolder.drop() }
+        }
+        viewModelScope.launch { keyHolder.state.collect(::onKeyState) }
+    }
+
+    fun submitDeviceName(name: String) {
+        deviceName = name
+        viewModelScope.launch { resolveKey(name) }
+    }
+
+    fun unlock() {
+        deviceName?.let { name -> viewModelScope.launch { resolveKey(name) } }
+    }
+
+    fun confirmEnroll() {
+        val needsEnrollment = _state.value as? AppLockState.NeedsEnrollment ?: return
+        val repository = deviceKeyRepository ?: return
+        viewModelScope.launch { enroll(repository, needsEnrollment.deviceName) }
+    }
+
+    fun lock() = keyHolder.drop()
+
+    /** Throttled by [reconnectPolicy], the same policy an automatic reconnect would use. */
+    fun retry() {
+        val name = deviceName
+        val current = tokenSource.state.value
+        viewModelScope.launch {
+            delay(reconnectPolicy.nextDelay())
+            when {
+                jmapClient == null && current is AuthState.SignedIn -> connectToServer(current)
+                name != null -> resolveKey(name)
+            }
+        }
+    }
+
+    private suspend fun onAuthState(authState: AuthState) {
+        when (authState) {
+            is AuthState.SignedOut -> {
+                heartbeatJob?.cancel()
+                jmapClient = null
+                deviceKeyRepository = null
+                deviceName = null
+                enrolledThisSession = false
+                reconnectPolicy.reset()
+                keyHolder.drop()
+                // Revoked is a dead end by design: only relaunching the app, not
+                // this sign-out, gets a revoked device back to a sign-in screen.
+                if (_state.value !is AppLockState.Revoked) _state.value = AppLockState.SignedOut
+            }
+            is AuthState.SignedIn -> if (jmapClient == null) connectToServer(authState)
+        }
+    }
+
+    private suspend fun connectToServer(signedIn: AuthState.SignedIn) {
+        // needsDeviceName only turns true once the session is confirmed reachable: setting
+        // it before that let a fast submitDeviceName race a still-connecting session and
+        // silently no-op on a null deviceKeyRepository.
+        _state.value = AppLockState.Connecting(needsDeviceName = false)
+        try {
+            val client =
+                JmapClient.connect(httpClient, authLatch, signedIn.server.baseUrl, bearerToken = tokenSource::currentBearerToken)
+            jmapClient = client
+            deviceKeyRepository = DeviceKeyRepository(client)
+            val name = deviceName
+            if (name != null) resolveKey(name) else _state.value = AppLockState.Connecting(needsDeviceName = true)
+        } catch (e: JmapException) {
+            _state.value = AppLockState.Unreachable("could not reach the server")
+        } catch (e: JmapSessionException) {
+            _state.value = AppLockState.Unreachable("the server's session response is unusable")
+        }
+    }
+
+    private suspend fun resolveKey(name: String) {
+        _state.value = AppLockState.Connecting(needsDeviceName = false)
+        val repository = deviceKeyRepository ?: return
+        when (val lookup = repository.fetch(name)) {
+            is DeviceKeyLookup.Found -> keyHolder.unlock(lookup.key)
+            is DeviceKeyLookup.Missing ->
+                if (enrolledThisSession) {
+                    keyHolder.drop()
+                    tokenSource.signOut()
+                    _state.value = AppLockState.Revoked
+                } else {
+                    _state.value = AppLockState.NeedsEnrollment(name)
+                }
+            is DeviceKeyLookup.Damaged -> _state.value = AppLockState.Unreachable("the device key is damaged")
+            is DeviceKeyLookup.Ambiguous -> _state.value = AppLockState.Unreachable("more than one device folder exists")
+            is DeviceKeyLookup.Unreachable -> _state.value = AppLockState.Unreachable("the device key could not be reached")
+        }
+    }
+
+    private suspend fun enroll(
+        repository: DeviceKeyRepository,
+        name: String,
+    ) {
+        try {
+            val key = repository.enroll(name)
+            enrolledThisSession = true
+            keyHolder.unlock(key)
+        } catch (e: JmapException) {
+            _state.value = AppLockState.Unreachable("could not reach the server to enroll this device")
+        } catch (e: DeviceKeyConflict) {
+            _state.value = AppLockState.Unreachable(e.message ?: "could not enroll this device")
+        }
+    }
+
+    private fun onKeyState(keyState: KeyState) {
+        when (keyState) {
+            is KeyState.Unlocked -> {
+                // A sign-out can land between the key unlocking and this collector
+                // running, clearing jmapClient underneath it.
+                val client = jmapClient
+                if (client == null) {
+                    _state.value = AppLockState.SignedOut
+                    return
+                }
+                reconnectPolicy.reset()
+                unlockedScopeHolder.open().declare(client)
+                _state.value = AppLockState.Unlocked(MailboxRepository(client))
+                heartbeatJob = viewModelScope.launch { heartbeatLoop() }
+            }
+            is KeyState.Locked -> {
+                heartbeatJob?.cancel()
+                heartbeatJob = null
+                unlockedScopeHolder.close()
+                if (_state.value is AppLockState.Unlocked) _state.value = AppLockState.Locked
+            }
+        }
+    }
+
+    private suspend fun heartbeatLoop() {
+        val client = jmapClient ?: return
+        while (true) {
+            delay(HEARTBEAT_INTERVAL)
+            try {
+                client.call(listOf(Invocation("Core/echo", JsonObject(emptyMap()), "hb")))
+            } catch (e: JmapException) {
+                dropForUnreachableHeartbeat()
+                return
+            } catch (e: JmapSessionException) {
+                dropForUnreachableHeartbeat()
+                return
+            }
+        }
+    }
+
+    // Set before drop(): onKeyState's Locked branch only overwrites an Unlocked
+    // state, so this keeps the pane's "unreachable" message rather than
+    // reading as though the user tapped Lock.
+    private fun dropForUnreachableHeartbeat() {
+        _state.value = AppLockState.Unreachable("the heartbeat failed")
+        keyHolder.drop()
+    }
+}

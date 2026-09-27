@@ -1,0 +1,280 @@
+package com.verdenroz.corvid.core.data
+
+import com.verdenroz.corvid.core.jmap.AuthLatch
+import com.verdenroz.corvid.core.jmap.JmapClient
+import com.verdenroz.corvid.core.jmap.createJmapHttpClient
+import com.verdenroz.corvid.core.model.EmailSummary
+import com.verdenroz.corvid.core.testing.FakeEmail
+import com.verdenroz.corvid.core.testing.FakeJmapServer
+import com.verdenroz.corvid.core.testing.FakeMailbox
+import kotlinx.coroutines.test.runTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.time.Instant
+
+private const val BASE_URL = "http://127.0.0.1:9999"
+private const val EMAIL_COUNT = 170
+
+private suspend fun repository(fake: FakeJmapServer): MailboxRepository {
+    val client = JmapClient.connect(createJmapHttpClient(fake.engine), AuthLatch(), BASE_URL)
+    return MailboxRepository(client)
+}
+
+class MailboxRepositoryTest {
+    @Test
+    fun `the inbox mailbox is found by role`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "m1", name = "Archive", role = "archive")
+            fake.mailboxes += FakeMailbox(id = "m2", name = "Inbox", role = "inbox")
+
+            val inbox = repository(fake).findMailboxByRole("inbox")
+
+            assertEquals("m2", inbox?.id)
+        }
+
+    @Test
+    fun `a mailbox larger than three pages is listed without gaps or repeats`() =
+        runTest {
+            val fake = FakeJmapServer()
+            repeat(EMAIL_COUNT) { i ->
+                fake.emails +=
+                    FakeEmail(
+                        id = "e$i",
+                        threadId = "e$i",
+                        mailboxIds = setOf("inbox"),
+                        subject = "subject $i",
+                        from = "sender$i@example.test",
+                        receivedAt = Instant.fromEpochSeconds((EMAIL_COUNT - i).toLong()).toString(),
+                    )
+            }
+            // subject and from are String|null and EmailAddress[]|null on the wire (RFC 8621);
+            // both need to survive one full traversal without a crash or a literal "null".
+            fake.emails +=
+                FakeEmail(
+                    id = "no-subject",
+                    threadId = "no-subject",
+                    mailboxIds = setOf("inbox"),
+                    subject = null,
+                    from = "sender@example.test",
+                    receivedAt = Instant.fromEpochSeconds((EMAIL_COUNT + 1).toLong()).toString(),
+                )
+            fake.emails +=
+                FakeEmail(
+                    id = "no-from",
+                    threadId = "no-from",
+                    mailboxIds = setOf("inbox"),
+                    subject = "subject",
+                    from = null,
+                    receivedAt = Instant.fromEpochSeconds((EMAIL_COUNT + 2).toLong()).toString(),
+                )
+            val repository = repository(fake)
+
+            val all = mutableListOf<EmailSummary>()
+            var anchor: String? = null
+            do {
+                val page = assertIs<EmailPage.Found>(repository.page("inbox", anchor))
+                all += page.emails
+                anchor = page.emails.lastOrNull()?.id
+            } while (page.emails.isNotEmpty())
+
+            assertEquals(EMAIL_COUNT + 2, all.size)
+            assertEquals(all.map { it.id }.toSet().size, all.size)
+            assertEquals("", all.first { it.id == "no-subject" }.subject)
+            assertEquals("", all.first { it.id == "no-from" }.from)
+        }
+
+    @Test
+    fun `an anchor the server no longer recognises restarts the query from the top`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.emails += FakeEmail("e1", "e1", setOf("inbox"), "s1", "a@example.test", "2024-01-01T00:00:00Z")
+
+            val page = repository(fake).page("inbox", anchor = "does-not-exist")
+
+            assertIs<EmailPage.AnchorNotFound>(page)
+        }
+
+    @Test
+    fun `a plain text message is read as is`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.emails +=
+                FakeEmail(
+                    "e1",
+                    "e1",
+                    setOf("inbox"),
+                    "hello",
+                    "a@example.test",
+                    "2024-01-01T00:00:00Z",
+                    to = listOf("b@example.test"),
+                    cc = listOf("c@example.test"),
+                    body = "plain text body",
+                )
+
+            val detail = assertIs<EmailLookup.Found>(repository(fake).getEmail("e1")).detail
+
+            assertEquals("plain text body", detail.body)
+            assertEquals(listOf("b@example.test"), detail.to)
+            assertEquals(listOf("c@example.test"), detail.cc)
+            assertEquals(false, detail.bodyTruncated)
+        }
+
+    @Test
+    fun `an html-only message is flattened to text, never rendered`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.emails +=
+                FakeEmail(
+                    "e1",
+                    "e1",
+                    setOf("inbox"),
+                    "hello",
+                    "a@example.test",
+                    "2024-01-01T00:00:00Z",
+                    bodyType = "text/html",
+                    body = "<p>hello <b>world</b></p>",
+                )
+
+            val detail = assertIs<EmailLookup.Found>(repository(fake).getEmail("e1")).detail
+
+            assertEquals("hello world", detail.body)
+        }
+
+    @Test
+    fun `paragraphs and list items keep their line breaks when flattened`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.emails +=
+                FakeEmail(
+                    "e1",
+                    "e1",
+                    setOf("inbox"),
+                    "hello",
+                    "a@example.test",
+                    "2024-01-01T00:00:00Z",
+                    bodyType = "text/html",
+                    body = "<p>first paragraph</p><p>second paragraph</p><ul><li>one</li><li>two</li></ul>",
+                )
+
+            val detail = assertIs<EmailLookup.Found>(repository(fake).getEmail("e1")).detail
+
+            assertEquals("first paragraph\n\nsecond paragraph\n\none\n\ntwo", detail.body)
+        }
+
+    @Test
+    fun `a pre block keeps its indentation when the rest of the body is trimmed`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.emails +=
+                FakeEmail(
+                    "e1",
+                    "e1",
+                    setOf("inbox"),
+                    "hello",
+                    "a@example.test",
+                    "2024-01-01T00:00:00Z",
+                    bodyType = "text/html",
+                    body = "<p>before</p><pre>  line one\n    line two</pre><p>after</p>",
+                )
+
+            val detail = assertIs<EmailLookup.Found>(repository(fake).getEmail("e1")).detail
+
+            assertEquals("before\n\n  line one\n    line two\n\nafter", detail.body)
+        }
+
+    @Test
+    fun `entities in an html-only body are decoded, not shown escaped`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.emails +=
+                FakeEmail(
+                    "e1",
+                    "e1",
+                    setOf("inbox"),
+                    "hello",
+                    "a@example.test",
+                    "2024-01-01T00:00:00Z",
+                    bodyType = "text/html",
+                    body = "<p>Tom &amp; Jerry, a &lt; b</p>",
+                )
+
+            val detail = assertIs<EmailLookup.Found>(repository(fake).getEmail("e1")).detail
+
+            assertEquals("Tom & Jerry, a < b", detail.body)
+        }
+
+    @Test
+    fun `a literal backslash-n in the mail's own text is not mistaken for a line break`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.emails +=
+                FakeEmail(
+                    "e1",
+                    "e1",
+                    setOf("inbox"),
+                    "hello",
+                    "a@example.test",
+                    "2024-01-01T00:00:00Z",
+                    bodyType = "text/html",
+                    body = """<p>path is C:\ndir</p>""",
+                )
+
+            val detail = assertIs<EmailLookup.Found>(repository(fake).getEmail("e1")).detail
+
+            assertEquals("""path is C:\ndir""", detail.body)
+        }
+
+    @Test
+    fun `a script or style element's contents are never shown`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.emails +=
+                FakeEmail(
+                    "e1",
+                    "e1",
+                    setOf("inbox"),
+                    "hello",
+                    "a@example.test",
+                    "2024-01-01T00:00:00Z",
+                    bodyType = "text/html",
+                    body = "<style>p { color: red }</style><script>alert('hi')</script><p>visible text</p>",
+                )
+
+            val detail = assertIs<EmailLookup.Found>(repository(fake).getEmail("e1")).detail
+
+            assertEquals("visible text", detail.body)
+        }
+
+    @Test
+    fun `a body cut at maxBodyValueBytes is reported truncated`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.emails +=
+                FakeEmail(
+                    "e1",
+                    "e1",
+                    setOf("inbox"),
+                    "hello",
+                    "a@example.test",
+                    "2024-01-01T00:00:00Z",
+                    body = "a long body cut short",
+                    bodyTruncated = true,
+                )
+
+            val detail = assertIs<EmailLookup.Found>(repository(fake).getEmail("e1")).detail
+
+            assertEquals(true, detail.bodyTruncated)
+        }
+
+    @Test
+    fun `a message deleted before it's opened is reported not found`() =
+        runTest {
+            val fake = FakeJmapServer()
+
+            val lookup = repository(fake).getEmail("gone")
+
+            assertIs<EmailLookup.NotFound>(lookup)
+        }
+}
