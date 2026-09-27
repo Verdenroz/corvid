@@ -35,6 +35,13 @@ sealed interface EmailPage {
     data object AnchorNotFound : EmailPage
 }
 
+sealed interface EmailLookup {
+    data class Found(val detail: EmailDetail) : EmailLookup
+
+    /** The message was deleted or moved between the inbox list and opening it. */
+    data object NotFound : EmailLookup
+}
+
 /**
  * Query and get run as one JMAP request (decision 8), the get's `ids`
  * resolved server-side from the query's result via a [resultReference].
@@ -90,7 +97,7 @@ class MailboxRepository(private val jmapClient: JmapClient) {
         return EmailPage.Found(emails, queryResult.getValue("queryState").jsonPrimitive.content)
     }
 
-    suspend fun getEmail(id: String): EmailDetail {
+    suspend fun getEmail(id: String): EmailLookup {
         val arguments =
             buildJsonObject {
                 putJsonArray("ids") { add(JsonPrimitive(id)) }
@@ -98,8 +105,9 @@ class MailboxRepository(private val jmapClient: JmapClient) {
                 put("fetchTextBodyValues", true)
                 put("maxBodyValueBytes", MAX_BODY_VALUE_BYTES)
             }
-        val list = call("Email/get", arguments).getValue("list").jsonArray
-        return list.first().jsonObject.toEmailDetail()
+        val result = call("Email/get", arguments)
+        if (result.getValue("notFound").jsonArray.isNotEmpty()) return EmailLookup.NotFound
+        return EmailLookup.Found(result.getValue("list").jsonArray.first().jsonObject.toEmailDetail())
     }
 
     private suspend fun call(
@@ -131,19 +139,24 @@ private fun JsonObject.toEmailSummary() =
         id = getValue("id").jsonPrimitive.content,
         threadId = getValue("threadId").jsonPrimitive.content,
         subject = get("subject")?.jsonPrimitive?.contentOrNull.orEmpty(),
-        from = (get("from") as? JsonArray)?.firstOrNull()?.jsonObject?.formatAddress().orEmpty(),
+        from = fromAddress(),
         receivedAt = Instant.parse(getValue("receivedAt").jsonPrimitive.content),
         keywords = getValue("keywords").jsonObject.keys,
         preview = getValue("preview").jsonPrimitive.content,
     )
 
-private fun JsonObject.formatAddress(): String {
-    val email = getValue("email").jsonPrimitive.content
+private fun JsonObject.fromAddress(): String =
+    (get("from") as? JsonArray)?.mapNotNull { it.jsonObject.formatAddress() }?.firstOrNull().orEmpty()
+
+/** email is null for MIME group syntax ("undisclosed-recipients:;"), which carries a name and no address. */
+private fun JsonObject.formatAddress(): String? {
+    val email = get("email")?.jsonPrimitive?.contentOrNull ?: return null
     val name = get("name")?.jsonPrimitive?.contentOrNull
     return if (name != null) "$name <$email>" else email
 }
 
-private fun JsonObject.addressList(key: String): List<String> = (get(key) as? JsonArray)?.map { it.jsonObject.formatAddress() }.orEmpty()
+private fun JsonObject.addressList(key: String): List<String> =
+    (get(key) as? JsonArray)?.mapNotNull { it.jsonObject.formatAddress() }.orEmpty()
 
 /**
  * textBody already picks the best single-part representation per RFC 8621; an
@@ -165,7 +178,7 @@ private fun JsonObject.toEmailDetail(): EmailDetail {
     return EmailDetail(
         id = getValue("id").jsonPrimitive.content,
         subject = get("subject")?.jsonPrimitive?.contentOrNull.orEmpty(),
-        from = (get("from") as? JsonArray)?.firstOrNull()?.jsonObject?.formatAddress().orEmpty(),
+        from = fromAddress(),
         to = addressList("to"),
         cc = addressList("cc"),
         receivedAt = Instant.parse(getValue("receivedAt").jsonPrimitive.content),

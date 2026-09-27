@@ -113,7 +113,7 @@ class MailboxRepositoryTest {
                     body = "plain text body",
                 )
 
-            val detail = repository(fake).getEmail("e1")
+            val detail = assertIs<EmailLookup.Found>(repository(fake).getEmail("e1")).detail
 
             assertEquals("plain text body", detail.body)
             assertEquals(listOf("b@example.test"), detail.to)
@@ -137,9 +137,30 @@ class MailboxRepositoryTest {
                     body = "<p>hello <b>world</b></p>",
                 )
 
-            val detail = repository(fake).getEmail("e1")
+            val detail = assertIs<EmailLookup.Found>(repository(fake).getEmail("e1")).detail
 
             assertEquals("hello world", detail.body)
+        }
+
+    @Test
+    fun `paragraphs and list items keep their line breaks when flattened`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.emails +=
+                FakeEmail(
+                    "e1",
+                    "e1",
+                    setOf("inbox"),
+                    "hello",
+                    "a@example.test",
+                    "2024-01-01T00:00:00Z",
+                    bodyType = "text/html",
+                    body = "<p>first paragraph</p><p>second paragraph</p><ul><li>one</li><li>two</li></ul>",
+                )
+
+            val detail = assertIs<EmailLookup.Found>(repository(fake).getEmail("e1")).detail
+
+            assertEquals("first paragraph\n\nsecond paragraph\n\none\n\ntwo", detail.body)
         }
 
     @Test
@@ -158,8 +179,18 @@ class MailboxRepositoryTest {
                     bodyTruncated = true,
                 )
 
-            val detail = repository(fake).getEmail("e1")
+            val detail = assertIs<EmailLookup.Found>(repository(fake).getEmail("e1")).detail
 
             assertEquals(true, detail.bodyTruncated)
+        }
+
+    @Test
+    fun `a message deleted before it's opened is reported not found`() =
+        runTest {
+            val fake = FakeJmapServer()
+
+            val lookup = repository(fake).getEmail("gone")
+
+            assertIs<EmailLookup.NotFound>(lookup)
         }
 }

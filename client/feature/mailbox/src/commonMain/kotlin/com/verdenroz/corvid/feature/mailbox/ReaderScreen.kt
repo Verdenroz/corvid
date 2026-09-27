@@ -33,6 +33,8 @@ fun ReaderScreen(
         when (val current = state) {
             is ReaderUiState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             is ReaderUiState.Failed -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(current.message) }
+            is ReaderUiState.Gone ->
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("This message no longer exists.") }
             is ReaderUiState.Loaded -> ReaderBody(current)
         }
     }

@@ -91,4 +91,13 @@ class ReaderViewModelTest {
 
             assertEquals(true, loaded.bodyTruncated)
         }
+
+    @Test
+    fun `a message gone by the time it's opened reaches a distinct state`() =
+        runTest(testDispatcher) {
+            val fake = FakeJmapServer()
+            val vm = ReaderViewModel(repository(fake), "gone").also { viewModel = it }
+
+            vm.state.first { it is ReaderUiState.Gone }
+        }
 }
