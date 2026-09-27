@@ -136,10 +136,16 @@ def check(where, key, obj, schema, unchecked):
     for name, value in obj.items():
         if name == "@type":
             continue
-        prop = properties.get(name)
+        # A JSON-pointer patch (e.g. "quotas/maxAppPasswords") checks only the base property;
+        # the leaf's shape is unreachable, like a nested object.
+        base, _, leaf = name.partition("/")
+        prop = properties.get(base)
         at = f"{where}.{name}"
         if prop is None:
             found.append(f"{at}: not a property of this object")
+            continue
+        if leaf:
+            unchecked.append(at)
             continue
 
         kind = prop.get("type", {})

@@ -35,7 +35,10 @@ to revoke the device's VPN identity in vpn-chain.
 
 `--local` scopes `allowedIps` to `127.0.0.1` and `::1` instead of `server.client_access`, for a
 service that calls JMAP from inside the pod rather than from a mail app. It ignores
-`client_access` entirely, since a service on loopback needs no exemption from it.
+`client_access` entirely, since a service on loopback needs no exemption from it. This only
+works because the labeler and the sentinel call `http://127.0.0.1:8080` directly; behind Caddy,
+`Http.useXForwarded` makes Stalwart see the forwarded client address, not the pod's own loopback,
+and a `--local` credential would be refused.
 
 `stalwart-cli create AppPassword` only ever acts on the account authenticated as, and an
 `Account` upsert cannot touch `credentials` at all ("Secondary credentials cannot be set

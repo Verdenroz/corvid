@@ -302,9 +302,13 @@ web tier is not on 443.
   on Community fails outright (`forbidden: Enterprise edition`). Verified: a destroyed FileNode's
   blob 404s on the next download.
 - **A default 5-app-password-per-account quota exists**, reported as `overQuota` in `notCreated`
-  rather than failing the request outright. Raise it per account with `Account.quotas.
-  maxAppPasswords` (the `StorageQuota` enum), unset by default rather than defaulted to 5 in the
-  account object itself; verified by raising it to 20 and creating a 6th.
+  rather than failing the request outright. `stalwart.plan.ndjson` raises it to 20 via
+  `Account.quotas/maxAppPasswords`; verified by creating a 6th after applying.
+- **`Account.quotas` replaces wholesale, same as `credentials`.** Setting `quotas` to a map with
+  one key wipes every other quota already on the account. `quotas/<key>` patches that one key,
+  proven by applying the plan's Account upsert against a live account and finding a quota set
+  independently untouched. `check-plan.py` now checks the base of a pointer-path property
+  (`quotas/maxAppPasswords`) and marks the leaf unreachable rather than failing it outright.
 
 ## Working method
 
