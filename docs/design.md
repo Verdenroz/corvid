@@ -258,20 +258,26 @@ In place:
   checking machine banned for good.
 - **DNSSEC offered for every zone, so DANE can protect inbound mail**, once the registrar
   publishes the DS record.
+- **Per-device credentials** (`deploy/device.sh add|list`): one Stalwart app password per device,
+  its `allowedIps` mirroring `server.client_access` (the server's own address for `host`, the
+  configured networks for a list, unrestricted for `anywhere`). Measured on a throwaway server:
+  a device scoped to one container's address authenticates over IMAPS from it and is refused from
+  a second container on the same network, without banning the second; a bare IP (no `/32`) is
+  accepted as an `ipNetwork`.
+- **Device revocation in one step** (`deploy/device.sh revoke`): destroys the app password and the
+  device's storage key file (see "Compromised devices" under Phase 3), verifying the key's blob no
+  longer downloads rather than trusting the destroy call's own report, and prints how to revoke
+  the device's VPN identity in vpn-chain. vpn-chain has no per-device identity, so that print
+  names `server/rotate-vless-identity.sh`, which rotates the one shared identity for every device.
 
 To do, in this order:
 
-1. **Per-device credentials.** One app password per device, limited to the VPN's exit address
-   where `client_access` allows it, so the account password is never typed into a mail app. The
-   same credentials serve the client later.
-2. **Device revocation in one step**: a Corvid command that revokes a device's credentials and
-   storage key (see "Compromised devices" under Phase 3) and says how to revoke its VPN identity.
-3. **Backups**: the nightly mirror deployed off-host and encrypted, with a restore drill. Today a
+1. **Backups**: the nightly mirror deployed off-host and encrypted, with a restore drill. Today a
    lost VPS loses the mail.
-4. **Sign-in alerts**: notice of a new device or an unfamiliar source address, from Stalwart's
+2. **Sign-in alerts**: notice of a new device or an unfamiliar source address, from Stalwart's
    sign-in log.
-5. **Two-factor sign-in** (TOTP) on the account for the web and JMAP, then passkeys (Phase 2).
-6. **MTA-STS where the web port cannot be 443.** Built: `install.sh` deploys a Cloudflare Worker
+3. **Two-factor sign-in** (TOTP) on the account for the web and JMAP, then passkeys (Phase 2).
+4. **MTA-STS where the web port cannot be 443.** Built: `install.sh` deploys a Cloudflare Worker
    on `mta-sts.<domain>` to serve it, and `server.mta_sts_mode` switches `testing` to `enforce`
    once mail delivery looks right, for whichever side serves the policy. Tested against a fake
    Cloudflare only; moves to "in place" once a real install shows
@@ -656,10 +662,13 @@ design above makes that complete. A device **infected while in use** can read wh
 screen or decrypted at that moment, and no client design prevents it; the aim there is to limit
 how much it gets and to make revocation end it.
 
-- **Every credential is per device and revocable in one step.** A device holds three: its VPN
-  identity, its mail credential (an OAuth token or an app password) and its storage key. Corvid
-  should offer one command that revokes the last two and says how to revoke the first in the VPN,
-  so a lost phone is one action, not a checklist.
+- **The mail credential and the storage key are per device and revocable in one step**
+  (`deploy/device.sh revoke`). The VPN identity is not: vpn-chain has one shared VLESS identity
+  for every device, so `revoke` can only print the command that rotates it
+  (`server/rotate-vless-identity.sh`), and running that disconnects every other device too. A
+  lost phone is not yet one action; it is two credentials revoked and a decision about whether
+  the VPN is worth re-keying everyone else over. Per-device VPN identities are tracked as
+  vpn-chain issue [#22](https://github.com/Verdenroz/vpn-chain/issues/22).
 - **Stolen credentials should be useless elsewhere.** Stalwart app passwords can be limited to
   source networks (`allowedIps`); limited to the VPN's exit, a copied password fails from anywhere
   else. With `client_access: host` the ports already refuse outside connections.

@@ -20,20 +20,23 @@ an array is rejected.
 
 ## App passwords, one per device
 
-These cannot be provisioned at all: the secret is server-generated and returned once, and
-setting it fails with `Cannot modify server set property`. They are also per-account and
-invisible across accounts, so an operator can neither list nor revoke someone else's.
+`deploy/device.sh add|list|revoke` manages these; run it as `deploy/set-password.sh` runs, on
+the host as root:
 
-The account holder creates each one, authenticated as themselves:
+    ssh host /opt/corvid/deploy/device.sh add phone
+    ssh host /opt/corvid/deploy/device.sh list
+    ssh host /opt/corvid/deploy/device.sh revoke phone
 
-    stalwart-cli create AppPassword --json '{"description":"phone-imap","allowedIps":{}}'
+The secret prints once, only in that terminal: not to a file, a log, or anywhere else. `add`
+refuses a name already in use; `revoke` also removes the device's storage key file (Phase 3, at
+`corvid-devices/<name>.key` in the account's own JMAP file storage) if one exists, and prints how
+to revoke the device's VPN identity in vpn-chain.
 
-The secret is printed once, at creation. `description` is the per-device label that makes
-revocation meaningful later; without it the list is a row of opaque ids.
-
-App passwords belong to the account holder rather than the operator. That is the security
-property, not a gap. It does mean the Phase 2 test (a passkey login on the web while an app
-password still works for IMAP) has a human step that no script can do.
+`stalwart-cli create AppPassword` only ever acts on the account authenticated as, and an
+`Account` upsert cannot touch `credentials` at all ("Secondary credentials cannot be set
+directly"). `device.sh` speaks JMAP directly with an explicit `accountId`, which the admin
+credential may set for any account; the same call as a non-admin is refused ("you are not an
+owner of account").
 
 ## Configuration
 

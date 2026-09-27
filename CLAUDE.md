@@ -280,6 +280,29 @@ web tier is not on 443.
 - **Stalwart 0.16 removed the REST management API.** Config objects are JMAP objects; use
   `stalwart-cli`. `snapshot` is the fastest way to learn real serialized shapes. It caught four
   wrong field shapes that reading the documentation did not.
+- **`AppPassword`, `ApiKey` and `FileNode` resolve to the caller's own account, unless the caller
+  is admin.** Their JMAP methods (`x:AppPassword/set`, `FileNode/query`, ...) take no `accountId`
+  from `stalwart-cli`'s generic verbs, which only ever act on the authenticated principal. An
+  admin-authenticated request that adds an explicit `"accountId"` to the method call acts on that
+  account instead; verified permission-checked, since the same call as a non-admin fails
+  `forbidden: you are not an owner of account`. `deploy/device.sh` speaks raw JMAP for exactly
+  this reason; `stalwart-cli update Account --json '{"credentials":{...}}'` cannot add or remove
+  a `Secondary` credential at all ("Secondary credentials cannot be set directly").
+- **The self-service password-change method needs the current secret; an admin patch does not.**
+  `x:AccountPassword/set` (what a user changes their own password with) refuses `secret` without
+  `currentSecret` when `otpAuth` is set. Patching `Account.credentials/<key>/secret` directly, as
+  an admin, needs neither, and does not disturb that credential's own `otpAuth` or `allowedIps`.
+- **A JSON-pointer patch into a key that does not exist creates it.** `credentials/0/secret` on an
+  account with an empty `credentials` map produces a working `Password` credential with a
+  server-set `@type`, proven by IMAP login. The account plan creates with no `credentials` at all,
+  so `set-password.sh` cannot assume the Password entry already exists at any key.
+- **Deleting a `FileNode` is immediate on Community, not archived.** `ArchivedItem` is
+  `"enterprise": true`, and `DataRetention.archiveDeletedItemsFor` defaults to `null` ("deleted
+  items will not be archived and will be permanently deleted immediately"). Querying `ArchivedItem`
+  on Community fails outright (`forbidden: Enterprise edition`). Verified: a destroyed FileNode's
+  blob 404s on the next download.
+- **A default 5-app-password-per-account quota exists** and is not documented anywhere obvious;
+  `x:AppPassword/set` reports it as `overQuota` in `notCreated` rather than failing the request.
 
 ## Working method
 
