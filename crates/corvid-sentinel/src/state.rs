@@ -4,7 +4,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-/// Bump whenever `Seen`'s shape changes. See `corvid_store::pin_shape!` below.
+/// Bump whenever `Seen`'s shape changes.
 const SCHEMA: u32 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -21,11 +21,12 @@ pub struct Identity {
     pub remote_ip: String,
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Seen {
     pub identities: BTreeSet<Identity>,
-    /// Address to the epoch second a too-many-attempts or ban notice last fired for it.
-    pub burst_notified: BTreeMap<String, i64>,
+    /// Address to the epoch second a too-many-attempts notice last fired for it. A ban is never
+    /// rate-limited, so it needs no entry here.
+    pub too_many_attempts_notified: BTreeMap<String, i64>,
 }
 
 corvid_store::pin_shape!(Identity {
@@ -36,7 +37,7 @@ corvid_store::pin_shape!(Identity {
 });
 corvid_store::pin_shape!(Seen {
     identities,
-    burst_notified
+    too_many_attempts_notified
 });
 
 pub fn open(path: &Path) -> io::Result<Seen> {

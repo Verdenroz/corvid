@@ -9,7 +9,7 @@ repository.workspace = true
 axum = "0.8.9"
 base64 = "0.23.1"
 corvid-config.workspace = true
-corvid-jmap = { version = "0.1.0", path = "../corvid-jmap" }
+corvid-jmap.workspace = true
 corvid-store.workspace = true
 hmac = "0.13.0"
 serde = { version = "1.0.229", features = ["derive"] }

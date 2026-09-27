@@ -3,7 +3,7 @@ use crate::state::{CredentialKind, Identity, Seen};
 use crate::webhook::{AuthEvent, Kind};
 
 const APP_PASSWORD_DETAILS: &str = "Authenticated with app password";
-/// How often a too-many-attempts or ban notice may repeat for the same address.
+/// How often a too-many-attempts notice may repeat for the same address.
 const BURST_WINDOW_SECS: i64 = 3600;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,21 +31,24 @@ pub enum Reason {
 
 /// Decides what to alert on in one webhook batch, against the account's sign-in history.
 ///
-/// Nothing here is persisted; the caller commits `seen`'s mutations only once every alert has
-/// actually been delivered, so a delivery failure replays as first sightings rather than
-/// silently losing them.
-pub fn decide(events: &[AuthEvent], seen: &mut Seen) -> Vec<Alert> {
-    events
+/// Returns the alerts and the state as it would be after them, without touching `seen`: a
+/// caller that fails to deliver the alerts can discard the result and decide the same batch
+/// again, rather than have it read as already seen.
+pub fn decide(events: &[AuthEvent], seen: &Seen) -> (Vec<Alert>, Seen) {
+    let mut next = seen.clone();
+    let alerts = events
         .iter()
-        .filter_map(|event| decide_one(event, seen))
-        .collect()
+        .filter_map(|event| decide_one(event, &mut next))
+        .collect();
+    (alerts, next)
 }
 
 fn decide_one(event: &AuthEvent, seen: &mut Seen) -> Option<Alert> {
     let reason = match &event.kind {
         Kind::Success => success(event, seen)?,
-        Kind::TooManyAttempts => burst(event, seen, Reason::TooManyAttempts)?,
-        Kind::Ban => burst(event, seen, Reason::Banned)?,
+        Kind::TooManyAttempts => too_many_attempts(event, seen)?,
+        // A ban on the VPN exit locks out every VPN user, so this alert is never rate-limited.
+        Kind::Ban => Reason::Banned,
         Kind::Other(name) => Reason::UnknownEvent(name.clone()),
         Kind::Failed => return None,
     };
@@ -80,18 +83,19 @@ fn success(event: &AuthEvent, seen: &mut Seen) -> Option<Reason> {
         .then_some(Reason::NewSignIn(kind))
 }
 
-fn burst(event: &AuthEvent, seen: &mut Seen, reason: Reason) -> Option<Reason> {
+fn too_many_attempts(event: &AuthEvent, seen: &mut Seen) -> Option<Reason> {
     let Some(remote_ip) = &event.remote_ip else {
-        return Some(reason);
+        return Some(Reason::TooManyAttempts);
     };
     let Some(now) = dates::seconds(&event.created_at) else {
-        return Some(reason);
+        return Some(Reason::TooManyAttempts);
     };
-    match seen.burst_notified.get(remote_ip) {
+    match seen.too_many_attempts_notified.get(remote_ip) {
         Some(&last) if now - last < BURST_WINDOW_SECS => None,
         _ => {
-            seen.burst_notified.insert(remote_ip.clone(), now);
-            Some(reason)
+            seen.too_many_attempts_notified
+                .insert(remote_ip.clone(), now);
+            Some(Reason::TooManyAttempts)
         }
     }
 }
@@ -111,10 +115,17 @@ mod tests {
         }
     }
 
+    /// Decides against `seen` and advances it, the way a caller does after a delivery succeeds.
+    fn step(events: &[AuthEvent], seen: &mut Seen) -> Vec<Alert> {
+        let (alerts, next) = decide(events, seen);
+        *seen = next;
+        alerts
+    }
+
     #[test]
     fn a_first_sign_in_alerts_as_new() {
         let mut seen = Seen::default();
-        let alerts = decide(&[event(Kind::Success)], &mut seen);
+        let alerts = step(&[event(Kind::Success)], &mut seen);
 
         assert_eq!(alerts.len(), 1);
         assert_eq!(alerts[0].reason, Reason::NewSignIn(CredentialKind::Primary));
@@ -123,19 +134,33 @@ mod tests {
     #[test]
     fn the_same_identity_again_does_not_alert() {
         let mut seen = Seen::default();
-        decide(&[event(Kind::Success)], &mut seen);
+        step(&[event(Kind::Success)], &mut seen);
 
-        assert_eq!(decide(&[event(Kind::Success)], &mut seen), vec![]);
+        assert_eq!(step(&[event(Kind::Success)], &mut seen), vec![]);
+    }
+
+    #[test]
+    fn a_failed_delivery_leaves_the_next_decision_unchanged() {
+        let seen = Seen::default();
+        let events = [event(Kind::Success)];
+
+        let (first, _discarded) = decide(&events, &seen);
+        let (second, _) = decide(&events, &seen);
+
+        assert_eq!(
+            first, second,
+            "the batch was never committed, so it replays identically"
+        );
     }
 
     #[test]
     fn a_different_address_for_the_same_account_alerts_again() {
         let mut seen = Seen::default();
-        decide(&[event(Kind::Success)], &mut seen);
+        step(&[event(Kind::Success)], &mut seen);
 
         let mut elsewhere = event(Kind::Success);
         elsewhere.remote_ip = Some("198.51.100.4".to_owned());
-        let alerts = decide(&[elsewhere], &mut seen);
+        let alerts = step(&[elsewhere], &mut seen);
 
         assert_eq!(alerts.len(), 1);
     }
@@ -143,11 +168,11 @@ mod tests {
     #[test]
     fn an_app_password_sign_in_is_tracked_separately_from_the_primary_password() {
         let mut seen = Seen::default();
-        decide(&[event(Kind::Success)], &mut seen);
+        step(&[event(Kind::Success)], &mut seen);
 
         let mut app = event(Kind::Success);
         app.details = Some(APP_PASSWORD_DETAILS.to_owned());
-        let alerts = decide(&[app], &mut seen);
+        let alerts = step(&[app], &mut seen);
 
         assert_eq!(alerts.len(), 1);
         assert_eq!(
@@ -163,7 +188,7 @@ mod tests {
         unknown.details = Some("Authenticated with a magic link".to_owned());
 
         for _ in 0..2 {
-            let alerts = decide(&[unknown.clone()], &mut seen);
+            let alerts = step(&[unknown.clone()], &mut seen);
             assert_eq!(
                 alerts,
                 vec![Alert {
@@ -182,7 +207,7 @@ mod tests {
         let mut incomplete = event(Kind::Success);
         incomplete.remote_ip = None;
 
-        let alerts = decide(&[incomplete], &mut seen);
+        let alerts = step(&[incomplete], &mut seen);
 
         assert_eq!(
             alerts,
@@ -196,42 +221,64 @@ mod tests {
     #[test]
     fn a_lone_failed_attempt_does_not_alert() {
         let mut seen = Seen::default();
-        assert_eq!(decide(&[event(Kind::Failed)], &mut seen), vec![]);
+        assert_eq!(step(&[event(Kind::Failed)], &mut seen), vec![]);
     }
 
     #[test]
     fn too_many_attempts_alerts() {
         let mut seen = Seen::default();
-        let alerts = decide(&[event(Kind::TooManyAttempts)], &mut seen);
+        let alerts = step(&[event(Kind::TooManyAttempts)], &mut seen);
         assert_eq!(alerts[0].reason, Reason::TooManyAttempts);
     }
 
     #[test]
-    fn a_second_burst_from_the_same_address_within_an_hour_is_suppressed() {
+    fn a_second_too_many_attempts_from_the_same_address_within_an_hour_is_suppressed() {
         let mut seen = Seen::default();
-        decide(&[event(Kind::Ban)], &mut seen);
+        step(&[event(Kind::TooManyAttempts)], &mut seen);
 
         let mut soon_after = event(Kind::TooManyAttempts);
         soon_after.created_at = "2026-09-27T02:38:58Z".to_owned();
-        assert_eq!(decide(&[soon_after], &mut seen), vec![]);
+        assert_eq!(step(&[soon_after], &mut seen), vec![]);
     }
 
     #[test]
-    fn a_burst_an_hour_later_from_the_same_address_alerts_again() {
+    fn too_many_attempts_an_hour_later_from_the_same_address_alerts_again() {
         let mut seen = Seen::default();
-        decide(&[event(Kind::Ban)], &mut seen);
+        step(&[event(Kind::TooManyAttempts)], &mut seen);
 
-        let mut later = event(Kind::Ban);
+        let mut later = event(Kind::TooManyAttempts);
         later.created_at = "2026-09-27T03:08:58Z".to_owned();
-        let alerts = decide(&[later], &mut seen);
+        let alerts = step(&[later], &mut seen);
 
         assert_eq!(alerts.len(), 1);
     }
 
     #[test]
+    fn a_ban_right_after_a_too_many_attempts_notice_still_alerts() {
+        let mut seen = Seen::default();
+        step(&[event(Kind::TooManyAttempts)], &mut seen);
+
+        let alerts = step(&[event(Kind::Ban)], &mut seen);
+
+        assert_eq!(alerts[0].reason, Reason::Banned);
+    }
+
+    #[test]
+    fn a_second_ban_for_the_same_address_within_an_hour_still_alerts() {
+        let mut seen = Seen::default();
+        step(&[event(Kind::Ban)], &mut seen);
+
+        let mut soon_after = event(Kind::Ban);
+        soon_after.created_at = "2026-09-27T02:09:00Z".to_owned();
+        let alerts = step(&[soon_after], &mut seen);
+
+        assert_eq!(alerts.len(), 1, "a ban must never be suppressed");
+    }
+
+    #[test]
     fn an_unknown_event_type_alerts_by_name() {
         let mut seen = Seen::default();
-        let alerts = decide(
+        let alerts = step(
             &[event(Kind::Other("auth.mfa-required".to_owned()))],
             &mut seen,
         );

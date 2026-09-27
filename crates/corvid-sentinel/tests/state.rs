@@ -22,12 +22,16 @@ fn a_saved_identity_round_trips() {
         listener: "imaps".to_owned(),
         remote_ip: "203.0.113.9".to_owned(),
     });
-    seen.burst_notified.insert("203.0.113.9".to_owned(), 100);
+    seen.too_many_attempts_notified
+        .insert("203.0.113.9".to_owned(), 100);
     save(&path, &seen).unwrap();
 
     let reopened = open(&path).unwrap();
     assert_eq!(reopened.identities, seen.identities);
-    assert_eq!(reopened.burst_notified, seen.burst_notified);
+    assert_eq!(
+        reopened.too_many_attempts_notified,
+        seen.too_many_attempts_notified
+    );
 }
 
 #[test]
