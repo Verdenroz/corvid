@@ -16,8 +16,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Nothing the app shows is meant to survive a screenshot or the
-        // recents thumbnail (design.md, "Compromised devices").
+        // Nothing the app shows is meant to survive a screenshot or the recents thumbnail.
         window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         authFlowFactory.registerActivity(this)
         enableEdgeToEdge()

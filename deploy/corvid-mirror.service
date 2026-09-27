@@ -1,6 +1,6 @@
 [Unit]
 Description=Mirror the mailbox, audit it, and verify what is stored
-Documentation=https://github.com/Verdenroz/corvid/blob/main/docs/design.md
+Documentation=https://github.com/Verdenroz/corvid/blob/main/deploy/RUNBOOK.md
 
 [Service]
 Type=oneshot
