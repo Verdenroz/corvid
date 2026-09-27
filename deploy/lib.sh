@@ -13,9 +13,13 @@ server_ip() {
 }
 
 # curl -u puts the password in argv, readable in /proc by any local user for the call's
-# lifetime. --config on a process substitution keeps it off the command line.
+# lifetime. --config on a process substitution keeps it off the command line. Its quoted value
+# needs its own backslashes and quotes escaped, or a password carrying either breaks the parse.
 curl_authed() {
-  curl --config <(printf 'user = "%s:%s"\n' "$STALWART_USER" "$STALWART_PASSWORD") "$@"
+  local user="$STALWART_USER" pass="$STALWART_PASSWORD"
+  user="${user//\\/\\\\}"; user="${user//\"/\\\"}"
+  pass="${pass//\\/\\\\}"; pass="${pass//\"/\\\"}"
+  curl --config <(printf 'user = "%s:%s"\n' "$user" "$pass") "$@"
 }
 
 require_image() {
