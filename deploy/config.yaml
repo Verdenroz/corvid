@@ -24,6 +24,10 @@ server:
   # only programs on this server such as a VPN it runs; or a list like [192.0.2.0/24].
   # Ports 25 and 80 stay open to everyone, since other mail servers and Let's Encrypt need them.
   client_access: anywhere
+  # Whether the MTA-STS policy tells senders to test or enforce TLS, however it is served
+  # (Stalwart on 443, a Cloudflare Worker otherwise). Start with testing; switch once mail
+  # delivery looks right.
+  # mta_sts_mode: testing
 
 labeler:
   jmap_url: http://127.0.0.1:8080

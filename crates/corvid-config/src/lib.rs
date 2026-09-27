@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 use serde_json::{Map, Value};
+use sha2::{Digest, Sha256};
 
 pub const DEFAULT_PATH: &str = "/etc/corvid/config.yaml";
 
@@ -50,7 +51,44 @@ pub struct Server {
     /// Who may reach the ports mail apps use: 465, 587, 993 and `web_port`.
     #[serde(default)]
     pub client_access: ClientAccess,
+    /// Start in testing; switch to enforce once mail delivery looks right. Applies whether the
+    /// policy is served by Stalwart on 443 or by a Cloudflare Worker elsewhere.
+    #[serde(default)]
+    pub mta_sts_mode: MtaStsMode,
 }
+
+/// Whether the MTA-STS policy tells senders to test or enforce TLS (RFC 8461).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Deserialize)]
+#[serde(try_from = "String")]
+pub enum MtaStsMode {
+    #[default]
+    Testing,
+    Enforce,
+}
+
+impl MtaStsMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Testing => "testing",
+            Self::Enforce => "enforce",
+        }
+    }
+}
+
+impl TryFrom<String> for MtaStsMode {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        match value.as_str() {
+            "testing" => Ok(Self::Testing),
+            "enforce" => Ok(Self::Enforce),
+            _ => Err(format!("{value:?} is not testing or enforce")),
+        }
+    }
+}
+
+/// RFC 8461's `max_age`, in seconds: how long a sender may cache the policy.
+const MTA_STS_MAX_AGE_SECS: u32 = 604_800;
 
 /// Where mail apps may connect from. Ports 25 and 80 stay open to everyone whatever this says:
 /// other mail servers deliver on 25, and Let's Encrypt checks the web certificate on 80.
@@ -176,6 +214,22 @@ impl Server {
 
     pub fn web_url(&self) -> String {
         format!("https://{}:{}", self.hostname.0, self.web_port.0)
+    }
+
+    /// The MTA-STS policy file (RFC 8461), naming this server as the only MX.
+    pub fn mta_sts_policy(&self) -> String {
+        format!(
+            "version: STSv1\nmode: {}\nmx: {}\nmax_age: {}\n",
+            self.mta_sts_mode.as_str(),
+            self.hostname.0,
+            MTA_STS_MAX_AGE_SECS,
+        )
+    }
+
+    /// An id for the `_mta-sts` TXT record that changes exactly when the policy does, so a
+    /// sender caching the old one refetches it.
+    pub fn mta_sts_id(&self) -> String {
+        hex::encode(&Sha256::digest(self.mta_sts_policy().as_bytes())[..8])
     }
 }
 
@@ -370,7 +424,7 @@ impl Config {
         let server = section(self.server.as_ref(), "server")?;
         Ok(format!(
             "MAIL_DOMAIN={}\nMAIL_HOSTNAME={}\nMAIL_USER={}\nACME_CONTACT={}\nWEB_PORT={}\nHOST_ZONE={}\n\
-             PUBLISH_MTA_STS={}\nPUBLISH_TLSA={}\nCLIENT_SOURCES={}\n",
+             PUBLISH_MTA_STS={}\nPUBLISH_TLSA={}\nMTA_STS_MODE={}\nMTA_STS_ID={}\nCLIENT_SOURCES={}\n",
             server.domain.0,
             server.hostname.0,
             server.mail_user.0,
@@ -379,8 +433,15 @@ impl Config {
             server.host_zone.as_ref().map_or("", |zone| zone.as_str()),
             server.web_port.0 == 443,
             server.host_zone.is_none(),
+            server.mta_sts_mode.as_str(),
+            server.mta_sts_id(),
             server.client_access.sources()
         ))
+    }
+
+    /// The MTA-STS policy file the Cloudflare Worker serves, for `corvid-config mta-sts-policy`.
+    pub fn mta_sts_policy(&self) -> Result<String, Error> {
+        section(self.server.as_ref(), "server").map(|server| server.mta_sts_policy())
     }
 }
 
@@ -528,12 +589,16 @@ mod server_tests {
     #[test]
     fn the_server_section_becomes_shell_assignments() {
         let config = Config::parse(SERVER).unwrap();
+        let id = config.server.as_ref().unwrap().mta_sts_id();
 
         assert_eq!(
             config.shell().unwrap(),
-            "MAIL_DOMAIN=example.com\nMAIL_HOSTNAME=mail.example.com\nMAIL_USER=alice\n\
-             ACME_CONTACT=you@elsewhere.example\nWEB_PORT=4443\nHOST_ZONE=\n\
-             PUBLISH_MTA_STS=false\nPUBLISH_TLSA=true\nCLIENT_SOURCES=any\n"
+            format!(
+                "MAIL_DOMAIN=example.com\nMAIL_HOSTNAME=mail.example.com\nMAIL_USER=alice\n\
+                 ACME_CONTACT=you@elsewhere.example\nWEB_PORT=4443\nHOST_ZONE=\n\
+                 PUBLISH_MTA_STS=false\nPUBLISH_TLSA=true\nMTA_STS_MODE=testing\nMTA_STS_ID={id}\n\
+                 CLIENT_SOURCES=any\n"
+            )
         );
     }
 
@@ -587,6 +652,58 @@ mod server_tests {
         let shell = Config::parse(&text).unwrap().shell().unwrap();
 
         assert!(shell.lines().any(|l| l == "PUBLISH_TLSA=false"), "{shell}");
+    }
+
+    #[test]
+    fn mta_sts_mode_defaults_to_testing_and_switches_to_enforce() {
+        let default = Config::parse(SERVER).unwrap().shell().unwrap();
+        assert!(
+            default.lines().any(|l| l == "MTA_STS_MODE=testing"),
+            "{default}"
+        );
+
+        let enforced = Config::parse(&(SERVER.to_owned() + "  mta_sts_mode: enforce\n"))
+            .unwrap()
+            .shell()
+            .unwrap();
+        assert!(
+            enforced.lines().any(|l| l == "MTA_STS_MODE=enforce"),
+            "{enforced}"
+        );
+    }
+
+    #[test]
+    fn an_mta_sts_mode_that_is_not_testing_or_enforce_is_refused() {
+        let text = format!("{SERVER}  mta_sts_mode: disable\n");
+        assert!(Config::parse(&text).is_err());
+    }
+
+    #[test]
+    fn the_mta_sts_policy_names_the_hostname_as_the_only_mx() {
+        let config = Config::parse(SERVER).unwrap();
+
+        assert_eq!(
+            config.mta_sts_policy().unwrap(),
+            "version: STSv1\nmode: testing\nmx: mail.example.com\nmax_age: 604800\n"
+        );
+    }
+
+    #[test]
+    fn the_mta_sts_id_is_stable_unless_mode_or_hostname_changes() {
+        let id = |text: &str| Config::parse(text).unwrap().server.unwrap().mta_sts_id();
+
+        let original = id(SERVER);
+        assert_eq!(original, id(SERVER), "an unchanged policy keeps its id");
+
+        let enforced = SERVER.to_owned() + "  mta_sts_mode: enforce\n";
+        assert_ne!(original, id(&enforced), "a mode change must change the id");
+
+        let renamed = SERVER.replace("mail.example.com", "mx.example.com");
+        assert_ne!(
+            original,
+            id(&renamed),
+            "a hostname change must change the id"
+        );
     }
 
     #[test]

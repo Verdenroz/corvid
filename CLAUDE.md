@@ -155,8 +155,9 @@ web tier is not on 443.
   records DANE needs. The plan lists the set explicitly and `apply-plan.sh` narrows it: TLSA on the
   mail domain only when the hostname is inside it, MTA-STS only when the web tier holds 443.
 - **MTA-STS is fetched from `https://mta-sts.<domain>` on 443 only**, never another port and never
-  through a redirect. Stalwart serves the policy but publishes its record regardless of whether
-  anything answers there, so an install off 443 advertised a policy nobody could fetch.
+  through a redirect. Off 443 Stalwart cannot serve it, so `install.sh` deploys a Cloudflare
+  Worker on that hostname as a custom domain instead; Cloudflare terminates TLS on 443 for it
+  regardless of `server.web_port`.
 - **Turning a record type off in `publishRecords` leaves its records in DNS.** Stalwart stops
   managing them and deletes nothing, so `install.sh` removes the MTA-STS pair itself, and only
   while it still points `mta-sts` at this server. Measured: the applied set dropped `mtaSts` and

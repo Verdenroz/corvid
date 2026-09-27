@@ -26,7 +26,7 @@ load_server() {
   fi
   while IFS='=' read -r key value; do
     case "$key" in
-      MAIL_DOMAIN|MAIL_HOSTNAME|MAIL_USER|ACME_CONTACT|WEB_PORT|HOST_ZONE|PUBLISH_MTA_STS|PUBLISH_TLSA|CLIENT_SOURCES)
+      MAIL_DOMAIN|MAIL_HOSTNAME|MAIL_USER|ACME_CONTACT|WEB_PORT|HOST_ZONE|PUBLISH_MTA_STS|PUBLISH_TLSA|MTA_STS_MODE|CLIENT_SOURCES)
         printf -v "$key" '%s' "$value"
         export "${key?}"
         ;;

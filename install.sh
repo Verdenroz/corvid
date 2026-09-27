@@ -22,6 +22,7 @@ set -euo pipefail
 (( BASH_VERSINFO[0] >= 4 )) || { echo "install.sh needs bash 4 or newer (macOS: brew install bash, then run it with that bash)" >&2; exit 1; }
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
+. "$HERE/deploy/mta-sts-lib.sh"
 VERSION="$(sed -nE 's/^version = "([^"]+)"/\1/p' "$HERE/Cargo.toml" | head -1)"
 IMAGE="ghcr.io/verdenroz/corvid:$VERSION"
 CLI_VERSION=1.0.12
@@ -246,10 +247,12 @@ current() {
 }
 
 # Runs deploy/cloudflare.py on the server with TOKEN, or the stored token when TOKEN is empty.
-# The program travels as base64 so no shell between here and python3 can alter it.
+# The program travels as base64 so no shell between here and python3 can alter it. CLOUDFLARE_STDIN,
+# when set, rides after the token line: deploy-worker's script body has nowhere else to go.
 cloudflare() {
   local token="$1"; shift
-  { if [[ -n "$token" ]]; then printf '%s\n' "$token"; else on_host 'cat /opt/corvid/secrets/cloudflare.token'; echo; fi; } |
+  { if [[ -n "$token" ]]; then printf '%s\n' "$token"; else on_host 'cat /opt/corvid/secrets/cloudflare.token'; echo; fi
+    printf '%s' "${CLOUDFLARE_STDIN:-}"; } |
     on_host "python3 -c 'import base64; exec(base64.b64decode(\"$CLOUDFLARE_PY\"))' $*"
 }
 CLOUDFLARE_PY="$(base64 < "$HERE/deploy/cloudflare.py" | tr -d '\n')"
@@ -365,15 +368,7 @@ done
 # Stalwart leaves records in place when it stops publishing them. Its MTA-STS pair points
 # mta-sts at this server, so a pair pointing anywhere else is someone's own policy, left alone.
 stale_mta_sts=()
-if [[ "$web_port" != 443 ]]; then
-  cname="$(cloudflare "$token" records "$domain_zone_id" "mta-sts.$domain" CNAME)" || die "could not read mta-sts.$domain: $cname"
-  if [[ "${cname#* }" == "$hostname" ]]; then
-    stale_mta_sts+=("${cname%% *}")
-    while read -r id content; do
-      [[ "$content" == *v=STSv1* ]] && stale_mta_sts+=("$id")
-    done < <(cloudflare "$token" records "$domain_zone_id" "_mta-sts.$domain" TXT)
-  fi
-fi
+mta_sts_preflight "$token" "$domain" "$hostname" "$domain_zone_id" "$web_port"
 
 enable_dnssec=0
 off_zones="$(printf '%s and ' "${dnssec_off[@]}")"
@@ -410,7 +405,7 @@ cat <<EOF
   Certificate notices    $acme_contact
   Cloudflare token       $([[ -n "$token" ]] && echo "new" || echo "unchanged")
   DNSSEC                 $(if (( ${#dnssec_off[@]} == 0 )); then echo "on"; elif (( enable_dnssec )); then echo "will be turned on for $off_zones"; else echo "stays off for $off_zones"; fi)
-  MTA-STS                $([[ "$web_port" == 443 ]] && echo "published, served on 443" || echo "not published: senders fetch it only on 443, which $web_port is not")$( (( ${#stale_mta_sts[@]} )) && echo "; the records published earlier will be removed")
+  MTA-STS                $(if [[ "$web_port" == 443 ]]; then echo "published, served on 443"; else echo "published via a Cloudflare Worker on mta-sts.$domain"; fi)$( (( ${#stale_mta_sts[@]} )) && echo "; the records published earlier will be removed")$( [[ "$web_port" == 443 ]] && (( worker_owned )) && echo "; the Worker created earlier will be removed")
   Corvid image           $IMAGE
 EOF
 if interactive; then
@@ -516,6 +511,12 @@ if on_host 'systemctl is-enabled corvid-pod.service 2>/dev/null' | grep -q maske
   echo "  replaced the container holding the mail ports"
 fi
 
+# Stalwart's own MTA-STS publish, triggered by deploy.sh below, fails against a hostname the
+# Worker's custom domain still holds, so a Worker being retired must go first.
+if [[ "$web_port" == 443 ]] && (( worker_owned )); then
+  mta_sts_remove_worker "$token" "$domain" "$domain_zone_id" "$account_id" "$worker_name"
+fi
+
 step "deploying"
 on_host 'cd /opt/corvid/deploy && CORVID_INSTALLER=1 bash deploy.sh' || echo "  deploy.sh reported problems; see its output above"
 
@@ -525,6 +526,16 @@ if (( ${#stale_mta_sts[@]} )); then
     out="$(cloudflare "$token" delete "$domain_zone_id" "$id" 2>&1)" || die "Cloudflare did not remove record $id: $out"
   done
   ok "mta-sts.$domain and _mta-sts.$domain removed"
+fi
+
+if [[ "$web_port" != 443 ]]; then
+  cfg_cmd="podman run --rm --network=none -v /opt/corvid/config.yaml:/etc/corvid/config.yaml:ro '$IMAGE' corvid-config"
+  policy="$(on_host "$cfg_cmd mta-sts-policy")" || die "could not render the MTA-STS policy: $policy"
+  policy_id="$(on_host "$cfg_cmd shell" | awk -F= '$1=="MTA_STS_ID"{print $2}')"
+  [[ -n "$policy_id" ]] || die "corvid-config did not report MTA_STS_ID; rebuild the image"
+  mta_sts_publish "$token" "$domain" "$domain_zone_id" "$account_id" "$worker_name" "$policy" "$policy_id"
+else
+  mta_sts_check_published "$token" "$domain" "$domain_zone_id"
 fi
 
 # Stalwart names its keys v1-TYPE-DATE and never deletes one it has replaced, so every reinstall

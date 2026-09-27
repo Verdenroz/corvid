@@ -36,15 +36,24 @@ printf 'STALWART_URL=http://127.0.0.1:%s\nSTALWART_USER=admin\nSTALWART_PASSWORD
 
 fail=0
 check() { if eval "$2"; then echo "  ok    $1"; else echo "  FAIL  $1"; fail=1; fi; }
-# run HOST_ZONE [PUBLISH_MTA_STS]
+# run HOST_ZONE [PUBLISH_MTA_STS] [MTA_STS_MODE]
 run() {
-  printf '#!/bin/sh\nprintf "MAIL_DOMAIN=corvid.example\\nMAIL_HOSTNAME=n1.relay.example\\nMAIL_USER=alice\\nACME_CONTACT=ops@elsewhere.example\\nWEB_PORT=4443\\nHOST_ZONE=%s\\nPUBLISH_MTA_STS=%s\\nPUBLISH_TLSA=%s\\n"\n' \
-    "$1" "${2:-false}" "$([[ -n "$1" ]] && echo false || echo true)" > "$work/shell"
+  printf '#!/bin/sh\nprintf "MAIL_DOMAIN=corvid.example\\nMAIL_HOSTNAME=n1.relay.example\\nMAIL_USER=alice\\nACME_CONTACT=ops@elsewhere.example\\nWEB_PORT=4443\\nHOST_ZONE=%s\\nPUBLISH_MTA_STS=%s\\nPUBLISH_TLSA=%s\\nMTA_STS_MODE=%s\\n"\n' \
+    "$1" "${2:-false}" "$([[ -n "$1" ]] && echo false || echo true)" "${3:-testing}" > "$work/shell"
   chmod +x "$work/shell"; rm -f "$work/applied"
   PATH="$work/bin:$PATH" CORVID_DIR="$work" CORVID_ENV="$work/corvid.env" CORVID_CONFIG_CMD="$work/shell" \
     STALWART_CLI="$work/cli" CORVID_SKIP_RELOAD=1 bash "$here/apply-plan.sh" > "$work/out" 2>&1
   # shellcheck disable=SC2034  # read inside the eval'd checks
   status=$?
+}
+
+mta_sts_mode() {
+  python3 -c '
+import json, sys
+for line in open(sys.argv[1]):
+    op = json.loads(line)
+    if op.get("object") == "MtaSts":
+        print(op["value"]["mode"])' "$work/applied"
 }
 
 mail_records() {
@@ -67,6 +76,7 @@ check "the server's own address is exempt from bans" 'grep -q "\"object\":\"Allo
 
 check "the mail domain publishes no TLSA, which the host zone holds" 'mail_records | grep -q "\"tlsa\": false"'
 check "the mail domain publishes no MTA-STS off 443" 'mail_records | grep -q "\"mtaSts\": false"'
+check "Stalwart's own MtaSts singleton is set to testing" '[[ "$(mta_sts_mode)" == testing ]]'
 
 echo "== without one"
 run ""
@@ -77,6 +87,10 @@ check "the mail domain publishes TLSA" 'mail_records | grep -q "\"tlsa\": true"'
 echo "== with the web tier on 443"
 run "" true
 check "the mail domain publishes MTA-STS" 'mail_records | grep -q "\"mtaSts\": true"'
+
+echo "== with mta_sts_mode: enforce"
+run "" true enforce
+check "Stalwart's own MtaSts singleton is set to enforce" '[[ "$(mta_sts_mode)" == enforce ]]'
 
 [[ $fail -eq 0 ]] || { echo "--- last output:"; cat "$work/out"; }
 exit "$fail"

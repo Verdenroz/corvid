@@ -133,7 +133,10 @@ using the provider's resolver.
 
 If something else owns 443, ACME TLS-ALPN is unavailable and certificates need DNS-01. MTA-STS
 strictly requires HTTPS on 443, so the `mta-sts` host must be served somewhere else; it can point
-anywhere. Because Corvid ignores the advertised JMAP URL, nothing else in the design needs 443.
+anywhere. Corvid points it at a Cloudflare Worker instead, since the zone is already on
+Cloudflare: `install.sh` deploys a tiny generated script that serves the policy rendered from
+`config.yaml`, and publishes the `_mta-sts` TXT record itself since Stalwart is not the one
+serving it. Because Corvid ignores the advertised JMAP URL, nothing else in the design needs 443.
 
 ## Phase 0: provision and vet
 
@@ -268,8 +271,12 @@ To do, in this order:
 4. **Sign-in alerts**: notice of a new device or an unfamiliar source address, from Stalwart's
    sign-in log.
 5. **Two-factor sign-in** (TOTP) on the account for the web and JMAP, then passkeys (Phase 2).
-6. **MTA-STS where the web port cannot be 443**, served from somewhere that can answer on 443, so
-   senders that check it (Gmail) enforce TLS too.
+6. **MTA-STS where the web port cannot be 443.** Built: `install.sh` deploys a Cloudflare Worker
+   on `mta-sts.<domain>` to serve it, and `server.mta_sts_mode` switches `testing` to `enforce`
+   once mail delivery looks right, for whichever side serves the policy. Tested against a fake
+   Cloudflare only; moves to "in place" once a real install shows
+   `curl https://mta-sts.<domain>/.well-known/mta-sts.txt` serving the policy and exactly one
+   `_mta-sts` TXT record.
 
 Open decision: **disk encryption on the mail host.** Phase 1 below assumes LUKS, but deployments
 so far run on an unencrypted disk. On a VPS it guards against discarded disks and snapshots, not
