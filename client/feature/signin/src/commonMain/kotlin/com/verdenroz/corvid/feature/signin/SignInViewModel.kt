@@ -28,10 +28,12 @@ class SignInViewModel(private val signInUseCase: SignInUseCase) : ViewModel() {
         viewModelScope.launch {
             _state.value = SignInUiState.SigningIn
             try {
-                signInUseCase(ServerAddress(server.trimEnd('/')), issuer.trimEnd('/'))
+                signInUseCase(ServerAddress(server.trimEnd('/')), issuer)
                 _state.value = SignInUiState.Idle
             } catch (e: OpenIdConnectException) {
                 _state.value = SignInUiState.Failed(e.message)
+            } catch (e: IllegalArgumentException) {
+                _state.value = SignInUiState.Failed(e.message ?: "invalid identity provider")
             }
         }
     }

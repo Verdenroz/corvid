@@ -9,6 +9,7 @@ import kotlinx.coroutines.test.runTest
 import org.publicvalue.multiplatform.oidc.types.remote.AccessTokenResponse
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.time.Clock
 
@@ -50,4 +51,17 @@ class SignInUseCaseTest {
             assertFalse(latch.tripped.value)
             assertEquals(AuthState.SignedIn("at1", ServerAddress("https://mail.example.test")), tokenSource.state.value)
         }
+
+    @Test
+    fun `a trailing slash on the issuer is trimmed before appending the discovery path`() {
+        assertEquals(
+            "https://idp.example.test/.well-known/openid-configuration",
+            discoveryUri("https://idp.example.test/"),
+        )
+    }
+
+    @Test
+    fun `an http issuer is refused`() {
+        assertFailsWith<IllegalArgumentException> { discoveryUri("http://idp.example.test") }
+    }
 }

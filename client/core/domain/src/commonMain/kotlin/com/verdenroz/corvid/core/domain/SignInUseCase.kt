@@ -29,14 +29,18 @@ class SignInUseCase(
         server: ServerAddress,
         issuer: String,
     ) {
-        val client =
-            createOidcClient(
-                discoveryUri = "$issuer/.well-known/openid-configuration",
-                redirectUri = redirectUriProvider.redirectUri(),
-            )
+        val client = createOidcClient(discoveryUri = discoveryUri(issuer), redirectUri = redirectUriProvider.redirectUri())
         val flow = authFlowFactory.createAuthFlow(client)
         val tokens = flow.getAccessToken()
         tokenSource.adopt(client, tokens, server)
         authLatch.clear()
     }
+}
+
+internal fun discoveryUri(issuer: String): String {
+    val trimmed = issuer.trimEnd('/')
+    // The discovery document names the token endpoint a refresh sends the
+    // refresh token to, so an http issuer would leak it in the clear.
+    require(trimmed.startsWith("https://")) { "the identity provider must be reached over https" }
+    return "$trimmed/.well-known/openid-configuration"
 }
