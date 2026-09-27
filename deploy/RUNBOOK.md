@@ -48,15 +48,16 @@ owner of account").
 
 ### The sentinel's own app password
 
-`corvid-sentinel` signs in over JMAP like any other client, so it needs one of these too, created
-the same way, authenticated as the account holder:
+`corvid-sentinel` signs in over JMAP like any other client, so it needs an app password too,
+never the account password: once TOTP guards the account an app password is the only kind that
+still works, and every notice the sentinel imports would otherwise count as a sign-in with the
+account password.
 
-    stalwart-cli create AppPassword --json '{"description":"corvid-sentinel","allowedIps":{}}'
-
-Put the secret in `sentinel.env`'s `CORVID_JMAP_PASSWORD`, never the account password: once TOTP
-guards the account, an app password is the only kind that still works, and every notice the
-sentinel imports would otherwise count as a sign-in with the account password. Expect one
-self-notice the first time it starts, for its own first sign-in.
+It needs one restricted to `127.0.0.1`, since the sentinel calls JMAP from inside the pod on
+loopback, not from the VPN exit an app password `device.sh add NAME` creates is scoped to.
+Creating a loopback-scoped service credential this way is not built yet; put the secret in
+`sentinel.env`'s `CORVID_JMAP_PASSWORD` once it is. Expect one self-notice the first time the
+sentinel starts, for its own first sign-in.
 
 ## Sign-in alerts
 
@@ -69,7 +70,7 @@ knowing before relying on it:
   `systemctl status corvid-sentinel`.
 - A notice delivered successfully but followed by a failed state save answers Stalwart with a
   retryable status, so the retry imports a second copy of the same notice. Duplicates are
-  possible; a missing notice is not meant to be.
+  possible; a missing one should not happen.
 
 ## Configuration
 
@@ -83,16 +84,19 @@ at fault rather than silently taking a default.
 The file holds no secrets, so it can be shared or committed. Secrets come from the env files
 `bootstrap.sh` creates empty and mode 600, with templates in `deploy/env/`:
 
-    rewriter.env   CORVID_IMGPROXY_SECRET (openssl rand -hex 32)
-    labeler.env    CORVID_JMAP_PASSWORD, from device.sh add --local corvid-labeler
-    mirror.env     CORVID_JMAP_PASSWORD, from device.sh add corvid-mirror
+    rewriter.env         CORVID_IMGPROXY_SECRET (openssl rand -hex 32)
+    labeler.env          CORVID_JMAP_PASSWORD, from device.sh add --local corvid-labeler
+    mirror.env           CORVID_JMAP_PASSWORD, from device.sh add corvid-mirror, on the mirror machine
+    sentinel.env         CORVID_JMAP_PASSWORD, from device.sh add --local corvid-sentinel
+    sentinel-webhook.env CORVID_SENTINEL_SECRET (openssl rand -hex 32), shared with Stalwart
 
-Use two separate app passwords, created as in the section above, so revoking either does not stop
-the other. The labeler runs inside the pod and reaches JMAP over loopback, so its credential is
-`--local`; the mirror is off-host and reaches JMAP through the VPN, so it needs a plain `add`
-scoped like any other device. The image-proxy secret signs URLs in the milter and verifies them
-in the proxy, so both read the same value. Changing it invalidates the links in mail already
-delivered: those images stop loading, which is a visible cost and not a broken mailbox.
+Use a separate app password per service, created as in the section above, so revoking one does
+not stop the others. The labeler and the sentinel run inside the pod and reach JMAP over
+loopback, so their credentials are `--local`; the mirror is off-host and reaches JMAP through the
+VPN, so it needs a plain `add` scoped like any other device. The image-proxy secret signs URLs in
+the milter and verifies them in the proxy, so both read the same value. Changing it invalidates
+the links in mail already delivered: those images stop loading, which is a visible cost and not a
+broken mailbox.
 
 The web tier answers on `server.web_port`, 4443 by default, leaving 443 to anything else the
 host runs. Everything that names it is generated from `server.hostname` and `server.web_port`:
