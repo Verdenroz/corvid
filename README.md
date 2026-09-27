@@ -1,7 +1,24 @@
-# Corvid
+<p align="center">
+  <img src=".github/assets/readme/hero.svg" width="100%"
+       alt="Corvid: self-hosted email that strips trackers at delivery, signs its own image proxy, and sends nothing through a relay.">
+</p>
+
+<p align="center">
+  <a href="https://github.com/Verdenroz/corvid/actions/workflows/ci.yml"><img src="https://github.com/Verdenroz/corvid/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
+</p>
 
 Self-hosted email for one person, built on [Stalwart Mail Server](https://stalw.art), with
 tracker stripping and local labeling that never send mail anywhere else.
+
+## Status
+
+Early. The deployment and every service have tests and have run end to end on a test host, but
+not yet in long-term use. Expect sharp edges, and read `deploy/RUNBOOK.md` before deploying.
+`install.sh` ends by running `deploy/verify.sh`, which checks observable state (services, DNS,
+firewall packet counters, the milter handshake) rather than a single test send.
+
+<h2><img src=".github/assets/readme/section-how-it-works.svg" alt="How it works" height="56"></h2>
 
 Corvid is a deployment plus a set of small Rust services that run beside Stalwart:
 
@@ -16,14 +33,14 @@ Corvid is a deployment plus a set of small Rust services that run beside Stalwar
 - Stalwart's own settings come from a plan file applied with `stalwart-cli`, not from clicking
   through its web UI.
 
+<p align="center">
+  <img src=".github/assets/readme/workflow.svg" width="100%"
+       alt="Diagram: mail flows sender to Stalwart to the milter to the mailbox on the delivery path, which defers mail at the sender if it breaks. The labeler and the mirror pull from the mailbox off that path, so a failure there only makes labels or the mirror late.">
+</p>
+
 Mail goes out from your own IP with no relay in between. The server can read your mail, because
 search and labeling run on it. Mail is encrypted in transit with TLS; encrypting the disk is up to
-you. [docs/design.md](docs/design.md) explains why each of these choices was made.
-
-## Status
-
-Early. The deployment and every service have tests and have run end to end on a test host, but
-not yet in long-term use. Expect sharp edges, and read `deploy/RUNBOOK.md` before deploying.
+you.
 
 ## Before you install
 
@@ -40,7 +57,7 @@ These happen at your provider, registrar and Cloudflare, so the installer cannot
 4. If the provider has its own firewall or security groups, open 25, 465, 587, 993, 80 and the
    web port (443 by default) there.
 
-## Install
+<h2><img src=".github/assets/readme/section-install.svg" alt="Install" height="56"></h2>
 
 From a checkout of this repository, on your own machine, with the SSH key that logs in to the
 server as root or as a user with passwordless sudo:
@@ -86,9 +103,6 @@ automates.
 On Kubernetes, `charts/corvid` runs the same pod from the same `config.yaml` schema. It has
 run on a local kind cluster but not yet on a production one; its README covers the first run
 and what mail needs from a cluster.
-
-`install.sh` ends by running `deploy/verify.sh`, which checks observable state (services, DNS,
-firewall packet counters, the milter handshake) rather than a single test send.
 
 Mail from a new domain lands in spam at first, even with SPF, DKIM and DMARC passing. Reputation
 comes from time and from people replying to you, so start with correspondents who will.
