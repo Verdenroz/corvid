@@ -35,7 +35,7 @@ print(next(a["id"] for a in map(json.loads, filter(str.strip, sys.stdin)) if a.g
 # act on another account silently.
 jmap_call() {
   local expect="$1"
-  curl -fsS -u "$STALWART_USER:$STALWART_PASSWORD" -H 'Content-Type: application/json' -d @- "$STALWART_URL/jmap" |
+  curl_authed -fsS -H 'Content-Type: application/json' -d @- "$STALWART_URL/jmap" |
     python3 -c '
 import json, sys
 expect, body = sys.argv[1], sys.stdin.read()
@@ -233,7 +233,7 @@ print(json.dumps({
 
     # curl exits nonzero on a connection failure even without -f, which would otherwise trip
     # set -e before the status below is ever inspected.
-    status="$(curl -s -o /dev/null -w '%{http_code}' -u "$STALWART_USER:$STALWART_PASSWORD" \
+    status="$(curl_authed -s -o /dev/null -w '%{http_code}' \
       "$STALWART_URL/jmap/download/$id/$blob_id/$name.key" || true)"
     if [[ "$status" != "404" ]]; then
       echo "  storage key file revoked, but its blob did not confirm gone (status $status)" >&2

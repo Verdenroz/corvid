@@ -25,7 +25,7 @@ command -v "$STALWART_CLI" >/dev/null 2>&1 || {
   exit 69
 }
 
-curl -fsS -o /dev/null -u "$STALWART_USER:$STALWART_PASSWORD" "$STALWART_URL/api/account" \
+curl_authed -fsS -o /dev/null "$STALWART_URL/api/account" \
   || { echo "credentials in $ENV_FILE do not authenticate against $STALWART_URL" >&2; exit 1; }
 
 # Passkeys are applied separately: oidc.plan.ndjson points Authentication at an external
@@ -106,5 +106,5 @@ fi
 
 # A plan can lock the admin out of the interface that would fix it, or fail partway on a
 # required field --dry-run cannot see. This notices while a shell is still open.
-curl -fsS -o /dev/null -u "$STALWART_USER:$STALWART_PASSWORD" "$STALWART_URL/api/account" \
+curl_authed -fsS -o /dev/null "$STALWART_URL/api/account" \
   || { echo "$STALWART_USER can no longer log in after this plan; fix it before closing this shell" >&2; exit 1; }

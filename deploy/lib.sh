@@ -12,6 +12,12 @@ server_ip() {
   curl -4 -s --max-time 10 https://1.1.1.1/cdn-cgi/trace | sed -n 's/^ip=//p'
 }
 
+# curl -u puts the password in argv, readable in /proc by any local user for the call's
+# lifetime. --config on a process substitution keeps it off the command line.
+curl_authed() {
+  curl --config <(printf 'user = "%s:%s"\n' "$STALWART_USER" "$STALWART_PASSWORD") "$@"
+}
+
 require_image() {
   podman image exists "$CORVID_IMAGE" && return
   echo "image $CORVID_IMAGE is not on this host; it carries corvid-config and three of the services" >&2
