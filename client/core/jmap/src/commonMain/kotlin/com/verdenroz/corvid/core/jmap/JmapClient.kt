@@ -15,6 +15,7 @@ import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.IOException
@@ -62,7 +63,7 @@ class JmapClient private constructor(
      * one callId, not a thrown exception: the rest of the batch still ran.
      */
     suspend fun call(invocations: List<Invocation>): Map<String, MethodOutcome> {
-        val request = JmapRequest(using = REQUIRED_CAPABILITIES, methodCalls = invocations)
+        val request = JmapRequest(using = REQUIRED_CAPABILITIES, methodCalls = invocations.map(::withAccountId))
         val response = guardedPost(httpClient, authLatch, session.apiUrl, bearerToken, request)
         val parsed =
             try {
@@ -84,6 +85,14 @@ class JmapClient private constructor(
             throw JmapException(JmapError.Request(type = "incompleteResponse", detail = "no response for $missing"))
         }
         return outcomes
+    }
+
+    /** RFC 8620 requires accountId on every /get, /query and /set; callers never carry
+     *  one themselves so it can never drift from the session that authenticated them. */
+    private fun withAccountId(invocation: Invocation): Invocation {
+        if ("accountId" in invocation.arguments) return invocation
+        val accountId = session.accountId ?: throw JmapException(JmapError.Unauthorized)
+        return invocation.copy(arguments = JsonObject(invocation.arguments + ("accountId" to JsonPrimitive(accountId))))
     }
 
     /** Not a method call: blobs move over plain HTTP through the templates the session advertises. */

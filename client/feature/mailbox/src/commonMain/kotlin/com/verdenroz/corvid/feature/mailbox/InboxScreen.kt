@@ -53,7 +53,7 @@ fun InboxScreen(repository: MailboxRepository) {
 @Composable
 private fun EmailRow(email: EmailSummary) {
     Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-        Text(email.subject, style = MaterialTheme.typography.titleMedium)
+        Text(email.subject.ifEmpty { "(no subject)" }, style = MaterialTheme.typography.titleMedium)
         Text(email.from, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (email.preview.isNotEmpty()) {
             Text(email.preview, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -61,17 +61,27 @@ private fun EmailRow(email: EmailSummary) {
         val labels = email.keywords.filter { it.startsWith("corvid-") }
         if (labels.isNotEmpty()) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                labels.forEach { label ->
-                    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.small) {
-                        Text(
-                            label.removePrefix("corvid-"),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        )
-                    }
-                }
+                labels.forEach { label -> LabelChip(label) }
             }
         }
+    }
+}
+
+/** corvid-llm- is the cold-start pass's own guess, never a person's or the labeler's
+ *  trained verdict (CLAUDE.md, "keyword provenance"): a different container color is
+ *  enough to keep that distinction visible without a second UI language for it. */
+@Composable
+private fun LabelChip(keyword: String) {
+    val isModelGuess = keyword.startsWith("corvid-llm-")
+    val text = if (isModelGuess) keyword.removePrefix("corvid-llm-") else keyword.removePrefix("corvid-")
+    val containerColor = if (isModelGuess) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.secondaryContainer
+    val contentColor = if (isModelGuess) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
+    Surface(color = containerColor, shape = MaterialTheme.shapes.small) {
+        Text(
+            text,
+            style = MaterialTheme.typography.labelSmall,
+            color = contentColor,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+        )
     }
 }

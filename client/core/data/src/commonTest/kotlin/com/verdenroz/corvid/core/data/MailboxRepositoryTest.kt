@@ -49,6 +49,26 @@ class MailboxRepositoryTest {
                         receivedAt = Instant.fromEpochSeconds((EMAIL_COUNT - i).toLong()).toString(),
                     )
             }
+            // subject and from are String|null and EmailAddress[]|null on the wire (RFC 8621);
+            // both need to survive one full traversal without a crash or a literal "null".
+            fake.emails +=
+                FakeEmail(
+                    id = "no-subject",
+                    threadId = "no-subject",
+                    mailboxIds = setOf("inbox"),
+                    subject = null,
+                    from = "sender@example.test",
+                    receivedAt = Instant.fromEpochSeconds((EMAIL_COUNT + 1).toLong()).toString(),
+                )
+            fake.emails +=
+                FakeEmail(
+                    id = "no-from",
+                    threadId = "no-from",
+                    mailboxIds = setOf("inbox"),
+                    subject = "subject",
+                    from = null,
+                    receivedAt = Instant.fromEpochSeconds((EMAIL_COUNT + 2).toLong()).toString(),
+                )
             val repository = repository(fake)
 
             val all = mutableListOf<EmailSummary>()
@@ -59,8 +79,10 @@ class MailboxRepositoryTest {
                 anchor = page.emails.lastOrNull()?.id
             } while (page.emails.isNotEmpty())
 
-            assertEquals(EMAIL_COUNT, all.size)
+            assertEquals(EMAIL_COUNT + 2, all.size)
             assertEquals(all.map { it.id }.toSet().size, all.size)
+            assertEquals("", all.first { it.id == "no-subject" }.subject)
+            assertEquals("", all.first { it.id == "no-from" }.from)
         }
 
     @Test

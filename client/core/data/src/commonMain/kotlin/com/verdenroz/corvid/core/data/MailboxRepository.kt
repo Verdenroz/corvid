@@ -7,6 +7,7 @@ import com.verdenroz.corvid.core.jmap.MethodOutcome
 import com.verdenroz.corvid.core.jmap.resultReference
 import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.core.model.Mailbox
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.addJsonObject
@@ -79,8 +80,8 @@ class MailboxRepository(private val jmapClient: JmapClient) {
             )
         val queryOutcome = outcomes.getValue("c0")
         if ((queryOutcome as? MethodOutcome.Failure)?.error?.type == "anchorNotFound") return EmailPage.AnchorNotFound
-        val queryResult = (queryOutcome as MethodOutcome.Success).result
-        val getResult = (outcomes.getValue("c1") as MethodOutcome.Success).result
+        val queryResult = queryOutcome.resultOrThrow()
+        val getResult = outcomes.getValue("c1").resultOrThrow()
         val emails = getResult.getValue("list").jsonArray.map { it.jsonObject.toEmailSummary() }
         return EmailPage.Found(emails, queryResult.getValue("queryState").jsonPrimitive.content)
     }
@@ -88,14 +89,14 @@ class MailboxRepository(private val jmapClient: JmapClient) {
     private suspend fun call(
         method: String,
         arguments: JsonObject,
-    ): JsonObject {
-        val outcome = jmapClient.call(listOf(Invocation(method, arguments, "c0"))).getValue("c0")
-        return when (outcome) {
-            is MethodOutcome.Success -> outcome.result
-            is MethodOutcome.Failure -> throw JmapException(outcome.error)
-        }
-    }
+    ): JsonObject = jmapClient.call(listOf(Invocation(method, arguments, "c0"))).getValue("c0").resultOrThrow()
 }
+
+private fun MethodOutcome.resultOrThrow(): JsonObject =
+    when (this) {
+        is MethodOutcome.Success -> result
+        is MethodOutcome.Failure -> throw JmapException(error)
+    }
 
 private fun JsonObject.toMailbox() =
     Mailbox(
@@ -107,12 +108,15 @@ private fun JsonObject.toMailbox() =
         unreadEmails = get("unreadEmails")?.jsonPrimitive?.int ?: 0,
     )
 
+// subject and from are String|null and EmailAddress[]|null in RFC 8621: jsonPrimitive.content
+// on a JsonNull subject returns the literal string "null", and .jsonArray on a JsonNull
+// from throws, so both need a null check before the normal parse.
 private fun JsonObject.toEmailSummary() =
     EmailSummary(
         id = getValue("id").jsonPrimitive.content,
         threadId = getValue("threadId").jsonPrimitive.content,
-        subject = getValue("subject").jsonPrimitive.content,
-        from = getValue("from").jsonArray.firstOrNull()?.jsonObject?.formatAddress().orEmpty(),
+        subject = get("subject")?.jsonPrimitive?.contentOrNull.orEmpty(),
+        from = (get("from") as? JsonArray)?.firstOrNull()?.jsonObject?.formatAddress().orEmpty(),
         receivedAt = Instant.parse(getValue("receivedAt").jsonPrimitive.content),
         keywords = getValue("keywords").jsonObject.keys,
         preview = getValue("preview").jsonPrimitive.content,

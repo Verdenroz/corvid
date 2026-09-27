@@ -196,11 +196,17 @@ class FakeJmapServer {
         )
     }
 
+    // RFC 8620 requires accountId on every /get, /query and /set; Core/echo is the one
+    // method here that isn't account-scoped, so it's the one exempt from the check.
     private fun dispatch(
         name: String,
         arguments: JsonObject,
-    ): Pair<String, JsonObject> =
-        when (name) {
+    ): Pair<String, JsonObject> {
+        if (name.substringAfterLast('/') in setOf("get", "query", "set") && "accountId" !in arguments) {
+            return "error" to problem("invalidArguments", "accountId is required")
+        }
+        return when (name) {
+            "Core/echo" -> "Core/echo" to arguments
             "Mailbox/get" -> "Mailbox/get" to mailboxGet(arguments)
             "Email/query" -> emailQuery(arguments)
             "Email/get" -> "Email/get" to emailGet(arguments)
@@ -209,6 +215,7 @@ class FakeJmapServer {
             "FileNode/set" -> "FileNode/set" to fileNodeSet(arguments)
             else -> "error" to buildJsonObject { put("type", "unknownMethod") }
         }
+    }
 
     private fun mailboxGet(arguments: JsonObject): JsonObject {
         val ids = arguments["ids"]?.jsonArray?.map { it.jsonPrimitive.content }
@@ -427,11 +434,15 @@ private fun FakeEmail.toJson(): JsonObject =
         put("id", id)
         put("threadId", threadId)
         put("subject", subject)
-        // A real Email/get returns an EmailAddress[], never a bare string.
-        putJsonArray("from") {
-            addJsonObject {
-                put("name", null as String?)
-                put("email", from)
+        // A real Email/get returns an EmailAddress[]|null, never a bare string.
+        if (from == null) {
+            put("from", null as String?)
+        } else {
+            putJsonArray("from") {
+                addJsonObject {
+                    put("name", null as String?)
+                    put("email", from)
+                }
             }
         }
         put("receivedAt", receivedAt)
