@@ -18,6 +18,7 @@ bash deploy/tests/totp.test.sh
 bash deploy/tests/lib.test.sh
 ./deploy/check-plan.py
 ./deploy/check-env.sh
+./deploy/check-sentinel-events.sh
 helm lint charts/corvid ...   # and helm template | kubeconform; see the chart job in ci.yml
 ```
 
