@@ -1,6 +1,8 @@
 package com.verdenroz.corvid.desktop
 
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.toPainter
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
@@ -12,6 +14,7 @@ import com.verdenroz.corvid.core.auth.platformAuthModule
 import kotlinx.coroutines.runBlocking
 import org.koin.compose.koinInject
 import org.koin.core.context.startKoin
+import javax.imageio.ImageIO
 
 fun main() {
     // Must win the race against oidc-appsupport's own PreferencesFactory
@@ -20,7 +23,8 @@ fun main() {
     startKoin { modules(appModules + platformAuthModule) }
     application {
         val windowState = rememberWindowState()
-        Window(onCloseRequest = ::exitApplication, title = "Corvid", state = windowState) {
+        val icon = remember { windowIcon() }
+        Window(onCloseRequest = ::exitApplication, title = "Corvid", state = windowState, icon = icon) {
             // Desktop's closest equivalent to ON_STOP: minimising is the only
             // "backgrounded" signal this platform actually has.
             val backgroundDropController: BackgroundDropController = koinInject()
@@ -31,3 +35,6 @@ fun main() {
         }
     }
 }
+
+private fun windowIcon() =
+    Thread.currentThread().contextClassLoader.getResourceAsStream("corvid-512.png")!!.use { ImageIO.read(it) }.toPainter()

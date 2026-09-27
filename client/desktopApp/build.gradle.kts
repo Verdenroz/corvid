@@ -39,8 +39,13 @@ compose.desktop {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "corvid"
             packageVersion = providers.gradleProperty("corvid.version").getOrElse("0.1.0")
-            // Dmg refuses MAJOR=0 versions; placeholder until 1.0.
-            macOS { packageVersion = "1.0.0" }
+            linux { iconFile.set(project.file("src/main/resources/corvid-512.png")) }
+            windows { iconFile.set(project.file("src/main/resources/corvid.ico")) }
+            macOS {
+                // Dmg refuses MAJOR=0 versions; placeholder until 1.0.
+                packageVersion = "1.0.0"
+                iconFile.set(project.file("src/main/resources/corvid.icns"))
+            }
         }
     }
 }
