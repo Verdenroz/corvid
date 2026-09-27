@@ -24,13 +24,6 @@ usage() {
   exit 64
 }
 
-account_id() {
-  stalwart-cli query Account --json | python3 -c '
-import json, os, sys
-address = os.environ["MAIL_USER"] + "@" + os.environ["MAIL_DOMAIN"]
-print(next(a["id"] for a in map(json.loads, filter(str.strip, sys.stdin)) if a.get("emailAddress") == address))'
-}
-
 # Refuses a response answering for a different account than requested, so a wrong id can never
 # act on another account silently.
 jmap_call() {

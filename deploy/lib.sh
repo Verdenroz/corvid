@@ -22,6 +22,27 @@ curl_authed() {
   curl --config <(printf 'user = "%s:%s"\n' "$user" "$pass") "$@"
 }
 
+account_id() {
+  stalwart-cli query Account --json | python3 -c '
+import json, os, sys
+address = os.environ["MAIL_USER"] + "@" + os.environ["MAIL_DOMAIN"]
+print(next(a["id"] for a in map(json.loads, filter(str.strip, sys.stdin)) if a.get("emailAddress") == address))'
+}
+
+# The key of ID's Password credential, found by @type, or empty if it has none. Callers decide
+# what empty means: set-password.sh defaults to "0" to create one, totp.sh refuses rather than
+# let a pointer patch create a credential holding only otpAuth.
+password_key() {
+  stalwart-cli get Account "$1" --fields credentials --json | python3 -c '
+import json, sys
+creds = json.load(sys.stdin)["credentials"]
+keys = [k for k, v in creds.items() if v.get("@type") == "Password"]
+if len(keys) > 1:
+    print(f"expected at most one Password credential, found {len(keys)}", file=sys.stderr)
+    sys.exit(1)
+print(keys[0] if keys else "")'
+}
+
 require_image() {
   podman image exists "$CORVID_IMAGE" && return
   echo "image $CORVID_IMAGE is not on this host; it carries corvid-config and three of the services" >&2

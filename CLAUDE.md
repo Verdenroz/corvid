@@ -338,6 +338,18 @@ web tier is not on 443.
   Measured directly: a drill's source rig and its replacement, bootstrapped fresh minutes apart,
   both gave their mailbox account id `c`. Anything that needs to tell two servers apart must pin
   on more than an id alone.
+- **TOTP has no code-in-password path on IMAP, SMTP or JMAP Basic auth**, on any protocol
+  version tried: appending the code to the password with a comma, colon, space or `$`, or
+  sending it as a custom header, all fail exactly like a wrong password. Stalwart's own docs say
+  why: 2FA is only usable through a client that speaks its OAuth flow. Once `otpAuth` is set,
+  those three protocols refuse the account password outright and an app password is the only way
+  in; JMAP Basic auth reports this as `402 "MFA code required"`, distinct from a plain `401`.
+- **`POST /api/auth`'s `redirectUri` is required in v0.16.21 though `openapi.yml` marks it
+  nullable.** A request without one gets a bare `401 Unauthorized: You have to authenticate
+  first`, with no hint that the real cause was `auth.error: "A redirect URI is required."`,
+  visible only in a WebHook capture. The rest of the documented shape holds: `{"type":"authCode",
+  "accountName","accountSecret","clientId","redirectUri"}`, then the same body plus `"mfaToken":
+  "<6-digit code>"` once the first call answers `{"type":"mfaRequired"}`.
 
 ## Working method
 

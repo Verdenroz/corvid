@@ -63,6 +63,36 @@ scoped to.
 Put the secret in `sentinel.env`'s `CORVID_JMAP_PASSWORD`. Expect one self-notice the first time
 the sentinel starts, for its own first sign-in.
 
+## Two-factor sign-in (TOTP)
+
+`deploy/totp.sh enable|disable|status` manages TOTP on `server.mail_user`'s account password, run
+the same way as the other credential scripts:
+
+    ssh host /opt/corvid/deploy/totp.sh enable
+    ssh host /opt/corvid/deploy/totp.sh status
+    ssh host /opt/corvid/deploy/totp.sh disable
+
+`enable` refuses if an app password does not already exist for the account (loopback-only ones,
+from `device.sh add --local`, do not count, since they serve in-pod services rather than mail
+apps): once TOTP is on, IMAP, SMTP and JMAP Basic auth refuse the account password outright, on
+every attempt, with no way to supply a code, so every mail app must already be on an app
+password before TOTP goes on, or it locks out the moment it does. `--force` skips this guard.
+
+It generates a random secret locally, prints the `otpauth://` URI once (plus a terminal QR code
+if `qrencode` is installed) and never writes anything to the server until a code entered back at
+the terminal verifies against that secret locally: a wrong code changes nothing and exits
+non-zero, so there is no way to half-enable it. `disable` clears `otpAuth` by the same admin
+pointer patch `set-password.sh` uses for the password itself, and is the recovery path when a
+phone is lost: it needs only shell access to the host, not the authenticator.
+
+**What this does and does not guard.** IMAP, SMTP and JMAP Basic auth cannot complete a
+TOTP-gated sign-in at all; they simply lose access to the account password and must move to an
+app password (`device.sh add`), same as they would for passkeys. The only protocol that can
+complete one is Stalwart's own OAuth login (`POST /api/auth`), used by its web UI and any OAuth
+client; the Corvid client itself signs in through Pocket-ID once OIDC lands, so this TOTP does
+not guard it either. What it buys today: a leaked account password alone opens nothing, on any
+protocol, without the code.
+
 ## Sign-in alerts
 
 `corvid-sentinel` and Stalwart's own `WebHook` share `CORVID_SENTINEL_SECRET`
