@@ -13,9 +13,9 @@
     cloudflare.py enable-dnssec ZONE     turns DNSSEC on, then prints the same
     cloudflare.py account ZONE           the id of the account that owns ZONE
     cloudflare.py worker-owner ACCOUNT HOSTNAME    the service name bound to HOSTNAME, or empty
-    cloudflare.py worker-permission ACCOUNT ZONE   fails naming the permission it lacks
-    cloudflare.py deploy-worker ACCOUNT ZONE NAME HOSTNAME   uploads the script on stdin
-                                          (after the token line) and binds it to HOSTNAME
+    cloudflare.py deploy-worker ACCOUNT ZONE NAME HOSTNAME   uploads the module on stdin
+                                          (after the token line) and binds it to HOSTNAME. Fails
+                                          naming the permission it lacks, not a bare 403.
     cloudflare.py remove-worker ACCOUNT NAME HOSTNAME   removes the custom domain and script,
                                           doing nothing if neither exists
 
@@ -27,16 +27,39 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 
 # Overridable so the test suite can point this at a fake server instead of the real Cloudflare.
 API = os.environ.get("CORVID_CLOUDFLARE_API", "https://api.cloudflare.com/client/v4/")
 
+# Pinned rather than "today": a stable date means a rerun never changes what already works.
+# https://developers.cloudflare.com/workers/configuration/compatibility-dates/
+WORKER_COMPATIBILITY_DATE = "2024-01-01"
+
+
+def multipart(fields):
+    """Encodes fields as multipart/form-data: (name, filename_or_None, content_type, bytes)."""
+    boundary = uuid.uuid4().hex
+    body = bytearray()
+    for name, filename, content_type, content in fields:
+        disposition = f'form-data; name="{name}"'
+        if filename:
+            disposition += f'; filename="{filename}"'
+        body += f"--{boundary}\r\nContent-Disposition: {disposition}\r\n".encode()
+        body += f"Content-Type: {content_type}\r\n\r\n".encode()
+        body += content + b"\r\n"
+    body += f"--{boundary}--\r\n".encode()
+    return f"multipart/form-data; boundary={boundary}", bytes(body)
+
 
 def call(token, path, body=None, method=None, content_type="application/json", missing_permission=None):
-    data = body if content_type != "application/json" else (None if body is None else json.dumps(body))
+    if content_type == "application/json":
+        data = None if body is None else json.dumps(body).encode()
+    else:
+        data = body
     request = urllib.request.Request(
         API + path,
-        data=None if data is None else data.encode(),
+        data=data,
         method=method or ("GET" if body is None else "POST"),
         headers={"Authorization": "Bearer " + token, "Content-Type": content_type},
     )
@@ -107,16 +130,19 @@ def main():
         query = urllib.parse.urlencode({"hostname": hostname})
         domains = call(token, f"accounts/{account}/workers/domains?{query}")
         print(domains[0]["service"] if domains else "")
-    elif command == "worker-permission":
-        account, zone = args
-        call(token, f"accounts/{account}/workers/scripts", missing_permission="Workers Scripts:Edit")
-        call(token, f"accounts/{account}/workers/domains?zone_id={zone}",
-             missing_permission="Workers Routes:Edit")
     elif command == "deploy-worker":
         account, zone, name, hostname = args
-        script = sys.stdin.read()
-        call(token, f"accounts/{account}/workers/scripts/{name}", script, method="PUT",
-             content_type="application/javascript", missing_permission="Workers Scripts:Edit")
+        module = f"{name}.mjs"
+        metadata = json.dumps({
+            "main_module": module,
+            "compatibility_date": WORKER_COMPATIBILITY_DATE,
+        }).encode()
+        content_type, body = multipart([
+            ("metadata", None, "application/json", metadata),
+            (module, module, "application/javascript+module", sys.stdin.read().encode()),
+        ])
+        call(token, f"accounts/{account}/workers/scripts/{name}", body, method="PUT",
+             content_type=content_type, missing_permission="Workers Scripts:Edit")
         call(token, f"accounts/{account}/workers/domains",
              {"environment": "production", "hostname": hostname, "service": name, "zone_id": zone},
              method="PUT", missing_permission="Workers Routes:Edit")
