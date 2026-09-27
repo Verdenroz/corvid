@@ -22,6 +22,7 @@ set -euo pipefail
 (( BASH_VERSINFO[0] >= 4 )) || { echo "install.sh needs bash 4 or newer (macOS: brew install bash, then run it with that bash)" >&2; exit 1; }
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
+. "$HERE/deploy/mta-sts-lib.sh"
 VERSION="$(sed -nE 's/^version = "([^"]+)"/\1/p' "$HERE/Cargo.toml" | head -1)"
 IMAGE="ghcr.io/verdenroz/corvid:$VERSION"
 CLI_VERSION=1.0.12
@@ -246,10 +247,12 @@ current() {
 }
 
 # Runs deploy/cloudflare.py on the server with TOKEN, or the stored token when TOKEN is empty.
-# The program travels as base64 so no shell between here and python3 can alter it.
+# The program travels as base64 so no shell between here and python3 can alter it. CLOUDFLARE_STDIN,
+# when set, rides after the token line: deploy-worker's script body has nowhere else to go.
 cloudflare() {
   local token="$1"; shift
-  { if [[ -n "$token" ]]; then printf '%s\n' "$token"; else on_host 'cat /opt/corvid/secrets/cloudflare.token'; echo; fi; } |
+  { if [[ -n "$token" ]]; then printf '%s\n' "$token"; else on_host 'cat /opt/corvid/secrets/cloudflare.token'; echo; fi
+    printf '%s' "${CLOUDFLARE_STDIN:-}"; } |
     on_host "python3 -c 'import base64; exec(base64.b64decode(\"$CLOUDFLARE_PY\"))' $*"
 }
 CLOUDFLARE_PY="$(base64 < "$HERE/deploy/cloudflare.py" | tr -d '\n')"
@@ -364,15 +367,28 @@ for zone in $(printf '%s\n' "$domain" "$host_zone" | sort -u); do
 done
 # Stalwart leaves records in place when it stops publishing them. Its MTA-STS pair points
 # mta-sts at this server, so a pair pointing anywhere else is someone's own policy, left alone.
+# A Corvid Worker is identified by its custom domain's service name, not by record content,
+# since its own "_mta-sts" TXT looks identical to Stalwart's.
+worker_name="$(mta_sts_worker_name "$domain")"
+account_id="$(cloudflare "$token" account "$domain_zone_id")" || die "could not read the account that owns $domain: $account_id"
+owner="$(cloudflare "$token" worker-owner "$account_id" "mta-sts.$domain")" || die "could not check mta-sts.$domain: $owner"
+worker_owned=0
+[[ "$owner" == "$worker_name" ]] && worker_owned=1
+
 stale_mta_sts=()
 if [[ "$web_port" != 443 ]]; then
   cname="$(cloudflare "$token" records "$domain_zone_id" "mta-sts.$domain" CNAME)" || die "could not read mta-sts.$domain: $cname"
-  if [[ "${cname#* }" == "$hostname" ]]; then
-    stale_mta_sts+=("${cname%% *}")
-    while read -r id content; do
-      [[ "$content" == *v=STSv1* ]] && stale_mta_sts+=("$id")
-    done < <(cloudflare "$token" records "$domain_zone_id" "_mta-sts.$domain" TXT)
-  fi
+  case "$(mta_sts_record_status "$cname" "$hostname" "$worker_owned")" in
+    stale)
+      stale_mta_sts+=("${cname%% *}")
+      while read -r id content; do
+        [[ "$content" == *v=STSv1* ]] && stale_mta_sts+=("$id")
+      done < <(cloudflare "$token" records "$domain_zone_id" "_mta-sts.$domain" TXT)
+      ;;
+    foreign)
+      die "mta-sts.$domain already points to ${cname#* }, not $hostname or a Corvid Worker; remove it before installing off 443"
+      ;;
+  esac
 fi
 
 enable_dnssec=0
@@ -410,7 +426,7 @@ cat <<EOF
   Certificate notices    $acme_contact
   Cloudflare token       $([[ -n "$token" ]] && echo "new" || echo "unchanged")
   DNSSEC                 $(if (( ${#dnssec_off[@]} == 0 )); then echo "on"; elif (( enable_dnssec )); then echo "will be turned on for $off_zones"; else echo "stays off for $off_zones"; fi)
-  MTA-STS                $([[ "$web_port" == 443 ]] && echo "published, served on 443" || echo "not published: senders fetch it only on 443, which $web_port is not")$( (( ${#stale_mta_sts[@]} )) && echo "; the records published earlier will be removed")
+  MTA-STS                $(if [[ "$web_port" == 443 ]]; then echo "published, served on 443"; else echo "published via a Cloudflare Worker on mta-sts.$domain"; fi)$( (( ${#stale_mta_sts[@]} )) && echo "; the records published earlier will be removed")$( [[ "$web_port" == 443 ]] && (( worker_owned )) && echo "; the Worker created earlier will be removed")
   Corvid image           $IMAGE
 EOF
 if interactive; then
@@ -525,6 +541,34 @@ if (( ${#stale_mta_sts[@]} )); then
     out="$(cloudflare "$token" delete "$domain_zone_id" "$id" 2>&1)" || die "Cloudflare did not remove record $id: $out"
   done
   ok "mta-sts.$domain and _mta-sts.$domain removed"
+fi
+
+if [[ "$web_port" != 443 ]]; then
+  step "publishing the MTA-STS policy"
+  cfg_cmd="podman run --rm --network=none -v /opt/corvid/config.yaml:/etc/corvid/config.yaml:ro '$IMAGE' corvid-config"
+  policy="$(on_host "$cfg_cmd mta-sts-policy")" || die "could not render the MTA-STS policy: $policy"
+  policy_id="$(on_host "$cfg_cmd shell" | awk -F= '$1=="MTA_STS_ID"{print $2}')"
+  [[ -n "$policy_id" ]] || die "corvid-config did not report MTA_STS_ID; rebuild the image"
+  CLOUDFLARE_STDIN="$(mta_sts_worker_script "$policy")"
+  out="$(cloudflare "$token" deploy-worker "$account_id" "$domain_zone_id" "$worker_name" "mta-sts.$domain" 2>&1)" ||
+    die "Cloudflare did not deploy the Worker: $out"
+  unset CLOUDFLARE_STDIN
+  existing="$(cloudflare "$token" records "$domain_zone_id" "_mta-sts.$domain" TXT)" || die "could not read _mta-sts.$domain: $existing"
+  content="v=STSv1; id=$policy_id"
+  if [[ -z "$existing" ]]; then
+    out="$(cloudflare "$token" create-txt "$domain_zone_id" "_mta-sts.$domain" "$content" 2>&1)" || die "Cloudflare did not publish _mta-sts.$domain: $out"
+  else
+    out="$(cloudflare "$token" update-record "$domain_zone_id" "${existing%% *}" "$content" 2>&1)" || die "Cloudflare did not update _mta-sts.$domain: $out"
+  fi
+  ok "mta-sts.$domain serves the policy; _mta-sts.$domain publishes id $policy_id"
+elif (( worker_owned )); then
+  step "removing the MTA-STS Worker"
+  out="$(cloudflare "$token" remove-worker "$account_id" "$worker_name" "mta-sts.$domain" 2>&1)" || die "Cloudflare did not remove the Worker: $out"
+  existing="$(cloudflare "$token" records "$domain_zone_id" "_mta-sts.$domain" TXT)" || die "could not read _mta-sts.$domain: $existing"
+  if [[ -n "$existing" ]]; then
+    out="$(cloudflare "$token" delete "$domain_zone_id" "${existing%% *}" 2>&1)" || die "Cloudflare did not remove _mta-sts.$domain: $out"
+  fi
+  ok "the Worker and its records are removed; Stalwart now serves MTA-STS on 443"
 fi
 
 # Stalwart names its keys v1-TYPE-DATE and never deletes one it has replaced, so every reinstall

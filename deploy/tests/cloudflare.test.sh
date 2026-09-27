@@ -158,5 +158,14 @@ status=$?
 check "it fails" '[[ $status -ne 0 ]]'
 check "it names the permission" '[[ "$out" == *"Workers Scripts:Edit"* ]]'
 
+echo "== a missing Workers Routes permission fails naming it"
+kill "$server" 2>/dev/null
+start_fake --deny-domains
+out="$(deploy "$account" z1 corvid-mta-sts-example z1.example.com 2>&1)"
+# shellcheck disable=SC2034  # read inside the eval'd check
+status=$?
+check "it fails" '[[ $status -ne 0 ]]'
+check "it names the permission" '[[ "$out" == *"Workers Routes:Edit"* ]]'
+
 [[ $fail -eq 0 ]] || echo "--- last output: $out"
 exit "$fail"
