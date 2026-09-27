@@ -66,9 +66,14 @@ pub struct Server {
     pub forget_records: Cell<bool>,
     pub truncate_bodies: Cell<bool>,
     pub refuse_blobs: Cell<bool>,
+    account_id: RefCell<String>,
     uploads: RefCell<BTreeMap<String, Vec<u8>>>,
     mailboxes: RefCell<BTreeMap<String, String>>,
-    imported: RefCell<Vec<Imported>>,
+    imported: RefCell<BTreeMap<String, Imported>>,
+    next_email_id: Cell<u32>,
+    import_calls: Cell<usize>,
+    /// 0-indexed call number to fail, simulating a crash partway through a restore.
+    pub fail_import_at_call: Cell<Option<usize>>,
 }
 
 impl Server {
@@ -106,12 +111,21 @@ impl Server {
         self.touched.borrow_mut().push(id.to_owned());
     }
 
-    pub fn imported(&self) -> std::cell::Ref<'_, Vec<Imported>> {
+    pub fn imported(&self) -> std::cell::Ref<'_, BTreeMap<String, Imported>> {
         self.imported.borrow()
     }
 
     pub fn mailbox_id(&self, path: &str) -> Option<String> {
         self.mailboxes.borrow().get(path).cloned()
+    }
+
+    pub fn set_account_id(&self, id: &str) {
+        *self.account_id.borrow_mut() = id.to_owned();
+    }
+
+    /// Simulates a message imported earlier being deleted on the target since.
+    pub fn delete_target_email(&self, target_id: &str) {
+        self.imported.borrow_mut().remove(target_id);
     }
 }
 
@@ -177,11 +191,15 @@ impl Source for Server {
 }
 
 impl Target for Server {
+    fn account_id(&self) -> String {
+        self.account_id.borrow().clone()
+    }
+
     fn message_ids(&self) -> io::Result<BTreeSet<String>> {
         Ok(self
             .imported
             .borrow()
-            .iter()
+            .values()
             .filter_map(|entry| message_id(&entry.body))
             .collect())
     }
@@ -209,20 +227,39 @@ impl Target for Server {
         mailbox_ids: &BTreeSet<String>,
         received_at: &str,
         keywords: &BTreeSet<String>,
-    ) -> io::Result<()> {
+    ) -> io::Result<String> {
+        let call = self.import_calls.get();
+        self.import_calls.set(call + 1);
+        if self.fail_import_at_call.get() == Some(call) {
+            return Err(io::Error::other("simulated crash"));
+        }
         let body = self
             .uploads
             .borrow()
             .get(blob_id)
             .cloned()
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no such blob"))?;
-        self.imported.borrow_mut().push(Imported {
-            body,
-            mailbox_ids: mailbox_ids.clone(),
-            received_at: received_at.to_owned(),
-            keywords: keywords.clone(),
-        });
-        Ok(())
+        let id = format!("email{}", self.next_email_id.get());
+        self.next_email_id.set(self.next_email_id.get() + 1);
+        self.imported.borrow_mut().insert(
+            id.clone(),
+            Imported {
+                body,
+                mailbox_ids: mailbox_ids.clone(),
+                received_at: received_at.to_owned(),
+                keywords: keywords.clone(),
+            },
+        );
+        Ok(id)
+    }
+
+    fn existing(&self, ids: &[String]) -> io::Result<BTreeSet<String>> {
+        let imported = self.imported.borrow();
+        Ok(ids
+            .iter()
+            .filter(|id| imported.contains_key(*id))
+            .cloned()
+            .collect())
     }
 }
 

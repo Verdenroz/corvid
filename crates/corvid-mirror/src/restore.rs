@@ -2,38 +2,82 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 use std::path::Path;
 
+use serde::{Deserialize, Serialize};
+
 use crate::archive::Archive;
 use crate::crypto::Identities;
 use crate::target::Target;
+
+const SCHEMA: u32 = 1;
 
 /// Where a held message with no recorded mailbox lands. Only archives written before mailbox
 /// tracking existed produce these.
 const FALLBACK_MAILBOX: &str = "Restored";
 
+/// Archive id to the id the target assigned it, so a rerun after a partial restore imports
+/// nothing twice. A `Message-Id` cannot serve this: two distinct messages routinely share one
+/// (a sent copy and its bounce back, a message crossing two mailing lists), so keying on it
+/// would silently drop the second.
+#[derive(Default, Serialize, Deserialize)]
+struct Ledger {
+    /// The account this ledger was built against. A ledger applied to a different target
+    /// would otherwise report `already_present` for ids that were never sent there.
+    target: Option<String>,
+    imported: BTreeMap<String, String>,
+}
+
+corvid_store::pin_shape!(Ledger { target, imported });
+
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Restored {
     pub imported: usize,
     pub already_present: usize,
-    /// Held, imported, but with no `Message-Id` header to identify it by. Not covered by
-    /// `missing`, and not deduplicated on a rerun.
+    /// Held, imported, with no `Message-Id` header. Informational: the audit below covers
+    /// these the same as any other held message.
     pub unidentifiable: usize,
-    /// Ids the archive holds whose `Message-Id` did not turn up on the target after import.
+    /// Imported with a `Message-Id` the target already had on some other message.
+    /// Informational only: restore dedups by its ledger, never by this.
+    pub shares_a_message_id: usize,
+    /// Ids the ledger's target id no longer resolves to a message on the target, whether
+    /// never imported, or imported and since deleted there.
     pub missing: Vec<String>,
 }
 
 /// Imports every held, non-vanished message into `target`, creating mailboxes by path and
-/// skipping anything already there by `Message-Id`. Ends by asking the target again for what
-/// it holds, the same "compare ids, not counts" posture as the mirror's own audit.
-pub fn restore(root: &Path, target: &impl Target, identities: &Identities) -> io::Result<Restored> {
+/// recording each one's target id in a ledger at `ledger_path`, saved after every import so a
+/// crash loses at most the message in flight. Ends by asking the target which of the ledger's
+/// ids it still has, the same "compare ids, not counts" posture as the mirror's own audit,
+/// covering every held id whether or not it carries a usable `Message-Id`.
+pub fn restore(
+    root: &Path,
+    ledger_path: &Path,
+    target: &impl Target,
+    identities: &Identities,
+) -> io::Result<Restored> {
     let archive = Archive::open(root)?;
     let meta = archive.meta(identities)?;
-    let mut present = target.message_ids()?;
+    let mut ledger: Ledger = corvid_store::open(ledger_path, SCHEMA)?;
+    let account_id = target.account_id();
+    match &ledger.target {
+        Some(expected) if *expected != account_id => {
+            return Err(io::Error::other(format!(
+                "{}: this ledger was built against {expected}, not {account_id}",
+                ledger_path.display()
+            )));
+        }
+        _ => ledger.target = Some(account_id),
+    }
+
+    let present_message_ids = target.message_ids()?;
     let mut mailbox_ids: BTreeMap<String, String> = BTreeMap::new();
     let mut restored = Restored::default();
-    let mut expected: BTreeMap<String, String> = BTreeMap::new();
 
     for id in archive.held_ids() {
         if archive.is_vanished(id) {
+            continue;
+        }
+        if ledger.imported.contains_key(id) {
+            restored.already_present += 1;
             continue;
         }
         let record = meta.get(id).ok_or_else(|| {
@@ -43,16 +87,12 @@ pub fn restore(root: &Path, target: &impl Target, identities: &Identities) -> io
             )
         })?;
         let plaintext = archive.read_plaintext(id, identities)?;
-        let msgid = message_id(&plaintext);
-
-        if let Some(msgid) = &msgid {
-            if present.contains(msgid) {
-                restored.already_present += 1;
-                expected.insert(id.to_owned(), msgid.clone());
-                continue;
+        match message_id(&plaintext) {
+            None => restored.unidentifiable += 1,
+            Some(msgid) if present_message_ids.contains(&msgid) => {
+                restored.shares_a_message_id += 1;
             }
-        } else {
-            restored.unidentifiable += 1;
+            Some(_) => {}
         }
 
         let paths: BTreeSet<&str> = if record.mailboxes.is_empty() {
@@ -74,19 +114,24 @@ pub fn restore(root: &Path, target: &impl Target, identities: &Identities) -> io
         }
 
         let blob_id = target.upload(&plaintext)?;
-        target.import(&blob_id, &ids, &record.received_at, &record.keywords)?;
+        let target_id = target.import(&blob_id, &ids, &record.received_at, &record.keywords)?;
+        ledger.imported.insert(id.to_owned(), target_id);
+        corvid_store::save(ledger_path, SCHEMA, &ledger)?;
         restored.imported += 1;
-        if let Some(msgid) = msgid {
-            present.insert(msgid.clone());
-            expected.insert(id.to_owned(), msgid);
-        }
     }
 
-    let landed = target.message_ids()?;
-    restored.missing = expected
-        .into_iter()
-        .filter(|(_, msgid)| !landed.contains(msgid))
-        .map(|(id, _)| id)
+    let target_ids: Vec<String> = ledger.imported.values().cloned().collect();
+    let present_on_target = target.existing(&target_ids)?;
+    restored.missing = archive
+        .held_ids()
+        .filter(|id| !archive.is_vanished(id))
+        .filter(|id| {
+            !ledger
+                .imported
+                .get(*id)
+                .is_some_and(|target_id| present_on_target.contains(target_id))
+        })
+        .map(str::to_owned)
         .collect();
     Ok(restored)
 }

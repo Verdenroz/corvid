@@ -42,9 +42,15 @@ fn main() -> ExitCode {
             &mirror.jmap_user,
             &mirror.age_recipient,
         ),
-        Some("restore") => match (args.next(), args.next(), args.next()) {
-            (Some(identity_path), Some(target_url), Some(target_user)) => {
-                do_restore(&root, Path::new(&identity_path), &target_url, &target_user)
+        Some("restore") => match (args.next(), args.next(), args.next(), args.next()) {
+            (Some(identity_path), Some(ledger_path), Some(target_url), Some(target_user)) => {
+                do_restore(
+                    &root,
+                    Path::new(&identity_path),
+                    Path::new(&ledger_path),
+                    &target_url,
+                    &target_user,
+                )
             }
             _ => usage(),
         },
@@ -54,7 +60,7 @@ fn main() -> ExitCode {
 
 fn usage() -> ExitCode {
     eprintln!(
-        "usage: corvid-mirror [verify [--deep <identity-file>] | encrypt-archive | restore <identity-file> <jmap-url> <jmap-user>]"
+        "usage: corvid-mirror [verify [--deep <identity-file>] | encrypt-archive | restore <identity-file> <ledger-file> <jmap-url> <jmap-user>]"
     );
     ExitCode::from(64)
 }
@@ -195,7 +201,13 @@ fn encrypt(root: &Path, url: &str, user: &str, age_recipient: &str) -> ExitCode 
     }
 }
 
-fn do_restore(root: &Path, identity_path: &Path, target_url: &str, target_user: &str) -> ExitCode {
+fn do_restore(
+    root: &Path,
+    identity_path: &Path,
+    ledger_path: &Path,
+    target_url: &str,
+    target_user: &str,
+) -> ExitCode {
     let identities = match identities(identity_path) {
         Ok(identities) => identities,
         Err(code) => return code,
@@ -209,12 +221,13 @@ fn do_restore(root: &Path, identity_path: &Path, target_url: &str, target_user: 
         }
     };
 
-    match restore(root, &target, &identities) {
+    match restore(root, ledger_path, &target, &identities) {
         Ok(report) => {
             tracing::info!(
                 imported = report.imported,
                 already_present = report.already_present,
                 unidentifiable = report.unidentifiable,
+                shares_a_message_id = report.shares_a_message_id,
                 "restore complete"
             );
             if !report.missing.is_empty() {

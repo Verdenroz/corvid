@@ -166,6 +166,10 @@ impl Mailbox {
 }
 
 impl Target for Mailbox {
+    fn account_id(&self) -> String {
+        self.account().to_owned()
+    }
+
     fn message_ids(&self) -> io::Result<BTreeSet<String>> {
         let ids = self.all_ids()?.ids;
         let mut msgids = BTreeSet::new();
@@ -228,7 +232,7 @@ impl Target for Mailbox {
         mailbox_ids: &BTreeSet<String>,
         received_at: &str,
         keywords: &BTreeSet<String>,
-    ) -> io::Result<()> {
+    ) -> io::Result<String> {
         let mailboxes: Map<String, Value> = mailbox_ids
             .iter()
             .map(|id| (id.clone(), json!(true)))
@@ -248,10 +252,25 @@ impl Target for Mailbox {
                 },
             }),
         )?;
-        match result["notCreated"].get("i") {
-            Some(error) => Err(io::Error::other(format!("Email/import refused: {error}"))),
-            None => Ok(()),
+        if let Some(error) = result["notCreated"].get("i") {
+            return Err(io::Error::other(format!("Email/import refused: {error}")));
         }
+        text(&result["created"]["i"]["id"]).ok_or_else(|| missing("an imported email id"))
+    }
+
+    fn existing(&self, ids: &[String]) -> io::Result<BTreeSet<String>> {
+        let mut found = BTreeSet::new();
+        for chunk in ids.chunks(PER_GET) {
+            let result = self.client.call(
+                "Email/get",
+                json!({"accountId": self.account(), "ids": chunk, "properties": ["id"]}),
+            )?;
+            let list = result["list"]
+                .as_array()
+                .ok_or_else(|| missing("a message list"))?;
+            found.extend(list.iter().filter_map(|value| text(&value["id"])));
+        }
+        Ok(found)
     }
 }
 
