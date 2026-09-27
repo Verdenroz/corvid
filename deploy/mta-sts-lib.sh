@@ -144,5 +144,5 @@ mta_sts_check_published() {
   records="$(cloudflare "$token" records "$domain_zone_id" "_mta-sts.$domain" TXT)" ||
     die "could not read _mta-sts.$domain: $records"
   grep -q 'v=STSv1' <<<"$records" ||
-    warn "mta-sts.$domain has no v=STSv1 TXT record yet; see the MTA-STS trap in CLAUDE.md"
+    warn "mta-sts.$domain has no v=STSv1 TXT record yet; it may still be minutes away, or see the MTA-STS trap in CLAUDE.md. Recheck before treating this as the trap."
 }
