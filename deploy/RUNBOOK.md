@@ -83,7 +83,7 @@ if `qrencode` is installed) and never writes anything to the server until a code
 the terminal verifies against that secret locally: a wrong code changes nothing and exits
 non-zero, so there is no way to half-enable it. `disable` clears `otpAuth` by the same admin
 pointer patch `set-password.sh` uses for the password itself, and is the recovery path when a
-phone is lost — it needs only shell access to the host, not the authenticator.
+phone is lost: it needs only shell access to the host, not the authenticator.
 
 **What this does and does not guard.** IMAP, SMTP and JMAP Basic auth cannot complete a
 TOTP-gated sign-in at all; they simply lose access to the account password and must move to an
