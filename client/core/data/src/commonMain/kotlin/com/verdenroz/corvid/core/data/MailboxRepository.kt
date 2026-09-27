@@ -108,9 +108,8 @@ private fun JsonObject.toMailbox() =
         unreadEmails = get("unreadEmails")?.jsonPrimitive?.int ?: 0,
     )
 
-// subject and from are String|null and EmailAddress[]|null in RFC 8621: jsonPrimitive.content
-// on a JsonNull subject returns the literal string "null", and .jsonArray on a JsonNull
-// from throws, so both need a null check before the normal parse.
+// subject and from are nullable in RFC 8621: reading a null subject as a plain string
+// returns the literal word "null", and reading a null from as an array throws.
 private fun JsonObject.toEmailSummary() =
     EmailSummary(
         id = getValue("id").jsonPrimitive.content,
