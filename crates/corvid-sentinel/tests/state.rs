@@ -17,7 +17,7 @@ fn a_saved_identity_round_trips() {
     let (_dir, path) = scratch();
     let mut seen = Seen::default();
     seen.identities.insert(Identity {
-        account: "verde@corvid.test".to_owned(),
+        account: "alice@corvid.test".to_owned(),
         kind: CredentialKind::AppPassword,
         listener: "imaps".to_owned(),
         remote_ip: "203.0.113.9".to_owned(),

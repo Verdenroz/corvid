@@ -5,6 +5,10 @@ not constructed from the documentation. The docs say nothing about the body shap
 fixture built from a guess would only test the guess against itself.
 
 The `WebHook` was signed with `signatureKey: {"@type":"Value","secret":"test-sentinel-hmac-secret-0123456789"}`.
+Account names in every body except `auth-success-primary-jmap.json` were changed to
+`alice@corvid.test` after capture. That one is byte-for-byte as captured, since its signature is
+checked.
+
 `signature.rs`'s tests use that literal secret against the literal `X-Signature` header captured
 alongside each body, so a change to the signing scheme fails a real comparison, not a
 self-consistent one.

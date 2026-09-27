@@ -30,8 +30,8 @@ the host as root:
 
 The secret prints once, only in that terminal: not to a file, a log, or anywhere else. `add`
 refuses a name already in use; `revoke` also removes the device's storage key file (Phase 3, at
-`corvid-devices/<name>.key` in the account's own JMAP file storage) if one exists, and prints how
-to revoke the device's VPN identity in vpn-chain.
+`corvid-devices/<name>.key` in the account's own JMAP file storage) if one exists, and reminds
+you to revoke the device's VPN access too, if it has any.
 
 `--local` scopes `allowedIps` to `127.0.0.1` and `::1` instead of `server.client_access`, for a
 service that calls JMAP from inside the pod rather than from a mail app. It ignores
@@ -54,7 +54,8 @@ still works, and every notice the sentinel imports would otherwise count as a si
 account password.
 
 It needs one restricted to `127.0.0.1`, since the sentinel calls JMAP from inside the pod on
-loopback, not from the VPN exit an app password `device.sh add NAME` creates is scoped to.
+loopback, not from the networks `client_access` allows, which a plain `device.sh add NAME` is
+scoped to.
 `device.sh add --local NAME` scopes one to loopback instead:
 
     ssh host /opt/corvid/deploy/device.sh add --local corvid-sentinel

@@ -108,7 +108,7 @@ mod tests {
         AuthEvent {
             created_at: "2026-09-27T02:08:58Z".to_owned(),
             kind,
-            account: Some("verde@corvid.test".to_owned()),
+            account: Some("alice@corvid.test".to_owned()),
             remote_ip: Some("203.0.113.9".to_owned()),
             listener: Some("imaps".to_owned()),
             details: None,

@@ -1,1 +1,1 @@
-{"events":[{"id":"1790474938133","createdAt":"2026-09-27T02:08:58Z","type":"security.authentication-ban","data":{"remoteIp":"172.24.0.1","accountName":"verde@corvid.test","spanId":331758830341850112,"listenerId":"http","localPort":8080,"remotePort":59586}}]}
+{"events":[{"id":"1790474938133","createdAt":"2026-09-27T02:08:58Z","type":"security.authentication-ban","data":{"remoteIp":"172.24.0.1","accountName":"alice@corvid.test","spanId":331758830341850112,"listenerId":"http","localPort":8080,"remotePort":59586}}]}

@@ -46,7 +46,7 @@ mkdir -p "$work/bin"
 cat > "$work/bin/stalwart-cli" <<CLI
 #!/bin/sh
 case "\$1 \$2" in
-  "query Account") echo '{"id":"c1","emailAddress":"verde@example.com"}' ;;
+  "query Account") echo '{"id":"c1","emailAddress":"alice@example.com"}' ;;
   "get Account")
     n=\$(( \$(cat "$work/get_account_calls" 2>/dev/null || echo 0) + 1 ))
     echo "\$n" > "$work/get_account_calls"
@@ -67,7 +67,7 @@ chmod +x "$work/bin/stalwart-cli" "$work/bin/curl"
 
 cat > "$work/shell" <<'SH'
 #!/bin/sh
-printf 'MAIL_DOMAIN=example.com\nMAIL_HOSTNAME=mail.example.com\nMAIL_USER=verde\nACME_CONTACT=ops@elsewhere.example\nWEB_PORT=4443\n'
+printf 'MAIL_DOMAIN=example.com\nMAIL_HOSTNAME=mail.example.com\nMAIL_USER=alice\nACME_CONTACT=ops@elsewhere.example\nWEB_PORT=4443\n'
 SH
 chmod +x "$work/shell"
 printf 'STALWART_URL=http://127.0.0.1:%s\nSTALWART_USER=admin\nSTALWART_PASSWORD=p\n' "$(cat "$work/port")" > "$work/corvid.env"
@@ -191,7 +191,7 @@ check "exits 0" '[[ $status -eq 0 ]]'
 check "only the folder lookup and the destroy were sent" '[[ $(wc -l < "$work/requests") -eq 2 ]]'
 check "reports the credential revoked" 'grep -q "credential revoked" "$work/out"'
 check "reports no key file to remove" 'grep -q "no storage key file found for phone" "$work/out"'
-check "names how to revoke the VPN identity" 'grep -q rotate-vless-identity.sh "$work/out"'
+check "reminds the operator to revoke the VPN access too" 'grep -q "revoke its VPN access" "$work/out"'
 
 echo "== revoke a device with a storage key file, blob confirmed gone"
 echo "$with_credential" > "$work/credentials"

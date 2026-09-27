@@ -141,7 +141,7 @@ mod tests {
             .iter()
             .find(|event| event.kind == Kind::TooManyAttempts)
             .unwrap();
-        assert_eq!(burst.account.as_deref(), Some("verde@corvid.test"));
+        assert_eq!(burst.account.as_deref(), Some("alice@corvid.test"));
         assert_eq!(burst.remote_ip.as_deref(), Some("172.24.0.3"));
     }
 
@@ -149,7 +149,7 @@ mod tests {
     fn a_ban_carries_the_account_and_address() {
         let events = parse(&fixture("security-authentication-ban.json")).unwrap();
         assert_eq!(events[0].kind, Kind::Ban);
-        assert_eq!(events[0].account.as_deref(), Some("verde@corvid.test"));
+        assert_eq!(events[0].account.as_deref(), Some("alice@corvid.test"));
         assert_eq!(events[0].remote_ip.as_deref(), Some("172.24.0.1"));
     }
 
