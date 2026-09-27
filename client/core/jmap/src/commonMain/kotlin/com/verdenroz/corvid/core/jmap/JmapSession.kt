@@ -12,4 +12,6 @@ data class JmapSession(
     val eventSourceUrl: String,
     val accountId: String?,
     val state: String?,
+    val maxCallsInRequest: Int?,
+    val maxObjectsInGet: Int?,
 )

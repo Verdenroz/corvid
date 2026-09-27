@@ -4,9 +4,13 @@ import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
+import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -14,17 +18,25 @@ import kotlinx.serialization.json.jsonPrimitive
 import java.io.IOException
 import javax.net.ssl.SSLException
 
-private const val CORE_CAPABILITY = "urn:ietf:params:jmap:core"
-private const val MAIL_CAPABILITY = "urn:ietf:params:jmap:mail"
-private const val FILENODE_CAPABILITY = "urn:ietf:params:jmap:filenode"
+internal const val CORE_CAPABILITY = "urn:ietf:params:jmap:core"
+internal const val MAIL_CAPABILITY = "urn:ietf:params:jmap:mail"
+internal const val FILENODE_CAPABILITY = "urn:ietf:params:jmap:filenode"
 
 /**
- * A session against a rebased JMAP endpoint. [connect] discovers it; method
- * calls (slice 3) reuse the same [AuthLatch]-guarded request path.
+ * A session against a rebased JMAP endpoint. [connect] discovers it; [call]
+ * reuses the same [AuthLatch]-guarded request path and refetches the
+ * session when the server reports a new `sessionState`.
  */
 class JmapClient private constructor(
-    val session: JmapSession,
+    private val httpClient: HttpClient,
+    private val authLatch: AuthLatch,
+    private val baseUrl: String,
+    private val bearerToken: String?,
+    session: JmapSession,
 ) {
+    var session: JmapSession = session
+        private set
+
     companion object {
         suspend fun connect(
             httpClient: HttpClient,
@@ -32,11 +44,75 @@ class JmapClient private constructor(
             baseUrl: String,
             bearerToken: String? = null,
         ): JmapClient {
-            val response = guardedGet(httpClient, authLatch, "$baseUrl/jmap/session", bearerToken)
-            return JmapClient(parseSession(baseUrl, response.body()))
+            val session = discoverSession(httpClient, authLatch, baseUrl, bearerToken)
+            return JmapClient(httpClient, authLatch, baseUrl, bearerToken, session)
         }
     }
+
+    /**
+     * Runs one batch of calls and matches each response back to its callId.
+     * A method error inside the batch is [MethodOutcome.Failure] for that
+     * one callId, not a thrown exception: the rest of the batch still ran.
+     */
+    suspend fun call(invocations: List<Invocation>): Map<String, MethodOutcome> {
+        val request = JmapRequest(using = REQUIRED_CAPABILITIES, methodCalls = invocations)
+        val response = guardedPost(httpClient, authLatch, session.apiUrl, bearerToken, request)
+        val parsed: JmapResponse = response.body()
+        if (parsed.sessionState != session.state) {
+            session = discoverSession(httpClient, authLatch, baseUrl, bearerToken)
+        }
+        return parsed.methodResponses.associate { it.callId to it.toOutcome() }
+    }
 }
+
+private fun Invocation.toOutcome(): MethodOutcome =
+    if (name == "error") {
+        MethodOutcome.Failure(
+            JmapError.Method(
+                type = arguments["type"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                description = arguments["description"]?.jsonPrimitive?.contentOrNull,
+            ),
+        )
+    } else {
+        MethodOutcome.Success(arguments)
+    }
+
+private suspend fun discoverSession(
+    httpClient: HttpClient,
+    authLatch: AuthLatch,
+    baseUrl: String,
+    bearerToken: String?,
+): JmapSession {
+    val response = guardedGet(httpClient, authLatch, "$baseUrl/jmap/session", bearerToken)
+    return parseSession(baseUrl, response.body())
+}
+
+internal suspend fun guardedGet(
+    httpClient: HttpClient,
+    authLatch: AuthLatch,
+    url: String,
+    bearerToken: String?,
+): HttpResponse =
+    guarded(authLatch) {
+        httpClient.get(url) {
+            bearerToken?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+        }
+    }
+
+private suspend fun guardedPost(
+    httpClient: HttpClient,
+    authLatch: AuthLatch,
+    url: String,
+    bearerToken: String?,
+    body: JmapRequest,
+): HttpResponse =
+    guarded(authLatch) {
+        httpClient.post(url) {
+            bearerToken?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
+    }
 
 /**
  * The one path every JMAP request takes: refuse outright while the latch is
@@ -45,18 +121,14 @@ class JmapClient private constructor(
  * also an [IOException], so it must be caught first), and trip the latch on
  * the first 401 rather than let a later call discover it too.
  */
-internal suspend fun guardedGet(
-    httpClient: HttpClient,
+private suspend fun guarded(
     authLatch: AuthLatch,
-    url: String,
-    bearerToken: String?,
+    request: suspend () -> HttpResponse,
 ): HttpResponse {
     if (authLatch.tripped.value) throw JmapException(JmapError.Unauthorized)
     val response =
         try {
-            httpClient.get(url) {
-                bearerToken?.let { header(HttpHeaders.Authorization, "Bearer $it") }
-            }
+            request()
         } catch (e: SSLException) {
             throw JmapException(JmapError.TlsFailure(e))
         } catch (e: IOException) {
@@ -78,11 +150,9 @@ internal suspend fun guardedGet(
 }
 
 /**
- * A session is only usable once it actually grants what a signed-in client
- * needs: an account is a stand-in for "not authenticated" (decision 5's
- * anonymous session carries capabilities and nothing else), and a missing
- * capability or endpoint is a server that can't do what this client needs,
- * never a URL silently rebased from an empty string.
+ * A missing mail account means "not authenticated" (an anonymous session
+ * carries capabilities and nothing else); a missing capability or URL is
+ * refused outright, never rebased from an empty string.
  */
 private fun parseSession(
     baseUrl: String,
@@ -91,7 +161,7 @@ private fun parseSession(
     fun text(key: String) = body[key]?.jsonPrimitive?.contentOrNull
 
     val capabilities = body["capabilities"] as? JsonObject ?: JsonObject(emptyMap())
-    for (required in listOf(CORE_CAPABILITY, MAIL_CAPABILITY, FILENODE_CAPABILITY)) {
+    for (required in REQUIRED_CAPABILITIES) {
         if (required !in capabilities) throw JmapSessionException("the session is missing capability $required")
     }
 
@@ -104,6 +174,7 @@ private fun parseSession(
         return rebase(baseUrl, advertised)
     }
 
+    val core = capabilities[CORE_CAPABILITY] as? JsonObject ?: JsonObject(emptyMap())
     return JmapSession(
         apiUrl = requiredUrl("apiUrl"),
         downloadUrl = requiredUrl("downloadUrl"),
@@ -111,5 +182,7 @@ private fun parseSession(
         eventSourceUrl = requiredUrl("eventSourceUrl"),
         accountId = accountId,
         state = text("state"),
+        maxCallsInRequest = core["maxCallsInRequest"]?.jsonPrimitive?.contentOrNull?.toIntOrNull(),
+        maxObjectsInGet = core["maxObjectsInGet"]?.jsonPrimitive?.contentOrNull?.toIntOrNull(),
     )
 }
