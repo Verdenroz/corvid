@@ -109,6 +109,19 @@ check "exits 0" '[[ $status -eq 0 ]]'
 check "both networks are in the request" \
   'request 1 | grep -q "192.0.2.0/24" && request 1 | grep -q "198.51.100.7"'
 
+echo "== add --local ignores client_access"
+run any add --local corvid-sentinel
+check "exits 0" '[[ $status -eq 0 ]]'
+check "the request is scoped to loopback, not client_access" \
+  'request 1 | grep -q "\"127.0.0.1\": *true" && request 1 | grep -q "\"::1\": *true"'
+check "the note says loopback, not client_access: anywhere" \
+  'grep -q "limited to loopback" "$work/err" && ! grep -q "no source restriction" "$work/err"'
+
+echo "== add rejects --local after the name"
+run any add corvid-sentinel --local
+check "exits 64" '[[ $status -eq 64 ]]'
+check "no request was sent" '[[ ! -s "$work/requests" ]]'
+
 echo "== add rejects a name already in use"
 echo '{"credentials":{"0":{"@type":"AppPassword","credentialId":"x","description":"phone","createdAt":"2024-01-01T00:00:00Z","allowedIps":{}}}}' \
   > "$work/credentials"
@@ -139,13 +152,15 @@ check "the secret never reaches stdout" '! grep -q app_leak "$work/out"'
 check "the mismatch is named" 'grep -q "does not match" "$work/err"'
 
 echo "== list"
-echo '{"credentials":{"0":{"@type":"Password"},"1":{"@type":"AppPassword","credentialId":"x","description":"phone","createdAt":"2024-01-01T00:00:00Z","allowedIps":{}},"2":{"@type":"AppPassword","credentialId":"y","description":"laptop","createdAt":"2024-01-02T00:00:00Z","allowedIps":{"198.51.100.9":true}}}}' \
+echo '{"credentials":{"0":{"@type":"Password"},"1":{"@type":"AppPassword","credentialId":"x","description":"phone","createdAt":"2024-01-01T00:00:00Z","allowedIps":{}},"2":{"@type":"AppPassword","credentialId":"y","description":"laptop","createdAt":"2024-01-02T00:00:00Z","allowedIps":{"198.51.100.9":true}},"3":{"@type":"AppPassword","credentialId":"z","description":"corvid-labeler","createdAt":"2024-01-03T00:00:00Z","allowedIps":{"127.0.0.1":true,"::1":true}}}}' \
   > "$work/credentials"
 run any list
 check "exits 0" '[[ $status -eq 0 ]]'
 check "the Password entry is not listed" '! grep -q Password "$work/out"'
 check "an unrestricted device shows any" 'grep -qP "^phone\t2024-01-01T00:00:00Z\tany$" "$work/out"'
 check "a restricted device shows its address" 'grep -qP "^laptop\t2024-01-02T00:00:00Z\t198.51.100.9$" "$work/out"'
+check "a --local device shows both loopback addresses" \
+  'grep -qP "^corvid-labeler\t2024-01-03T00:00:00Z\t127.0.0.1 ::1$" "$work/out"'
 check "no secret ever appears" '! grep -q app_test1 "$work/out"'
 
 # A folder query+get and a file query+get are each one POST with two methodResponses; a

@@ -20,7 +20,7 @@ NAME_RE='^[a-z0-9-]{1,32}$'
 DEVICES_FOLDER=corvid-devices
 
 usage() {
-  echo "usage: $(basename "$0") add NAME | list | revoke NAME" >&2
+  echo "usage: $(basename "$0") add [--local] NAME | list | revoke NAME" >&2
   exit 64
 }
 
@@ -55,7 +55,7 @@ for entry in json.load(sys.stdin)["credentials"].values():
 }
 
 cmd_add() {
-  local name="$1" id="$2" allowed_ips restriction request secret
+  local name="$1" id="$2" local_only="${3:-0}" allowed_ips restriction request secret
   [[ "$name" =~ $NAME_RE ]] || { echo "device name must match $NAME_RE" >&2; exit 64; }
   if app_passwords "$id" | python3 -c '
 import json, sys
@@ -64,26 +64,31 @@ sys.exit(0 if any(json.loads(l)["description"] == sys.argv[1] for l in sys.stdin
     exit 65
   fi
 
-  case "$CLIENT_SOURCES" in
-    any)
-      allowed_ips='{}'
-      restriction="no source restriction (client_access: anywhere)"
-      ;;
-    '')
-      SERVER_IP="${SERVER_IP:-$(server_ip)}"
-      [[ -n "$SERVER_IP" ]] || {
-        echo "could not find this server's public IP; refusing to issue an unrestricted credential" >&2
-        exit 1
-      }
-      allowed_ips="$(python3 -c 'import json, sys; print(json.dumps({sys.argv[1]: True}))' "$SERVER_IP")"
-      restriction="limited to this server's address ($SERVER_IP)"
-      ;;
-    *)
-      # shellcheck disable=SC2086  # CLIENT_SOURCES is a space-separated list of bare words
-      allowed_ips="$(python3 -c 'import json, sys; print(json.dumps({n: True for n in sys.argv[1:]}))' $CLIENT_SOURCES)"
-      restriction="limited to $CLIENT_SOURCES"
-      ;;
-  esac
+  if [[ "$local_only" == 1 ]]; then
+    allowed_ips='{"127.0.0.1": true, "::1": true}'
+    restriction="limited to loopback, for a service running inside the pod"
+  else
+    case "$CLIENT_SOURCES" in
+      any)
+        allowed_ips='{}'
+        restriction="no source restriction (client_access: anywhere)"
+        ;;
+      '')
+        SERVER_IP="${SERVER_IP:-$(server_ip)}"
+        [[ -n "$SERVER_IP" ]] || {
+          echo "could not find this server's public IP; refusing to issue an unrestricted credential" >&2
+          exit 1
+        }
+        allowed_ips="$(python3 -c 'import json, sys; print(json.dumps({sys.argv[1]: True}))' "$SERVER_IP")"
+        restriction="limited to this server's address ($SERVER_IP)"
+        ;;
+      *)
+        # shellcheck disable=SC2086  # CLIENT_SOURCES is a space-separated list of bare words
+        allowed_ips="$(python3 -c 'import json, sys; print(json.dumps({n: True for n in sys.argv[1:]}))' $CLIENT_SOURCES)"
+        restriction="limited to $CLIENT_SOURCES"
+        ;;
+    esac
+  fi
 
   request="$(python3 -c '
 import json, sys
@@ -250,8 +255,15 @@ EOF
 
 [[ $# -ge 1 ]] || usage
 cmd="$1"; shift
+local_only=0
 case "$cmd" in
-  add) [[ $# -eq 1 ]] || usage ;;
+  add)
+    if [[ "${1:-}" == "--local" ]]; then
+      local_only=1
+      shift
+    fi
+    [[ $# -eq 1 ]] || usage
+    ;;
   list) [[ $# -eq 0 ]] || usage ;;
   revoke) [[ $# -eq 1 ]] || usage ;;
   *) usage ;;
@@ -259,7 +271,7 @@ esac
 
 id="$(account_id)"
 case "$cmd" in
-  add) cmd_add "$1" "$id" ;;
+  add) cmd_add "$1" "$id" "$local_only" ;;
   list) cmd_list "$id" ;;
   revoke) cmd_revoke "$1" "$id" ;;
 esac
