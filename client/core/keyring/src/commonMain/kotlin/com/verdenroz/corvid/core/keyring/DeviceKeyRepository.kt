@@ -72,7 +72,7 @@ class DeviceKeyRepository(private val jmapClient: JmapClient) {
         val folderId =
             findRootNode(DEVICES_FOLDER_NAME) ?: run {
                 createNode(name = DEVICES_FOLDER_NAME, parentId = null)
-                checkNotNull(findRootNode(DEVICES_FOLDER_NAME)) { "corvid-devices folder vanished right after creation" }
+                findRootNode(DEVICES_FOLDER_NAME) ?: throw DeviceKeyConflict.FolderVanished
             }
         findChildNode(folderId, fileName(deviceName))?.let { destroyNode(it) }
 

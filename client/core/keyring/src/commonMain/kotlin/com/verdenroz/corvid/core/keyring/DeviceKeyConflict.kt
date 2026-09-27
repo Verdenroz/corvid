@@ -11,4 +11,7 @@ sealed class DeviceKeyConflict(message: String) : Exception(message) {
 
     class CreateFailed(reason: String?) :
         DeviceKeyConflict("could not create FileNode: ${reason ?: "unknown reason"}")
+
+    data object FolderVanished :
+        DeviceKeyConflict("corvid-devices folder vanished right after creation")
 }
