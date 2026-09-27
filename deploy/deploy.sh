@@ -118,7 +118,7 @@ fi
 
 # A parse can succeed on the wrong string, so prove the credential before anything uses it.
 set -a; . "$ENV_FILE"; set +a
-curl -fsS -o /dev/null -u "$STALWART_USER:$STALWART_PASSWORD" "$STALWART_URL/api/account" \
+curl_authed -fsS -o /dev/null "$STALWART_URL/api/account" \
   || { echo "the admin credential in $ENV_FILE does not log in; check STALWART_USER and STALWART_PASSWORD" >&2; exit 1; }
 echo "  credential verified"
 

@@ -25,7 +25,7 @@ command -v "$STALWART_CLI" >/dev/null 2>&1 || {
   exit 69
 }
 
-curl -fsS -o /dev/null -u "$STALWART_USER:$STALWART_PASSWORD" "$STALWART_URL/api/account" \
+curl_authed -fsS -o /dev/null "$STALWART_URL/api/account" \
   || { echo "credentials in $ENV_FILE do not authenticate against $STALWART_URL" >&2; exit 1; }
 
 # Passkeys are applied separately: oidc.plan.ndjson points Authentication at an external
@@ -55,7 +55,7 @@ for line in sys.stdin:
 
 # Stalwart bans an address for scanning or failed logins. Traffic that leaves this host through
 # its own address, as a VPN on the same machine sends it, would ban every one of its users.
-export SERVER_IP="${SERVER_IP:-$(curl -4 -s --max-time 10 https://1.1.1.1/cdn-cgi/trace | sed -n 's/^ip=//p')}"
+export SERVER_IP="${SERVER_IP:-$(server_ip)}"
 [[ -n "$SERVER_IP" ]] || echo "  could not find this server's public IP, so it is not exempt from bans" >&2
 
 # Restricted to named variables: a bare envsubst rewrites every $ in the plan, hashes included.
@@ -106,5 +106,5 @@ fi
 
 # A plan can lock the admin out of the interface that would fix it, or fail partway on a
 # required field --dry-run cannot see. This notices while a shell is still open.
-curl -fsS -o /dev/null -u "$STALWART_USER:$STALWART_PASSWORD" "$STALWART_URL/api/account" \
+curl_authed -fsS -o /dev/null "$STALWART_URL/api/account" \
   || { echo "$STALWART_USER can no longer log in after this plan; fix it before closing this shell" >&2; exit 1; }

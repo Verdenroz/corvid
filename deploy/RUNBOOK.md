@@ -20,20 +20,31 @@ an array is rejected.
 
 ## App passwords, one per device
 
-These cannot be provisioned at all: the secret is server-generated and returned once, and
-setting it fails with `Cannot modify server set property`. They are also per-account and
-invisible across accounts, so an operator can neither list nor revoke someone else's.
+`deploy/device.sh add|list|revoke` manages these; run it as `deploy/set-password.sh` runs, on
+the host as root:
 
-The account holder creates each one, authenticated as themselves:
+    ssh host /opt/corvid/deploy/device.sh add phone
+    ssh host /opt/corvid/deploy/device.sh add --local corvid-sentinel
+    ssh host /opt/corvid/deploy/device.sh list
+    ssh host /opt/corvid/deploy/device.sh revoke phone
 
-    stalwart-cli create AppPassword --json '{"description":"phone-imap","allowedIps":{}}'
+The secret prints once, only in that terminal: not to a file, a log, or anywhere else. `add`
+refuses a name already in use; `revoke` also removes the device's storage key file (Phase 3, at
+`corvid-devices/<name>.key` in the account's own JMAP file storage) if one exists, and prints how
+to revoke the device's VPN identity in vpn-chain.
 
-The secret is printed once, at creation. `description` is the per-device label that makes
-revocation meaningful later; without it the list is a row of opaque ids.
+`--local` scopes `allowedIps` to `127.0.0.1` and `::1` instead of `server.client_access`, for a
+service that calls JMAP from inside the pod rather than from a mail app. It ignores
+`client_access` entirely, since a service on loopback needs no exemption from it. This only
+works because the labeler and the sentinel call `http://127.0.0.1:8080` directly; behind Caddy,
+`Http.useXForwarded` makes Stalwart see the forwarded client address, not the pod's own loopback,
+and a `--local` credential would be refused.
 
-App passwords belong to the account holder rather than the operator. That is the security
-property, not a gap. It does mean the Phase 2 test (a passkey login on the web while an app
-password still works for IMAP) has a human step that no script can do.
+`stalwart-cli create AppPassword` only ever acts on the account authenticated as, and an
+`Account` upsert cannot touch `credentials` at all ("Secondary credentials cannot be set
+directly"). `device.sh` speaks JMAP directly with an explicit `accountId`, which the admin
+credential may set for any account; the same call as a non-admin is refused ("you are not an
+owner of account").
 
 ## Configuration
 
@@ -48,13 +59,15 @@ The file holds no secrets, so it can be shared or committed. Secrets come from t
 `bootstrap.sh` creates empty and mode 600, with templates in `deploy/env/`:
 
     rewriter.env   CORVID_IMGPROXY_SECRET (openssl rand -hex 32)
-    labeler.env    CORVID_JMAP_PASSWORD, an app password for the labeler alone
-    mirror.env     CORVID_JMAP_PASSWORD, a different app password, on the mirror machine
+    labeler.env    CORVID_JMAP_PASSWORD, from device.sh add --local corvid-labeler
+    mirror.env     CORVID_JMAP_PASSWORD, from device.sh add corvid-mirror
 
 Use two separate app passwords, created as in the section above, so revoking either does not stop
-the other. The image-proxy secret signs URLs in the milter and verifies them in the proxy, so both
-read the same value. Changing it invalidates the links in mail already delivered: those images
-stop loading, which is a visible cost and not a broken mailbox.
+the other. The labeler runs inside the pod and reaches JMAP over loopback, so its credential is
+`--local`; the mirror is off-host and reaches JMAP through the VPN, so it needs a plain `add`
+scoped like any other device. The image-proxy secret signs URLs in the milter and verifies them
+in the proxy, so both read the same value. Changing it invalidates the links in mail already
+delivered: those images stop loading, which is a visible cost and not a broken mailbox.
 
 The web tier answers on `server.web_port`, 4443 by default, leaving 443 to anything else the
 host runs. Everything that names it is generated from `server.hostname` and `server.web_port`:

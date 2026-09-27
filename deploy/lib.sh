@@ -6,6 +6,22 @@ CORVID_DIR="${CORVID_DIR:-/opt/corvid}"
 # Written by install.sh; a hand-built image loaded as localhost/corvid:latest needs no file.
 CORVID_IMAGE="$(cat "$CORVID_DIR/image.ref" 2>/dev/null || echo localhost/corvid:latest)"
 
+# One lookup shared by apply-plan.sh's ban exemption and device.sh's host restriction, so the
+# two can never disagree about the server's own address.
+server_ip() {
+  curl -4 -s --max-time 10 https://1.1.1.1/cdn-cgi/trace | sed -n 's/^ip=//p'
+}
+
+# curl -u puts the password in argv, readable in /proc by any local user for the call's
+# lifetime. --config on a process substitution keeps it off the command line. Its quoted value
+# needs its own backslashes and quotes escaped, or a password carrying either breaks the parse.
+curl_authed() {
+  local user="$STALWART_USER" pass="$STALWART_PASSWORD"
+  user="${user//\\/\\\\}"; user="${user//\"/\\\"}"
+  pass="${pass//\\/\\\\}"; pass="${pass//\"/\\\"}"
+  curl --config <(printf 'user = "%s:%s"\n' "$user" "$pass") "$@"
+}
+
 require_image() {
   podman image exists "$CORVID_IMAGE" && return
   echo "image $CORVID_IMAGE is not on this host; it carries corvid-config and three of the services" >&2
