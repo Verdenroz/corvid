@@ -289,6 +289,73 @@ the plan names: 25, 465, 587, 993, 8080 and 8443. An older setup may also serve 
 STARTTLS) and 4190 (ManageSieve); **neither exists after the apply**. 993 covers IMAP, but
 ManageSieve has no equivalent here.
 
+## The mirror: encryption, migration, and the restore drill
+
+`mirror.age_recipient` in `config.yaml` is the public age key the nightly mirror encrypts to.
+Generate it with `age-keygen` (or `cargo run --example keygen -p corvid-mirror` if neither `age`
+nor `rage` is installed) and keep the identity off the mirror host entirely: the nightly path
+(`corvid-mirror` with no arguments) never reads it. It is needed only for two commands run by
+hand, both taking the identity file as their first argument:
+
+    corvid-mirror verify --deep <identity-file>
+    corvid-mirror restore <identity-file> <ledger-file> <jmap-url> <jmap-user>
+
+### Migrating an existing plaintext archive
+
+An archive synced before encryption existed has a `ledger.json` and plaintext blobs. Running the
+mirror against it refuses outright, naming `encrypt-archive`:
+
+    corvid-mirror encrypt-archive
+
+This connects to the mirror's own configured server to refresh mailboxes and keywords for every
+still-live message (a legacy archive predates mailbox tracking), encrypts every blob into the
+same `blobs` directory under its own ciphertext name, then removes `ledger.json` and the old
+plaintext blobs. It is resumable: a crash partway through is safe to rerun, since nothing is
+committed until the new index is written, and a crash between that commit and the cleanup that
+follows is finished rather than redone. A leftover `ledger.json` after `encrypt-archive` reports
+success is the one case this cannot clean up itself; delete it by hand once `verify --deep`
+confirms the archive is intact.
+
+### The restore drill
+
+Prove the mirror actually restores by destroying the server it mirrored and rebuilding the
+mailbox from the archive alone, on a throwaway Stalwart the same version as production
+(`v0.16.21`), never the real host. Repeat this after any change to `sync`, `encrypt-archive`, or
+`restore`.
+
+    container name    corvid-rig-backup
+    ports             loopback, offset into any free port range not already in use by another
+                      rig on the same machine (25->N+25, 465->N+465, 587->N+587, 993->N+993,
+                      8080->N+8080, 8443->N+8443)
+    engine            podman or docker, whichever is installed
+
+1. Start the rig, bootstrap it (`stalwart-cli update Bootstrap`, matching `bootstrap-server.sh`'s
+   payload shape), and create one account.
+2. Seed it past the mirror's own page size (500): more than 500 messages, spread across at least
+   one nested mailbox path (a name alone is not unique across parents) and with a keyword on
+   some. `Email/import` after a blob upload seeds far faster than SMTP, which is throttled and
+   session-capped, and never touches the sync path being tested.
+3. Point `corvid-mirror` at the rig and run it. Confirm `verify --deep` with the identity, and
+   grep the whole archive directory for a plaintext marker planted in a seeded body: it must not
+   appear anywhere, including the metadata segments and the index.
+4. Destroy the rig (`podman rm -f corvid-rig-backup` or the docker equivalent) and start a fresh
+   one with a new account.
+5. Run `corvid-mirror restore` against it. Confirm on the target server directly (not just the
+   command's own exit code): total message count, mailbox hierarchy and per-mailbox counts,
+   `receivedAt`, keywords and `Message-Id` on a sample.
+6. Run the drill again with a crash: kill the `restore` process partway through (`timeout -s
+   KILL`), confirm the ledger and the target both show partial progress, then rerun with
+   `--resume` and confirm the audit is clean. Expect one duplicate message on the target from
+   whichever import landed between the crash and its ledger save: restore is at-least-once, not
+   exactly-once.
+
+Measured running this: a `429 Too Many Requests` from Stalwart partway through a few hundred
+back-to-back `Email/import` calls (see the trap in `CLAUDE.md`). `restore` does not retry a `429`
+itself; it fails loudly and stops. If that happens mid-restore, wait a minute for the rate limit
+to clear and rerun with `--resume`, which picks up from the ledger rather than redoing anything.
+Also measured: the fresh replacement rig assigned its account the same id (`c`) the destroyed one
+had, confirming restore's ledger cannot pin on the account id alone (see `CLAUDE.md`).
+
 ## Checking it
 
     passkey login on the web       succeeds through the identity provider

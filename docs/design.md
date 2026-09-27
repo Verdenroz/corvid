@@ -274,7 +274,11 @@ To do, in this order:
    one per device, so that print names `server/rotate-vless-identity.sh`, which rotates every
    device's access at once (vpn-chain#22). Moves to in place once used on the deployment.
 3. **Backups**: the nightly mirror deployed off-host and encrypted, with a restore drill. Today a
-   lost VPS loses the mail.
+   lost VPS loses the mail. Built and measured on a throwaway Stalwart: age encryption of bodies
+   and metadata, `encrypt-archive` for an existing plaintext archive, and a restore drill (500+
+   seeded messages, mailbox hierarchy, keywords) whose audit came back clean after a killed and
+   resumed run. Moves to in place once the mirror runs on the laptop and a restore drill passes
+   there.
 4. **Sign-in alerts.** Built: `corvid-sentinel` receives Stalwart's auth events over an
    HMAC-signed WebHook and puts an unread notice in the Inbox for a never-seen (credential kind,
    listener, address) combination per account, plus one for a too-many-attempts burst and every
@@ -622,9 +626,33 @@ host an edge.
   message, and with an arrival in the same window the count still matches. A deleted anchor fails
   loudly with `anchorNotFound`. The page size is small so the paging loop runs every night.
 - **Keywords are stored as last seen.** Machine labels are reproducible, not archival.
-- **Verification needs no server.** Bodies are content-addressed and rehashed locally, and each
-  download is compared against `Email.size`, so a truncated download cannot verify against itself.
-  Blob download is byte-identical to IMAP `RFC822`, 8-bit content included.
+- **Encrypted at rest, to an age recipient in `config.yaml`.** The identity never touches the
+  nightly path. Everything a stolen archive could read as content (subjects, keywords, mailbox
+  names) lives in age-encrypted segments under `meta/`, one appended per sync run; the plaintext
+  index holds only a cursor, id-to-blob mapping and vanished ids. Blobs are named by their own
+  ciphertext digest rather than the plaintext one, so a filename cannot confirm a known message is
+  in the archive, at the cost of losing dedup by content (encryption is not deterministic, so
+  identical bodies would never collide anyway).
+- **Two levels of verification prove two different things.** The nightly `verify` rehashes each
+  blob against its own ciphertext-digest filename: it proves the disk agrees with itself, with no
+  key, but says nothing about whether the plaintext underneath is still what was archived. `verify
+  --deep` decrypts every blob and checks it against the digest and size recorded at fetch time: it
+  proves the archive is actually recoverable, and needs the identity. Content is still
+  content-addressed by the plaintext digest inside the metadata, so a truncated download cannot
+  verify against itself.
+- **`encrypt-archive` is the one-shot migration** from a pre-encryption archive (`ledger.json`) to
+  this scheme. It writes new blobs and segments before touching anything old, so a crash before it
+  commits the new index leaves the original archive untouched; a crash after commits but before
+  cleanup finishes is resumed, not re-migrated, on the next run.
+- **Restore** imports every held, non-vanished message into a fresh JMAP account: upload plus
+  `Email/import`, mailboxes recreated by full path (a name alone is not unique across parents),
+  keywords and `receivedAt` preserved. It dedups by its own ledger (archive id to the id the
+  target assigned it) rather than by `Message-Id`, since two distinct messages routinely share
+  one (a sent copy and its bounce back, one post crossing two mailing lists); the ledger is pinned
+  to the target's URL, user and account together, since Stalwart assigns account ids short and in
+  sequence and two independently bootstrapped servers can share one by coincidence. It ends by
+  asking the target which of the ledger's ids it still has, the same "compare ids, not counts"
+  posture as the mirror's own audit.
 
 Search is not rebuilt. Stalwart's full-text search handles exact terms; the embedding service
 supplies semantic retrieval, measured by Recall@10 and MRR against a hand-built golden set.

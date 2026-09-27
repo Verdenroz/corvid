@@ -66,6 +66,14 @@ impl Client {
         &self.account_id
     }
 
+    pub fn api_url(&self) -> &str {
+        &self.api_url
+    }
+
+    pub fn user(&self) -> &str {
+        &self.user
+    }
+
     pub fn call(&self, name: &str, arguments: Value) -> io::Result<Value> {
         let request = json!({
             "using": [CORE, MAIL],

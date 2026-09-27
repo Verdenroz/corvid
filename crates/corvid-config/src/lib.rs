@@ -347,6 +347,9 @@ pub struct Mirror {
     pub jmap_url: String,
     pub jmap_user: String,
     pub root: PathBuf,
+    /// An age recipient (public key) the nightly mirror encrypts to. The matching identity
+    /// is never read here; it is needed only for `verify --deep` and `restore`.
+    pub age_recipient: String,
 }
 
 #[derive(Debug, Deserialize)]

@@ -69,6 +69,10 @@ mirror:
   jmap_url: https://mail.example.com:4443
   jmap_user: alice@example.com
   root: /var/lib/corvid-mirror
+  # Public age recipient the nightly mirror encrypts bodies and the ledger to. Generate a
+  # real one with age-keygen; keep its identity offline, off this host, for verify --deep
+  # and restore. This placeholder is the age project's own published test key.
+  age_recipient: age1t7rxyev2z3rw82stdlrrepyc39nvn86l5078zqkf5uasdy86jp6svpy7pa
 
 sentinel:
   bind: 127.0.0.1:11333

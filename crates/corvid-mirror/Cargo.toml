@@ -6,6 +6,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+age = "0.12.1"
 corvid-config.workspace = true
 corvid-jmap = { version = "0.1.0", path = "../corvid-jmap" }
 corvid-store = { version = "0.1.0", path = "../corvid-store" }

@@ -1,13 +1,24 @@
 mod archive;
+pub mod crypto;
 mod jmap;
+mod mailpath;
+mod meta;
+mod migrate;
+mod restore;
 pub mod source;
+mod target;
 
 use std::io;
 use std::path::Path;
 
-pub use archive::{Archive, Held};
+pub use archive::Archive;
+pub use crypto::Identities;
 pub use jmap::Mailbox;
+pub use meta::Meta;
+pub use migrate::{Migrated, encrypt_archive};
+pub use restore::{Restored, restore};
 pub use source::{Changes, Listing, Record, Source};
+pub use target::Target;
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Audit {
@@ -33,7 +44,11 @@ pub struct Summary {
 ///
 /// A first run takes the whole mailbox, unlike the labeler, which adopts the position and
 /// labels nothing historical.
-pub fn sync(root: &Path, source: &impl Source) -> io::Result<Summary> {
+pub fn sync(
+    root: &Path,
+    source: &impl Source,
+    recipient: &age::x25519::Recipient,
+) -> io::Result<Summary> {
     let mut archive = Archive::open(root)?;
     let mut summary = Summary::default();
 
@@ -64,7 +79,7 @@ pub fn sync(root: &Path, source: &impl Source) -> io::Result<Summary> {
 
     for record in records {
         if archive.holds(&record.id) {
-            archive.note_keywords(&record.id, &record.keywords);
+            archive.note_seen(&record.id, &record.keywords, &record.mailboxes);
             summary.already_held += 1;
             continue;
         }
@@ -82,12 +97,12 @@ pub fn sync(root: &Path, source: &impl Source) -> io::Result<Summary> {
                 ),
             ));
         }
-        archive.store(&record, &body)?;
+        archive.store(&record, &body, recipient)?;
         summary.fetched += 1;
     }
 
     archive.set_cursor(cursor);
-    archive.save()?;
+    archive.save(recipient)?;
     Ok(summary)
 }
 
@@ -108,7 +123,7 @@ pub fn audit(root: &Path, source: &impl Source) -> io::Result<Audit> {
         .cloned()
         .collect();
     let vanished = archive.note_vanished(&present.ids);
-    archive.save()?;
+    archive.save_index()?;
     Ok(Audit { missing, vanished })
 }
 
@@ -138,7 +153,13 @@ fn listing(source: &impl Source) -> io::Result<Listing> {
     ))
 }
 
-/// Rehashes every held body. Needs no server.
+/// Rehashes every held ciphertext. Needs no server and no identity.
 pub fn verify(root: &Path) -> io::Result<Vec<String>> {
     Archive::open(root)?.verify()
+}
+
+/// Decrypts every held body and checks it against the plaintext digest and size recorded at
+/// fetch time. Needs no server, but does need the identity, unlike the nightly `verify`.
+pub fn verify_deep(root: &Path, identities: &Identities) -> io::Result<Vec<String>> {
+    Archive::open(root)?.verify_deep(identities)
 }
