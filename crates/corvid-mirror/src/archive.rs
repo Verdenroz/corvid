@@ -260,3 +260,5 @@ fn shard(blobs_dir: &Path, digest: &str) -> PathBuf {
 pub(crate) fn index_path(root: &Path) -> PathBuf {
     root.join("index.json")
 }
+
+pub(crate) const CURRENT_SCHEMA: u32 = SCHEMA;

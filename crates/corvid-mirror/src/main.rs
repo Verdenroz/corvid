@@ -6,7 +6,7 @@ use std::process::ExitCode;
 
 use corvid_config::{Config, or_exit, secret, section};
 use corvid_mirror::crypto::{self, Identities};
-use corvid_mirror::{Mailbox, audit, sync, verify, verify_deep};
+use corvid_mirror::{Mailbox, audit, encrypt_archive, sync, verify, verify_deep};
 
 fn main() -> ExitCode {
     tracing_subscriber::fmt()
@@ -36,12 +36,13 @@ fn main() -> ExitCode {
             },
             Some(_) => usage(),
         },
+        Some("encrypt-archive") => encrypt(&root, &mirror.age_recipient),
         Some(_) => usage(),
     }
 }
 
 fn usage() -> ExitCode {
-    eprintln!("usage: corvid-mirror [verify [--deep <identity-file>]]");
+    eprintln!("usage: corvid-mirror [verify [--deep <identity-file>] | encrypt-archive]");
     ExitCode::from(64)
 }
 
@@ -143,6 +144,26 @@ fn deep_verify(root: &Path, identity_path: &Path) -> ExitCode {
         }
         Err(error) => {
             tracing::error!(%error, "deep verification failed");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn encrypt(root: &Path, age_recipient: &str) -> ExitCode {
+    let recipient = match crypto::parse_recipient(age_recipient) {
+        Ok(recipient) => recipient,
+        Err(error) => {
+            tracing::error!(%error, "mirror.age_recipient");
+            return ExitCode::from(corvid_config::EX_CONFIG);
+        }
+    };
+    match encrypt_archive(root, &recipient) {
+        Ok(migrated) => {
+            tracing::info!(migrated, "archive encrypted");
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            tracing::error!(%error, "encrypt-archive failed");
             ExitCode::FAILURE
         }
     }
