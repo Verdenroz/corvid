@@ -18,6 +18,9 @@ pub struct AuthEvent {
 pub enum Kind {
     Success,
     Failed,
+    /// The account password was correct; the sign-in stopped at the TOTP step. Never fires for
+    /// an app password, since TOTP only guards the primary credential.
+    MfaRequired,
     TooManyAttempts,
     Ban,
     /// An event type this crate does not otherwise handle, carried by name so it can still be
@@ -73,6 +76,7 @@ impl From<RawEvent> for AuthEvent {
         let kind = match raw.kind.as_str() {
             "auth.success" => Kind::Success,
             "auth.failed" => Kind::Failed,
+            "auth.mfa-required" => Kind::MfaRequired,
             "auth.too-many-attempts" => Kind::TooManyAttempts,
             "security.authentication-ban" => Kind::Ban,
             other => Kind::Other(other.to_owned()),
@@ -155,9 +159,21 @@ mod tests {
 
     #[test]
     fn an_event_type_this_crate_does_not_know_is_kept_by_name() {
-        let body = br#"{"events":[{"id":"1","createdAt":"2026-01-01T00:00:00Z","type":"auth.mfa-required","data":{"accountName":"a@b.test","remoteIp":"1.2.3.4","listenerId":"http"}}]}"#;
+        let body = br#"{"events":[{"id":"1","createdAt":"2026-01-01T00:00:00Z","type":"auth.credential-expired","data":{"accountName":"a@b.test","remoteIp":"1.2.3.4","listenerId":"http"}}]}"#;
         let events = parse(body).unwrap();
-        assert_eq!(events[0].kind, Kind::Other("auth.mfa-required".to_owned()));
+        assert_eq!(
+            events[0].kind,
+            Kind::Other("auth.credential-expired".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_correct_password_stopped_by_totp_is_its_own_kind() {
+        let events = parse(&fixture("auth-mfa-required-imap.json")).unwrap();
+        assert_eq!(events[0].kind, Kind::MfaRequired);
+        assert_eq!(events[0].account.as_deref(), Some("alice@corvid.test"));
+        assert_eq!(events[0].remote_ip.as_deref(), Some("172.24.0.3"));
+        assert_eq!(events[0].listener.as_deref(), Some("imaps"));
     }
 
     #[test]

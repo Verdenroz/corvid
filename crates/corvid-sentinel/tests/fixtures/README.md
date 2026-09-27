@@ -27,3 +27,12 @@ self-consistent one.
   after lowering `Security.authBanRate` to provoke it. Restoring the account needed
   `delete BlockedIp` from a container on the same docker network, since the banned address was
   the docker bridge gateway the CLI itself was calling through.
+- `auth-mfa-required-imap.json`, `auth-mfa-required-smtp.json`, `auth-mfa-required-jmap.json`:
+  the account password entered correctly on an account with TOTP enabled, over each protocol
+  that has no way to supply a code. Same shape on all three; `reason` is always "MFA token
+  required" and there is no `details` field, since this only ever fires for the primary
+  credential.
+- `auth-success-after-mfa-jmap.json`: the `auth.success` that lands seconds later, in its own
+  webhook delivery, once the same login's second request supplies the right code to
+  `POST /api/auth`. `auth.mfa-required` and this `auth.success` never appear in the same
+  delivery; Stalwart posts them as two separate requests, not a single request-response pair.

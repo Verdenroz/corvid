@@ -1,0 +1,1 @@
+{"events":[{"id":"1790475131019","createdAt":"2026-09-27T02:12:11Z","type":"auth.mfa-required","data":{"accountName":"alice@corvid.test","accountId":2,"spanId":331759231019674112,"reason":"MFA token required","remoteIp":"172.24.0.1","listenerId":"http","localPort":8080,"remotePort":57052}}]}

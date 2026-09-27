@@ -69,6 +69,11 @@ fn line(alert: &Alert) -> String {
             "{at}: {account} signed in with an app password from {address} via {listener}, a \
              combination not seen before."
         ),
+        Reason::PasswordAcceptedAwaitingCode => format!(
+            "{at}: the account password for {account} was entered correctly from {address} \
+             via {listener}, but the sign-in stopped at the TOTP step. Mail apps and services \
+             must use an app password instead (device.sh add)."
+        ),
         Reason::UnrecognisedCredential(details) => format!(
             "{at}: {account} signed in from {address} via {listener} with a credential type \
              this crate does not recognise: {details:?}."
@@ -154,6 +159,16 @@ mod tests {
         let message = text(&render(&[alert], "alice@corvid.test"));
         assert!(message.contains("Authenticated with a magic link"));
         assert!(message.contains("an unreported account"));
+    }
+
+    #[test]
+    fn a_password_stopped_at_totp_names_the_app_password_alternative() {
+        let message = text(&render(
+            &[alert(Reason::PasswordAcceptedAwaitingCode)],
+            "alice@corvid.test",
+        ));
+        assert!(message.contains("stopped at the TOTP step"));
+        assert!(message.contains("device.sh add"));
     }
 
     #[test]

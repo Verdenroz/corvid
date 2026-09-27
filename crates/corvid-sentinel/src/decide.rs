@@ -22,6 +22,11 @@ pub enum Reason {
     /// rather than guessed at: a reworded string from a Stalwart upgrade must not be silently
     /// read as the primary password.
     UnrecognisedCredential(String),
+    /// The account password was correct and the sign-in stopped at the TOTP step: the strongest
+    /// signal this crate can get that someone holds the password, whether or not they ever
+    /// produce a code. IMAP, SMTP and JMAP Basic auth have no way to supply one, so this is also
+    /// what a mail app or service still using the account password looks like.
+    PasswordAcceptedAwaitingCode,
     /// A success event missing the account, address or listener a stable identity needs.
     Incomplete,
     TooManyAttempts,
@@ -46,6 +51,7 @@ pub fn decide(events: &[AuthEvent], seen: &Seen) -> (Vec<Alert>, Seen) {
 fn decide_one(event: &AuthEvent, seen: &mut Seen) -> Option<Alert> {
     let reason = match &event.kind {
         Kind::Success => success(event, seen)?,
+        Kind::MfaRequired => mfa_required(event, seen)?,
         Kind::TooManyAttempts => too_many_attempts(event, seen)?,
         // A ban on the VPN exit locks out every VPN user, so this alert is never rate-limited.
         Kind::Ban => Reason::Banned,
@@ -81,6 +87,26 @@ fn success(event: &AuthEvent, seen: &mut Seen) -> Option<Reason> {
     seen.identities
         .insert(identity)
         .then_some(Reason::NewSignIn(kind))
+}
+
+/// Shares `seen.identities` with `success`, keyed the same way (account, listener, address) at
+/// `CredentialKind::Primary`: whichever of the two events for one login arrives first marks the
+/// identity seen, so a normal two-step login alerts once regardless of delivery order.
+fn mfa_required(event: &AuthEvent, seen: &mut Seen) -> Option<Reason> {
+    let (Some(account), Some(remote_ip), Some(listener)) =
+        (&event.account, &event.remote_ip, &event.listener)
+    else {
+        return Some(Reason::Incomplete);
+    };
+    let identity = Identity {
+        account: account.clone(),
+        kind: CredentialKind::Primary,
+        listener: listener.clone(),
+        remote_ip: remote_ip.clone(),
+    };
+    seen.identities
+        .insert(identity)
+        .then_some(Reason::PasswordAcceptedAwaitingCode)
 }
 
 fn too_many_attempts(event: &AuthEvent, seen: &mut Seen) -> Option<Reason> {
@@ -279,13 +305,48 @@ mod tests {
     fn an_unknown_event_type_alerts_by_name() {
         let mut seen = Seen::default();
         let alerts = step(
-            &[event(Kind::Other("auth.mfa-required".to_owned()))],
+            &[event(Kind::Other("auth.credential-expired".to_owned()))],
             &mut seen,
         );
 
         assert_eq!(
             alerts[0].reason,
-            Reason::UnknownEvent("auth.mfa-required".to_owned())
+            Reason::UnknownEvent("auth.credential-expired".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_correct_password_stopped_at_totp_alerts_once_per_identity() {
+        let mut seen = Seen::default();
+        let alerts = step(&[event(Kind::MfaRequired)], &mut seen);
+
+        assert_eq!(alerts.len(), 1);
+        assert_eq!(alerts[0].reason, Reason::PasswordAcceptedAwaitingCode);
+        assert_eq!(step(&[event(Kind::MfaRequired)], &mut seen), vec![]);
+    }
+
+    #[test]
+    fn a_completed_totp_login_alerts_exactly_once_regardless_of_delivery_order() {
+        let mut forward = Seen::default();
+        let forward_alerts = step(
+            &[event(Kind::MfaRequired), event(Kind::Success)],
+            &mut forward,
+        );
+        assert_eq!(forward_alerts.len(), 1);
+        assert_eq!(
+            forward_alerts[0].reason,
+            Reason::PasswordAcceptedAwaitingCode
+        );
+
+        let mut reversed = Seen::default();
+        let reversed_alerts = step(
+            &[event(Kind::Success), event(Kind::MfaRequired)],
+            &mut reversed,
+        );
+        assert_eq!(reversed_alerts.len(), 1);
+        assert_eq!(
+            reversed_alerts[0].reason,
+            Reason::NewSignIn(CredentialKind::Primary)
         );
     }
 }
