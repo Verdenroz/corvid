@@ -6,14 +6,16 @@ plugins {
     id("corvid.compose.multiplatform")
 }
 
+val jvmTargetVersion = JvmTarget.fromTarget(libs.versions.jvmTarget.get())
+
 java {
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
+    sourceCompatibility = JavaVersion.toVersion(jvmTargetVersion.target)
+    targetCompatibility = JavaVersion.toVersion(jvmTargetVersion.target)
 }
 
 kotlin {
     compilerOptions {
-        jvmTarget.set(JvmTarget.JVM_17)
+        jvmTarget.set(jvmTargetVersion)
         allWarningsAsErrors.set(true)
     }
 }

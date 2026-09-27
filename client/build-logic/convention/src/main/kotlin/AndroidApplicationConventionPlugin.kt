@@ -15,18 +15,20 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
         }
 
         val version = providers.gradleProperty("corvid.version").getOrElse("0.1.0")
+        val libs = versionCatalog()
+        val jvmTarget = JvmTarget.fromTarget(libs.version("jvmTarget"))
 
         extensions.configure<ApplicationExtension> {
-            compileSdk = 36
+            compileSdk = libs.intVersion("compileSdk")
             defaultConfig {
-                minSdk = 30
-                targetSdk = 36
+                minSdk = libs.intVersion("minSdk")
+                targetSdk = libs.intVersion("targetSdk")
                 versionCode = versionCodeOf(version)
                 versionName = version
             }
             compileOptions {
-                sourceCompatibility = JavaVersion.VERSION_17
-                targetCompatibility = JavaVersion.VERSION_17
+                sourceCompatibility = JavaVersion.toVersion(jvmTarget.target)
+                targetCompatibility = JavaVersion.toVersion(jvmTarget.target)
             }
             lint {
                 warningsAsErrors = true
@@ -46,7 +48,7 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
 
         extensions.configure<KotlinAndroidProjectExtension> {
             compilerOptions {
-                jvmTarget.set(JvmTarget.JVM_17)
+                this.jvmTarget.set(jvmTarget)
                 allWarningsAsErrors.set(true)
             }
         }

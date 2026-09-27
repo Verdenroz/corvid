@@ -2,9 +2,7 @@ import com.android.build.gradle.LibraryExtension
 import org.gradle.api.JavaVersion
 import org.gradle.api.Plugin
 import org.gradle.api.Project
-import org.gradle.api.artifacts.VersionCatalogsExtension
 import org.gradle.kotlin.dsl.configure
-import org.gradle.kotlin.dsl.getByType
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 
@@ -16,8 +14,9 @@ class KotlinMultiplatformLibraryConventionPlugin : Plugin<Project> {
             apply("com.android.library")
         }
 
-        val libs = extensions.getByType<VersionCatalogsExtension>().named("libs")
+        val libs = versionCatalog()
         fun lib(alias: String) = libs.findLibrary(alias).get()
+        val jvmTarget = JvmTarget.fromTarget(libs.version("jvmTarget"))
 
         extensions.configure<KotlinMultiplatformExtension> {
             compilerOptions {
@@ -27,7 +26,7 @@ class KotlinMultiplatformLibraryConventionPlugin : Plugin<Project> {
                 freeCompilerArgs.add("-Xexpect-actual-classes")
             }
             androidTarget {
-                compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
+                compilerOptions { this.jvmTarget.set(jvmTarget) }
             }
             jvm("desktop")
 
@@ -42,11 +41,11 @@ class KotlinMultiplatformLibraryConventionPlugin : Plugin<Project> {
         }
 
         extensions.configure<LibraryExtension> {
-            compileSdk = 36
-            defaultConfig { minSdk = 30 }
+            compileSdk = libs.intVersion("compileSdk")
+            defaultConfig { minSdk = libs.intVersion("minSdk") }
             compileOptions {
-                sourceCompatibility = JavaVersion.VERSION_17
-                targetCompatibility = JavaVersion.VERSION_17
+                sourceCompatibility = JavaVersion.toVersion(jvmTarget.target)
+                targetCompatibility = JavaVersion.toVersion(jvmTarget.target)
             }
         }
     }
