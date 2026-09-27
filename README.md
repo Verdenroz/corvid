@@ -1,6 +1,6 @@
 <p align="center">
   <img src=".github/assets/readme/hero.svg" width="100%"
-       alt="Corvid: self-hosted email that strips trackers at delivery, signs its own image proxy, and never leaves your IP.">
+       alt="Corvid: self-hosted email that strips trackers at delivery, signs its own image proxy, and sends nothing through a relay.">
 </p>
 
 <p align="center">

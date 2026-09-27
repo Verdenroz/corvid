@@ -2,7 +2,7 @@
      width="1200" height="340" viewBox="0 0 1200 340"
      role="img" aria-labelledby="hero-title hero-desc">
   <title id="hero-title">Corvid</title>
-  <desc id="hero-desc">Mail arrives, the milter strips trackers at delivery, images route through a signed proxy, and the message lands in a mailbox on its own IP.</desc>
+  <desc id="hero-desc">Mail arrives, the milter strips trackers at delivery, images route through a signed proxy, and nothing passes through a relay.</desc>
 
   <rect width="1200" height="340" rx="28" fill="#6A4FC0"/>
 
@@ -11,9 +11,7 @@
           font-size="20" letter-spacing="2" fill="#C9C3D6">SELF-HOSTED EMAIL, ONE MAILBOX</text>
     <text x="62" y="152" font-size="84" font-weight="700" fill="#EEEBF2">Corvid</text>
     <text x="64" y="200" font-size="24" fill="#C9C3D6">Mail arrives, trackers get stripped at delivery,</text>
-    <text x="64" y="228" font-size="24" fill="#C9C3D6">and it never leaves your own IP.</text>
-    <text x="64" y="270" font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
-          font-size="16" fill="#8F76DD">MIT license · Stalwart Mail Server · Rust services</text>
+    <text x="64" y="228" font-size="24" fill="#C9C3D6">and nothing passes through a relay.</text>
   </g>
 
   <g id="delivery-sequence" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
@@ -24,16 +22,14 @@
     <circle cx="732" cy="155" r="3" fill="#15111D"/>
     <circle cx="760" cy="155" r="3" fill="#15111D"/>
     <circle cx="788" cy="155" r="3" fill="#15111D"/>
-    <text x="694" y="222" font-size="18" fill="#8F76DD" text-anchor="middle">arrives</text>
+    <text x="694" y="222" font-size="18" fill="#C9C3D6" text-anchor="middle">arrives</text>
 
     <line x1="820" y1="145" x2="820" y2="195" stroke="#15111D" stroke-width="4"/>
-    <text x="820" y="222" font-size="18" fill="#8F76DD" text-anchor="middle">milter</text>
+    <text x="820" y="222" font-size="18" fill="#C9C3D6" text-anchor="middle">milter</text>
 
     <circle cx="940" cy="170" r="11" fill="none" stroke="#15111D" stroke-width="3"/>
     <rect x="936" y="167" width="8" height="7" fill="#15111D"/>
-    <text x="940" y="222" font-size="18" fill="#8F76DD" text-anchor="middle">signed proxy</text>
-
-    <text x="1090" y="252" font-size="16" fill="#C9C3D6" text-anchor="middle">your inbox, your IP</text>
+    <text x="940" y="222" font-size="18" fill="#C9C3D6" text-anchor="middle">signed proxy</text>
   </g>
 
   <g id="crow-mark" transform="translate(1003.6 82) scale(1.6)">
