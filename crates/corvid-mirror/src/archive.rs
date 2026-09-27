@@ -7,49 +7,28 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::crypto::{self, Identities};
+use crate::meta::{self, Entry, Meta};
 use crate::source::Record;
 
 const SCHEMA: u32 = 2;
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Held {
-    /// Sha256 of the plaintext. Unchanged by encryption, so dedup and dedup-by-content still
-    /// work without decrypting anything.
-    pub digest: String,
-    /// Sha256 of the bytes actually on disk. The nightly verify checks this alone, with no
-    /// key; `verify --deep` decrypts and checks `digest` and `size` against the plaintext.
-    pub ciphertext_digest: String,
-    pub received_at: String,
-    pub size: usize,
-    /// As of the last sight. A keyword change is recorded and never a reason to re-fetch.
-    pub keywords: BTreeSet<String>,
-    /// As of the last sight, by name. Empty for anything archived before mailbox tracking
-    /// existed; restore falls back to a default mailbox for those.
-    pub mailboxes: BTreeSet<String>,
-}
-
+/// The operational index: what sync, audit and the nightly verify need, and nothing a stolen
+/// copy could read as content. Subjects, keywords and mailbox names live in `meta` instead.
 #[derive(Debug, Default, Serialize, Deserialize)]
-struct Ledger {
+struct Index {
     cursor: Option<String>,
-    held: BTreeMap<String, Held>,
+    /// Server id to the blob holding it, named by its own ciphertext digest so the filename
+    /// carries no digest of the plaintext an attacker could match against known mail.
+    held: BTreeMap<String, String>,
     /// Ids the server no longer has. The body stays; this records the deletion so the user can
     /// act on it.
     vanished: BTreeSet<String>,
 }
 
-// `Held` is pinned in its own right; anything deeper fails only at load time.
-corvid_store::pin_shape!(Ledger {
+corvid_store::pin_shape!(Index {
     cursor,
     held,
     vanished
-});
-corvid_store::pin_shape!(Held {
-    digest,
-    ciphertext_digest,
-    received_at,
-    size,
-    keywords,
-    mailboxes
 });
 
 /// A local copy of the mailbox that outlives the server.
@@ -57,125 +36,134 @@ corvid_store::pin_shape!(Held {
 /// **Append-only.** A message deleted on the server stays here. The audit therefore checks that
 /// every server id is present rather than comparing counts, which differ after any deletion.
 ///
-/// **Bodies are encrypted at rest.** An archive written before encryption existed is schema 1
-/// and this type is schema 2, so `corvid_store` refuses to open it: `encrypt-archive` is the
-/// only path from one to the other, and a partly-migrated archive is not a schema this type
-/// will ever recognise.
+/// **Encrypted at rest.** An archive written before encryption existed is schema 1 and this
+/// type is schema 2, so `corvid_store` refuses to open it: `encrypt-archive` is the only path
+/// from one to the other, and a partly-migrated archive is not a schema this type recognises.
 pub struct Archive {
     root: PathBuf,
-    ledger: Ledger,
+    index: Index,
+    /// This run's metadata, written as one segment by `save`. Nothing here is read back
+    /// before then, so building it needs no identity.
+    pending: BTreeMap<String, Entry>,
 }
 
 impl Archive {
     pub fn open(root: impl Into<PathBuf>) -> io::Result<Self> {
         let root = root.into();
         fs::create_dir_all(root.join("blobs"))?;
-        let ledger = corvid_store::open(&ledger_path(&root), SCHEMA)?;
-        Ok(Self { root, ledger })
+        let index = corvid_store::open(&index_path(&root), SCHEMA)?;
+        Ok(Self {
+            root,
+            index,
+            pending: BTreeMap::new(),
+        })
     }
 
     pub fn cursor(&self) -> Option<&str> {
-        self.ledger.cursor.as_deref()
+        self.index.cursor.as_deref()
     }
 
     pub fn set_cursor(&mut self, cursor: impl Into<String>) {
-        self.ledger.cursor = Some(cursor.into());
+        self.index.cursor = Some(cursor.into());
     }
 
     pub fn holds(&self, id: &str) -> bool {
-        self.ledger.held.contains_key(id)
-    }
-
-    pub fn held(&self, id: &str) -> Option<&Held> {
-        self.ledger.held.get(id)
+        self.index.held.contains_key(id)
     }
 
     pub fn is_vanished(&self, id: &str) -> bool {
-        self.ledger.vanished.contains(id)
+        self.index.vanished.contains(id)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&str, &Held)> {
-        self.ledger
-            .held
-            .iter()
-            .map(|(id, held)| (id.as_str(), held))
+    pub fn held_ids(&self) -> impl Iterator<Item = &str> {
+        self.index.held.keys().map(String::as_str)
     }
 
     pub fn len(&self) -> usize {
-        self.ledger.held.len()
+        self.index.held.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.ledger.held.is_empty()
+        self.index.held.is_empty()
     }
 
-    /// Encrypts and writes the body before the ledger names it, so a crash leaves an
-    /// unreferenced blob rather than a ledger entry pointing at nothing.
+    /// Encrypts and writes the body under its own ciphertext digest before the index names
+    /// it, so a crash leaves an unreferenced blob rather than an index entry pointing at
+    /// nothing. Encryption is not deterministic, so unlike a plaintext archive this keeps no
+    /// dedup by content: two copies of the same message cost two blobs.
     pub fn store(
         &mut self,
         record: &Record,
         body: &[u8],
         recipient: &age::x25519::Recipient,
     ) -> io::Result<()> {
-        let digest = hex::encode(Sha256::digest(body));
-        let path = self.blob_path(&digest);
-        // Dedup is keyed on the plaintext digest; encryption is not deterministic, so a
-        // duplicate is skipped rather than re-encrypted, and its digest is read back off disk.
-        let ciphertext_digest = if path.exists() {
-            hex::encode(Sha256::digest(fs::read(&path)?))
-        } else {
-            let ciphertext = crypto::encrypt(recipient, body)?;
-            let ciphertext_digest = hex::encode(Sha256::digest(&ciphertext));
-            fs::create_dir_all(path.parent().expect("blob paths have a parent"))?;
-            let temporary = path.with_extension("tmp");
-            let mut file = fs::File::create(&temporary)?;
-            file.write_all(&ciphertext)?;
-            file.sync_all()?;
-            fs::rename(&temporary, &path)?;
-            ciphertext_digest
-        };
-        self.ledger.held.insert(
+        let ciphertext = crypto::encrypt(recipient, body)?;
+        let digest = hex::encode(Sha256::digest(&ciphertext));
+        write_blob(&self.root, &digest, &ciphertext)?;
+        self.index.held.insert(record.id.clone(), digest);
+        self.pending.insert(
             record.id.clone(),
-            Held {
-                digest,
-                ciphertext_digest,
-                received_at: record.received_at.clone(),
+            Entry::New(Meta {
+                digest: hex::encode(Sha256::digest(body)),
                 size: body.len(),
+                received_at: record.received_at.clone(),
                 keywords: record.keywords.clone(),
                 mailboxes: record.mailboxes.clone(),
-            },
+            }),
         );
         Ok(())
     }
 
+    /// Records a keyword or mailbox change for an already-held message. The change lands in
+    /// this run's segment as a touch on whatever earlier segment introduced the message, so
+    /// it costs no read and no identity.
     pub fn note_seen(
         &mut self,
         id: &str,
         keywords: &BTreeSet<String>,
         mailboxes: &BTreeSet<String>,
     ) {
-        if let Some(held) = self.ledger.held.get_mut(id) {
-            held.keywords = keywords.clone();
-            held.mailboxes = mailboxes.clone();
-        }
+        self.pending.insert(
+            id.to_owned(),
+            Entry::Touch {
+                keywords: keywords.clone(),
+                mailboxes: mailboxes.clone(),
+            },
+        );
     }
 
-    pub fn save(&self) -> io::Result<()> {
-        corvid_store::save(&ledger_path(&self.root), SCHEMA, &self.ledger)
+    /// Saves the index alone. Used where nothing this run could have touched metadata, such
+    /// as the audit.
+    pub fn save_index(&self) -> io::Result<()> {
+        corvid_store::save(&index_path(&self.root), SCHEMA, &self.index)
+    }
+
+    /// Writes this run's metadata segment, then the index: the index is the commit point, so
+    /// a crash between the two leaves a segment nothing yet points at, not an index entry
+    /// pointing at nothing.
+    pub fn save(&self, recipient: &age::x25519::Recipient) -> io::Result<()> {
+        meta::write_segment(&self.root, &self.pending, recipient)?;
+        self.save_index()
     }
 
     /// The raw stored bytes: ciphertext, not the message.
     pub fn read(&self, id: &str) -> io::Result<Vec<u8>> {
-        let held =
-            self.ledger.held.get(id).ok_or_else(|| {
+        let digest =
+            self.index.held.get(id).ok_or_else(|| {
                 io::Error::new(io::ErrorKind::NotFound, format!("{id} is not held"))
             })?;
-        fs::read(self.blob_path(&held.digest))
+        fs::read(blob_path(&self.root, digest))
     }
 
     /// Decrypts a held message. Needs an identity, so never called on the nightly path.
     pub fn read_plaintext(&self, id: &str, identities: &Identities) -> io::Result<Vec<u8>> {
         crypto::decrypt(identities, &self.read(id)?)
+    }
+
+    /// This archive's metadata, decrypted. Needs an identity, so never called on the nightly
+    /// path.
+    pub fn meta(&self, identities: &Identities) -> io::Result<BTreeMap<String, Meta>> {
+        meta::replay(&self.root, identities)
     }
 
     /// Server ids with no local copy.
@@ -187,44 +175,46 @@ impl Archive {
     pub fn note_vanished(&mut self, present: &[String]) -> Vec<String> {
         let present: BTreeSet<&String> = present.iter().collect();
         let gone: Vec<String> = self
-            .ledger
+            .index
             .held
             .keys()
-            .filter(|id| !present.contains(id) && !self.ledger.vanished.contains(*id))
+            .filter(|id| !present.contains(id) && !self.index.vanished.contains(*id))
             .cloned()
             .collect();
-        self.ledger.vanished.extend(gone.iter().cloned());
+        self.index.vanished.extend(gone.iter().cloned());
         gone
     }
 
     pub fn vanished(&self) -> impl Iterator<Item = &String> {
-        self.ledger.vanished.iter()
+        self.index.vanished.iter()
     }
 
-    /// Rehashes every held ciphertext, needing no server and no identity.
+    /// Rehashes every held blob against its own name, needing no server and no identity: a
+    /// blob is named by its ciphertext digest, so this alone catches damaged ciphertext.
     pub fn verify(&self) -> io::Result<Vec<String>> {
         let mut damaged = Vec::new();
-        for (id, held) in &self.ledger.held {
-            match fs::read(self.blob_path(&held.digest)) {
-                Ok(bytes) if hex::encode(Sha256::digest(&bytes)) == held.ciphertext_digest => {}
+        for (id, digest) in &self.index.held {
+            match fs::read(blob_path(&self.root, digest)) {
+                Ok(bytes) if hex::encode(Sha256::digest(&bytes)) == *digest => {}
                 _ => damaged.push(id.clone()),
             }
         }
         Ok(damaged)
     }
 
-    /// Decrypts every held body and checks it against the plaintext digest and size the
-    /// server reported at fetch time. Proves recoverability, not just that the disk agrees
-    /// with itself.
+    /// Decrypts every held body and checks it against the plaintext digest and size recorded
+    /// when it was fetched. Proves recoverability, not just that the disk agrees with itself.
     pub fn verify_deep(&self, identities: &Identities) -> io::Result<Vec<String>> {
+        let meta = meta::replay(&self.root, identities)?;
         let mut damaged = Vec::new();
-        for (id, held) in &self.ledger.held {
-            let matches = fs::read(self.blob_path(&held.digest))
+        for (id, digest) in &self.index.held {
+            let matches = fs::read(blob_path(&self.root, digest))
                 .ok()
                 .and_then(|ciphertext| crypto::decrypt(identities, &ciphertext).ok())
-                .is_some_and(|plaintext| {
-                    plaintext.len() == held.size
-                        && hex::encode(Sha256::digest(&plaintext)) == held.digest
+                .zip(meta.get(id))
+                .is_some_and(|(plaintext, meta)| {
+                    plaintext.len() == meta.size
+                        && hex::encode(Sha256::digest(&plaintext)) == meta.digest
                 });
             if !matches {
                 damaged.push(id.clone());
@@ -232,18 +222,24 @@ impl Archive {
         }
         Ok(damaged)
     }
-
-    fn blob_path(&self, digest: &str) -> PathBuf {
-        blob_path(&self.root, digest)
-    }
 }
 
-/// Shared with the `encrypt-archive` migration, which writes blobs and reads the legacy
-/// ledger before an `Archive` of the new schema can be opened.
+fn write_blob(root: &Path, digest: &str, bytes: &[u8]) -> io::Result<()> {
+    let path = blob_path(root, digest);
+    fs::create_dir_all(path.parent().expect("blob paths have a parent"))?;
+    let temporary = path.with_extension("tmp");
+    let mut file = fs::File::create(&temporary)?;
+    file.write_all(bytes)?;
+    file.sync_all()?;
+    fs::rename(&temporary, &path)
+}
+
+/// Shared with the `encrypt-archive` migration, which writes blobs and the index before an
+/// `Archive` of the new schema can be opened.
 pub(crate) fn blob_path(root: &Path, digest: &str) -> PathBuf {
     root.join("blobs").join(&digest[..2]).join(digest)
 }
 
-pub(crate) fn ledger_path(root: &Path) -> PathBuf {
-    root.join("ledger.json")
+pub(crate) fn index_path(root: &Path) -> PathBuf {
+    root.join("index.json")
 }

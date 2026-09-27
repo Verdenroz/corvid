@@ -1,9 +1,10 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 
 use corvid_jmap::{Client, ids, missing, text};
 use serde_json::{Value, json};
 
+use crate::mailpath;
 use crate::source::{Changes, Listing, Record, Source};
 
 /// The session advertises `maxObjectsInGet: 500`, so property fetches are chunked. A fetch that
@@ -45,7 +46,7 @@ impl Source for Mailbox {
     }
 
     fn records(&self, wanted: &[String]) -> io::Result<Vec<Record>> {
-        let mailboxes = self.mailbox_names()?;
+        let mailboxes = self.mailbox_paths()?;
         let mut records = Vec::with_capacity(wanted.len());
         for chunk in wanted.chunks(PER_GET) {
             let result = self.client.call(
@@ -59,7 +60,11 @@ impl Source for Mailbox {
             let list = result["list"]
                 .as_array()
                 .ok_or_else(|| missing("a message list"))?;
-            records.extend(list.iter().filter_map(|value| record(value, &mailboxes)));
+            for value in list {
+                if let Some(record) = record(value, &mailboxes)? {
+                    records.push(record);
+                }
+            }
         }
         Ok(records)
     }
@@ -106,9 +111,10 @@ impl Source for Mailbox {
 }
 
 impl Mailbox {
-    /// Every mailbox's id mapped to its name, refetched each call: cheap next to a page of
-    /// messages, and a rename must not stick to whatever name was cached from an earlier run.
-    fn mailbox_names(&self) -> io::Result<BTreeMap<String, String>> {
+    /// Every mailbox's id mapped to its full path, refetched each call: cheap next to a page
+    /// of messages, and a rename must not stick to whatever path was cached from an earlier
+    /// run. Full paths because a name alone is not unique across parents.
+    fn mailbox_paths(&self) -> io::Result<BTreeMap<String, String>> {
         let result = self.client.call(
             "Mailbox/get",
             json!({"accountId": self.account(), "ids": null}),
@@ -116,10 +122,26 @@ impl Mailbox {
         let list = result["list"]
             .as_array()
             .ok_or_else(|| missing("a mailbox list"))?;
-        Ok(list
-            .iter()
-            .filter_map(|value| Some((text(&value["id"])?, text(&value["name"])?)))
-            .collect())
+        let mut name = BTreeMap::new();
+        let mut parent = BTreeMap::new();
+        for value in list {
+            let id = text(&value["id"]).ok_or_else(|| missing("a mailbox id"))?;
+            name.insert(
+                id.clone(),
+                text(&value["name"]).ok_or_else(|| missing("a mailbox name"))?,
+            );
+            if let Some(parent_id) = text(&value["parentId"]) {
+                parent.insert(id, parent_id);
+            }
+        }
+        name.keys()
+            .map(|id| {
+                Ok((
+                    id.clone(),
+                    mailpath::join(&path_to_root(id, &name, &parent)?),
+                ))
+            })
+            .collect()
     }
 
     fn page(&self, window: Value) -> io::Result<Listing> {
@@ -142,23 +164,59 @@ impl Mailbox {
     }
 }
 
-fn record(value: &Value, mailboxes: &BTreeMap<String, String>) -> Option<Record> {
-    Some(Record {
-        id: text(&value["id"])?,
-        blob_id: text(&value["blobId"])?,
-        received_at: text(&value["receivedAt"])?,
-        size: value["size"].as_u64()? as usize,
+/// The chain of names from `id` up to a top-level mailbox, root first.
+fn path_to_root(
+    id: &str,
+    name: &BTreeMap<String, String>,
+    parent: &BTreeMap<String, String>,
+) -> io::Result<Vec<String>> {
+    let mut segments = vec![name[id].clone()];
+    let mut current = id;
+    while let Some(parent_id) = parent.get(current) {
+        segments.push(
+            name.get(parent_id)
+                .cloned()
+                .ok_or_else(|| missing("a parent mailbox"))?,
+        );
+        current = parent_id;
+    }
+    segments.reverse();
+    Ok(segments)
+}
+
+/// `Ok(None)` for a response missing a core field, matching a message the server half-answered
+/// about; `Err` for a `mailboxIds` entry with no matching mailbox, since silently dropping it
+/// would file the message under the fallback mailbox on restore with nobody told.
+fn record(value: &Value, mailboxes: &BTreeMap<String, String>) -> io::Result<Option<Record>> {
+    let (Some(id), Some(blob_id), Some(received_at), Some(size)) = (
+        text(&value["id"]),
+        text(&value["blobId"]),
+        text(&value["receivedAt"]),
+        value["size"].as_u64(),
+    ) else {
+        return Ok(None);
+    };
+    let mut record_mailboxes = BTreeSet::new();
+    if let Some(mailbox_ids) = value["mailboxIds"].as_object() {
+        for mailbox_id in mailbox_ids.keys() {
+            let path = mailboxes.get(mailbox_id).ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("{id}: mailbox {mailbox_id} is not in the account's mailbox list"),
+                )
+            })?;
+            record_mailboxes.insert(path.clone());
+        }
+    }
+    Ok(Some(Record {
+        id,
+        blob_id,
+        received_at,
+        size: size as usize,
         keywords: value["keywords"]
             .as_object()
             .map(|map| map.keys().cloned().collect())
             .unwrap_or_default(),
-        mailboxes: value["mailboxIds"]
-            .as_object()
-            .map(|ids| {
-                ids.keys()
-                    .filter_map(|id| mailboxes.get(id).cloned())
-                    .collect()
-            })
-            .unwrap_or_default(),
-    })
+        mailboxes: record_mailboxes,
+    }))
 }

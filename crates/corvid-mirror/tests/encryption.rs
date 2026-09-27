@@ -1,40 +1,38 @@
 mod common;
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
 
 use corvid_mirror::{Archive, sync, verify, verify_deep};
 use serde::Serialize;
 
-use common::{Server, identities, recipient, scratch};
+use common::{Server, files, identities, only_blob, recipient, scratch};
 
 #[test]
-fn a_stolen_archive_reveals_no_plaintext_bytes() {
+fn a_stolen_archive_reveals_no_subject_keyword_or_mailbox() {
     let (_dir, root) = scratch();
     let server = Server::default();
-    server.deliver("m0", "the subject line carries marker-9f3c1a in the clear");
+    server.deliver_to(
+        "m0",
+        "the subject line carries marker-9f3c1a in the clear",
+        &["Personal/Taxes"],
+    );
+    server.set_keywords("m0", &["corvid-llm-finance"]);
     sync(&root, &server, &recipient()).unwrap();
 
-    for blob in blobs(&root.join("blobs")) {
-        let bytes = std::fs::read(&blob).unwrap();
-        assert!(
-            !bytes.windows(6).any(|w| w == b"marker"),
-            "{blob:?} carries a plaintext marker"
-        );
-    }
-}
-
-fn blobs(dir: &Path) -> Vec<PathBuf> {
-    let mut files = Vec::new();
-    for entry in std::fs::read_dir(dir).unwrap() {
-        let path = entry.unwrap().path();
-        if path.is_dir() {
-            files.extend(blobs(&path));
-        } else {
-            files.push(path);
+    for file in files(&root) {
+        let bytes = std::fs::read(&file).unwrap();
+        for needle in [
+            b"marker".as_slice(),
+            b"corvid-llm-finance".as_slice(),
+            b"Taxes".as_slice(),
+        ] {
+            assert!(
+                !bytes.windows(needle.len()).any(|w| w == needle),
+                "{file:?} carries {:?} in the clear",
+                std::str::from_utf8(needle).unwrap()
+            );
         }
     }
-    files
 }
 
 #[test]
@@ -44,13 +42,7 @@ fn a_flipped_ciphertext_byte_fails_the_nightly_verify() {
     server.deliver("m0", "body");
     sync(&root, &server, &recipient()).unwrap();
 
-    let digest = Archive::open(&root)
-        .unwrap()
-        .held("m0")
-        .unwrap()
-        .digest
-        .clone();
-    let blob = root.join("blobs").join(&digest[..2]).join(&digest);
+    let blob = only_blob(&root);
     let mut bytes = std::fs::read(&blob).unwrap();
     bytes[0] ^= 0xff;
     std::fs::write(&blob, bytes).unwrap();
@@ -75,13 +67,7 @@ fn verify_deep_also_catches_a_flipped_ciphertext_byte() {
     server.deliver("m0", "body");
     sync(&root, &server, &recipient()).unwrap();
 
-    let digest = Archive::open(&root)
-        .unwrap()
-        .held("m0")
-        .unwrap()
-        .digest
-        .clone();
-    let blob = root.join("blobs").join(&digest[..2]).join(&digest);
+    let blob = only_blob(&root);
     let mut bytes = std::fs::read(&blob).unwrap();
     bytes[0] ^= 0xff;
     std::fs::write(&blob, bytes).unwrap();
@@ -89,8 +75,9 @@ fn verify_deep_also_catches_a_flipped_ciphertext_byte() {
     assert_eq!(verify_deep(&root, &identities()).unwrap(), ["m0"]);
 }
 
-// Schema 1, before ciphertext_digest and mailboxes existed. Built by hand rather than reused
-// from the crate, so this test still exercises a real schema 1 file after a future bump.
+// Schema 1: a single plaintext ledger, before the index/metadata split. Built by hand rather
+// than reused from the crate, so this test still exercises a real schema 1 file after a
+// future bump changes the current shape again.
 #[derive(Serialize)]
 struct LegacyHeld {
     digest: String,
@@ -110,7 +97,7 @@ struct LegacyLedger {
 fn an_existing_plaintext_archive_is_refused_not_migrated() {
     let (_dir, root) = scratch();
     std::fs::create_dir_all(&root).unwrap();
-    corvid_store::save(&root.join("ledger.json"), 1, &LegacyLedger::default()).unwrap();
+    corvid_store::save(&root.join("index.json"), 1, &LegacyLedger::default()).unwrap();
 
     match Archive::open(&root) {
         Ok(_) => panic!("a schema 1 archive was opened as schema 2"),

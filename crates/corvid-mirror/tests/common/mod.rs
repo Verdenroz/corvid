@@ -3,7 +3,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use corvid_mirror::{Changes, Identities, Listing, Record, Source};
 
@@ -18,6 +18,27 @@ pub fn recipient() -> age::x25519::Recipient {
 
 pub fn identities() -> Identities {
     vec![Box::new(TEST_SK.parse::<age::x25519::Identity>().unwrap())]
+}
+
+/// Every file under a directory, recursively: walks the blob shards, or a whole archive root.
+pub fn files(dir: &Path) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    for entry in std::fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            found.extend(files(&path));
+        } else {
+            found.push(path);
+        }
+    }
+    found
+}
+
+/// The one blob a single-message archive holds, for tests that tamper with its bytes.
+pub fn only_blob(root: &Path) -> PathBuf {
+    let mut blobs = files(&root.join("blobs"));
+    assert_eq!(blobs.len(), 1, "expected exactly one stored blob");
+    blobs.remove(0)
 }
 
 pub fn scratch() -> (tempfile::TempDir, PathBuf) {
@@ -42,6 +63,10 @@ pub struct Server {
 
 impl Server {
     pub fn deliver(&self, id: &str, body: &str) {
+        self.deliver_to(id, body, &[]);
+    }
+
+    pub fn deliver_to(&self, id: &str, body: &str, mailboxes: &[&str]) {
         self.records.borrow_mut().insert(
             id.to_owned(),
             Record {
@@ -50,7 +75,7 @@ impl Server {
                 received_at: "2026-09-07T00:00:00Z".to_owned(),
                 size: body.len(),
                 keywords: BTreeSet::new(),
-                mailboxes: BTreeSet::new(),
+                mailboxes: mailboxes.iter().map(|m| (*m).to_owned()).collect(),
             },
         );
         self.bodies

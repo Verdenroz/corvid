@@ -1,14 +1,17 @@
 mod archive;
 pub mod crypto;
 mod jmap;
+mod mailpath;
+mod meta;
 pub mod source;
 
 use std::io;
 use std::path::Path;
 
-pub use archive::{Archive, Held};
+pub use archive::Archive;
 pub use crypto::Identities;
 pub use jmap::Mailbox;
+pub use meta::Meta;
 pub use source::{Changes, Listing, Record, Source};
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -93,7 +96,7 @@ pub fn sync(
     }
 
     archive.set_cursor(cursor);
-    archive.save()?;
+    archive.save(recipient)?;
     Ok(summary)
 }
 
@@ -114,7 +117,7 @@ pub fn audit(root: &Path, source: &impl Source) -> io::Result<Audit> {
         .cloned()
         .collect();
     let vanished = archive.note_vanished(&present.ids);
-    archive.save()?;
+    archive.save_index()?;
     Ok(Audit { missing, vanished })
 }
 

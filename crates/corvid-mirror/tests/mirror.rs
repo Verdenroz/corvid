@@ -2,7 +2,7 @@ mod common;
 
 use corvid_mirror::{Archive, audit, sync, verify};
 
-use common::{Server, recipient, scratch};
+use common::{Server, identities, only_blob, recipient, scratch};
 
 #[test]
 fn a_first_run_takes_the_whole_mailbox() {
@@ -143,7 +143,8 @@ fn a_keyword_change_does_not_refetch_the_body() {
     assert_eq!(summary.fetched, 0, "the body is immutable");
     assert_eq!(summary.already_held, 1);
     let archive = Archive::open(&root).unwrap();
-    assert!(archive.held("m0").unwrap().keywords.contains("corvid-work"));
+    let meta = archive.meta(&identities()).unwrap();
+    assert!(meta["m0"].keywords.contains("corvid-work"));
 }
 
 #[test]
@@ -162,14 +163,7 @@ fn a_damaged_body_is_reported_by_verification() {
     let server = Server::default();
     server.deliver("m0", "body");
     sync(&root, &server, &recipient()).unwrap();
-    let digest = Archive::open(&root)
-        .unwrap()
-        .held("m0")
-        .unwrap()
-        .digest
-        .clone();
-    let blob = root.join("blobs").join(&digest[..2]).join(&digest);
-    std::fs::write(&blob, b"tampered").unwrap();
+    std::fs::write(only_blob(&root), b"tampered").unwrap();
 
     assert_eq!(verify(&root).unwrap(), ["m0"]);
 }
