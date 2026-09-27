@@ -14,8 +14,6 @@ use crate::source::{Record, Source};
 
 const LEGACY_SCHEMA: u32 = 1;
 
-// Serialize is test-only: production code only ever loads this shape, never writes it, but a
-// test needs to write one by hand to simulate a pre-encryption archive.
 #[derive(Deserialize)]
 #[cfg_attr(test, derive(Serialize))]
 struct LegacyHeld {
