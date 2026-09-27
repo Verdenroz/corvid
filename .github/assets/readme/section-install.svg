@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="200" height="72" viewBox="0 0 200 72"
+     role="img" aria-labelledby="install-title">
+  <title id="install-title">Install</title>
+  <rect width="200" height="72" rx="16" fill="#6A4FC0"/>
+  <line x1="24" y1="36" x2="44" y2="36" stroke="#15111D" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="44" cy="36" r="4" fill="#15111D"/>
+  <text x="60" y="46" font-size="26" font-weight="700" fill="#EEEBF2"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif">Install</text>
+</svg>
