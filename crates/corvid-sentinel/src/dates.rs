@@ -49,6 +49,25 @@ pub fn rfc2822(created_at: &str) -> Option<String> {
     ))
 }
 
+/// The current time as an RFC 5322 `Date` header value, for a notice that carries no event
+/// timestamp of its own.
+pub fn rfc2822_now() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let (days, remainder) = (secs.div_euclid(86400), secs.rem_euclid(86400));
+    let (year, month, day) = civil_from_days(days);
+    let weekday = WEEKDAYS[(days + 4).rem_euclid(7) as usize];
+    let month_name = MONTHS[(month - 1) as usize];
+    format!(
+        "{weekday}, {day:02} {month_name} {year} {:02}:{:02}:{:02} +0000",
+        remainder / 3600,
+        (remainder % 3600) / 60,
+        remainder % 60
+    )
+}
+
 fn civil_days(year: i64, month: i64, day: i64) -> i64 {
     let year = if month <= 2 { year - 1 } else { year };
     let era = if year >= 0 { year } else { year - 399 } / 400;
@@ -57,6 +76,21 @@ fn civil_days(year: i64, month: i64, day: i64) -> i64 {
     let day_of_year = (153 * shifted + 2) / 5 + day - 1;
     let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
     era * 146097 + day_of_era - 719468
+}
+
+/// The inverse of [`civil_days`]: year, month, day from days since the epoch.
+fn civil_from_days(days: i64) -> (i64, i64, i64) {
+    let z = days + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let day_of_era = z - era * 146097;
+    let year_of_era =
+        (day_of_era - day_of_era / 1460 + day_of_era / 36524 - day_of_era / 146096) / 365;
+    let year = year_of_era + era * 400;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let mp = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    (if month <= 2 { year + 1 } else { year }, month, day)
 }
 
 #[cfg(test)]
@@ -98,5 +132,21 @@ mod tests {
             rfc2822("2026-09-27T02:08:58Z").as_deref(),
             Some("Sun, 27 Sep 2026 02:08:58 +0000")
         );
+    }
+
+    #[test]
+    fn civil_from_days_undoes_civil_days_across_a_wide_range() {
+        for days in (-800_000..800_000).step_by(37) {
+            let (year, month, day) = civil_from_days(days);
+            assert_eq!(civil_days(year, month, day), days, "{days}");
+        }
+    }
+
+    #[test]
+    fn rfc2822_now_looks_like_a_real_header() {
+        let header = rfc2822_now();
+        let (weekday, rest) = header.split_once(", ").unwrap();
+        assert!(WEEKDAYS.contains(&weekday), "{header}");
+        assert!(rest.ends_with(" +0000"), "{header}");
     }
 }

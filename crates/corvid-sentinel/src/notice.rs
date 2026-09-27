@@ -1,3 +1,5 @@
+use sha2::{Digest, Sha256};
+
 use crate::dates;
 use crate::decide::{Alert, Reason};
 use crate::state::CredentialKind;
@@ -14,8 +16,27 @@ pub fn render(alerts: &[Alert], to: &str) -> Vec<u8> {
     let date = alerts
         .first()
         .and_then(|alert| dates::rfc2822(&alert.at))
-        .unwrap_or_else(|| "Thu, 01 Jan 1970 00:00:00 +0000".to_owned());
+        .unwrap_or_else(dates::rfc2822_now);
     let body = alerts.iter().map(line).collect::<Vec<_>>().join("\r\n");
+    message(&subject, &date, to, &body)
+}
+
+/// A notice for a batch that verified but could not be parsed: identified by its digest rather
+/// than repeated back, since the content is exactly what did not parse as JSON.
+pub fn unparseable(body: &[u8], to: &str) -> Vec<u8> {
+    let digest = hex::encode(Sha256::digest(body));
+    message(
+        "Corvid Sentinel: an unreadable webhook batch",
+        &dates::rfc2822_now(),
+        to,
+        &format!(
+            "A webhook batch of {} bytes verified but could not be parsed. sha256: {digest}",
+            body.len()
+        ),
+    )
+}
+
+fn message(subject: &str, date: &str, to: &str, body: &str) -> Vec<u8> {
     format!(
         "From: Corvid Sentinel <corvid-sentinel@corvid.local>\r\n\
          To: {to}\r\n\

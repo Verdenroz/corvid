@@ -49,11 +49,13 @@ impl Notifier for Jmap {
             "Email/import",
             json!({"accountId": self.client.account_id(), "emails": emails}),
         )?;
-        match result["notCreated"].get("n1") {
-            Some(problem) => Err(io::Error::other(format!(
-                "the notice was not created: {problem}"
+        // Absence from `notCreated` is not success: only `created.n1` is. A response with
+        // neither is not a shape this crate recognises either, and must not read as delivered.
+        match result["created"].get("n1") {
+            Some(_) => Ok(()),
+            None => Err(io::Error::other(format!(
+                "Email/import did not report the notice created: {result}"
             ))),
-            None => Ok(()),
         }
     }
 }

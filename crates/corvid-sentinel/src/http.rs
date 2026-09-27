@@ -1,4 +1,3 @@
-use std::io;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -10,7 +9,7 @@ use axum::routing::post;
 
 use crate::service::{Notifier, handle};
 use crate::state::{Seen, save};
-use crate::{parse, verify};
+use crate::{notice, parse, verify};
 
 pub struct Config<N> {
     pub secret: Vec<u8>,
@@ -49,20 +48,31 @@ async fn webhook<N: Notifier + Send + Sync + 'static>(
     if !verify(&state.secret, &body, signature) {
         return StatusCode::UNAUTHORIZED;
     }
-    let events = match parse(&body) {
-        Ok(events) => events,
-        Err(error) => {
-            tracing::warn!(%error, "malformed webhook body");
-            return StatusCode::BAD_REQUEST;
-        }
-    };
+    // A verified body Corvid cannot parse still gets a notice, not a silent 4xx: it is exactly
+    // the kind of thing the sign-in log rule ("alert on what you don't recognise") exists for.
+    let events = parse(&body);
 
     let outcome = tokio::task::spawn_blocking(move || {
-        let mut seen = state.seen.lock().unwrap();
-        let next = handle(&events, &seen, &state.notifier)?;
-        save(&state.state_path, &next)?;
-        *seen = next;
-        Ok::<(), io::Error>(())
+        // A poisoned lock means a prior request panicked mid-decision; the state it left behind
+        // is still whatever the last successful commit wrote, so it is safe to keep using.
+        let mut seen = state
+            .seen
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        match events {
+            Ok(events) => {
+                let next = handle(&events, &seen, &state.notifier)?;
+                save(&state.state_path, &next)?;
+                *seen = next;
+                Ok(())
+            }
+            Err(error) => {
+                tracing::warn!(%error, "a verified webhook body could not be parsed");
+                state
+                    .notifier
+                    .send(&notice::unparseable(&body, state.notifier.account_email()))
+            }
+        }
     })
     .await
     .expect("the blocking task panicked");
@@ -80,6 +90,7 @@ async fn webhook<N: Notifier + Send + Sync + 'static>(
 
 #[cfg(test)]
 mod tests {
+    use std::io;
     use std::sync::Mutex as StdMutex;
     use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -172,6 +183,25 @@ mod tests {
 
         assert_eq!(response.status(), 401);
         assert_eq!(mailbox.sent.lock().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn a_verified_but_unparseable_body_still_delivers_a_notice() {
+        let mailbox = Arc::new(FakeMailbox::default());
+        let url = serve(mailbox.clone()).await;
+        let body = b"not json".to_vec();
+        let client = reqwest::Client::new();
+
+        let response = client
+            .post(&url)
+            .header("X-Signature", sign(&body))
+            .body(body)
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), 200);
+        assert_eq!(mailbox.sent.lock().unwrap().len(), 1);
     }
 
     #[tokio::test]

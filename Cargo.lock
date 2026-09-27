@@ -418,6 +418,7 @@ dependencies = [
  "corvid-config",
  "corvid-jmap",
  "corvid-store",
+ "hex",
  "hmac",
  "reqwest",
  "serde",
