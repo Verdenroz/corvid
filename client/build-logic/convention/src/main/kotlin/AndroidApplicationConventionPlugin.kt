@@ -36,12 +36,16 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
                 // would fail warningsAsErrors on every pin, always. ObsoleteSdkInt
                 // misreads mipmap-anydpi-v26: the qualifier picks the adaptive-icon
                 // XML schema, not a runtime SDK check, so minSdk can't retire it.
+                // OldTargetApi would go red on every PR the moment CI's own SDK image
+                // gets a newer platform; a targetSdk bump is a deliberate change, not
+                // something the runner's SDK version should force.
                 disable +=
                     setOf(
                         "GradleDependency",
                         "AndroidGradlePluginVersion",
                         "NewerVersionAvailable",
                         "ObsoleteSdkInt",
+                        "OldTargetApi",
                     )
             }
         }
