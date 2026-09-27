@@ -173,7 +173,9 @@ impl TryFrom<String> for Network {
 
 /// Ports something inside the pod already listens on. The pod shares one network namespace,
 /// so the web tier cannot take any of them.
-pub const POD_PORTS: [u16; 11] = [25, 80, 465, 587, 993, 1411, 5335, 8080, 8081, 8443, 11332];
+pub const POD_PORTS: [u16; 12] = [
+    25, 80, 465, 587, 993, 1411, 5335, 8080, 8081, 8443, 11332, 11333,
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 #[serde(try_from = "u16")]
@@ -526,6 +528,7 @@ mod tests {
         assert!(config.milter.is_some());
         assert!(config.imgproxy.is_some());
         assert!(config.mirror.is_some());
+        assert!(config.sentinel.is_some());
     }
 
     #[test]

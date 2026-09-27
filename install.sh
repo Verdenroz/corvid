@@ -31,7 +31,7 @@ declare -A CLI_SHA256=(
   [aarch64]=59dff5d52180df669eec705eb3fe2b80cee9267291e88123bd72af855d4c5bc3
 )
 # Must match POD_PORTS in crates/corvid-config: every container shares one network namespace.
-POD_PORTS=(25 80 465 587 993 1411 5335 8080 8081 8443 11332)
+POD_PORTS=(25 80 465 587 993 1411 5335 8080 8081 8443 11332 11333)
 key=""
 host=""
 ship_local=0

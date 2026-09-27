@@ -1,0 +1,23 @@
+[Unit]
+Description=Corvid sign-in sentinel
+After=network-online.target corvid-mail.service
+Wants=network-online.target
+
+[Container]
+ContainerName=corvid-sentinel
+Image=${CORVID_IMAGE}
+Pod=corvid.pod
+Exec=/usr/local/bin/corvid-sentinel
+EnvironmentFile=/opt/corvid/sentinel.env
+Volume=/opt/corvid/config.yaml:/etc/corvid/config.yaml:ro
+Volume=/opt/corvid/sentinel:/var/lib/corvid
+
+[Service]
+# Off the delivery path: Stalwart's webhook queue discards after discardAfter while this is
+# down, so a restart loop only delays notices. A refusal to read corrupt state is deliberate.
+Restart=on-failure
+RestartSec=30
+RestartPreventExitStatus=1
+
+[Install]
+WantedBy=multi-user.target
