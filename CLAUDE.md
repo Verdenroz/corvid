@@ -75,7 +75,8 @@ Crates, grouped by the service that uses them:
   probabilities from an OpenAI-compatible endpoint's logprobs, averaged over every rotation of
   the options) → `corvid-ingest` (turns keyword changes into training signal) →
   `corvid-label` (per-sender prior, census, verdicts).
-- Archive: `corvid-mirror` (sync, then audit for missing messages, then verify stored bodies).
+- Archive: `corvid-mirror` (sync encrypted to an age recipient, audit for missing messages, verify
+  stored bodies with two levels of proof, `encrypt-archive` migration, restore to a fresh account).
 - Shared: `corvid-config` (the `config.yaml` schema for every service), `corvid-jmap` (session
   and transport only; each caller owns its payload shapes), `corvid-store` (state-file envelope:
   checksum, schema line, atomic write; each caller pins its own payload).
@@ -327,6 +328,16 @@ web tier is not on 443.
   entry, matched the same way, that runs after the account is known to exist. Verified on a
   brand-new server with the account absent: both entries apply, the account is created, and its
   quota is set in the same pass.
+- **Stalwart rate-limits rapid successive JMAP calls with a bare `429`.** A restore that uploads
+  and imports hundreds of messages back to back hit it on a freshly bootstrapped throwaway server;
+  the run failed loudly mid-way rather than corrupting anything, and a rerun after a short wait
+  picked up where the ledger left off. A bulk restore over many messages should expect this and
+  back off, not assume a `429` means something is wrong with the request.
+- **Stalwart account and domain ids are short and assigned in sequence** ("a", "b", "c", ...), so
+  two independently bootstrapped servers routinely assign the same id to their first account.
+  Measured directly: a drill's source rig and its replacement, bootstrapped fresh minutes apart,
+  both gave their mailbox account id `c`. Anything that needs to tell two servers apart must pin
+  on more than an id alone.
 
 ## Working method
 
