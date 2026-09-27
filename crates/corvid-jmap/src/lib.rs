@@ -16,6 +16,7 @@ pub struct Client {
     http: Http,
     api_url: String,
     download_url: String,
+    upload_url: String,
     account_id: String,
     user: String,
     password: String,
@@ -49,6 +50,10 @@ impl Client {
             download_url: rebase(
                 base_url,
                 &text(&session["downloadUrl"]).ok_or_else(|| missing("downloadUrl"))?,
+            ),
+            upload_url: rebase(
+                base_url,
+                &text(&session["uploadUrl"]).ok_or_else(|| missing("uploadUrl"))?,
             ),
             account_id: text(&session["primaryAccounts"][MAIL])
                 .ok_or_else(|| missing("a primary mail account"))?,
@@ -101,6 +106,23 @@ impl Client {
             .and_then(|response| response.bytes())
             .map_err(io::Error::other)?;
         Ok(body.to_vec())
+    }
+
+    /// Uploads a blob and returns its id, for a call such as `Email/import` that takes one
+    /// rather than raw content. Also plain HTTP, like [`Client::download`].
+    pub fn upload(&self, content_type: &str, bytes: Vec<u8>) -> io::Result<String> {
+        let url = self.upload_url.replace("{accountId}", &self.account_id);
+        let response: Value = self
+            .http
+            .post(url)
+            .basic_auth(&self.user, Some(&self.password))
+            .header("Content-Type", content_type)
+            .body(bytes)
+            .send()
+            .and_then(|response| response.error_for_status())
+            .and_then(|response| response.json())
+            .map_err(io::Error::other)?;
+        text(&response["blobId"]).ok_or_else(|| missing("a blobId"))
     }
 }
 

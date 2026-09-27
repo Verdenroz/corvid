@@ -1,9 +1,9 @@
 # Corvid Helm chart
 
-Runs Corvid as one pod: Stalwart, unbound, the milter, the image proxy, Caddy, and optionally the
-labeler and Pocket-ID. The containers share localhost exactly as in the Podman deployment, so
-every setting means the same thing in both. `values.config` is rendered verbatim as the pod's
-`config.yaml` and follows its schema (`deploy/config.yaml`).
+Runs Corvid as one pod: Stalwart, unbound, the milter, the image proxy, the sign-in sentinel,
+Caddy, and optionally the labeler and Pocket-ID. The containers share localhost exactly as in the
+Podman deployment, so every setting means the same thing in both. `values.config` is rendered
+verbatim as the pod's `config.yaml` and follows its schema (`deploy/config.yaml`).
 
 **Status: installed and exercised on kind, never on a production cluster.** On a kind cluster
 (Kubernetes 1.37) the pod came up with every container ready, the first-run procedure below
@@ -35,9 +35,10 @@ Podman deployment:
 2. Write a values file with `images.corvid.repository` and `tag`, the `config.server` section,
    and the secrets. Either name an existing Secret in `secrets.existingSecret`, with the keys
    listed under `secrets.values`, or fill `secrets.values`. The chart refuses to render without
-   the image-proxy secret and the Cloudflare token, and without the labeler's or Pocket-ID's
-   secret when those are enabled. Set `STALWART_RECOVERY_ADMIN` to `recovery:<password>` for the
-   first run.
+   the image-proxy secret, the sentinel's HMAC secret and the Cloudflare token, and without the
+   sentinel's app password (it is enabled by default, so this is needed from the first install)
+   or the labeler's or Pocket-ID's secret when those are enabled. Set `STALWART_RECOVERY_ADMIN`
+   to `recovery:<password>` for the first run.
 
 3. `helm install corvid charts/corvid -f values.yaml`
 
@@ -70,6 +71,12 @@ Then remove `STALWART_RECOVERY_ADMIN` from the Secret and restart once more. Whi
 authenticates on every listener, ahead of the account directory. Keep `$dir/corvid.env`: it holds
 the admin credential for later applies.
 
+The sentinel's `CORVID_SENTINEL_JMAP_PASSWORD` (its own app password, distinct from the
+labeler's `CORVID_JMAP_PASSWORD`) has the same problem the labeler's always had: it names an
+app password that cannot exist before Stalwart is up. Install with a placeholder value; the
+sentinel container just fails to connect and restarts until the real one, created once the
+account exists, replaces it in the Secret.
+
 ## Later
 
 - For the labeler, create an app password for it (see `deploy/RUNBOOK.md`), add it to the Secret
@@ -95,3 +102,5 @@ the admin credential for later applies.
 - A production cluster, certificates, and Cloudflare DNS automation.
 - Pocket-ID: v1.6.2 refuses an `APP_URL` with a path, so `/idp` cannot work; see the RUNBOOK.
 - The labeler in the chart.
+- The sentinel in the chart: rendered and schema-validated (`helm template` plus `kubeconform`),
+  never run against a live cluster.

@@ -410,6 +410,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "corvid-sentinel"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "base64 0.23.1",
+ "corvid-config",
+ "corvid-jmap",
+ "corvid-store",
+ "hex",
+ "hmac",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "subtle",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "corvid-sign"
 version = "0.1.0"
 dependencies = [

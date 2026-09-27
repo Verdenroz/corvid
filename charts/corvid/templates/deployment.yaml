@@ -49,6 +49,10 @@ spec:
             - name: STALWART_RECOVERY_ADMIN
               valueFrom:
                 secretKeyRef: {name: {{ $secret }}, key: STALWART_RECOVERY_ADMIN, optional: true}
+            # The plan's WebHook signs with this via an EnvironmentVariable reference.
+            - name: CORVID_SENTINEL_SECRET
+              valueFrom:
+                secretKeyRef: {name: {{ $secret }}, key: CORVID_SENTINEL_SECRET}
           ports:
             - {name: smtp, containerPort: 25}
             - {name: submissions, containerPort: 465}
@@ -113,6 +117,26 @@ spec:
             - {name: state, mountPath: /var/lib/corvid, subPath: labeler}
           resources:
             {{- toYaml .Values.resources.labeler | nindent 12 }}
+        {{- end }}
+        {{- if .Values.sentinel.enabled }}
+        - name: sentinel
+          image: {{ include "corvid.image" . }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          command: [/usr/local/bin/corvid-sentinel]
+          env:
+            # A password of its own, distinct from the labeler's, so revoking one does not stop
+            # the other; the binary reads it under the same name either way.
+            - name: CORVID_JMAP_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: {{ $secret }}, key: CORVID_SENTINEL_JMAP_PASSWORD}
+            - name: CORVID_SENTINEL_SECRET
+              valueFrom:
+                secretKeyRef: {name: {{ $secret }}, key: CORVID_SENTINEL_SECRET}
+          volumeMounts:
+            - {name: config, mountPath: /etc/corvid/config.yaml, subPath: config.yaml}
+            - {name: state, mountPath: /var/lib/corvid, subPath: sentinel}
+          resources:
+            {{- toYaml .Values.resources.sentinel | nindent 12 }}
         {{- end }}
         - name: caddy
           image: {{ .Values.images.caddy }}

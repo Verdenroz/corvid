@@ -1,0 +1,1 @@
+{"events":[{"id":"1790474811037","createdAt":"2026-09-27T02:06:51Z","type":"auth.success","data":{"accountName":"admin@corvid.test","accountId":1,"spanId":331758565500912128,"listenerId":"http","localPort":8080,"remoteIp":"172.24.0.1","remotePort":33626}}]}

@@ -14,6 +14,8 @@ Pod=corvid.pod
 # Container-runtime vars only; the admin credential stays on the host.
 EnvironmentFile=/opt/corvid/stalwart.env
 EnvironmentFile=/opt/corvid/server.env
+# CORVID_SENTINEL_SECRET, which the plan's WebHook signs with; shared with corvid-sentinel.
+EnvironmentFile=/opt/corvid/sentinel-webhook.env
 
 Volume=/opt/corvid/stalwart:/etc/stalwart
 Volume=/opt/corvid/data:/var/lib/stalwart

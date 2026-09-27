@@ -1,8 +1,9 @@
 # Corvid configuration, read from /etc/corvid/config.yaml (or the path in CORVID_CONFIG).
 # bootstrap.sh installs this as /opt/corvid/config.yaml once; edit it there.
 # No secrets belong here. Each service reads its own from an environment variable:
-#   CORVID_JMAP_PASSWORD     labeler and mirror, an app password each
+#   CORVID_JMAP_PASSWORD     labeler, mirror and sentinel, an app password each
 #   CORVID_IMGPROXY_SECRET   milter and image proxy, the same value in both
+#   CORVID_SENTINEL_SECRET   sentinel and Stalwart's own WebHook, the same value in both
 # Unknown keys are refused, so a misspelt setting stops the service instead of being ignored.
 
 # The deployment, read by the deploy scripts. After changing web_port, rerun bootstrap.sh so the
@@ -68,3 +69,9 @@ mirror:
   jmap_url: https://mail.example.com:4443
   jmap_user: alice@example.com
   root: /var/lib/corvid-mirror
+
+sentinel:
+  bind: 127.0.0.1:11333
+  jmap_url: http://127.0.0.1:8080
+  jmap_user: alice@example.com
+  state: /var/lib/corvid/sentinel.json

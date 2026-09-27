@@ -275,8 +275,23 @@ To do, in this order:
    device's access at once (vpn-chain#22). Moves to in place once used on the deployment.
 3. **Backups**: the nightly mirror deployed off-host and encrypted, with a restore drill. Today a
    lost VPS loses the mail.
-4. **Sign-in alerts**: notice of a new device or an unfamiliar source address, from Stalwart's
-   sign-in log.
+4. **Sign-in alerts.** Built: `corvid-sentinel` receives Stalwart's auth events over an
+   HMAC-signed WebHook and puts an unread notice in the Inbox for a never-seen (credential kind,
+   listener, address) combination per account, plus one for a too-many-attempts burst and every
+   ban. Measured on a throwaway v0.16.21: a signed batch for a new address delivers exactly once
+   and a repeat delivers nothing; an unsigned or altered body is rejected before anything is
+   read. **What it cannot tell apart:** the webhook body carries no credential id or description
+   at all, only a fixed string present solely when a secondary credential was used, so "new
+   device" is only ever "the account password" versus "an app password", never which one. With
+   `client_access: host`, every legitimate sign-in already arrives from the VPN's exit address,
+   so "new address" in practice means "not the exit", not per-device geolocation.
+   `auth.credential-expired` is subscribed but unhandled by name, so it alerts every time as an
+   unrecognised event rather than going quiet. The sentinel signs in with its own app password
+   (never the account password, or it would both lock out under TOTP and count as a sign-in
+   itself); expect one self-notice the first time it starts. Stalwart discards a queued webhook
+   after `discardAfter` (24h): an outage longer than that loses whatever signed in while the
+   sentinel was down with no record anywhere. `systemctl status corvid-sentinel` is the check.
+   Moves to in place once running on the deployment.
 5. **Two-factor sign-in** (TOTP) on the account for the web and JMAP, then passkeys (Phase 2).
 6. **MTA-STS where the web port cannot be 443.** Built: `install.sh` deploys a Cloudflare Worker
    on `mta-sts.<domain>` to serve it, and `server.mta_sts_mode` switches `testing` to `enforce`

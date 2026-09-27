@@ -27,7 +27,7 @@ cargo clippy --workspace --all-targets -- -D warnings   # currently clean; keep 
 podman build -f deploy/Containerfile -t localhost/corvid:latest .   # the image the pod runs
 podman save localhost/corvid:latest | ssh <host> podman load        # a small mail host cannot build it
 ./scripts/vet-ip.sh <ip>                     # run on a candidate VPS, off any VPN, before choosing it
-helm lint charts/corvid --set images.corvid.repository=x --set secrets.values.CORVID_IMGPROXY_SECRET=x --set-string 'secrets.values.cloudflare\.token=x'
+helm lint charts/corvid --set images.corvid.repository=x --set secrets.values.CORVID_IMGPROXY_SECRET=x --set secrets.values.CORVID_SENTINEL_SECRET=x --set secrets.values.CORVID_SENTINEL_JMAP_PASSWORD=x --set-string 'secrets.values.cloudflare\.token=x'
 ```
 
 On a host, in order: `deploy/bootstrap.sh` (host prep, quadlets, firewall, empty env files), fill
@@ -239,6 +239,18 @@ web tier is not on 443.
   exist in the container, so after bootstrap nothing reaches `journalctl -u corvid-mail`. The plan
   reconciles tracers to one stdout tracer at `info`. For more detail on a running server:
   `stalwart-cli update Tracer <id> --json '{"level":"debug"}'` and restart.
+- **Stalwart never traces a WebHook delivery, success or failure, at any level.** Debugging one
+  that silently stops reaching its target means replaying a signed body by hand (`curl` or a raw
+  socket) against the target directly, since the server gives no signal either way.
+- **A WebHook body carries no credential identity.** `auth.success` has no credential id, index
+  or description; the only hint a secondary credential was used is the literal string
+  `"details":"Authenticated with app password"`, present only for one and absent for the
+  primary password. There is no way to tell which app password, ever. Match this string exactly
+  and treat anything else as unrecognised rather than guessing, so a Stalwart reword surfaces
+  loudly instead of silently reclassifying credentials.
+- **A blocking reqwest client built on a tokio worker thread panics when dropped.** It spins up
+  its own inner runtime, and shutting that runtime down from inside another one is refused.
+  Build and drop it inside `spawn_blocking`, never directly in an `async fn`.
 - **`indymilter` requests a `NO_*` skip for every callback not registered**, and a milter option
   the MTA does not offer fails the whole handshake. Intersect in the negotiate callback:
   `context.requested_opts &= offered`. It logs the reason at `trace!` only, so with
