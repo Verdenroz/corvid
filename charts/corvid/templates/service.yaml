@@ -1,0 +1,28 @@
+{{- $webPort := include "corvid.webPort" . | int -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "corvid.fullname" . }}
+  labels:
+    {{- include "corvid.labels" . | nindent 4 }}
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  {{- if ne .Values.service.type "ClusterIP" }}
+  externalTrafficPolicy: {{ .Values.service.externalTrafficPolicy }}
+  {{- end }}
+  {{- with .Values.service.loadBalancerIP }}
+  loadBalancerIP: {{ . }}
+  {{- end }}
+  selector:
+    {{- include "corvid.selector" . | nindent 4 }}
+  ports:
+    - {name: smtp, port: 25, targetPort: 25}
+    - {name: submissions, port: 465, targetPort: 465}
+    - {name: submission, port: 587, targetPort: 587}
+    - {name: imaps, port: 993, targetPort: 993}
+    - {name: acme, port: 80, targetPort: 80}
+    - {name: web, port: {{ $webPort }}, targetPort: {{ $webPort }}}

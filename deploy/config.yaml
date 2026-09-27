@@ -1,0 +1,66 @@
+# Corvid configuration, read from /etc/corvid/config.yaml (or the path in CORVID_CONFIG).
+# bootstrap.sh installs this as /opt/corvid/config.yaml once; edit it there.
+# No secrets belong here. Each service reads its own from an environment variable:
+#   CORVID_JMAP_PASSWORD     labeler and mirror, an app password each
+#   CORVID_IMGPROXY_SECRET   milter and image proxy, the same value in both
+# Unknown keys are refused, so a misspelt setting stops the service instead of being ignored.
+
+# The deployment, read by the deploy scripts. After changing web_port, rerun bootstrap.sh so the
+# firewall opens the new port.
+server:
+  domain: example.com
+  # The name the server announces itself as. Its A record and the IP's PTR must agree.
+  hostname: mail.example.com
+  # Local part only: alice, not alice@example.com.
+  mail_user: alice
+  # Let's Encrypt's contact. Use an address outside this server.
+  acme_contact: you@elsewhere.example
+  # Where the web tier (JMAP, image proxy, passkeys) answers. 443 works if nothing else holds it.
+  web_port: 4443
+  # Only when hostname lies outside domain, e.g. a host named n1.example.net serving mail for
+  # example.com. Stalwart then keeps a certificate for this zone and publishes no records in it.
+  # host_zone: example.net
+  # Who may reach the ports mail apps use (465, 587, 993 and web_port): anywhere; host, meaning
+  # only programs on this server such as a VPN it runs; or a list like [192.0.2.0/24].
+  # Ports 25 and 80 stay open to everyone, since other mail servers and Let's Encrypt need them.
+  client_access: anywhere
+
+labeler:
+  jmap_url: http://127.0.0.1:8080
+  jmap_user: alice@example.com
+  state: /var/lib/corvid/labeler.json
+  interval_secs: 60
+
+  # Optional: labels senders the labeler has not seen yet. Delete this block to run without a
+  # model. Any OpenAI-compatible chat endpoint that returns logprobs works.
+  model:
+    url: http://10.0.0.2:8080/v1/chat/completions
+    name: qwen3.6:35b-a3b
+    # Percent a choice must reach before its label is written.
+    confidence: 80
+    # Messages per pass. Each costs one call per label, plus one.
+    budget: 20
+    deadline_secs: 300
+    interval_secs: 3600
+    # Fields merged into every request. Qwen3-family models need thinking turned off, or the
+    # one token they are allowed goes to the thinking block.
+    request_extra:
+      chat_template_kwargs:
+        enable_thinking: false
+
+milter:
+  bind: 127.0.0.1:11332
+  # The origin image URLs point at, by default https://<server.hostname>:<server.web_port>.
+  # The milter appends /i/. Changing it breaks images in mail already delivered.
+  # proxy_base: https://mail.example.com:4443
+
+imgproxy:
+  bind: 127.0.0.1:8081
+  max_bytes: 5242880
+  cache_entries: 512
+
+# Read on the machine that keeps the archive, not on the mail host.
+mirror:
+  jmap_url: https://mail.example.com:4443
+  jmap_user: alice@example.com
+  root: /var/lib/corvid-mirror

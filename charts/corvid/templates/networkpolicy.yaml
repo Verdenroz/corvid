@@ -1,0 +1,19 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $webPort := include "corvid.webPort" . | int -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "corvid.fullname" . }}
+  labels:
+    {{- include "corvid.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "corvid.selector" . | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        {{- range list 25 465 587 993 80 $webPort }}
+        - {protocol: TCP, port: {{ . }}}
+        {{- end }}
+{{- end }}

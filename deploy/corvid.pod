@@ -1,0 +1,23 @@
+[Unit]
+Description=Corvid pod (mail server and its services)
+
+[Pod]
+PodName=corvid
+# Every container shares this namespace, so the mail server reaches unbound at
+# 127.0.0.1:5335 without crossing any network.
+PublishPort=25:25
+PublishPort=465:465
+PublishPort=587:587
+PublishPort=993:993
+# 80 is for the ACME http-01 challenge. WEB_PORT is server.web_port from config.yaml,
+# filled in when bootstrap.sh or deploy.sh installs this file.
+PublishPort=80:80
+PublishPort=${WEB_PORT}:${WEB_PORT}
+PublishPort=127.0.0.1:8080:8080
+PublishPort=127.0.0.1:8443:8443
+# Loopback only, so verify.sh can assert DNSSEC validation with plain dig.
+PublishPort=127.0.0.1:5335:5335/udp
+PublishPort=127.0.0.1:5335:5335/tcp
+
+[Install]
+WantedBy=multi-user.target

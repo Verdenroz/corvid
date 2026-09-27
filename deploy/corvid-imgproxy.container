@@ -1,0 +1,19 @@
+[Unit]
+Description=Corvid image proxy
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+ContainerName=corvid-imgproxy
+Image=${CORVID_IMAGE}
+Pod=corvid.pod
+Exec=/usr/local/bin/corvid-imgproxy
+EnvironmentFile=/opt/corvid/rewriter.env
+Volume=/opt/corvid/config.yaml:/etc/corvid/config.yaml:ro
+
+[Service]
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

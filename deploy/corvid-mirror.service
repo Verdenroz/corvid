@@ -1,0 +1,12 @@
+[Unit]
+Description=Mirror the mailbox, audit it, and verify what is stored
+Documentation=https://github.com/Verdenroz/corvid/blob/main/docs/design.md
+
+[Service]
+Type=oneshot
+EnvironmentFile=/opt/corvid/mirror.env
+# Runs on a separate machine, which pulls. Nothing here listens for the server.
+ExecStart=/usr/local/bin/corvid-mirror
+# A missing message or a damaged body exits non-zero. A retry would hide it, and a nightly
+# job that fails quietly looks exactly like one that succeeded.
+Restart=no

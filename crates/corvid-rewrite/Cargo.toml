@@ -1,0 +1,11 @@
+[package]
+name = "corvid-rewrite"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+corvid-sign.workspace = true
+lol_html = "3.0.1"
+url = "2.5.8"

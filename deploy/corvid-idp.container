@@ -1,0 +1,27 @@
+[Unit]
+Description=Corvid identity provider (Pocket-ID)
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+ContainerName=corvid-idp
+Image=ghcr.io/pocket-id/pocket-id:v1.6.2
+Pod=corvid.pod
+EnvironmentFile=/opt/corvid/idp.env
+EnvironmentFile=/opt/corvid/server.env
+Environment=PORT=1411
+Environment=TRUST_PROXY=true
+# Otherwise it reports an instance ID and version to Pocket-ID's analytics server daily.
+Environment=ANALYTICS_DISABLED=true
+Volume=/opt/corvid/idp:/app/data
+
+[Service]
+Restart=always
+RestartSec=2
+# Passkeys are the web login. If this is down, the web interface is unreachable and mail is
+# not: IMAP and SMTP authenticate against Stalwart's own directory and never touch it.
+MemoryHigh=256M
+MemoryMax=384M
+
+[Install]
+WantedBy=multi-user.target

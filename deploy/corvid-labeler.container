@@ -1,0 +1,23 @@
+[Unit]
+Description=Corvid labeler
+After=network-online.target corvid-mail.service
+Wants=network-online.target
+
+[Container]
+ContainerName=corvid-labeler
+Image=${CORVID_IMAGE}
+Pod=corvid.pod
+Exec=/usr/local/bin/corvid-labeler
+EnvironmentFile=/opt/corvid/labeler.env
+Volume=/opt/corvid/config.yaml:/etc/corvid/config.yaml:ro
+Volume=/opt/corvid/labeler:/var/lib/corvid
+
+[Service]
+# Off the delivery path, so a labeler that is down delays labels and never mail. It still
+# restarts, but a refusal to read its own state is deliberate and must not be looped over.
+Restart=on-failure
+RestartSec=30
+RestartPreventExitStatus=1
+
+[Install]
+WantedBy=multi-user.target

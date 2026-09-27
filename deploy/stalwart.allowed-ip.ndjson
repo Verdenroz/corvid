@@ -1,0 +1,1 @@
+{"@type":"upsert","object":"AllowedIp","matchOn":["address"],"value":{"self":{"address":"${SERVER_IP}","reason":"This server's own public address: traffic its other services send through it, such as a VPN, must never be banned"}}}

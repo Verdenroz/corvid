@@ -1,0 +1,21 @@
+[package]
+name = "corvid-labeler"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+corvid-config.workspace = true
+corvid-ingest.workspace = true
+corvid-jmap = { version = "0.1.0", path = "../corvid-jmap" }
+corvid-label.workspace = true
+ctrlc = { version = "3.5.2", features = ["termination"] }
+reqwest = { version = "0.13.4", default-features = false, features = ["rustls", "blocking", "json"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"

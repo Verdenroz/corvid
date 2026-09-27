@@ -1,0 +1,19 @@
+[Unit]
+Description=Corvid validating DNS resolver (unbound)
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+ContainerName=corvid-unbound
+Image=docker.io/klutchell/unbound@sha256:29aee253a86810f6d9738d77f21835c4f8fdf74ee6335b7a9e152790bd2781db
+Pod=corvid.pod
+Volume=/opt/corvid/unbound.conf:/etc/unbound/unbound.conf:ro
+# auto-trust-anchor-file is rewritten on RFC 5011 rollover; a read-only
+# location makes unbound exit at start.
+Volume=corvid-unbound-keys:/var/lib/unbound
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

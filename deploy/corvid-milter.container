@@ -1,0 +1,25 @@
+[Unit]
+Description=Corvid tracker rewriter (milter)
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+ContainerName=corvid-milter
+Image=${CORVID_IMAGE}
+Pod=corvid.pod
+Exec=/usr/local/bin/corvid-milter
+EnvironmentFile=/opt/corvid/rewriter.env
+Volume=/opt/corvid/config.yaml:/etc/corvid/config.yaml:ro
+
+[Service]
+# Delivery defers while this is down, so restarting it is the difference between
+# a pause and a bounce at the sender's retry limit.
+Restart=always
+RestartSec=2
+# The parser has its own ceiling; this is the backstop so a hostile body cannot
+# take the mail server down with it.
+MemoryHigh=256M
+MemoryMax=384M
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,8 @@
+*.env
+secrets/
+target/
+__pycache__/
+*.pyc
+*.local.md
+*.bundle
+core.[0-9]*

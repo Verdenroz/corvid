@@ -1,0 +1,2 @@
+# Env files are sourced from paths that exist only on the deployed host.
+disable=SC1090

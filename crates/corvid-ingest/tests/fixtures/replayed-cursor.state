@@ -1,0 +1,3 @@
+ce45d7bfe40e32064668b82f957ec354b9e079705a100673caab3dbc327f2fba
+3
+{"prior": {"senders": {}, "known": [], "capped": 0}, "census": {"messages": 2, "unseen": 2, "reasons": {"UnseenSender": 2}, "senders": {"UnseenSender": ["domain:norm1.example", "domain:norm2.example"]}, "distinct": ["domain:norm1.example", "domain:norm2.example"], "checkpoints": []}, "learned": {}, "counted": ["nqaaaadm", "nuaaaadn"], "sightings": {"nqaaaadm": 4237037340216296139, "nuaaaadn": 4237037340216296139}, "cursor": "s3ya", "corrections": 0, "repeats": 0, "writes": 0, "unchanged": 0}

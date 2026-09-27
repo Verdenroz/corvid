@@ -1,0 +1,319 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+Corvid is a self-hosted, single-mailbox email deployment built around Stalwart Mail Server, plus
+Rust services that sit beside it: a tracker-stripping milter and image proxy, a labeler, and an
+off-host mirror. `docs/design.md` records why each decision was made; read it before changing
+architecture. `deploy/RUNBOOK.md` covers the steps a deploy cannot automate.
+
+Site-specific values live only on the target host under `/opt/corvid/`: settings in
+`config.yaml`, secrets in env files. Nothing in this repo names a real deployment, and nothing
+should; `deploy/config.yaml` is a template with `example.com` values that `deploy.sh` refuses.
+
+## Commands
+
+```sh
+cargo test                                   # every crate
+cargo test -p corvid-rewrite                 # one crate
+cargo test -p corvid-rewrite --test rewrite  # one integration test file
+cargo test -p corvid-rewrite -- <name>       # tests whose name contains <name>
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings   # currently clean; keep it so
+
+./deploy/check-plan.py                       # plan field shapes vs the pinned Stalwart schema; no server needed
+./deploy/check-env.sh                        # every secret read appears in deploy/env/*.example or a unit
+./deploy/apply-plan.sh --dry-run             # syntax only, needs live credentials; see traps
+podman build -f deploy/Containerfile -t localhost/corvid:latest .   # the image the pod runs
+podman save localhost/corvid:latest | ssh <host> podman load        # a small mail host cannot build it
+./scripts/vet-ip.sh <ip>                     # run on a candidate VPS, off any VPN, before choosing it
+helm lint charts/corvid --set images.corvid.repository=x --set secrets.values.CORVID_IMGPROXY_SECRET=x --set-string 'secrets.values.cloudflare\.token=x'
+```
+
+On a host, in order: `deploy/bootstrap.sh` (host prep, quadlets, firewall, empty env files), fill
+the env files, then `deploy/deploy.sh` (start, bootstrap Stalwart, apply the plan, restart,
+`verify.sh`). `stalwart-cli` v1.0.12 is the only management interface.
+
+## Architecture
+
+Everything on the mail host runs as one Podman pod from quadlets in `deploy/`, sharing a network
+namespace, so services reach each other on `127.0.0.1`:
+
+| Unit | What it is | Port |
+|---|---|---|
+| `corvid-mail` | Stalwart, pinned `v0.16.21` | 25, 465, 587, 993; 8080/8443 loopback |
+| `corvid-unbound` | validating resolver, so DANE works | 5335 |
+| `corvid-milter` | `corvid-milter` binary, called by Stalwart at DATA | 11332 |
+| `corvid-imgproxy` | serves the images the milter rewrote | 8081 |
+| `corvid-labeler` | polls JMAP, writes labels as keywords | none |
+| `corvid-caddy` | the web tier: JMAP, `/i/*` to imgproxy, `/idp/*` to Pocket-ID | `server.web_port`, 4443 by default |
+| `corvid-idp` | Pocket-ID, OIDC passkeys; applied separately via `oidc.plan.ndjson` | 1411 |
+
+`corvid-mirror` is the exception: a systemd timer on a separate machine that pulls over JMAP.
+
+`charts/corvid` runs the same pod on Kubernetes, with `values.config` rendered verbatim as
+`config.yaml`. It carries its own `unbound.conf` (loopback only, since pod addresses are
+reachable cluster-wide) and a NetworkPolicy admitting only the public ports. Tests keep its
+reserved-port list and Caddyfile in step with `corvid-config` and `deploy/`. It has run on kind,
+including a first run and tracker-stripped delivery, but never on a production cluster.
+
+**The main design split is between the delivery path and everything off it.** The milter is on
+the delivery path with `tempFailOnError` true, so while it is down, mail is deferred at the
+sender and never accepted unstripped. Everything the milter does must fail toward "deliver
+unchanged and marked", never toward a crash: a requeued message that kills the daemon halts all
+delivery. The labeler and mirror are off the path. When they fail, labels arrive late, but mail
+still arrives.
+
+Crates, grouped by the service that uses them:
+
+- Delivery: `corvid-milter` (protocol, framing, sessions) → `corvid-mime` (walks the MIME tree,
+  rewrites `text/html` parts in place, preserves each part's encoding) → `corvid-rewrite`
+  (streaming `lol_html` rewrite with a fixed memory ceiling; mints proxy URLs).
+  `corvid-sign` HMACs those URLs and `corvid-imgproxy` verifies them. The two share
+  `CORVID_IMGPROXY_SECRET`, and changing it breaks every image already delivered.
+- Labeling: `corvid-labeler` (poll loop, JMAP, and a cold-start pass that reads per-option
+  probabilities from an OpenAI-compatible endpoint's logprobs, averaged over every rotation of
+  the options) → `corvid-ingest` (turns keyword changes into training signal) →
+  `corvid-label` (per-sender prior, census, verdicts).
+- Archive: `corvid-mirror` (sync, then audit for missing messages, then verify stored bodies).
+- Shared: `corvid-config` (the `config.yaml` schema for every service), `corvid-jmap` (session
+  and transport only; each caller owns its payload shapes), `corvid-store` (state-file envelope:
+  checksum, schema line, atomic write; each caller pins its own payload).
+- `corvid-audit` (sampling, reweighting, redaction for a blind audit) is a library with no
+  binary yet.
+
+**Keyword provenance keeps the labeler from training on its own output.** Nothing in JMAP
+records who set a keyword, so everything the labeler writes is prefixed `corvid-`, and model
+output goes under `corvid-llm-`. Every other keyword is the user's, and only user keywords
+train the per-sender prior in `corvid-label`. Anything that blurs that line lets the prior
+confirm itself without anyone noticing.
+
+**A corrupt or foreign-schema state file is a refusal, not a fresh start.** The labeler exits 1
+and systemd is told not to restart it (`RestartPreventExitStatus=1`). Missing configuration exits
+78, and a missing image or masked pod exits 69.
+
+Stalwart is configured declaratively. `deploy/stalwart.plan.ndjson` is a list of
+upsert/update/reconcile operations on Stalwart's JMAP config objects, with `${VAR}` filled by
+`apply-plan.sh` from `config.yaml`'s `server` section. The scripts read that section through
+`corvid-config shell` in the image (`deploy/lib.sh`), so they share the services' parser and
+checks. A test fails if a plan uses a variable that `shell` does not supply. `reconcile` makes
+the server's set of objects exactly the plan's, so a listener missing from the plan is removed.
+
+Everything that names the web tier derives from `server.hostname` and `server.web_port`: the
+pod's published port (`corvid.pod` is rendered), Caddy's site address, Stalwart's hostname and
+Pocket-ID's `APP_URL` (all three in the generated `server.env`), the OIDC issuer, and the
+milter's default proxy base. `bootstrap.sh` and `deploy.sh` both render them. The web port must
+not be one the pod already uses (`POD_PORTS`), since every container shares one network
+namespace.
+
+Clients must rebase the URLs a JMAP session advertises onto the address they dialled, since the
+web tier is not on 443.
+
+## Conventions
+
+- Services read settings from one `config.yaml` through `corvid-config`, which owns the whole
+  schema and refuses unknown keys. Only secrets come from env vars, via `corvid_config::secret`.
+  Anything missing or malformed exits 78 naming it. A new setting is a field in `corvid-config`
+  plus a line in `deploy/config.yaml`, whose parse is a test; a new secret goes in
+  `deploy/env/*.example`, which `check-env.sh` enforces.
+- Tests are integration tests under each crate's `tests/`, against fakes of the JMAP server and
+  the model endpoint (`corvid-labeler/tests/common`). Test names are sentences stating the
+  behaviour.
+- Pin persisted shapes at compile time in the crate that stores them, not in `corvid-store`.
+- Bumping the Stalwart image means replacing `deploy/stalwart-schema-v<version>.json` and the
+  `PINNED` name in `check-plan.py` with a schema cached from a server running the new version.
+
+## Design decisions
+
+| # | Decision | Why |
+|---|---|---|
+| 1 | Stalwart Mail Server, Community/AGPL, pinned `v0.16.21` | SMTP+IMAP+JMAP+Sieve+CalDAV in one binary |
+| 2 | Server can read mail; TLS + DKIM/DMARC + LUKS + encrypted backups | Zero-access E2EE would make server-side AI and search impossible |
+| 3 | Own IP, no outbound relay, ever | A relay reads the body |
+| 4 | AI split: embeddings on the mail host, LLM on a separate machine over WireGuard | That machine is often off, so labeling cannot depend on it |
+| 5 | Own client, Kotlin Multiplatform + Compose, JMAP only | Android first |
+| 6 | Bridge networking; the web tier on a configurable port, 4443 by default | Leaves 443 to whatever else the host runs; clients rebase advertised URLs |
+
+## Traps this project has already paid for
+
+- **ufw versus containers.** Broke three unrelated things in one evening, never once
+  looking like a firewall problem. `ufw allow <port>` creates an INPUT rule; container
+  traffic is DNAT'd through FORWARD and needs `ufw route` rules in **both** directions.
+  **Verify with `nft` packet counters, never a single successful test.** A rule at zero
+  packets while mail appears to work means the traffic is taking another path.
+- **Directory ownership.** Data dirs must be owned by uid 2000 *before* first start, or
+  Stalwart fails to open its database with a bare permission error.
+- **The Cloudflare token** is read by the Stalwart process, so it must be mode 0400
+  owned by 2000. Root-owned 600 fails at first DNS call.
+- **`dataStore` RocksDb requires `path`** in the Bootstrap payload.
+- **`serverHostname` rejects reserved TLDs**, so `.example` is refused.
+- **Gmail does not validate ed25519 DKIM.** Keep RSA-2048 primary.
+- **A milter with `enable: true` also runs on mail the user sends.** It rewrote nothing, but it
+  stamped `X-Corvid-Rewrite` on outgoing mail, naming the software to every recipient. The plan
+  gates it on `is_empty(authenticated_as)`, the same rule Stalwart's own spam filter uses.
+- **Stalwart's default `publishRecords` has no `tlsa`**, so a default Domain never publishes the
+  records DANE needs. The plan lists the set explicitly and `apply-plan.sh` narrows it: TLSA on the
+  mail domain only when the hostname is inside it, MTA-STS only when the web tier holds 443.
+- **MTA-STS is fetched from `https://mta-sts.<domain>` on 443 only**, never another port and never
+  through a redirect. Stalwart serves the policy but publishes its record regardless of whether
+  anything answers there, so an install off 443 advertised a policy nobody could fetch.
+- **Turning a record type off in `publishRecords` leaves its records in DNS.** Stalwart stops
+  managing them and deletes nothing, so `install.sh` removes the MTA-STS pair itself, and only
+  while it still points `mta-sts` at this server. Measured: the applied set dropped `mtaSts` and
+  Cloudflare still served both records.
+- **Perfect authentication still lands in spam on day zero.** Reputation is time and
+  engagement, not configuration.
+- **A fresh v0.16.21 refuses `ReloadSettings`.** It ships three `SpamDnsblServer` objects whose
+  `if` expressions use `bit_and`, which its own validator rejects, so every reload fails with
+  `validationFailed` on a server nobody has touched. A restart loads applied settings anyway.
+  `deploy.sh` skips the reload for that reason; `apply-plan.sh` alone says to restart.
+- **Stalwart object lists are maps keyed by stringified integers, not arrays.** `servers`,
+  `aliases` and `credentials` all take `{"0": {...}}`; an array is `invalidPatch`. The schema
+  calls both `objectList`, so `check-plan.py` enforces the map shape by rule, learned from a
+  real apply.
+- **A restart mid-task stalls that task for an hour.** Stalwart locks a running task in its
+  in-memory store, which defaults to the data store and so survives restarts, for one hour. A
+  restart right after an apply leaves the DNS, DKIM and ACME tasks it queued locked by a dead
+  process: they sit "Pending" with no error, and the server serves its self-signed placeholder
+  until the lock expires. Debug tracing shows it as `task-manager.task-locked`. `deploy.sh` waits
+  for the queue to drain before restarting.
+- **Applied config is not live config.** `stalwart-cli apply` writes settings; the running server
+  keeps serving the old ones until `stalwart-cli create Action --json
+  '{"@type":"ReloadSettings"}'`. A restart also does it, but a reload is enough. Skip it and the
+  change is a silent no-op that reads as a broken feature rather than an unapplied setting.
+- **A DATA-stage Sieve rewrite is permanent.** Stalwart stores one blob and it is post-Sieve, so
+  a body rewritten at ingest is the archived copy and the original is gone. Strip conservatively.
+- **`replace :mime` on the root entity corrupts the message.** Single-part `text/html` has no
+  wrapper, so the html part is the root. Replacing it drops `MIME-Version`, rewrites
+  `Message-ID` to a server-generated value even with `addMessageIdHeader` false, discards every
+  header added before the `replace`, and duplicates `Date`/`Message-ID` when the sender omitted
+  them. Multipart is clean. `foreverypart` alone is clean; `replace` on the root is the trigger.
+- **`replace :mime` takes no `:type`/`:subtype`.** `replace :mime :type "text" :subtype "html"`
+  fails to compile. The replacement must be a whole MIME entity, easiest as a `text:` block.
+- **`editheader` inside `foreverypart` edits the current part, not the message.** In a multipart
+  message the header lands in the sub-part.
+- **`Authentication.directoryId` is a cutover, not an addition.** Null means the internal
+  directory; setting it to an OIDC directory means Stalwart stops consulting its own account
+  store. On a live mailbox with nobody enrolled in the IdP that is a login outage, so passkeys
+  live in `oidc.plan.ndjson` and are applied deliberately, after mail works.
+- **A new NetworkListener needs a restart**, not just `ReloadSettings`; the port stays closed.
+- **`systemctl disable` does not stick on a quadlet unit; `mask` does.** The generator rebuilds
+  the unit on every `daemon-reload`, so a removed enable symlink comes straight back and
+  `is-enabled` still reports `generated`. A mask in `/etc/systemd/system` outranks the generator
+  and survives a reload. Measured on the live box: install then disable leaves it `generated`,
+  mask leaves it `masked` across a reload. This matters because quadlets carry
+  `WantedBy=multi-user.target`, so merely installing them arms a pod to start at the next boot.
+- **Stalwart enforces password strength on account creation**, so test fixtures need real
+  passphrases. IMAP `LOGIN` is refused on a clear-text listener but `AUTHENTICATE PLAIN` works.
+- **Stalwart stores certificates as config objects, not files.** `Certificate` carries the PEM
+  and the private key as database fields, so nothing on disk can be pointed at by another
+  service. Sharing a certificate means extracting it on a renewal schedule; run a second ACME
+  client instead.
+- **A default inbound throttle of 25 messages/hour** keyed on sender domain plus recipient will
+  stop a test loop with `452 4.4.5`. Vary the sender domain rather than editing the config.
+- **`client_access: host` works because traffic from the host itself never crosses FORWARD.** A
+  VPN on the same machine connects to the server's own address, so Podman's DNAT sends it straight
+  to the pod without passing ufw's route rules; only outside traffic needs them. Measured: 993's
+  route rule sat at 0 packets while Thunderbird synced through the VPN. Test the closed side from
+  a vantage off the VPN (check-host.net's TCP check), since this machine's own tests go through it.
+- **One invalid command bans an address permanently.** An HTTPS probe of 465 sent an HTTP request
+  into SMTP; Stalwart logged `security.scan-ban` and blocked the source with no expiry, on every
+  listener including JMAP through Caddy. Any check that touches a mail port must speak its
+  protocol and leave politely (`QUIT`, `LOGOUT`). A ban lives in memory too: deleting the
+  `BlockedIp` object takes effect only after a restart. On a host whose own IP carries VPN
+  traffic, banning that IP locks out every VPN user at once, so `apply-plan.sh` adds the
+  server's public IP as an `AllowedIp` (from `stalwart.allowed-ip.ndjson`). Verified by sending
+  the probe that caused the ban again: nothing was logged or blocked.
+- **Behind a reverse proxy Stalwart sees the proxy's IP for every client**, and `Security`
+  auto-bans on auth failures, so a few bad logins can ban the front end and take out all HTTP
+  access. Set `Http.useXForwarded`, or `NetworkListener.overrideProxyTrustedNetworks` for
+  PROXY protocol at the TCP layer.
+- **Stalwart cannot reverse-proxy.** Listener protocols are smtp, lmtp, http, imap, pop3 and
+  manageSieve; `Application` serves unpacked static files from a `resourceUrl` and does not
+  forward upstream. A second HTTP service on the host needs its own front end.
+- **A single SMTP session delivers at most 10 messages** (`MtaStageData.maxMessages`), and the
+  inbound throttle is 25/hour per sender domain plus recipient. Bulk-loading a test mailbox
+  silently loses everything past the session cap.
+- **Stalwart's default tracer logs nowhere.** It writes to `/var/log/stalwart/`, which does not
+  exist in the container, so after bootstrap nothing reaches `journalctl -u corvid-mail`. The plan
+  reconciles tracers to one stdout tracer at `info`. For more detail on a running server:
+  `stalwart-cli update Tracer <id> --json '{"level":"debug"}'` and restart.
+- **`indymilter` requests a `NO_*` skip for every callback not registered**, and a milter option
+  the MTA does not offer fails the whole handshake. Intersect in the negotiate callback:
+  `context.requested_opts &= offered`. It logs the reason at `trace!` only, so with
+  `tempFailOnError` true a broken handshake surfaces as a bare `451` with null details.
+- **`apply --dry-run` is a syntax check, not an apply rehearsal.** It validates object names,
+  variant tags and reference syntax, and says nothing about required fields: a plan missing a
+  required property reports a clean plan and then fails partway through a real apply. Verified
+  with a `Directory` lacking `description`. **The schema cannot close this one:** it
+  carries no `required` or `mandatory` anywhere, and absence from a `defaults` map is not a
+  proxy, since most optional fields have no default either. That verdict exists only on the
+  server at apply time. **`--dry-run` needs working credentials**, despite its help saying
+  "without calling the server". It fetches `/api/schema`, and against a 401 it falls back to the
+  cached schema and then fetches `/jmap/session` anyway, which is fatal. So it cannot be a
+  pre-flight gate anywhere without credentials: CI, a fresh clone, or reviewing a plan change.
+  That niche is `check-plan.py`, whose reference half needs neither server nor schema.
+- **Whether a `#name` reference may name an object already on the server is unsettled.**
+  `check-plan.py` warns on a reference the plan does not define rather than failing, because if
+  server-side references are legal then a second apply against a configured host would be failed
+  for being correct. Settle it by dry-running a plan with one bad reference against a real
+  server; if references are plan-local, promote the warning to a failure. One weak piece of
+  evidence points the other way: dry-run fetches `/jmap/session`, so it is a server-side
+  operation and could consult existing state. That only proves it makes JMAP calls, since every
+  JMAP call needs that session, but it is consistent with a reference resolving against an
+  object already on the host. A third reason to keep it a warning: references resolve within a
+  file and the file is not always the unit. `oidc.plan.ndjson` is its own file, and
+  a plan split further would warn once per cross-file reference. A failure there would make
+  splitting impossible without silencing the check.
+- **`stalwart-cli` caches the server's schema under `~/.cache/stalwart-cli/`**, and it can be
+  read offline with no credentials. It carries every object's properties, types and defaults, so
+  it answers field-shape questions that `--dry-run` cannot and that the documentation gets wrong.
+  It caught `trainFrequency: "12h"` before it reached a server.
+- **Durations in the schema are milliseconds as numbers, not strings.** The docs show
+  `"trainFrequency": "6h"` and `"holdSamplesFor": "30d"` in a JSON request example; the schema
+  types both as `number/duration`, with defaults `43200000` and `15552000000`. A string there
+  fails at apply, and the dry-run does not catch it.
+- **Stalwart 0.16 already learns spam from user feedback.** The `SpamClassifier` singleton
+  trains continuously on messages marked spam or ham, so a hand-built "mark as spam" loop would
+  feed the reservoir twice. Configure the singleton; do not write a second trainer.
+- **Stalwart 0.16 removed the REST management API.** Config objects are JMAP objects; use
+  `stalwart-cli`. `snapshot` is the fastest way to learn real serialized shapes. It caught four
+  wrong field shapes that reading the documentation did not.
+
+## Working method
+
+**When the real thing is available and not much more expensive than the proxy for it, do the
+real thing.** Apply rather than dry-run. Count the protocol messages rather than trust the
+pass. Compare the archive against the server rather than read the run's own summary. Grow the
+mailbox past the page size rather than simulate a pager. This is a method rather than a
+disposition: "distrust green results" is hard to act on and easy to claim, and most of what it
+found here fell out of tests aimed at something else.
+
+A proxy can only tell you about the part you modelled. A dry-run models structure and not
+required fields. A fake models the cursor you thought of. A digest models the bytes you already
+hold. A behavioural signature models the corpus you swept and not the code. Each is a fast
+filter and none is evidence of the thing itself.
+
+Look at the instruments first. Most of what review catches here is not in the thing being
+measured but in what measures it: a comment describing a granularity the code did not have, a
+test whose assertion was false for every real mailbox, a coverage field reporting health exactly
+when answers were being dropped, a pin whose reach was a naming convention.
+
+**The recurring failure is a summary line that outlives its qualifier:** `covered: 1.0` while
+answers were discarded, a verdict on one stream and its reasons on another, `ok` from a checker
+that had run half of itself. Each was found by making the qualifier's job explicit rather than
+by reading the code, so when something reports health, ask what it would have to know to say
+that.
+
+That question applies to how a verdict is read, not just how it is written. `cmd | tail -2; echo
+$?` reports the exit status of `tail`, so a failing check reads as green. Both the author and the
+reviewer hit this in the same hour, on a checker whose bug was a wrong exit code. Check a status
+without a pipe between it and the thing being checked.
+
+An instrument that reads healthy is what you check *with* rather than what you check, so it
+survives review longest. That makes it the thing to point a mutation at.
+
+Prefer a guard whose gap is visible in a diff. A pin over named values misses anything unnamed,
+which shows up as a new `const` with no array line. A golden master over swept behaviour misses
+whatever the corpus never reaches, which shows up nowhere. The second sounds stronger and is
+harder to audit, so the weaker-looking guard is usually the one to keep.

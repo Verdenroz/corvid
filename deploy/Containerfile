@@ -1,0 +1,17 @@
+FROM docker.io/library/rust:1.98-bookworm AS build
+WORKDIR /src
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+# corvid-mirror is absent on purpose: it runs on a separate machine and pulls from this one.
+RUN cargo build --release --locked --bin corvid-imgproxy --bin corvid-milter --bin corvid-labeler --bin corvid-config
+
+FROM docker.io/library/debian:bookworm-slim
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd -u 2000 -m corvid
+COPY --from=build /src/target/release/corvid-imgproxy /usr/local/bin/
+COPY --from=build /src/target/release/corvid-milter /usr/local/bin/
+COPY --from=build /src/target/release/corvid-labeler /usr/local/bin/
+COPY --from=build /src/target/release/corvid-config /usr/local/bin/
+USER 2000:2000

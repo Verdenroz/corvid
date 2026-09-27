@@ -1,0 +1,30 @@
+[Unit]
+Description=Corvid mail server (Stalwart)
+Documentation=https://stalw.art/docs
+After=network-online.target corvid-unbound.service
+Wants=network-online.target corvid-unbound.service
+
+[Container]
+ContainerName=corvid-mail
+# Pinned because 0.16 removed a management API in a minor release. Read the changelog
+# before changing it.
+Image=docker.io/stalwartlabs/stalwart:v0.16.21
+Pod=corvid.pod
+
+# Container-runtime vars only; the admin credential stays on the host.
+EnvironmentFile=/opt/corvid/stalwart.env
+EnvironmentFile=/opt/corvid/server.env
+
+Volume=/opt/corvid/stalwart:/etc/stalwart
+Volume=/opt/corvid/data:/var/lib/stalwart
+Volume=/opt/corvid/secrets/cloudflare.token:/run/secrets/cloudflare.token:ro
+
+[Service]
+Restart=always
+TimeoutStartSec=300
+# A RocksDB compaction without a ceiling can OOM-kill whatever shares the box.
+MemoryHigh=550M
+MemoryMax=650M
+
+[Install]
+WantedBy=multi-user.target

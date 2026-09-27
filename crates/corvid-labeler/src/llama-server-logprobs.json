@@ -1,0 +1,146 @@
+{
+ "choices": [
+  {
+   "finish_reason": "length",
+   "index": 0,
+   "message": {
+    "role": "assistant",
+    "content": "C"
+   },
+   "logprobs": {
+    "content": [
+     {
+      "id": 34,
+      "token": "C",
+      "bytes": [
+       67
+      ],
+      "logprob": -0.300891250371933,
+      "top_logprobs": [
+       {
+        "id": 34,
+        "token": "C",
+        "bytes": [
+         67
+        ],
+        "logprob": -0.300891250371933
+       },
+       {
+        "id": 35,
+        "token": "D",
+        "bytes": [
+         68
+        ],
+        "logprob": -2.1504547595977783
+       },
+       {
+        "id": 32,
+        "token": "A",
+        "bytes": [
+         65
+        ],
+        "logprob": -2.479872941970825
+       },
+       {
+        "id": 33,
+        "token": "B",
+        "bytes": [
+         66
+        ],
+        "logprob": -2.8261826038360596
+       },
+       {
+        "id": 248068,
+        "token": "<think>",
+        "bytes": [
+         60,
+         116,
+         104,
+         105,
+         110,
+         107,
+         62
+        ],
+        "logprob": -8.05549144744873
+       },
+       {
+        "id": 66,
+        "token": "c",
+        "bytes": [
+         99
+        ],
+        "logprob": -9.901652336120605
+       },
+       {
+        "id": 248069,
+        "token": "</think>",
+        "bytes": [
+         60,
+         47,
+         116,
+         104,
+         105,
+         110,
+         107,
+         62
+        ],
+        "logprob": -12.255377769470215
+       },
+       {
+        "id": 760,
+        "token": "The",
+        "bytes": [
+         84,
+         104,
+         101
+        ],
+        "logprob": -12.471665382385254
+       },
+       {
+        "id": 332,
+        "token": "**",
+        "bytes": [
+         42,
+         42
+        ],
+        "logprob": -12.559109687805176
+       },
+       {
+        "id": 67,
+        "token": "d",
+        "bytes": [
+         100
+        ],
+        "logprob": -12.720044136047363
+       }
+      ]
+     }
+    ]
+   }
+  }
+ ],
+ "created": 1790390914,
+ "model": "qwen3.5-2b-q4_k_m.gguf",
+ "system_fingerprint": "b10819-be3761e",
+ "object": "chat.completion",
+ "usage": {
+  "completion_tokens": 1,
+  "prompt_tokens": 88,
+  "total_tokens": 89,
+  "prompt_tokens_details": {
+   "cached_tokens": 0
+  }
+ },
+ "id": "chatcmpl-fixture",
+ "timings": {
+  "cache_n": 0,
+  "prompt_n": 88,
+  "prompt_ms": 161.319,
+  "prompt_per_token_ms": 1.8331704545454544,
+  "prompt_per_second": 545.5030095648993,
+  "predicted_n": 1,
+  "predicted_ms": 0.001,
+  "predicted_per_token_ms": 0.0,
+  "predicted_per_second": 0.0
+ }
+}

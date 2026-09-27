@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "corvid.fullname" . }}
+  labels:
+    {{- include "corvid.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    {{- toYaml .Values.config | nindent 4 }}
+  Caddyfile: |
+    {{- .Files.Get "files/Caddyfile" | nindent 4 }}
+  unbound.conf: |
+    {{- .Files.Get "files/unbound.conf" | nindent 4 }}

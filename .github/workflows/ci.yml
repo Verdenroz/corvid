@@ -1,0 +1,52 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.98"
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked
+
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: shellcheck -S warning deploy/*.sh deploy/tests/*.sh scripts/*.sh
+      - run: bash deploy/tests/bootstrap-server.test.sh
+      - run: bash deploy/tests/apply-plan.test.sh
+      - run: bash deploy/tests/install.test.sh
+      - run: cat deploy/stalwart.plan.ndjson deploy/stalwart.host-zone.ndjson > combined.ndjson && ./deploy/check-plan.py combined.ndjson
+      - run: ./deploy/check-plan.py
+      - run: ./deploy/check-env.sh
+
+  chart:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Install kubeconform
+        run: |
+          curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz | tar xz kubeconform
+          sudo mv kubeconform /usr/local/bin/
+      - name: Lint, render and validate
+        run: |
+          set -- --set images.corvid.repository=ghcr.io/example/corvid \
+                 --set secrets.values.CORVID_IMGPROXY_SECRET=x \
+                 --set-string 'secrets.values.cloudflare\.token=x'
+          helm lint charts/corvid "$@"
+          helm template ci charts/corvid "$@" --set labeler.enabled=true --set idp.enabled=true \
+            --set secrets.values.CORVID_JMAP_PASSWORD=x --set secrets.values.ENCRYPTION_KEY=x > rendered.yaml
+          test "$(grep -c '^kind:' rendered.yaml)" -gt 0
+          kubeconform -strict -summary rendered.yaml

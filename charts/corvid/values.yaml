@@ -1,0 +1,91 @@
+# Rendered verbatim into the pod's /etc/corvid/config.yaml, so it follows that file's schema
+# (see deploy/config.yaml). Unknown keys are refused: the config-check init container fails the
+# pod with the line at fault. No secrets belong here; see `secrets`.
+config:
+  server:
+    domain: example.com
+    hostname: mail.example.com
+    mail_user: alice
+    acme_contact: you@elsewhere.example
+    web_port: 4443
+  labeler:
+    jmap_url: http://127.0.0.1:8080
+    jmap_user: alice@example.com
+    state: /var/lib/corvid/labeler.json
+  milter: {}
+  imgproxy: {}
+
+images:
+  # Built from deploy/Containerfile and pushed to a registry the cluster can pull from.
+  corvid:
+    repository: ""
+    tag: latest
+  stalwart: docker.io/stalwartlabs/stalwart:v0.16.21
+  unbound: docker.io/klutchell/unbound@sha256:29aee253a86810f6d9738d77f21835c4f8fdf74ee6335b7a9e152790bd2781db
+  caddy: docker.io/library/caddy:2.10-alpine
+  pocketId: ghcr.io/pocket-id/pocket-id:v1.6.2
+  pullPolicy: IfNotPresent
+
+secrets:
+  # Name an existing Secret with the keys below instead of having the chart create one.
+  existingSecret: ""
+  # Used only when existingSecret is empty.
+  values:
+    # openssl rand -hex 32. The milter and image proxy share it.
+    CORVID_IMGPROXY_SECRET: ""
+    # Cloudflare API token for DNS records and DNS-01 certificates.
+    cloudflare.token: ""
+    # user:password. Removed after the first-run bootstrap; see the chart README.
+    STALWART_RECOVERY_ADMIN: ""
+    # An app password for the labeler, created once Stalwart is running.
+    CORVID_JMAP_PASSWORD: ""
+    # openssl rand -base64 32. Pocket-ID's key encryption; required when idp.enabled.
+    ENCRYPTION_KEY: ""
+
+# Off until an app password exists for it: see the chart README.
+labeler:
+  enabled: false
+
+# Passkeys through Pocket-ID. Off until mail works; enabling the OIDC plan cuts over logins.
+idp:
+  enabled: false
+
+service:
+  type: LoadBalancer
+  # Local keeps the sender's IP visible to Stalwart, which SPF and the spam filter depend on.
+  externalTrafficPolicy: Local
+  loadBalancerIP: ""
+  annotations: {}
+
+# Admits only the public mail and web ports. Stalwart's plain HTTP listener and unbound bind
+# every pod address, and the setup endpoint is unauthenticated until the plan is applied.
+networkPolicy:
+  enabled: true
+
+persistence:
+  size: 20Gi
+  storageClass: ""
+  existingClaim: ""
+
+resources:
+  mail:
+    requests: {memory: 550Mi}
+    limits: {memory: 650Mi}
+  milter:
+    requests: {memory: 64Mi}
+    limits: {memory: 384Mi}
+  imgproxy:
+    requests: {memory: 32Mi}
+    limits: {memory: 256Mi}
+  labeler:
+    requests: {memory: 32Mi}
+    limits: {memory: 256Mi}
+  caddy:
+    requests: {memory: 32Mi}
+    limits: {memory: 256Mi}
+  unbound:
+    requests: {memory: 16Mi}
+    limits: {memory: 128Mi}
+  idp:
+    requests: {memory: 64Mi}
+    limits: {memory: 384Mi}

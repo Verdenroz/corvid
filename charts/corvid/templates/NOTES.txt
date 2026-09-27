@@ -1,0 +1,17 @@
+Corvid is starting as {{ include "corvid.fullname" . }}.
+
+Before mail flows, Stalwart needs its one-time bootstrap and the configuration plan. Both run
+from a checkout of the repository against a port-forward; see charts/corvid/README.md.
+
+  kubectl port-forward deploy/{{ include "corvid.fullname" . }} 8080:8080
+
+{{- if not .Values.labeler.enabled }}
+
+The labeler is off. Create an app password for it, put it in the Secret as
+CORVID_JMAP_PASSWORD, and upgrade with --set labeler.enabled=true.
+{{- end }}
+{{- if not .Values.networkPolicy.enabled }}
+
+WARNING: networkPolicy is off. Stalwart's plain HTTP listener, including the unauthenticated
+setup endpoint before the plan is applied, is reachable from every pod in the cluster.
+{{- end }}

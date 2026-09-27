@@ -1,0 +1,23 @@
+[workspace]
+resolver = "3"
+members = ["crates/corvid-audit", "crates/corvid-imgproxy", "crates/corvid-ingest", "crates/corvid-jmap", "crates/corvid-labeler", "crates/corvid-label", "crates/corvid-milter", "crates/corvid-mirror", "crates/corvid-store", "crates/corvid-mime", "crates/corvid-rewrite", "crates/corvid-sign", "crates/corvid-config"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/Verdenroz/corvid"
+
+[workspace.dependencies]
+corvid-audit = { path = "crates/corvid-audit" }
+corvid-config = { path = "crates/corvid-config" }
+corvid-ingest = { path = "crates/corvid-ingest" }
+corvid-jmap = { path = "crates/corvid-jmap" }
+corvid-label = { path = "crates/corvid-label" }
+corvid-mime = { path = "crates/corvid-mime" }
+corvid-rewrite = { path = "crates/corvid-rewrite" }
+corvid-sign = { path = "crates/corvid-sign" }
+corvid-store = { path = "crates/corvid-store" }
+
+[profile.release]
+lto = "thin"

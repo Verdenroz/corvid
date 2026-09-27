@@ -1,0 +1,9 @@
+apiVersion: v2
+name: corvid
+description: Self-hosted single-mailbox email on Stalwart, with tracker stripping and local labeling
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/Verdenroz/corvid
+sources:
+  - https://github.com/Verdenroz/corvid

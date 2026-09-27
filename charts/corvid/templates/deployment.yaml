@@ -1,0 +1,166 @@
+{{- $webPort := include "corvid.webPort" . | int -}}
+{{- $hostname := include "corvid.hostname" . -}}
+{{- $secret := include "corvid.secret" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "corvid.fullname" . }}
+  labels:
+    {{- include "corvid.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  # One mailbox, one writer: two pods would open the same RocksDB and state files.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "corvid.selector" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "corvid.selector" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      securityContext:
+        # Stalwart runs as uid 2000 and refuses a data directory it cannot write.
+        fsGroup: 2000
+      initContainers:
+        - name: config-check
+          image: {{ include "corvid.image" . }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          command: [/usr/local/bin/corvid-config, check]
+          volumeMounts:
+            - {name: config, mountPath: /etc/corvid/config.yaml, subPath: config.yaml}
+        # Exits 1 when it writes the anchor, which fails this attempt; the retry finds the file
+        # on the volume and exits 0. The image has no shell to absorb the status.
+        - name: unbound-anchor
+          image: {{ .Values.images.unbound }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          command: [unbound-anchor, -a, /var/lib/unbound/root.key]
+          volumeMounts:
+            - {name: state, mountPath: /var/lib/unbound, subPath: unbound}
+      containers:
+        - name: mail
+          image: {{ .Values.images.stalwart }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          env:
+            - {name: STALWART_HOSTNAME, value: {{ $hostname | quote }}}
+            - name: STALWART_RECOVERY_ADMIN
+              valueFrom:
+                secretKeyRef: {name: {{ $secret }}, key: STALWART_RECOVERY_ADMIN, optional: true}
+          ports:
+            - {name: smtp, containerPort: 25}
+            - {name: submissions, containerPort: 465}
+            - {name: submission, containerPort: 587}
+            - {name: imaps, containerPort: 993}
+          volumeMounts:
+            - {name: state, mountPath: /etc/stalwart, subPath: stalwart/config}
+            - {name: state, mountPath: /var/lib/stalwart, subPath: stalwart/data}
+            - {name: cloudflare, mountPath: /run/secrets/cloudflare.token, subPath: cloudflare.token, readOnly: true}
+          startupProbe:
+            httpGet: {path: /healthz/live, port: 8080}
+            periodSeconds: 5
+            failureThreshold: 60
+          livenessProbe:
+            httpGet: {path: /healthz/live, port: 8080}
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.resources.mail | nindent 12 }}
+        - name: unbound
+          image: {{ .Values.images.unbound }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          volumeMounts:
+            - {name: config, mountPath: /etc/unbound/unbound.conf, subPath: unbound.conf}
+            - {name: state, mountPath: /var/lib/unbound, subPath: unbound}
+          resources:
+            {{- toYaml .Values.resources.unbound | nindent 12 }}
+        - name: milter
+          image: {{ include "corvid.image" . }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          command: [/usr/local/bin/corvid-milter]
+          env:
+            - name: CORVID_IMGPROXY_SECRET
+              valueFrom:
+                secretKeyRef: {name: {{ $secret }}, key: CORVID_IMGPROXY_SECRET}
+          volumeMounts:
+            - {name: config, mountPath: /etc/corvid/config.yaml, subPath: config.yaml}
+          resources:
+            {{- toYaml .Values.resources.milter | nindent 12 }}
+        - name: imgproxy
+          image: {{ include "corvid.image" . }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          command: [/usr/local/bin/corvid-imgproxy]
+          env:
+            - name: CORVID_IMGPROXY_SECRET
+              valueFrom:
+                secretKeyRef: {name: {{ $secret }}, key: CORVID_IMGPROXY_SECRET}
+          volumeMounts:
+            - {name: config, mountPath: /etc/corvid/config.yaml, subPath: config.yaml}
+          resources:
+            {{- toYaml .Values.resources.imgproxy | nindent 12 }}
+        {{- if .Values.labeler.enabled }}
+        - name: labeler
+          image: {{ include "corvid.image" . }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          command: [/usr/local/bin/corvid-labeler]
+          env:
+            - name: CORVID_JMAP_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: {{ $secret }}, key: CORVID_JMAP_PASSWORD}
+          volumeMounts:
+            - {name: config, mountPath: /etc/corvid/config.yaml, subPath: config.yaml}
+            - {name: state, mountPath: /var/lib/corvid, subPath: labeler}
+          resources:
+            {{- toYaml .Values.resources.labeler | nindent 12 }}
+        {{- end }}
+        - name: caddy
+          image: {{ .Values.images.caddy }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          env:
+            - {name: CORVID_WEB_HOSTNAME, value: {{ $hostname | quote }}}
+            - {name: CORVID_WEB_PORT, value: {{ $webPort | quote }}}
+            - {name: CORVID_MAIL_DOMAIN, value: {{ .Values.config.server.domain | quote }}}
+            {{- if eq $webPort 443 }}
+            - {name: CORVID_MTA_STS_SITE, value: {{ printf "mta-sts.%s:443" .Values.config.server.domain | quote }}}
+            {{- end }}
+          ports:
+            - {name: acme, containerPort: 80}
+            - {name: web, containerPort: {{ $webPort }}}
+          volumeMounts:
+            - {name: config, mountPath: /etc/caddy/Caddyfile, subPath: Caddyfile}
+            - {name: state, mountPath: /data, subPath: caddy}
+          resources:
+            {{- toYaml .Values.resources.caddy | nindent 12 }}
+        {{- if .Values.idp.enabled }}
+        - name: idp
+          image: {{ .Values.images.pocketId }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          env:
+            - {name: PORT, value: "1411"}
+            - {name: TRUST_PROXY, value: "true"}
+            # Otherwise it reports an instance ID and version to Pocket-ID's analytics server daily.
+            - {name: ANALYTICS_DISABLED, value: "true"}
+            - {name: APP_URL, value: {{ printf "https://%s:%d/idp" $hostname $webPort | quote }}}
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef: {name: {{ $secret }}, key: ENCRYPTION_KEY}
+          volumeMounts:
+            - {name: state, mountPath: /app/data, subPath: idp}
+          resources:
+            {{- toYaml .Values.resources.idp | nindent 12 }}
+        {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "corvid.fullname" . }}
+        - name: cloudflare
+          secret:
+            secretName: {{ $secret }}
+            items:
+              - {key: cloudflare.token, path: cloudflare.token}
+            # Group-readable through fsGroup: Stalwart reads it as uid 2000, not root.
+            defaultMode: 0440
+        - name: state
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim | default (include "corvid.fullname" .) }}

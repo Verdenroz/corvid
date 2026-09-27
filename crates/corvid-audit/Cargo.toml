@@ -1,0 +1,10 @@
+[package]
+name = "corvid-audit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+corvid-label.workspace = true
+serde = { version = "1.0.229", features = ["derive"] }
