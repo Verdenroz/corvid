@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs device.sh's add and list against a stubbed stalwart-cli and JMAP endpoint.
+# Runs device.sh's add, list and revoke against a stubbed stalwart-cli and JMAP endpoint.
 set -uo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 work="$(mktemp -d)"
@@ -24,6 +24,11 @@ class H(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
+    def do_GET(self):
+        status = int(open(work + "/download_status").read()) if os.path.exists(work + "/download_status") else 404
+        self.send_response(status)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
     def log_message(self, *a): pass
 s = socketserver.TCPServer(("127.0.0.1", 0), H)
 open(work + "/port", "w").write(str(s.server_address[1]))
@@ -128,6 +133,46 @@ check "the Password entry is not listed" '! grep -q Password "$work/out"'
 check "an unrestricted device shows any" 'grep -qP "^phone\t2024-01-01T00:00:00Z\tany$" "$work/out"'
 check "a restricted device shows its address" 'grep -qP "^laptop\t2024-01-02T00:00:00Z\t198.51.100.9$" "$work/out"'
 check "no secret ever appears" '! grep -q app_test1 "$work/out"'
+
+echo '{"credentials":{"0":{"@type":"AppPassword","credentialId":"cred1","description":"phone","createdAt":"2024-01-01T00:00:00Z","allowedIps":{}}}}' \
+  > "$work/credentials"
+
+echo "== revoke an unknown device"
+run any revoke ghost
+check "exits 65" '[[ $status -eq 65 ]]'
+check "no request was sent" '[[ ! -s "$work/requests" ]]'
+
+echo "== revoke a device with no storage key file"
+printf '%s\n' \
+  '{"methodResponses":[["x:AppPassword/set",{"accountId":"c1","destroyed":["cred1"]},"d0"]]}' \
+  '{"methodResponses":[["FileNode/query",{"accountId":"c1","ids":[]},"q0"]]}' \
+  > "$work/responses"
+run any revoke phone
+check "exits 0" '[[ $status -eq 0 ]]'
+check "only the credential and folder lookup were sent" '[[ $(wc -l < "$work/requests") -eq 2 ]]'
+check "reports the credential revoked" 'grep -q "credential revoked" "$work/out"'
+check "reports no key file to remove" 'grep -q "no storage key file found for phone" "$work/out"'
+check "names how to revoke the VPN identity" 'grep -q rotate-vless-identity.sh "$work/out"'
+
+echo "== revoke a device with a storage key file, blob confirmed gone"
+printf '%s\n' \
+  '{"methodResponses":[["x:AppPassword/set",{"accountId":"c1","destroyed":["cred1"]},"d0"]]}' \
+  '{"methodResponses":[["FileNode/query",{"accountId":"c1","ids":["folder1"]},"q0"]]}' \
+  '{"methodResponses":[["FileNode/query",{"accountId":"c1","ids":["file1"]},"q0"],["FileNode/get",{"accountId":"c1","list":[{"id":"file1","blobId":"blob1"}]},"g0"]]}' \
+  '{"methodResponses":[["FileNode/set",{"accountId":"c1","destroyed":["file1"]},"d0"]]}' \
+  > "$work/responses"
+echo 404 > "$work/download_status"
+run any revoke phone
+check "exits 0" '[[ $status -eq 0 ]]'
+check "all four lookups and destroys were sent" '[[ $(wc -l < "$work/requests") -eq 4 ]]'
+check "reports the key file revoked and gone" \
+  'grep -q "storage key file revoked, blob no longer downloads (status 404)" "$work/out"'
+
+echo "== revoke refuses to call it done if the blob still downloads"
+echo 200 > "$work/download_status"
+run any revoke phone
+check "exits 1" '[[ $status -eq 1 ]]'
+check "says so rather than reporting success" 'grep -q "still downloads" "$work/err"'
 
 [[ $fail -eq 0 ]] || { echo "--- last output:"; cat "$work/out"; echo "--- stderr:"; cat "$work/err"; }
 exit "$fail"

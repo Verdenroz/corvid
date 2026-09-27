@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Issues per-device Stalwart app passwords for server.mail_user.
+# Issues and revokes one Stalwart app password per device for server.mail_user, plus the
+# device's storage key file (Phase 3) in the account's own JMAP file storage.
 #
 # App password secrets are server-generated and per-account: Stalwart refuses to set them
 # through Account ("Secondary credentials cannot be set directly"), and stalwart-cli's own
-# verbs carry no accountId, only ever acting on the caller's own account. Add/list speak JMAP
-# directly instead, with an explicit accountId, which the admin credential may set for any
-# account (verified: a non-admin gets "you are not an owner of account" for the same call
-# against someone else's id).
+# verbs carry no accountId, only ever acting on the caller's own account. Add/list/revoke
+# speak JMAP directly instead, with an explicit accountId, which the admin credential may set
+# for any account (verified: a non-admin gets "you are not an owner of account" for the same
+# call against someone else's id).
 set -euo pipefail
 
 ENV_FILE="${CORVID_ENV:-/opt/corvid/corvid.env}"
@@ -16,9 +17,10 @@ set -a; . "$ENV_FILE"; set +a
 load_server
 
 NAME_RE='^[a-z0-9-]{1,32}$'
+DEVICES_FOLDER=corvid-devices
 
 usage() {
-  echo "usage: $(basename "$0") add NAME | list" >&2
+  echo "usage: $(basename "$0") add NAME | list | revoke NAME" >&2
   exit 64
 }
 
@@ -116,11 +118,95 @@ for entry in rows:
     print(f"{desc}\t{created}\t{where}")'
 }
 
+# Looks up the file "$2.key" under the top-level "corvid-devices" folder, printing
+# "id<TAB>blobId" or nothing if either is missing.
+find_key_file() {
+  local id="$1" name="$2" folder_id
+  folder_id="$(python3 -c '
+import json, sys
+print(json.dumps({
+    "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:filenode"],
+    "methodCalls": [["FileNode/query", {"accountId": sys.argv[1], "filter": {"name": sys.argv[2]}}, "q0"]],
+}))' "$id" "$DEVICES_FOLDER" | jmap_call "$id" | python3 -c '
+import json, sys
+ids = json.load(sys.stdin)["methodResponses"][0][1]["ids"]
+print(ids[0] if ids else "")')"
+  [[ -n "$folder_id" ]] || return 0
+
+  python3 -c '
+import json, sys
+print(json.dumps({
+    "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:filenode"],
+    "methodCalls": [["FileNode/query", {"accountId": sys.argv[1],
+        "filter": {"parentId": sys.argv[2], "name": sys.argv[3] + ".key"}}, "q0"],
+        ["FileNode/get", {"accountId": sys.argv[1],
+        "#ids": {"resultOf": "q0", "name": "FileNode/query", "path": "/ids"},
+        "properties": ["id", "blobId"]}, "g0"]],
+}))' "$id" "$folder_id" "$name" | jmap_call "$id" | python3 -c '
+import json, sys
+found = json.load(sys.stdin)["methodResponses"][1][1]["list"]
+if found:
+    file_id, blob_id = found[0]["id"], found[0]["blobId"]
+    print(f"{file_id}\t{blob_id}")'
+}
+
+cmd_revoke() {
+  local name="$1" id="$2" credential_id found file_id blob_id status
+
+  credential_id="$(app_passwords "$id" | python3 -c '
+import json, sys
+name = sys.argv[1]
+for line in sys.stdin:
+    entry = json.loads(line)
+    if entry["description"] == name:
+        print(entry["credentialId"])
+        break' "$name")"
+  [[ -n "$credential_id" ]] || { echo "no such device: $name" >&2; exit 65; }
+
+  python3 -c '
+import json, sys
+print(json.dumps({
+    "using": ["urn:ietf:params:jmap:core", "urn:stalwart:jmap"],
+    "methodCalls": [["x:AppPassword/set", {"accountId": sys.argv[1], "destroy": [sys.argv[2]]}, "d0"]],
+}))' "$id" "$credential_id" | jmap_call "$id" > /dev/null
+  echo "  credential revoked"
+
+  found="$(find_key_file "$id" "$name")"
+  if [[ -n "$found" ]]; then
+    file_id="${found%%$'\t'*}"
+    blob_id="${found#*$'\t'}"
+    python3 -c '
+import json, sys
+print(json.dumps({
+    "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:filenode"],
+    "methodCalls": [["FileNode/set", {"accountId": sys.argv[1], "destroy": [sys.argv[2]]}, "d0"]],
+}))' "$id" "$file_id" | jmap_call "$id" > /dev/null
+    status="$(curl -s -o /dev/null -w '%{http_code}' -u "$STALWART_USER:$STALWART_PASSWORD" \
+      "$STALWART_URL/jmap/download/$id/$blob_id/$name.key")"
+    if [[ "$status" == "200" ]]; then
+      echo "  storage key file revoked, but its blob still downloads (status $status)" >&2
+      exit 1
+    fi
+    echo "  storage key file revoked, blob no longer downloads (status $status)"
+  else
+    echo "  no storage key file found for $name (nothing to remove)"
+  fi
+
+  cat <<EOF
+
+To revoke $name's VPN identity: vpn-chain has no per-device identity, so rotating it
+affects every device, not just this one.
+  server/rotate-vless-identity.sh [--reality] [user@vps]
+  vpn-chain down && vpn-chain up   # on every other device, once secrets.env is updated
+EOF
+}
+
 [[ $# -ge 1 ]] || usage
 cmd="$1"; shift
 case "$cmd" in
   add) [[ $# -eq 1 ]] || usage ;;
   list) [[ $# -eq 0 ]] || usage ;;
+  revoke) [[ $# -eq 1 ]] || usage ;;
   *) usage ;;
 esac
 
@@ -128,4 +214,5 @@ id="$(account_id)"
 case "$cmd" in
   add) cmd_add "$1" "$id" ;;
   list) cmd_list "$id" ;;
+  revoke) cmd_revoke "$1" "$id" ;;
 esac
