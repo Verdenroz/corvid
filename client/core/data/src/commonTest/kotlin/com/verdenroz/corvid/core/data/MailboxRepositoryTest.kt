@@ -164,6 +164,27 @@ class MailboxRepositoryTest {
         }
 
     @Test
+    fun `a pre block keeps its indentation when the rest of the body is trimmed`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.emails +=
+                FakeEmail(
+                    "e1",
+                    "e1",
+                    setOf("inbox"),
+                    "hello",
+                    "a@example.test",
+                    "2024-01-01T00:00:00Z",
+                    bodyType = "text/html",
+                    body = "<p>before</p><pre>  line one\n    line two</pre><p>after</p>",
+                )
+
+            val detail = assertIs<EmailLookup.Found>(repository(fake).getEmail("e1")).detail
+
+            assertEquals("before\n\n  line one\n    line two\n\nafter", detail.body)
+        }
+
+    @Test
     fun `entities in an html-only body are decoded, not shown escaped`() =
         runTest {
             val fake = FakeJmapServer()

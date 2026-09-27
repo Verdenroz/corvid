@@ -12,27 +12,45 @@ private val HIDDEN_TAGS = setOf("script", "style")
 
 actual fun flattenHtml(html: String): String {
     val builder = StringBuilder()
-    NodeTraversor.traverse(FlatteningVisitor(builder), Jsoup.parse(html).body())
-    return builder
-        .toString()
-        .replace(Regex("\n{3,}"), "\n\n")
-        .lineSequence()
-        .joinToString("\n") { it.trim() }
-        .trim()
+    val preRanges = mutableListOf<IntRange>()
+    NodeTraversor.traverse(FlatteningVisitor(builder, preRanges), Jsoup.parse(html).body())
+    return trimOutsidePre(builder.toString(), preRanges).replace(Regex("\n{3,}"), "\n\n").trim()
+}
+
+/** Only a pre's own text is exempt from per-line trimming; trimming it too would
+ *  strip the code indentation it exists to keep. */
+private fun trimOutsidePre(
+    text: String,
+    preRanges: List<IntRange>,
+): String {
+    var offset = 0
+    return text
+        .split("\n")
+        .joinToString("\n") { line ->
+            val lineRange = offset until (offset + line.length)
+            offset += line.length + 1
+            if (preRanges.any { it.first <= lineRange.first && lineRange.last <= it.last }) line else line.trim()
+        }
 }
 
 /** Walks the DOM directly rather than round-tripping through HTML text, so entities
  *  stay decoded and a literal backslash-n in the mail's own text is never mistaken
  *  for a marker this flattener inserted. */
-private class FlatteningVisitor(private val builder: StringBuilder) : NodeVisitor {
+private class FlatteningVisitor(
+    private val builder: StringBuilder,
+    private val preRanges: MutableList<IntRange>,
+) : NodeVisitor {
     override fun head(
         node: Node,
         depth: Int,
     ) {
         when {
-            node is TextNode && !node.hasHiddenAncestor() -> {
-                builder.append(if (node.hasPreformattedAncestor()) node.wholeText else node.text())
+            node is TextNode && !node.hasHiddenAncestor() && node.hasPreformattedAncestor() -> {
+                val start = builder.length
+                builder.append(node.wholeText)
+                preRanges += start until builder.length
             }
+            node is TextNode && !node.hasHiddenAncestor() -> builder.append(node.text())
             node is Element && node.tagName() == "br" -> builder.append('\n')
             node is Element && node.tagName() in BLOCK_TAGS -> builder.append("\n\n")
         }

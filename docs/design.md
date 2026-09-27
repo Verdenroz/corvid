@@ -685,6 +685,10 @@ CONDSTORE/QRESYNC would not be tractable.
 Auth is in scope: the client implements the OIDC authorization-code flow with PKCE and holds a
 bearer token for JMAP.
 
+**M1 is done:** OIDC sign-in, the per-device key and lock gate below, a paginated inbox list, and
+one message opened as plain text, HTML flattened rather than rendered. It writes nothing to disk,
+so the requirement below holds because there is no store yet, not because one is encrypted.
+
 Then: offline store, sanitised HTML rendering, threading, search, attachments, drafts, compose.
 Push via UnifiedPush and self-hosted ntfy, without FCM. Distribution via F-Droid or Obtainium,
 since Play Store policy is hostile to persistent-socket foreground services.
