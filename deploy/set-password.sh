@@ -9,25 +9,15 @@ set -a; . "$ENV_FILE"; set +a
 . "$HERE/lib.sh"
 load_server
 
-# query --json prints one object per line.
-id="$(stalwart-cli query Account --json | python3 -c '
-import json, os, sys
-address = os.environ["MAIL_USER"] + "@" + os.environ["MAIL_DOMAIN"]
-print(next(a["id"] for a in map(json.loads, filter(str.strip, sys.stdin)) if a.get("emailAddress") == address))')"
+id="$(account_id)"
 
 # A bare "credentials" key replaces the whole map, wiping every enrolled app password, so the
 # key to patch is found rather than assumed. The map is empty on a brand-new account (the plan
 # never sets credentials), so no Password entry is expected there; "0" then creates one.
 # "credentials/<key>/secret" touches only the secret, leaving that credential's own allowedIps
 # and otpAuth (2FA) untouched.
-key="$(stalwart-cli get Account "$id" --fields credentials --json | python3 -c '
-import json, sys
-creds = json.load(sys.stdin)["credentials"]
-keys = [k for k, v in creds.items() if v.get("@type") == "Password"]
-if len(keys) > 1:
-    print(f"expected at most one Password credential, found {len(keys)}", file=sys.stderr)
-    sys.exit(1)
-print(keys[0] if keys else "0")')"
+key="$(password_key "$id")"
+key="${key:-0}"
 
 if ! out="$(python3 -c '
 import json, sys

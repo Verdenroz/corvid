@@ -10,27 +10,8 @@ load_server
 
 usage() { echo "usage: $(basename "$0") enable [--force] | disable | status" >&2; exit 64; }
 
-account_id() {
-  stalwart-cli query Account --json | python3 -c '
-import json, os, sys
-address = os.environ["MAIL_USER"] + "@" + os.environ["MAIL_DOMAIN"]
-print(next(a["id"] for a in map(json.loads, filter(str.strip, sys.stdin)) if a.get("emailAddress") == address))'
-}
-
-# The key of the account's Password credential, found by @type like set-password.sh, or empty
-# if the account has none. Unlike set-password.sh, totp.sh never defaults to "0": a pointer
-# patch into a missing key creates a credential holding nothing but otpAuth.
-password_key() {
-  stalwart-cli get Account "$1" --fields credentials --json | python3 -c '
-import json, sys
-creds = json.load(sys.stdin)["credentials"]
-keys = [k for k, v in creds.items() if v.get("@type") == "Password"]
-if len(keys) > 1:
-    print(f"expected at most one Password credential, found {len(keys)}", file=sys.stderr)
-    sys.exit(1)
-print(keys[0] if keys else "")'
-}
-
+# Unlike set-password.sh, totp.sh never defaults a missing password_key to "0": a pointer patch
+# into a missing key creates a credential holding nothing but otpAuth.
 require_password_key() {
   local id="$1" key
   key="$(password_key "$id")"
