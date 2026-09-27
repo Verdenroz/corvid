@@ -218,6 +218,22 @@ impl Server {
         Ok(())
     }
 
+    // Caddy needs two different site addresses; the same hostname on both would leave one
+    // handler unreachable.
+    fn check_idp_hostname(&self) -> Result<(), Error> {
+        if self
+            .idp_hostname
+            .as_ref()
+            .is_some_and(|idp| idp.0 == self.hostname.0)
+        {
+            return Err(Error(format!(
+                "server.idp_hostname {} is server.hostname; give Pocket-ID a hostname of its own",
+                self.hostname.0
+            )));
+        }
+        Ok(())
+    }
+
     pub fn web_url(&self) -> String {
         format!("https://{}:{}", self.hostname.0, self.web_port.0)
     }
@@ -418,6 +434,7 @@ impl Config {
             serde_saphyr::from_str(text).map_err(|error| Error(error.to_string()))?;
         if let Some(server) = &config.server {
             server.check_host_zone()?;
+            server.check_idp_hostname()?;
         }
         Ok(config)
     }
@@ -664,6 +681,18 @@ mod server_tests {
     fn an_idp_hostname_with_bad_characters_is_refused() {
         let text = SERVER.to_owned() + "  idp_hostname: \"pass;keys.example.com\"\n";
         assert!(Config::parse(&text).is_err());
+    }
+
+    #[test]
+    fn an_idp_hostname_equal_to_the_mail_hostname_is_refused() {
+        let text = SERVER.to_owned() + "  idp_hostname: mail.example.com\n";
+        let error = Config::parse(&text).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("give Pocket-ID a hostname of its own"),
+            "{error}"
+        );
     }
 
     #[test]
