@@ -86,47 +86,63 @@ mta_sts_preflight() {
   done
 }
 
-# Publishes the policy through the Worker when the web tier is off 443, or removes a Worker this
-# run created earlier when it is back on 443. Never touches Stalwart's own copy: the Worker's TXT
-# is found by MTA_STS_TXT_COMMENT, not by content. Needs `cloudflare`, `die`, `step` and `ok`.
-mta_sts_apply() {
-  local token="$1" web_port="$2" domain="$3" domain_zone_id="$4" account_id="$5" worker_name="$6" \
-    worker_owned="$7" policy="$8" policy_id="$9"
+# Removes a Worker this run owns and its own TXT, idempotent if neither exists. Must run before
+# deploy.sh when switching to 443: Cloudflare refuses a Stalwart-managed record at mta-sts.<domain>
+# while the Worker's custom domain still holds that name. Needs `cloudflare`, `die`, `step`, `ok`.
+mta_sts_remove_worker() {
+  local token="$1" domain="$2" domain_zone_id="$3" account_id="$4" worker_name="$5"
+  local owned_txt out
+
+  step "removing the MTA-STS Worker"
+  out="$(cloudflare "$token" remove-worker "$account_id" "$worker_name" "mta-sts.$domain" 2>&1)" ||
+    die "Cloudflare did not remove the Worker: $out"
+  owned_txt="$(cloudflare "$token" worker-txt "$domain_zone_id" "_mta-sts.$domain" "$MTA_STS_TXT_COMMENT")" ||
+    die "could not check _mta-sts.$domain: $owned_txt"
+  if [[ -n "$owned_txt" ]]; then
+    out="$(cloudflare "$token" delete "$domain_zone_id" "${owned_txt%% *}" 2>&1)" ||
+      die "Cloudflare did not remove _mta-sts.$domain: $out"
+  fi
+  ok "the Worker and its records are removed; Stalwart now serves MTA-STS on 443"
+}
+
+# Publishes the policy through the Worker, off 443. Never touches Stalwart's own copy: the
+# Worker's TXT is found by MTA_STS_TXT_COMMENT, not by content. Needs `cloudflare`, `die`, `step`
+# and `ok`.
+mta_sts_publish() {
+  local token="$1" domain="$2" domain_zone_id="$3" account_id="$4" worker_name="$5" policy="$6" \
+    policy_id="$7"
   local owned_txt out content records_out count
 
-  if [[ "$web_port" != 443 ]]; then
-    step "publishing the MTA-STS policy"
-    # shellcheck disable=SC2034  # read by cloudflare(), defined in install.sh
-    CLOUDFLARE_STDIN="$(mta_sts_worker_script "$policy")"
-    out="$(cloudflare "$token" deploy-worker "$account_id" "$domain_zone_id" "$worker_name" "mta-sts.$domain" 2>&1)" ||
-      die "Cloudflare did not deploy the Worker: $out"
-    unset CLOUDFLARE_STDIN
-    owned_txt="$(cloudflare "$token" worker-txt "$domain_zone_id" "_mta-sts.$domain" "$MTA_STS_TXT_COMMENT")" ||
-      die "could not check _mta-sts.$domain: $owned_txt"
-    content="v=STSv1; id=$policy_id"
-    if [[ -z "$owned_txt" ]]; then
-      out="$(cloudflare "$token" create-txt "$domain_zone_id" "_mta-sts.$domain" "$content" "$MTA_STS_TXT_COMMENT" 2>&1)" ||
-        die "Cloudflare did not publish _mta-sts.$domain: $out"
-    else
-      out="$(cloudflare "$token" update-record "$domain_zone_id" "${owned_txt%% *}" "$content" 2>&1)" ||
-        die "Cloudflare did not update _mta-sts.$domain: $out"
-    fi
-    records_out="$(cloudflare "$token" records "$domain_zone_id" "_mta-sts.$domain" TXT)" ||
-      die "could not read _mta-sts.$domain: $records_out"
-    count="$(grep -c 'v=STSv1' <<<"$records_out" || true)"
-    [[ "$count" == 1 ]] ||
-      die "_mta-sts.$domain now has $count v=STSv1 TXT records; a sender treats more than one as no policy at all. Remove the extra one at Cloudflare and rerun."
-    ok "mta-sts.$domain serves the policy; _mta-sts.$domain publishes id $policy_id"
-  elif (( worker_owned )); then
-    step "removing the MTA-STS Worker"
-    out="$(cloudflare "$token" remove-worker "$account_id" "$worker_name" "mta-sts.$domain" 2>&1)" ||
-      die "Cloudflare did not remove the Worker: $out"
-    owned_txt="$(cloudflare "$token" worker-txt "$domain_zone_id" "_mta-sts.$domain" "$MTA_STS_TXT_COMMENT")" ||
-      die "could not check _mta-sts.$domain: $owned_txt"
-    if [[ -n "$owned_txt" ]]; then
-      out="$(cloudflare "$token" delete "$domain_zone_id" "${owned_txt%% *}" 2>&1)" ||
-        die "Cloudflare did not remove _mta-sts.$domain: $out"
-    fi
-    ok "the Worker and its records are removed; Stalwart now serves MTA-STS on 443"
+  step "publishing the MTA-STS policy"
+  # shellcheck disable=SC2034  # read by cloudflare(), defined in install.sh
+  CLOUDFLARE_STDIN="$(mta_sts_worker_script "$policy")"
+  out="$(cloudflare "$token" deploy-worker "$account_id" "$domain_zone_id" "$worker_name" "mta-sts.$domain" 2>&1)" ||
+    die "Cloudflare did not deploy the Worker: $out"
+  unset CLOUDFLARE_STDIN
+  owned_txt="$(cloudflare "$token" worker-txt "$domain_zone_id" "_mta-sts.$domain" "$MTA_STS_TXT_COMMENT")" ||
+    die "could not check _mta-sts.$domain: $owned_txt"
+  content="v=STSv1; id=$policy_id"
+  if [[ -z "$owned_txt" ]]; then
+    out="$(cloudflare "$token" create-txt "$domain_zone_id" "_mta-sts.$domain" "$content" "$MTA_STS_TXT_COMMENT" 2>&1)" ||
+      die "Cloudflare did not publish _mta-sts.$domain: $out"
+  else
+    out="$(cloudflare "$token" update-record "$domain_zone_id" "${owned_txt%% *}" "$content" 2>&1)" ||
+      die "Cloudflare did not update _mta-sts.$domain: $out"
   fi
+  records_out="$(cloudflare "$token" records "$domain_zone_id" "_mta-sts.$domain" TXT)" ||
+    die "could not read _mta-sts.$domain: $records_out"
+  count="$(grep -c 'v=STSv1' <<<"$records_out" || true)"
+  [[ "$count" == 1 ]] ||
+    die "_mta-sts.$domain now has $count v=STSv1 TXT records; a sender treats more than one as no policy at all. Remove the extra one at Cloudflare and rerun."
+  ok "mta-sts.$domain serves the policy; _mta-sts.$domain publishes id $policy_id"
+}
+
+# Stalwart's own MTA-STS publish is an async DNS task with no error surfaced here if it fails
+# (see the MTA-STS trap in CLAUDE.md). Warns rather than dying, since mail still works either way.
+mta_sts_check_published() {
+  local token="$1" domain="$2" domain_zone_id="$3" records
+  records="$(cloudflare "$token" records "$domain_zone_id" "_mta-sts.$domain" TXT)" ||
+    die "could not read _mta-sts.$domain: $records"
+  grep -q 'v=STSv1' <<<"$records" ||
+    warn "mta-sts.$domain has no v=STSv1 TXT record yet; see the MTA-STS trap in CLAUDE.md"
 }

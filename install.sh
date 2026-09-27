@@ -511,6 +511,12 @@ if on_host 'systemctl is-enabled corvid-pod.service 2>/dev/null' | grep -q maske
   echo "  replaced the container holding the mail ports"
 fi
 
+# Stalwart's own MTA-STS publish, triggered by deploy.sh below, fails against a hostname the
+# Worker's custom domain still holds, so a Worker being retired must go first.
+if [[ "$web_port" == 443 ]] && (( worker_owned )); then
+  mta_sts_remove_worker "$token" "$domain" "$domain_zone_id" "$account_id" "$worker_name"
+fi
+
 step "deploying"
 on_host 'cd /opt/corvid/deploy && CORVID_INSTALLER=1 bash deploy.sh' || echo "  deploy.sh reported problems; see its output above"
 
@@ -522,14 +528,15 @@ if (( ${#stale_mta_sts[@]} )); then
   ok "mta-sts.$domain and _mta-sts.$domain removed"
 fi
 
-policy="" policy_id=""
 if [[ "$web_port" != 443 ]]; then
   cfg_cmd="podman run --rm --network=none -v /opt/corvid/config.yaml:/etc/corvid/config.yaml:ro '$IMAGE' corvid-config"
   policy="$(on_host "$cfg_cmd mta-sts-policy")" || die "could not render the MTA-STS policy: $policy"
   policy_id="$(on_host "$cfg_cmd shell" | awk -F= '$1=="MTA_STS_ID"{print $2}')"
   [[ -n "$policy_id" ]] || die "corvid-config did not report MTA_STS_ID; rebuild the image"
+  mta_sts_publish "$token" "$domain" "$domain_zone_id" "$account_id" "$worker_name" "$policy" "$policy_id"
+else
+  mta_sts_check_published "$token" "$domain" "$domain_zone_id"
 fi
-mta_sts_apply "$token" "$web_port" "$domain" "$domain_zone_id" "$account_id" "$worker_name" "$worker_owned" "$policy" "$policy_id"
 
 # Stalwart names its keys v1-TYPE-DATE and never deletes one it has replaced, so every reinstall
 # leaves a pair behind. Only records in that form that Stalwart no longer holds are removed.

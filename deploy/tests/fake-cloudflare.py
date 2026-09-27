@@ -88,6 +88,9 @@ class H(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+        # A Workers custom domain blocks a plain DNS record at its hostname, same as the reverse.
+        if any(d["hostname"] == body.get("name") for d in state["domains"].values()):
+            return self.reply(409, {"success": False, "errors": [{"message": "a Workers custom domain already exists for this hostname"}]})
         rid = f"r{state['next_id']}"
         state["next_id"] += 1
         state["records"][rid] = dict(body, id=rid)

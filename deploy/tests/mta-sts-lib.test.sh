@@ -34,6 +34,7 @@ urllib.request.urlopen(urllib.request.Request(url, data=body, headers={"Content-
 }
 step() { :; }
 ok() { :; }
+warn() { printf '  warn  %s\n' "$*"; }
 die() { echo "  DIED: $*" >&2; exit 1; }
 
 fail=0
@@ -72,28 +73,51 @@ mta_sts_preflight token "$domain" "$hostname" "$zone" 4443
 check "the stale CNAME is queued for removal" '(( ${#stale_mta_sts[@]} > 0 ))'
 worker_name="$(mta_sts_worker_name "$domain")"
 status=0
-( mta_sts_apply token 4443 "$domain" "$zone" "$account" "$worker_name" 0 "$policy" id1 ) || status=$?
+( mta_sts_publish token "$domain" "$zone" "$account" "$worker_name" "$policy" id1 ) || status=$?
 check "the Worker cannot bind while the stale record remains" '[[ $status -ne 0 ]]'
 
 echo "== removing it first lets the Worker bind"
 for id in "${stale_mta_sts[@]}"; do cloudflare token delete "$zone" "$id" >/dev/null; done
-mta_sts_apply token 4443 "$domain" "$zone" "$account" "$worker_name" 0 "$policy" id1
+mta_sts_publish token "$domain" "$zone" "$account" "$worker_name" "$policy" id1
 check "the worker is now bound" '[[ "$(cloudflare token worker-owner "$account" "mta-sts.$domain")" == "$worker_name" ]]'
 
 echo "== a rerun is a no-op"
-mta_sts_apply token 4443 "$domain" "$zone" "$account" "$worker_name" 0 "$policy" id1
+mta_sts_publish token "$domain" "$zone" "$account" "$worker_name" "$policy" id1
 check "still exactly one binding" '[[ "$(cloudflare token worker-owner "$account" "mta-sts.$domain")" == "$worker_name" ]]'
 check "still exactly one v=STSv1 TXT" \
   '[[ $(cloudflare token records "$zone" "_mta-sts.$domain" TXT | grep -c "v=STSv1") -eq 1 ]]'
 
 echo "== back to 443 removes only the Worker's own TXT, leaving a Stalwart-owned one"
 cloudflare token create-txt "$zone" "_mta-sts.$domain" 'v=STSv1; id=stalwart-owned' >/dev/null
-mta_sts_apply token 443 "$domain" "$zone" "$account" "$worker_name" 1 "" ""
+mta_sts_remove_worker token "$domain" "$zone" "$account" "$worker_name"
 check "the worker is gone" '[[ -z "$(cloudflare token worker-owner "$account" "mta-sts.$domain")" ]]'
 check "the Stalwart TXT is untouched" \
   '[[ "$(cloudflare token records "$zone" "_mta-sts.$domain" TXT)" == *stalwart-owned* ]]'
 check "only the Stalwart TXT remains" \
   '[[ $(cloudflare token records "$zone" "_mta-sts.$domain" TXT | wc -l) -eq 1 ]]'
+
+echo "== the Worker must be removed before Stalwart's own record can be created"
+kill "$server" 2>/dev/null
+start_fake
+account="$(cloudflare token account "$zone")"
+mta_sts_publish token "$domain" "$zone" "$account" "$worker_name" "$policy" id1
+status=0
+( seed_cname "$zone" "mta-sts.$domain" "$hostname" ) 2>/dev/null || status=$?
+check "Stalwart's record is blocked while the Worker still holds the hostname" '[[ $status -ne 0 ]]'
+mta_sts_remove_worker token "$domain" "$zone" "$account" "$worker_name"
+status=0
+seed_cname "$zone" "mta-sts.$domain" "$hostname" 2>/dev/null || status=$?
+check "removing the Worker first lets Stalwart's record be created" '[[ $status -eq 0 ]]'
+
+echo "== the post-deploy check on 443 warns when Stalwart has not published yet"
+kill "$server" 2>/dev/null
+start_fake
+out="$(mta_sts_check_published token "$domain" "$zone" 2>&1)"
+check "it warns naming the CLAUDE.md trap" '[[ "$out" == *"MTA-STS trap"* ]]'
+cloudflare token create-txt "$zone" "_mta-sts.$domain" 'v=STSv1; id=stalwart' >/dev/null
+# shellcheck disable=SC2034  # read inside the eval'd check
+out="$(mta_sts_check_published token "$domain" "$zone" 2>&1)"
+check "it is silent once Stalwart's record exists" '[[ -z "$out" ]]'
 
 echo "== a foreign record stops the install before touching Cloudflare"
 kill "$server" 2>/dev/null
