@@ -40,6 +40,23 @@ jobs:
       - run: ./deploy/check-env.sh
       - run: ./deploy/check-sentinel-events.sh
 
+  client:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew check --max-workers=2
+      - run: ./gradlew :androidApp:assembleDebug --max-workers=2
+      - run: ./gradlew :desktopApp:compileKotlin --max-workers=2
+
   chart:
     runs-on: ubuntu-latest
     steps:
