@@ -143,9 +143,7 @@ for line in sys.stdin:
 }
 
 # The id of the top-level "corvid-devices" folder, or nothing if it does not exist. A filter
-# of {"parentId": null} is refused as a malformed request, so root scoping is done by fetching
-# every match and keeping the ones whose own parentId reads back null; more than one is
-# ambiguous and refused rather than guessed.
+# of {"parentId": null} is refused as malformed, so root scoping reads parentId back instead.
 devices_folder_id() {
   local id="$1"
   python3 -c '
@@ -189,9 +187,8 @@ if found:
     print(f"{file_id}\t{blob_id}")'
 }
 
-# Revoking is not one atomic step, so a rerun after a partial failure must still make progress:
-# the credential and the key file are looked up first and handled independently, and only
-# neither existing counts as "no such device".
+# Not one atomic step, so a rerun after a partial failure must still make progress: only
+# neither the credential nor the key file existing counts as "no such device".
 cmd_revoke() {
   local name="$1" id="$2" credential_id found file_id blob_id status
 
