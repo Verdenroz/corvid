@@ -61,15 +61,10 @@ import com.verdenroz.corvid.feature.mailbox.resources.card_close
 import com.verdenroz.corvid.feature.mailbox.resources.card_filed_as
 import com.verdenroz.corvid.feature.mailbox.resources.card_make_filter
 import com.verdenroz.corvid.feature.mailbox.resources.card_messages_since
-import com.verdenroz.corvid.feature.mailbox.resources.card_no_tracker_record
-import com.verdenroz.corvid.feature.mailbox.resources.card_no_trackers_window
 import com.verdenroz.corvid.feature.mailbox.resources.card_not_labelled
 import com.verdenroz.corvid.feature.mailbox.resources.card_recent
-import com.verdenroz.corvid.feature.mailbox.resources.card_signed_by_window
-import com.verdenroz.corvid.feature.mailbox.resources.card_signed_window
 import com.verdenroz.corvid.feature.mailbox.resources.card_source_kind
 import com.verdenroz.corvid.feature.mailbox.resources.card_trackers
-import com.verdenroz.corvid.feature.mailbox.resources.card_trackers_window
 import com.verdenroz.corvid.feature.mailbox.resources.card_unsubscribe
 import com.verdenroz.corvid.feature.mailbox.resources.card_write
 import com.verdenroz.corvid.feature.mailbox.resources.card_writes
@@ -117,6 +112,17 @@ fun SenderCard(
             }
         }
         Header(address, latest, wide)
+        failedWarning(latest?.provenance?.seal)?.let {
+            Text(
+                it.asString(),
+                style = CorvidTheme.type.meta,
+                color = CorvidTheme.colors.onDangerSoft,
+                modifier =
+                    Modifier.fillMaxWidth().background(
+                        CorvidTheme.colors.dangerSoft,
+                    ).padding(horizontal = if (wide) 26.dp else 18.dp, vertical = 10.dp),
+            )
+        }
         Facts(state, latest, isSource, wide)
         Actions(address, latest, isSource, wide, actions)
         state.failed?.let {
@@ -185,22 +191,8 @@ private fun Facts(
     val window = state.window
     val counts = state.counts
     val signer = (latest?.provenance?.seal as? Seal.Signed)?.signer
-    val authenticity =
-        window?.let {
-            if (isSource && signer != null) {
-                pluralStringResource(Res.plurals.card_signed_by_window, it.size, signer, it.signed, it.size)
-            } else {
-                pluralStringResource(Res.plurals.card_signed_window, it.size, it.signed, it.size)
-            }
-        }
-    val trackers =
-        window?.let {
-            when {
-                it.marked == 0 -> stringResource(Res.string.card_no_tracker_record)
-                it.trackersStripped == 0 -> pluralStringResource(Res.plurals.card_no_trackers_window, it.marked, it.marked)
-                else -> pluralStringResource(Res.plurals.card_trackers_window, it.marked, it.trackersStripped, it.marked)
-            }
-        }
+    val authenticity = window?.let { authenticityFact(it, counts?.received, if (isSource) signer else null)?.asString() }
+    val trackers = window?.let { trackersFact(it, counts?.received)?.asString() }
     val since = counts?.firstSeen?.let { monthYear(it, zone).asString() }
     val facts =
         if (isSource) {
@@ -288,6 +280,8 @@ private fun Actions(
                 })
             }
             PillButton(stringResource(Res.string.card_make_filter), CorvidIcons.Filter, actions.makeFilter)
+        } else if (!writeIsPrimary(latest?.provenance?.seal)) {
+            PillButton(stringResource(Res.string.card_write), CorvidIcons.Pencil, { actions.compose(ComposeIntent.To(address)) })
         } else {
             WriteButton { actions.compose(ComposeIntent.To(address)) }
         }
