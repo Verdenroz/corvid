@@ -78,8 +78,10 @@ class FakeJmapServer {
     val identities: MutableList<FakeIdentity> = mutableListOf()
     val submissions: MutableList<FakeSubmission> = mutableListOf()
     val fileNodes: MutableList<FakeFileNode> = mutableListOf()
+    val sieveScripts: MutableList<FakeSieveScript> = mutableListOf()
     val blobs: MutableMap<String, ByteArray> = mutableMapOf()
     private var nextFileNodeId = 1
+    private var nextSieveScriptId = 1
     private var nextBlobId = 1
     private var nextEmailId = 1
     private var nextSubmissionId = 1
@@ -89,6 +91,9 @@ class FakeJmapServer {
 
     /** Fails every FileNode `create` with `notCreated`, as a quota or permission refusal would. */
     var refuseCreate: Boolean = false
+
+    /** Fails every SieveScript `create` and `update` with `invalidSieve`, as a script the server cannot compile would. */
+    var invalidSieve: Boolean = false
 
     /** Fails every EmailSubmission `create` with `notCreated`, as a rejected sender or recipient would. */
     var refuseSubmission: Boolean = false
@@ -227,6 +232,8 @@ class FakeJmapServer {
             "FileNode/query" -> listOf(fileNodeQuery(arguments))
             "FileNode/get" -> listOf(name to fileNodeGet(arguments))
             "FileNode/set" -> listOf(name to fileNodeSet(arguments))
+            "SieveScript/get" -> listOf(name to getResponse("ss1", sieveScripts, arguments, FakeSieveScript::id) { it.toJson() })
+            "SieveScript/set" -> listOf(name to sieveScriptSet(arguments, createdIds))
             else -> listOf("error" to buildJsonObject { put("type", "unknownMethod") })
         }
     }
@@ -265,6 +272,7 @@ class FakeJmapServer {
         updated: Map<String, JsonObject> = emptyMap(),
         destroyed: List<String> = emptyList(),
         notCreated: Map<String, JsonObject> = emptyMap(),
+        notUpdated: Map<String, JsonObject> = emptyMap(),
         notDestroyed: Map<String, JsonObject> = emptyMap(),
     ): JsonObject =
         buildJsonObject {
@@ -275,6 +283,7 @@ class FakeJmapServer {
             if (updated.isNotEmpty()) putJsonObject("updated") { updated.forEach { (k, v) -> put(k, v) } }
             if (destroyed.isNotEmpty()) put("destroyed", JsonArray(destroyed.map { JsonPrimitive(it) }))
             if (notCreated.isNotEmpty()) putJsonObject("notCreated") { notCreated.forEach { (k, v) -> put(k, v) } }
+            if (notUpdated.isNotEmpty()) putJsonObject("notUpdated") { notUpdated.forEach { (k, v) -> put(k, v) } }
             if (notDestroyed.isNotEmpty()) putJsonObject("notDestroyed") { notDestroyed.forEach { (k, v) -> put(k, v) } }
         }
 
@@ -416,6 +425,55 @@ class FakeJmapServer {
         return setResponse("fs0", "fs1", created = created, destroyed = destroyed, notCreated = notCreated, notDestroyed = notDestroyed)
     }
 
+    private fun sieveScriptSet(
+        arguments: JsonObject,
+        createdIds: MutableMap<String, String>,
+    ): JsonObject {
+        val created = mutableMapOf<String, String>()
+        val notCreated = mutableMapOf<String, JsonObject>()
+        arguments["create"]?.jsonObject?.forEach { (creationId, spec) ->
+            if (invalidSieve) {
+                notCreated[creationId] = problem("invalidSieve", "script rejected")
+                return@forEach
+            }
+            val id = "s${nextSieveScriptId++}"
+            sieveScripts +=
+                FakeSieveScript(
+                    id = id,
+                    name = spec.jsonObject.getValue("name").jsonPrimitive.content,
+                    blobId = spec.jsonObject.getValue("blobId").jsonPrimitive.content,
+                )
+            created[creationId] = id
+            createdIds[creationId] = id
+        }
+        val updated = mutableListOf<String>()
+        val notUpdated = mutableMapOf<String, JsonObject>()
+        arguments["update"]?.jsonObject?.forEach { (id, patch) ->
+            val script = sieveScripts.find { it.id == id }
+            when {
+                script == null -> notUpdated[id] = problem("notFound", "no such script")
+                invalidSieve -> notUpdated[id] = problem("invalidSieve", "script rejected")
+                else -> {
+                    patch.jsonObject["blobId"]?.let { script.blobId = it.jsonPrimitive.content }
+                    updated += id
+                }
+            }
+        }
+        val activateTarget = arguments["onSuccessActivateScript"]?.jsonPrimitive?.content
+        if (activateTarget != null && notCreated.isEmpty() && notUpdated.isEmpty()) {
+            val id = createdIds.resolve(activateTarget)
+            sieveScripts.forEach { it.isActive = it.id == id }
+        }
+        return setResponse(
+            "ss0",
+            "ss1",
+            created = created.mapValues { (_, id) -> buildJsonObject { put("id", id) } },
+            updated = updated.associateWith { JsonObject(emptyMap()) },
+            notCreated = notCreated,
+            notUpdated = notUpdated,
+        )
+    }
+
     private fun problem(
         type: String,
         description: String,
@@ -500,6 +558,14 @@ private fun FakeIdentity.toJson(): JsonObject =
 /** A `#creationId` names an object created earlier in the same request. */
 private fun Map<String, String>.resolve(reference: String): String? =
     if (reference.startsWith("#")) get(reference.removePrefix("#")) else reference
+
+private fun FakeSieveScript.toJson(): JsonObject =
+    buildJsonObject {
+        put("id", id)
+        put("name", name)
+        put("blobId", blobId)
+        put("isActive", isActive)
+    }
 
 private fun FakeMailbox.toJson(): JsonObject =
     buildJsonObject {

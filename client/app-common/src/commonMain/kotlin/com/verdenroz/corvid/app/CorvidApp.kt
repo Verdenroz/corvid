@@ -1,7 +1,9 @@
 package com.verdenroz.corvid.app
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -20,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.ComposeRepository
+import com.verdenroz.corvid.core.data.FiltersRepository
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.model.ComposeIntent
@@ -27,6 +30,7 @@ import com.verdenroz.corvid.core.ui.LockedPane
 import com.verdenroz.corvid.core.ui.RevokedPane
 import com.verdenroz.corvid.core.ui.UnreachablePane
 import com.verdenroz.corvid.feature.compose.ComposeScreen
+import com.verdenroz.corvid.feature.filters.FiltersScreen
 import com.verdenroz.corvid.feature.mailbox.InboxScreen
 import com.verdenroz.corvid.feature.mailbox.ReaderScreen
 import com.verdenroz.corvid.feature.signin.SignInScreen
@@ -75,6 +79,7 @@ private fun UnlockedContent(
     val scope = scopeHolder.current()
     val repository = remember(scope) { scope.get<MailboxRepository>() }
     val composeRepository = remember(scope) { scope.get<ComposeRepository>() }
+    val filtersRepository = remember(scope) { scope.get<FiltersRepository>() }
 
     DisposableEffect(Unit) {
         idleTimeout.recordActivity()
@@ -92,10 +97,14 @@ private fun UnlockedContent(
                 }
             },
     ) {
-        Box(modifier = Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.CenterEnd) {
+        val backStack = remember { mutableStateListOf<Route>(Route.Inbox) }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+        ) {
+            if (Route.Filters !in backStack) Button(onClick = { backStack += Route.Filters }) { Text("Filters") }
             Button(onClick = onLock) { Text("Lock") }
         }
-        val backStack = remember { mutableStateListOf<Route>(Route.Inbox) }
         val pop = { backStack.removeAt(backStack.lastIndex) }
         when (val route = backStack.last()) {
             is Route.Inbox ->
@@ -112,6 +121,7 @@ private fun UnlockedContent(
                     onCompose = { backStack += Route.Compose(it) },
                 )
             is Route.Compose -> ComposeScreen(composeRepository, route.intent, onClose = { pop() })
+            is Route.Filters -> FiltersScreen(filtersRepository, onBack = { pop() })
         }
     }
 }
