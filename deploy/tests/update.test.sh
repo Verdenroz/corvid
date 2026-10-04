@@ -31,11 +31,15 @@ case "$1" in
   rm) ;;
 esac
 SH
+cat > "$work/bin/systemctl" <<'SH'
+#!/bin/bash
+[[ -e "$WORK/masked" ]] && echo masked || echo enabled
+SH
 cat > "$work/config" <<'SH'
 #!/bin/sh
 printf 'MAIL_DOMAIN=example.com\nMAIL_HOSTNAME=mail.example.com\nUPDATE_AUTO=%s\n' "$(cat "$WORK/auto")"
 SH
-chmod +x "$work/bin/podman" "$work/config"
+chmod +x "$work/bin/podman" "$work/bin/systemctl" "$work/config"
 
 for which in old new; do
   mkdir -p "$work/images/$which"
@@ -64,7 +68,7 @@ tag() { cat "$work/tags/$(echo "$1" | tr '/:' '__')"; }
 # fresh: a host running "old" from the registry tag, the registry still serving "old"
 fresh() {
   rm -rf "$corvid" "$work/tags" "$work/log" "$work/podman.log" "$work/smtp/commands" "$work/smtp/messages" \
-    "$work"/*-fails "$work/pull-fails"
+    "$work"/*-fails "$work/pull-fails" "$work/masked"
   mkdir -p "$corvid/deploy" "$corvid/update" "$work/tags"
   cp -a "$work/images/old/." "$corvid/deploy/"
   cp "$here/update.sh" "$here/lib.sh" "$corvid/deploy/"
@@ -157,6 +161,14 @@ check "the interrupted run fails and deploys nothing" '[[ $status -ne 0 && ! -s 
 rm "$work/cp-fails"
 run
 check "the next run deploys instead of reporting current" '[[ $status -eq 0 ]] && deployed && [[ "$(field result)" == updated ]]'
+
+echo "== a masked pod blocks every mode"
+for mode in "" check apply; do
+  fresh; echo new > "$work/registry-id"; touch "$work/masked"
+  run $mode
+  check "${mode:-timer}: exits 0 without pulling or deploying" '[[ $status -eq 0 ]] && ! pulled && [[ ! -s "$work/log" ]]'
+  check "${mode:-timer}: records skipped" '[[ "$(field result)" == skipped ]] && grep -q "container replacement" "$work/out"'
+done
 
 echo "== a check records the latest version and deploys nothing"
 fresh; echo new > "$work/registry-id"

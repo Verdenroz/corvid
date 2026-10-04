@@ -115,6 +115,12 @@ if ! registry_ref "$ref"; then
   echo "$detail"
   exit 0
 fi
+if [[ "$(systemctl is-enabled corvid-pod.service 2>/dev/null)" == masked ]]; then
+  result=skipped
+  detail="corvid-pod is masked (a container replacement is in progress); not updating"
+  echo "$detail"
+  exit 0
+fi
 if [[ "$mode" == timer && "$UPDATE_AUTO" != true ]]; then
   result=skipped
   detail="automatic updates are off (update.auto in $CORVID_DIR/config.yaml)"
