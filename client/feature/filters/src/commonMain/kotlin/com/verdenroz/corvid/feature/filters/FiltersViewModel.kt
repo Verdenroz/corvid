@@ -24,19 +24,16 @@ class FiltersViewModel(private val repository: FiltersRepository) : ViewModel() 
     fun saveRule(
         index: Int?,
         rule: FilterRule,
-    ) = edit { rules -> if (index == null) rules + rule else rules.mapIndexed { i, old -> if (i == index) rule else old } }
+    ) = edit { rules -> if (index == null) rules + rule else rules.replaced(index, rule) }
 
-    fun delete(index: Int) = edit { rules -> rules.filterIndexed { i, _ -> i != index } }
+    fun delete(index: Int) = edit { rules -> rules.removedAt(index) }
 
-    fun toggle(index: Int) = edit { rules -> rules.mapIndexed { i, rule -> if (i == index) rule.copy(enabled = !rule.enabled) else rule } }
+    fun toggle(index: Int) = edit { rules -> rules.replaced(index, rules[index].copy(enabled = !rules[index].enabled)) }
 
     fun move(
         index: Int,
         offset: Int,
-    ) = edit { rules ->
-        val target = index + offset
-        if (target in rules.indices) rules.toMutableList().apply { add(target, removeAt(index)) } else rules
-    }
+    ) = edit { rules -> rules.moved(index, index + offset) }
 
     fun confirmReplace() {
         val ready = _state.value as? FiltersUiState.Ready ?: return

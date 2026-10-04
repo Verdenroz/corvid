@@ -10,7 +10,11 @@ data class FilterCondition(
     val field: ConditionField,
     val operator: ConditionOperator,
     val value: String,
-)
+) {
+    companion object {
+        fun blank() = FilterCondition(ConditionField.From, ConditionOperator.Contains, "")
+    }
+}
 
 sealed interface FilterAction {
     /** Filed by the folder's id, so a rename or a nested folder still resolves. */
@@ -33,7 +37,11 @@ data class FilterRule(
     val conditions: List<FilterCondition>,
     val actions: List<FilterAction>,
     val stop: Boolean,
-)
+) {
+    companion object {
+        fun blank() = FilterRule("", true, MatchMode.All, listOf(FilterCondition.blank()), listOf(FilterAction.MarkRead), stop = false)
+    }
+}
 
 /** A rule missing a condition, an action, or an action's target cannot compile to valid Sieve. */
 val FilterRule.isComplete: Boolean

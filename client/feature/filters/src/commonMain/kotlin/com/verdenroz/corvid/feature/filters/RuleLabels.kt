@@ -8,6 +8,8 @@ import com.verdenroz.corvid.core.model.FilterRule
 import com.verdenroz.corvid.core.model.MailboxRef
 import com.verdenroz.corvid.core.model.MatchMode
 
+internal fun MatchMode.label(): String = if (this == MatchMode.All) "all" else "any"
+
 internal fun ConditionField.label(): String =
     when (this) {
         ConditionField.From -> "From"

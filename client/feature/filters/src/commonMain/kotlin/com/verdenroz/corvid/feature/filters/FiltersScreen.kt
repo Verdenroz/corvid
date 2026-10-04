@@ -27,22 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.FiltersRepository
-import com.verdenroz.corvid.core.model.ConditionField
-import com.verdenroz.corvid.core.model.ConditionOperator
-import com.verdenroz.corvid.core.model.FilterAction
-import com.verdenroz.corvid.core.model.FilterCondition
 import com.verdenroz.corvid.core.model.FilterRule
-import com.verdenroz.corvid.core.model.MatchMode
-
-private val NEW_RULE =
-    FilterRule(
-        name = "",
-        enabled = true,
-        match = MatchMode.All,
-        conditions = listOf(FilterCondition(ConditionField.From, ConditionOperator.Contains, "")),
-        actions = listOf(FilterAction.MarkRead),
-        stop = false,
-    )
 
 /** [index] is null for a rule being added. */
 private data class Editing(val index: Int?, val rule: FilterRule)
@@ -66,9 +51,11 @@ fun FiltersScreen(
                 if (target == null) {
                     RuleList(
                         state = current,
-                        onAdd = { editing = Editing(null, NEW_RULE) },
+                        onAdd = { editing = Editing(null, FilterRule.blank()) },
                         onEdit = { index -> editing = Editing(index, current.rules[index]) },
-                        viewModel = viewModel,
+                        onToggle = viewModel::toggle,
+                        onMove = viewModel::move,
+                        onDelete = viewModel::delete,
                     )
                 } else {
                     RuleEditor(
@@ -103,7 +90,9 @@ private fun RuleList(
     state: FiltersUiState.Ready,
     onAdd: () -> Unit,
     onEdit: (Int) -> Unit,
-    viewModel: FiltersViewModel,
+    onToggle: (Int) -> Unit,
+    onMove: (index: Int, offset: Int) -> Unit,
+    onDelete: (Int) -> Unit,
 ) {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         item {
@@ -123,11 +112,11 @@ private fun RuleList(
             RuleRow(
                 rule = rule,
                 enabledControls = !state.saving,
-                onToggle = { viewModel.toggle(index) },
+                onToggle = { onToggle(index) },
                 onEdit = { onEdit(index) },
-                onUp = { viewModel.move(index, -1) },
-                onDown = { viewModel.move(index, 1) },
-                onDelete = { viewModel.delete(index) },
+                onUp = { onMove(index, -1) },
+                onDown = { onMove(index, 1) },
+                onDelete = { onDelete(index) },
             )
             HorizontalDivider()
         }

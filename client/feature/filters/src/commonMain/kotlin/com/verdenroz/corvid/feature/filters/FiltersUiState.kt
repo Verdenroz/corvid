@@ -8,11 +8,7 @@ sealed interface FiltersUiState {
 
     data class Failed(val message: String) : FiltersUiState
 
-    /**
-     * [rules] is what the editor holds, saved or not: a failed save leaves it as edited.
-     * [foreignScript] names the active script that Corvid's would replace; [confirming]
-     * is set while the user is asked to allow that.
-     */
+    /** [rules] is what the editor holds, saved or not: a failed save leaves it as edited. */
     data class Ready(
         val rules: List<FilterRule>,
         val folders: List<MailboxRef>,
