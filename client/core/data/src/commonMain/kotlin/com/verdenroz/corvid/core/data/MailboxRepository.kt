@@ -9,6 +9,7 @@ import com.verdenroz.corvid.core.jmap.resultReference
 import com.verdenroz.corvid.core.model.EmailAddress
 import com.verdenroz.corvid.core.model.EmailDetail
 import com.verdenroz.corvid.core.model.EmailSummary
+import com.verdenroz.corvid.core.model.Identity
 import com.verdenroz.corvid.core.model.Mailbox
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -33,6 +34,13 @@ private val EMAIL_DETAIL_PROPERTIES =
     listOf("id", "subject", "from", "to", "cc", "replyTo", "messageId", "references", "receivedAt", "keywords", "textBody", "bodyValues") +
         PROVENANCE_PROPERTIES
 
+/** What a ledger lists: one mailbox, or every starred message wherever it is filed. */
+sealed interface MailFilter {
+    data class InMailbox(val mailboxId: String) : MailFilter
+
+    data object Starred : MailFilter
+}
+
 sealed interface EmailPage {
     data class Found(val emails: List<EmailSummary>, val queryState: String) : EmailPage
 
@@ -47,14 +55,14 @@ sealed interface EmailLookup {
 }
 
 /**
- * Query and get run as one JMAP request (decision 8), the get's `ids`
+ * Query and get run as one JMAP request, the get's `ids`
  * resolved server-side from the query's result via a [resultReference].
  * Whether an anchor lost meaning (queryState changed) is for the caller to
  * decide by comparing to the queryState it already holds; this repository
  * is stateless across pages.
  */
 class MailboxRepository(private val jmapClient: JmapClient) {
-    private var ownDomain: OwnDomain? = null
+    private var identity: KnownIdentity? = null
 
     suspend fun mailboxes(): List<Mailbox> =
         jmapClient.callOne("Mailbox/get", JsonObject(emptyMap())).getValue("list").jsonArray.map { it.jsonObject.toMailbox() }
@@ -62,12 +70,17 @@ class MailboxRepository(private val jmapClient: JmapClient) {
     suspend fun findMailboxByRole(role: String): Mailbox? = mailboxes().firstOrNull { it.role == role }
 
     suspend fun page(
-        mailboxId: String,
+        filter: MailFilter,
         anchor: String?,
     ): EmailPage {
         val queryArguments =
             buildJsonObject {
-                putJsonObject("filter") { put("inMailbox", mailboxId) }
+                putJsonObject("filter") {
+                    when (filter) {
+                        is MailFilter.InMailbox -> put("inMailbox", filter.mailboxId)
+                        is MailFilter.Starred -> put("hasKeyword", "\$flagged")
+                    }
+                }
                 putJsonArray("sort") {
                     addJsonObject {
                         put("property", "receivedAt")
@@ -115,15 +128,22 @@ class MailboxRepository(private val jmapClient: JmapClient) {
         return EmailLookup.Found(result.getValue("list").jsonArray.first().jsonObject.toEmailDetail(ownDomain()))
     }
 
-    /** The account's first identity's domain, fetched once; it only names which kind of source a sender is. */
-    private suspend fun ownDomain(): String? {
-        val known = ownDomain ?: OwnDomain(fetchOwnDomain()).also { ownDomain = it }
-        return known.domain
+    /** The account's first identity, fetched once: who the account avatar is, and which senders are its own server. */
+    suspend fun identity(): Identity? {
+        val known = identity ?: KnownIdentity(fetchIdentity()).also { identity = it }
+        return known.identity
     }
 
-    private suspend fun fetchOwnDomain(): String? =
-        jmapClient.callOne("Identity/get", JsonObject(emptyMap())).getValue("list").jsonArray.firstOrNull()
-            ?.jsonObject?.get("email")?.jsonPrimitive?.content?.substringAfterLast('@')
+    private suspend fun ownDomain(): String? = identity()?.email?.substringAfterLast('@')
+
+    private suspend fun fetchIdentity(): Identity? =
+        jmapClient.callOne("Identity/get", JsonObject(emptyMap())).getValue("list").jsonArray.firstOrNull()?.jsonObject?.let {
+            Identity(
+                id = it.getValue("id").jsonPrimitive.content,
+                name = it["name"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                email = it.getValue("email").jsonPrimitive.content,
+            )
+        }
 }
 
 internal fun JsonObject.toMailbox() =
@@ -152,7 +172,7 @@ private fun JsonObject.toEmailSummary(ownDomain: String?): EmailSummary {
     )
 }
 
-private class OwnDomain(val domain: String?)
+private class KnownIdentity(val identity: Identity?)
 
 /** email is null for MIME group syntax ("undisclosed-recipients:;"), which carries a name and no address. */
 private fun JsonObject.toEmailAddress(): EmailAddress? {

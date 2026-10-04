@@ -32,7 +32,7 @@ private fun String.render(form: String?): JsonElement =
         else -> JsonPrimitive(" $this")
     }
 
-/** `inMailbox`, `from`, `to`, `cc` and `bcc` (a case-insensitive substring of any address, as a server matches text), and AND/OR/NOT. */
+/** `inMailbox`, `hasKeyword`, `from`, `to`, `cc` and `bcc` (a case-insensitive substring of any address, as a server matches text), and AND/OR/NOT. */
 internal fun FakeEmail.matches(filter: JsonObject?): Boolean {
     if (filter == null) return true
     filter["operator"]?.jsonPrimitive?.content?.let { operator ->
@@ -47,6 +47,7 @@ internal fun FakeEmail.matches(filter: JsonObject?): Boolean {
         val wanted = value.jsonPrimitive.contentOrNull.orEmpty()
         when (key) {
             "inMailbox" -> wanted in mailboxIds
+            "hasKeyword" -> wanted in keywords
             "from" -> listOfNotNull(from, fromName).any { it.contains(wanted, ignoreCase = true) }
             "to" -> to.any { it.contains(wanted, ignoreCase = true) }
             "cc" -> cc.any { it.contains(wanted, ignoreCase = true) }

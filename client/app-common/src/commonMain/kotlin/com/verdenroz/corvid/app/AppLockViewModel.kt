@@ -71,6 +71,10 @@ class AppLockViewModel(
         viewModelScope.launch { keyHolder.state.collect(::onKeyState) }
     }
 
+    /** The signed-in server's short name, for the key pill. */
+    val serverHost: String?
+        get() = (tokenSource.state.value as? AuthState.SignedIn)?.server?.baseUrl?.let(::shortHost)
+
     fun submitDeviceName(name: String) {
         deviceName = name
         viewModelScope.launch { resolveKey(name) }

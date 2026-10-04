@@ -7,6 +7,8 @@ import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.core.testing.FakeEmail
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.FakeMailbox
+import com.verdenroz.corvid.core.testing.SENDABLE_ACCOUNT_EMAIL
+import com.verdenroz.corvid.core.testing.withSendableAccount
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -75,7 +77,7 @@ class MailboxRepositoryTest {
             val all = mutableListOf<EmailSummary>()
             var anchor: String? = null
             do {
-                val page = assertIs<EmailPage.Found>(repository.page("inbox", anchor))
+                val page = assertIs<EmailPage.Found>(repository.page(MailFilter.InMailbox("inbox"), anchor))
                 all += page.emails
                 anchor = page.emails.lastOrNull()?.id
             } while (page.emails.isNotEmpty())
@@ -92,7 +94,7 @@ class MailboxRepositoryTest {
             val fake = FakeJmapServer()
             fake.emails += FakeEmail("e1", "e1", setOf("inbox"), "s1", "a@example.test", "2024-01-01T00:00:00Z")
 
-            val page = repository(fake).page("inbox", anchor = "does-not-exist")
+            val page = repository(fake).page(MailFilter.InMailbox("inbox"), anchor = "does-not-exist")
 
             assertIs<EmailPage.AnchorNotFound>(page)
         }
@@ -277,5 +279,20 @@ class MailboxRepositoryTest {
             val lookup = repository(fake).getEmail("gone")
 
             assertIs<EmailLookup.NotFound>(lookup)
+        }
+
+    @Test
+    fun `the account identity is fetched once and then remembered`() =
+        runTest {
+            val fake = FakeJmapServer().withSendableAccount()
+            val repository = repository(fake)
+
+            val first = repository.identity()
+            val requests = fake.requestCount
+            val second = repository.identity()
+
+            assertEquals(SENDABLE_ACCOUNT_EMAIL, first?.email)
+            assertEquals(first, second)
+            assertEquals(requests, fake.requestCount)
         }
 }

@@ -5,8 +5,11 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class IdleTimeoutControllerTest {
@@ -47,5 +50,36 @@ class IdleTimeoutControllerTest {
             advanceTimeBy(6.minutes)
 
             assertEquals(0, idleCount)
+        }
+
+    @Test
+    fun `activity moves the lock deadline to a full timeout from now`() =
+        runTest {
+            var now = Instant.parse("2026-10-04T09:00:00Z")
+            val clock =
+                object : Clock {
+                    override fun now() = now
+                }
+            val controller = IdleTimeoutController(backgroundScope, onIdle = {}, timeout = 5.minutes, clock = clock)
+
+            controller.recordActivity()
+            now += 3.minutes
+            controller.recordActivity()
+
+            assertEquals(Instant.parse("2026-10-04T09:08:00Z"), controller.locksAt.value)
+        }
+
+    @Test
+    fun `there is no deadline once stopped or once the key has dropped`() =
+        runTest {
+            val controller = IdleTimeoutController(backgroundScope, onIdle = {}, timeout = 5.minutes)
+
+            controller.recordActivity()
+            controller.stop()
+            assertNull(controller.locksAt.value)
+
+            controller.recordActivity()
+            advanceTimeBy(5.minutes + 1.seconds)
+            assertNull(controller.locksAt.value)
         }
 }

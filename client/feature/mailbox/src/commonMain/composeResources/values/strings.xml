@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="mailbox_no_inbox">This account has no inbox.</string>
-    <string name="mailbox_compose">Compose</string>
-    <string name="mailbox_load_more">Load more</string>
+    <string name="mailbox_no_mailbox">This account has no %1$s mailbox.</string>
     <string name="mailbox_back">Back</string>
     <string name="mailbox_reply">Reply</string>
     <string name="mailbox_reply_all">Reply all</string>
@@ -13,4 +11,15 @@
     <string name="mailbox_to">To: %1$s</string>
     <string name="mailbox_cc">Cc: %1$s</string>
     <string name="mailbox_truncated">This message was truncated.</string>
+    <string name="mailbox_no_sender">Unknown sender</string>
+    <string name="mailbox_separator">-</string>
+    <string name="mailbox_unread">Unread</string>
+    <string name="source_own_server">Your server</string>
+    <string name="source_mailing_list">Mailing list</string>
+    <string name="source_newsletter">Newsletter</string>
+    <string name="source_automated">Automated</string>
+    <string name="ledger_empty_inbox">Nothing waiting.</string>
+    <string name="ledger_empty_starred">Nothing starred.</string>
+    <string name="ledger_empty_sent">Nothing sent from here yet.</string>
+    <string name="ledger_empty_drafts">No drafts.</string>
 </resources>

@@ -14,6 +14,23 @@
     <string name="enroll_title">No key on the server for "%1$s" yet.</string>
     <string name="enroll_detail">It may be this device's first sign-in, or its access was revoked.</string>
     <string name="enroll_confirm">Enroll "%1$s"</string>
-    <string name="app_filters">Filters</string>
-    <string name="app_lock">Lock</string>
+    <string name="app_name">Corvid</string>
+    <string name="search_placeholder">Search mail, people and sources</string>
+    <string name="search_shortcut">Ctrl K</string>
+    <string name="search">Search</string>
+    <string name="key_status">· key held · locks in %1$s</string>
+    <string name="key_countdown">%1$s:%2$s</string>
+    <string name="key_lock_now">Lock now</string>
+    <string name="tab_inbox">Inbox</string>
+    <string name="tab_people">People</string>
+    <string name="tab_sources">Sources</string>
+    <string name="tab_starred">Starred</string>
+    <string name="tab_sent">Sent</string>
+    <string name="tab_drafts">Drafts</string>
+    <string name="tab_labels">Labels</string>
+    <string name="tab_filters">Filters</string>
+    <string name="write">Write</string>
+    <string name="placeholder_people">People get their own list later. For now they are in Inbox, drawn as circles.</string>
+    <string name="placeholder_sources">Sources get their own list later. For now they are in Inbox, drawn as rounded squares.</string>
+    <string name="placeholder_labels">Labels do not have their own view yet.</string>
 </resources>

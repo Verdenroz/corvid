@@ -26,4 +26,27 @@
     <string name="clock_time">%1$s:%2$s</string>
     <string name="stamp_this_year">%1$s %2$s %3$s, %4$s</string>
     <string name="stamp_other_year">%1$s %2$s %3$s %4$s, %5$s</string>
+    <string name="day_long_monday">Monday</string>
+    <string name="day_long_tuesday">Tuesday</string>
+    <string name="day_long_wednesday">Wednesday</string>
+    <string name="day_long_thursday">Thursday</string>
+    <string name="day_long_friday">Friday</string>
+    <string name="day_long_saturday">Saturday</string>
+    <string name="day_long_sunday">Sunday</string>
+    <string name="month_long_january">January</string>
+    <string name="month_long_february">February</string>
+    <string name="month_long_march">March</string>
+    <string name="month_long_april">April</string>
+    <string name="month_long_may">May</string>
+    <string name="month_long_june">June</string>
+    <string name="month_long_july">July</string>
+    <string name="month_long_august">August</string>
+    <string name="month_long_september">September</string>
+    <string name="month_long_october">October</string>
+    <string name="month_long_november">November</string>
+    <string name="month_long_december">December</string>
+    <string name="heading_today">Today</string>
+    <string name="heading_weekday_day_month">%1$s %2$s %3$s</string>
+    <string name="heading_day_month">%1$s %2$s</string>
+    <string name="heading_day_month_year">%1$s %2$s %3$s</string>
 </resources>

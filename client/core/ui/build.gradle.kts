@@ -10,6 +10,7 @@ kotlin {
         commonMain.dependencies {
             api(projects.core.designsystem)
             api(projects.core.text)
+            api(projects.core.model)
             implementation(libs.compose.components.resources)
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)

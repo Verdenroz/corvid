@@ -3,13 +3,14 @@ package com.verdenroz.corvid.feature.mailbox
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.core.data.EmailPage
+import com.verdenroz.corvid.core.data.MailFilter
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.data.userMessage
 import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.core.text.uiText
 import com.verdenroz.corvid.feature.mailbox.resources.Res
-import com.verdenroz.corvid.feature.mailbox.resources.mailbox_no_inbox
+import com.verdenroz.corvid.feature.mailbox.resources.mailbox_no_mailbox
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -18,14 +19,17 @@ private const val PAGE_SIZE = 50
 
 /**
  * A page whose queryState differs from the one before it means the mailbox
- * changed mid-scroll (decision 8): the anchor may now point past a gap or a
+ * changed mid-scroll: the anchor may now point past a gap or a
  * repeat, so the whole list is refetched from the top rather than trusted.
  */
-class InboxViewModel(private val repository: MailboxRepository) : ViewModel() {
-    private val _state = MutableStateFlow<InboxUiState>(InboxUiState.Loading)
-    val state: StateFlow<InboxUiState> = _state
+class LedgerViewModel(
+    private val repository: MailboxRepository,
+    private val tab: LedgerTab,
+) : ViewModel() {
+    private val _state = MutableStateFlow<LedgerUiState>(LedgerUiState.Loading)
+    val state: StateFlow<LedgerUiState> = _state
 
-    private var mailboxId: String? = null
+    private var filter: MailFilter? = null
     private var queryState: String? = null
     private var emails: List<EmailSummary> = emptyList()
 
@@ -40,22 +44,28 @@ class InboxViewModel(private val repository: MailboxRepository) : ViewModel() {
 
     private suspend fun start() {
         try {
-            val inbox = repository.findMailboxByRole("inbox")
-            if (inbox == null) {
-                _state.value = InboxUiState.Failed(uiText(Res.string.mailbox_no_inbox))
-                return
-            }
-            mailboxId = inbox.id
+            val role = tab.role
+            filter =
+                if (role == null) {
+                    MailFilter.Starred
+                } else {
+                    val mailbox = repository.findMailboxByRole(role)
+                    if (mailbox == null) {
+                        _state.value = LedgerUiState.Failed(uiText(Res.string.mailbox_no_mailbox, role))
+                        return
+                    }
+                    MailFilter.InMailbox(mailbox.id)
+                }
             loadPage(anchor = null)
         } catch (e: JmapException) {
-            _state.value = InboxUiState.Failed(e.userMessage())
+            _state.value = LedgerUiState.Failed(e.userMessage())
         }
     }
 
     private suspend fun loadPage(anchor: String?) {
-        val id = mailboxId ?: return
+        val current = filter ?: return
         try {
-            when (val page = repository.page(id, anchor)) {
+            when (val page = repository.page(current, anchor)) {
                 is EmailPage.AnchorNotFound -> restartFromTop()
                 is EmailPage.Found -> {
                     val staleAnchor = anchor != null && queryState != null && page.queryState != queryState
@@ -65,11 +75,11 @@ class InboxViewModel(private val repository: MailboxRepository) : ViewModel() {
                     }
                     emails = if (anchor == null) page.emails else emails + page.emails
                     queryState = page.queryState
-                    _state.value = InboxUiState.Loaded(emails, canLoadMore = page.emails.size == PAGE_SIZE)
+                    _state.value = LedgerUiState.Loaded(emails, canLoadMore = page.emails.size == PAGE_SIZE)
                 }
             }
         } catch (e: JmapException) {
-            _state.value = InboxUiState.Failed(e.userMessage())
+            _state.value = LedgerUiState.Failed(e.userMessage())
         }
     }
 

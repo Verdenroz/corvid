@@ -28,4 +28,19 @@ class CorvidKeywordsTest {
         assertEquals("corvid-rule-receipts-2024", CorvidKeywords.ruleKeyword("Receipts 2024"))
         assertEquals("corvid-rule--t-", CorvidKeywords.ruleKeyword("Été"))
     }
+
+    @Test
+    fun `each namespace reads as the label kind that wrote it`() {
+        assertEquals(Label.Yours("receipts"), CorvidKeywords.labelOf("receipts"))
+        assertEquals(Label.Labeler("receipts"), CorvidKeywords.labelOf("corvid-receipts"))
+        assertEquals(Label.Guess("newsletter"), CorvidKeywords.labelOf("corvid-llm-label-newsletter"))
+        assertEquals(Label.Rule("ops"), CorvidKeywords.labelOf("corvid-rule-ops"))
+    }
+
+    @Test
+    fun `flags and the model's markers are not labels`() {
+        listOf("\$seen", "\$flagged", "corvid-llm-done", "corvid-llm-oversized").forEach {
+            assertEquals(null, CorvidKeywords.labelOf(it), it)
+        }
+    }
 }

@@ -41,7 +41,7 @@ class ProvenanceTest {
                     ),
                 )
 
-            val summary = assertIs<EmailPage.Found>(repository(fake).page("inbox", null)).emails.single()
+            val summary = assertIs<EmailPage.Found>(repository(fake).page(MailFilter.InMailbox("inbox"), null)).emails.single()
 
             assertEquals(Seal.Signed("browser.test"), summary.provenance.seal)
             assertEquals(6, assertIs<Rewrite.Stripped>(summary.provenance.rewrite).stripped)
@@ -92,7 +92,7 @@ class ProvenanceTest {
             val fake = FakeJmapServer().withSendableAccount()
             fake.emails += email("s", "sentinel@example.test", mapOf("Auto-Submitted" to listOf("auto-generated")))
 
-            val summary = assertIs<EmailPage.Found>(repository(fake).page("inbox", null)).emails.single()
+            val summary = assertIs<EmailPage.Found>(repository(fake).page(MailFilter.InMailbox("inbox"), null)).emails.single()
 
             assertEquals(SenderKind.Source(SourceKind.OwnServer), summary.provenance.sender)
         }

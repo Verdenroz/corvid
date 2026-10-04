@@ -7,7 +7,8 @@ import com.verdenroz.corvid.core.model.ComposeIntent
 
 /** A screen on the unlocked back stack; the last entry is the one showing. */
 sealed interface Route {
-    data object Inbox : Route
+    /** The tabbed home: one of the ledgers, or a view that is not built yet. */
+    data class Home(val tab: HomeTab) : Route
 
     data class Reader(val emailId: String) : Route
 
@@ -22,7 +23,7 @@ val RouteStackSaver: Saver<SnapshotStateList<Route>, List<String>> =
 
 internal fun Route.encode(): String =
     when (this) {
-        is Route.Inbox -> "inbox"
+        is Route.Home -> "home:${tab.name}"
         is Route.Filters -> "filters"
         is Route.Reader -> "reader:$emailId"
         is Route.Compose ->
@@ -37,7 +38,7 @@ internal fun decodeRoute(saved: String): Route {
     val kind = saved.substringBefore(':')
     val id = saved.substringAfter(':')
     return when (kind) {
-        "inbox" -> Route.Inbox
+        "home" -> Route.Home(HomeTab.valueOf(id))
         "filters" -> Route.Filters
         "reader" -> Route.Reader(id)
         "compose" -> Route.Compose(ComposeIntent.New)

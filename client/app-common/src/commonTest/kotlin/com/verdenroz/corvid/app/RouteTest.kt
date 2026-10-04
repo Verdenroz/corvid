@@ -9,7 +9,8 @@ class RouteTest {
     fun `every route survives a save and restore unchanged`() {
         val routes =
             listOf(
-                Route.Inbox,
+                Route.Home(HomeTab.Inbox),
+                Route.Home(HomeTab.Drafts),
                 Route.Filters,
                 Route.Reader("e1"),
                 Route.Compose(ComposeIntent.New),

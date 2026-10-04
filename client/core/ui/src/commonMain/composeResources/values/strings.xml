@@ -5,4 +5,12 @@
     <string name="revoked_title">This device's access was revoked</string>
     <string name="unreachable_title">Unreachable</string>
     <string name="unreachable_retry">Retry</string>
+    <string name="label_guess">%1$s?</string>
+    <string name="seal_signed_by">Signed by %1$s</string>
+    <string name="seal_signed">Signed</string>
+    <string name="seal_failed">Failed authentication</string>
+    <plurals name="trackers_removed">
+        <item quantity="one">%1$d tracker removed</item>
+        <item quantity="other">%1$d trackers removed</item>
+    </plurals>
 </resources>
