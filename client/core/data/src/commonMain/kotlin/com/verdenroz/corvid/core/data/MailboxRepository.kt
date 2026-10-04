@@ -53,12 +53,10 @@ sealed interface EmailLookup {
  * is stateless across pages.
  */
 class MailboxRepository(private val jmapClient: JmapClient) {
-    suspend fun findMailboxByRole(role: String): Mailbox? {
-        val result = jmapClient.callOne("Mailbox/get", JsonObject(emptyMap()))
-        return result.getValue("list").jsonArray
-            .map { it.jsonObject.toMailbox() }
-            .firstOrNull { it.role == role }
-    }
+    suspend fun mailboxes(): List<Mailbox> =
+        jmapClient.callOne("Mailbox/get", JsonObject(emptyMap())).getValue("list").jsonArray.map { it.jsonObject.toMailbox() }
+
+    suspend fun findMailboxByRole(role: String): Mailbox? = mailboxes().firstOrNull { it.role == role }
 
     suspend fun page(
         mailboxId: String,
