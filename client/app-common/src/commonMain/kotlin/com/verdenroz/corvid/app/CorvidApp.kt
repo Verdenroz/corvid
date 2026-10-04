@@ -13,9 +13,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
@@ -98,25 +97,23 @@ private fun UnlockedContent(
         Box(modifier = Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.CenterEnd) {
             Button(onClick = onLock) { Text("Lock") }
         }
-        var openEmailId by remember { mutableStateOf<String?>(null) }
-        var composeIntent by remember { mutableStateOf<ComposeIntent?>(null) }
-        val emailId = openEmailId
-        val intent = composeIntent
-        when {
-            intent != null -> ComposeScreen(composeRepository, intent, onClose = { composeIntent = null })
-            emailId == null ->
+        val backStack = remember { mutableStateListOf<Route>(Route.Inbox) }
+        val pop = { backStack.removeAt(backStack.lastIndex) }
+        when (val route = backStack.last()) {
+            is Route.Inbox ->
                 InboxScreen(
                     repository,
-                    onOpenEmail = { openEmailId = it },
-                    onCompose = { composeIntent = ComposeIntent.New },
+                    onOpenEmail = { backStack += Route.Reader(it) },
+                    onCompose = { backStack += Route.Compose(ComposeIntent.New) },
                 )
-            else ->
+            is Route.Reader ->
                 ReaderScreen(
                     repository,
-                    emailId,
-                    onBack = { openEmailId = null },
-                    onCompose = { composeIntent = it },
+                    route.emailId,
+                    onBack = { pop() },
+                    onCompose = { backStack += Route.Compose(it) },
                 )
+            is Route.Compose -> ComposeScreen(composeRepository, route.intent, onClose = { pop() })
         }
     }
 }
