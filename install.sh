@@ -4,7 +4,7 @@
 #   ./install.sh --ssh-key FILE [--image REF | --ship-local] [--replace] USER@SERVER
 #
 #   --ssh-key FILE   private key that logs in to SERVER (required; nothing is guessed)
-#   --image REF      Corvid image to run (default: this checkout's release on GHCR)
+#   --image REF      Corvid image to run (default: the latest release, which the host then follows)
 #   --ship-local     build the image here and copy it to SERVER instead of pulling it
 #   --replace        remove a container that already holds the mail ports
 #   USER@SERVER      where to install: root, or a user with passwordless sudo
@@ -25,7 +25,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/deploy/mta-sts-lib.sh"
 . "$HERE/deploy/idp-dns-lib.sh"
 VERSION="$(sed -nE 's/^version = "([^"]+)"/\1/p' "$HERE/Cargo.toml" | head -1)"
-IMAGE="ghcr.io/verdenroz/corvid:$VERSION"
+IMAGE="ghcr.io/verdenroz/corvid:stable"
 CLI_VERSION=1.0.12
 declare -A CLI_SHA256=(
   [x86_64]=76fcd7250a10c7bee704dc4a08000b3faca6b5a22895d41831c0c37efd95acce

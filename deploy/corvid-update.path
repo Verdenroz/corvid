@@ -1,0 +1,9 @@
+[Unit]
+Description=Run a Corvid update check or apply when one is requested
+
+[Path]
+PathExists=/opt/corvid/update/request
+Unit=corvid-update.service
+
+[Install]
+WantedBy=paths.target

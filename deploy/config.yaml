@@ -33,6 +33,11 @@ server:
   # delivery looks right.
   # mta_sts_mode: testing
 
+# Whether this host pulls the release its image tag points at every night, deploys it and rolls
+# back when verify fails. Set false to update by hand with install.sh.
+update:
+  auto: true
+
 labeler:
   jmap_url: http://127.0.0.1:8080
   jmap_user: alice@example.com

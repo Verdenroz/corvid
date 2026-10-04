@@ -1,0 +1,11 @@
+[Unit]
+Description=Update Corvid to the release its image tag points at
+Documentation=https://github.com/Verdenroz/corvid/blob/main/deploy/RUNBOOK.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/corvid/deploy/update.sh
+# deploy.sh waits for Stalwart's queue and verify.sh waits out restart delays.
+TimeoutStartSec=1h

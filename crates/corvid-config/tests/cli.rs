@@ -37,7 +37,8 @@ fn shell_prints_the_server_section_of_the_template() {
             "PUBLISH_TLSA",
             "MTA_STS_MODE",
             "MTA_STS_ID",
-            "CLIENT_SOURCES"
+            "CLIENT_SOURCES",
+            "UPDATE_AUTO"
         ]
     );
 }

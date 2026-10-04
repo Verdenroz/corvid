@@ -35,6 +35,7 @@ jobs:
       - run: bash deploy/tests/device.test.sh
       - run: bash deploy/tests/totp.test.sh
       - run: bash deploy/tests/lib.test.sh
+      - run: bash deploy/tests/update.test.sh
       - run: cat deploy/stalwart.plan.ndjson deploy/stalwart.host-zone.ndjson > combined.ndjson && ./deploy/check-plan.py combined.ndjson
       - run: ./deploy/check-plan.py
       - run: ./deploy/check-env.sh

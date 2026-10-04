@@ -62,6 +62,8 @@ echo "[2/6] directories and secrets"
 install -d -o "$STALWART_UID" -g "$STALWART_UID" -m 750 "$CORVID_DIR/stalwart" "$CORVID_DIR/data"
 install -d -m 700 "$CORVID_DIR/secrets"
 install -m 644 "$HERE/unbound.conf" "$CORVID_DIR/unbound.conf"
+# The pod's uid writes update requests and reads status.json here; nothing else is its to touch.
+install -d -o "$STALWART_UID" -g "$STALWART_UID" -m 750 "$CORVID_DIR/update"
 ok "directories"
 
 # Read by the Stalwart process, which runs as uid 2000. Root-owned 600 would be
@@ -131,7 +133,9 @@ ok "env files and volumes present"
 
 echo "[4/6] quadlet units"
 render_units "$QUADLET_DIR" "$HERE"
+install -m 644 "$HERE/corvid-update.service" "$HERE/corvid-update.timer" "$HERE/corvid-update.path" /etc/systemd/system/
 systemctl daemon-reload
+systemctl enable --now corvid-update.timer corvid-update.path >/dev/null
 ok "units installed from $CORVID_IMAGE, pod publishing web port $WEB_PORT"
 
 # Installed quadlets start at the next boot and would collide with the container still
