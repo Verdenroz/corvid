@@ -25,6 +25,7 @@ const val CORE_CAPABILITY = "urn:ietf:params:jmap:core"
 const val MAIL_CAPABILITY = "urn:ietf:params:jmap:mail"
 const val SUBMISSION_CAPABILITY = "urn:ietf:params:jmap:submission"
 const val FILENODE_CAPABILITY = "urn:ietf:params:jmap:filenode"
+const val SIEVE_CAPABILITY = "urn:ietf:params:jmap:sieve"
 
 /**
  * A session against a rebased JMAP endpoint. [connect] discovers it; [call]

@@ -63,7 +63,8 @@ class EmbeddedServerConnectTest {
                 "urn:ietf:params:jmap:core": {},
                 "urn:ietf:params:jmap:mail": {},
                 "urn:ietf:params:jmap:submission": {},
-                "urn:ietf:params:jmap:filenode": {}
+                "urn:ietf:params:jmap:filenode": {},
+                "urn:ietf:params:jmap:sieve": {}
               },
               "primaryAccounts": {"urn:ietf:params:jmap:mail": "u1"},
               "apiUrl": "https://mail.corvid.test/jmap/api/",
