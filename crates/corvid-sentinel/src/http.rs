@@ -1,7 +1,5 @@
-use std::io;
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::Duration;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use axum::Router;
 use axum::body::Bytes;
@@ -19,7 +17,6 @@ pub struct Config<N> {
     pub seen: Seen,
     pub notifier: N,
     pub update_dir: PathBuf,
-    pub update_poll: Duration,
 }
 
 struct AppState<N> {
@@ -29,16 +26,6 @@ struct AppState<N> {
     notifier: N,
 }
 
-impl<N> AppState<N> {
-    fn seen(&self) -> MutexGuard<'_, Seen> {
-        // A poisoned lock means a prior request panicked mid-decision; the state it left behind
-        // is still whatever the last successful commit wrote, so it is safe to keep using.
-        self.seen
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-    }
-}
-
 pub fn router<N: Notifier + Send + Sync + 'static>(config: Config<N>) -> Router {
     let state = Arc::new(AppState {
         secret: config.secret,
@@ -46,51 +33,10 @@ pub fn router<N: Notifier + Send + Sync + 'static>(config: Config<N>) -> Router 
         seen: Mutex::new(config.seen),
         notifier: config.notifier,
     });
-    tokio::spawn(watch_update_failures(
-        state.clone(),
-        config.update_dir.clone(),
-        config.update_poll,
-    ));
     Router::new()
         .route("/webhook", post(webhook::<N>))
         .with_state(state)
         .merge(update::routes(config.update_dir))
-}
-
-async fn watch_update_failures<N: Notifier + Send + Sync + 'static>(
-    state: Arc<AppState<N>>,
-    dir: PathBuf,
-    every: Duration,
-) {
-    let mut tick = tokio::time::interval(every);
-    loop {
-        tick.tick().await;
-        let (state, dir) = (state.clone(), dir.clone());
-        let outcome = tokio::task::spawn_blocking(move || notice_update_failure(&state, &dir))
-            .await
-            .expect("the blocking task panicked");
-        if let Err(error) = outcome {
-            tracing::warn!(%error, "could not check for an update failure");
-        }
-    }
-}
-
-fn notice_update_failure<N: Notifier>(state: &AppState<N>, dir: &Path) -> io::Result<()> {
-    let mut seen = state.seen();
-    let Some(failure) = update::failure(dir, seen.update_noticed.as_deref())? else {
-        return Ok(());
-    };
-    state.notifier.send(&notice::update_failed(
-        &failure,
-        state.notifier.account_email(),
-    ))?;
-    let next = Seen {
-        update_noticed: Some(failure.checked_at),
-        ..seen.clone()
-    };
-    save(&state.state_path, &next)?;
-    *seen = next;
-    Ok(())
 }
 
 async fn webhook<N: Notifier + Send + Sync + 'static>(
@@ -109,7 +55,12 @@ async fn webhook<N: Notifier + Send + Sync + 'static>(
     let events = parse(&body);
 
     let outcome = tokio::task::spawn_blocking(move || {
-        let mut seen = state.seen();
+        // A poisoned lock means a prior request panicked mid-decision; the state it left behind
+        // is still whatever the last successful commit wrote, so it is safe to keep using.
+        let mut seen = state
+            .seen
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         match events {
             Ok(events) => {
                 let next = handle(&events, &seen, &state.notifier)?;
@@ -180,7 +131,6 @@ mod tests {
             seen: Seen::default(),
             notifier: mailbox,
             update_dir: std::env::temp_dir().join("sentinel-test-no-update-dir"),
-            update_poll: Duration::from_secs(3600),
         });
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         format!("http://{addr}/webhook")

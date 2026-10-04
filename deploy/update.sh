@@ -196,13 +196,11 @@ mv "$deploy_dir.prev" "$deploy_dir"
 if deploy_from "$deploy_dir"; then
   result=rolledBack
   detail="$latest failed to deploy; $running is running again and verified"
-  echo "$detail" >&2
-  exit 1
+else
+  result=failed
+  detail="$latest failed to deploy and restoring $running failed too; the host needs attention"
 fi
-result=failed
-detail="$latest failed to deploy and restoring $running failed too; the host needs attention"
 echo "$detail" >&2
-# The sentinel mails a rollback, but it runs in the pod this just failed to restore.
 send_mail "postmaster@$MAIL_DOMAIN" "Corvid update to $latest failed on $MAIL_HOSTNAME" \
   "Updating $MAIL_HOSTNAME from $running to $latest failed.
 
