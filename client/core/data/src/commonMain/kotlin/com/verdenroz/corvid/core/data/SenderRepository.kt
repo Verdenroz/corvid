@@ -7,7 +7,8 @@ import com.verdenroz.corvid.core.jmap.resultReference
 import com.verdenroz.corvid.core.model.EmailAddress
 import com.verdenroz.corvid.core.model.Rewrite
 import com.verdenroz.corvid.core.model.Seal
-import com.verdenroz.corvid.core.model.SenderStats
+import com.verdenroz.corvid.core.model.SenderCounts
+import com.verdenroz.corvid.core.model.SenderWindow
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -21,64 +22,84 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlin.time.Instant
 
-private const val STATS_PAGE = 256
-private val FROM_PROPERTIES = listOf("id", "from", "receivedAt", AUTHENTICATION_RESULTS, CORVID_REWRITE)
+private const val PAGE = 500
+const val SENDER_WINDOW = 200
+private val COUNT_PROPERTIES = listOf("id", "from", "receivedAt")
 private val SENT_PROPERTIES = listOf("id", "to", "cc", "bcc")
+private val WINDOW_PROPERTIES = listOf("id", "from", AUTHENTICATION_RESULTS, CORVID_REWRITE)
 
 /**
  * A server's `from` and `to` filters match text, so "ada@x.test" also finds "lada@x.test" and
- * "ada@x.test.evil". Every candidate is fetched and kept only when an address matches exactly,
- * paging until the query is exhausted, so a count is never a guess.
+ * "ada@x.test.evil". Every candidate is checked and kept only when an address matches exactly.
+ * Counting reads three small properties per message; header facts read only the newest
+ * [SENDER_WINDOW] matches. Both stop at the next request once their coroutine is cancelled.
  */
 class SenderRepository(
     private val jmapClient: JmapClient,
     private val mailboxRepository: MailboxRepository,
 ) {
-    suspend fun stats(address: String): SenderStats {
-        val received = exactMatches(condition("from", address), FROM_PROPERTIES) { it.addressList("from").hasAddress(address) }
-        val sentId = mailboxRepository.findMailboxByRole("sent")?.id
-        val sent =
-            sentId?.let { id ->
-                val recipients =
-                    buildJsonObject {
-                        put("operator", "OR")
-                        putJsonArray("conditions") { listOf("to", "cc", "bcc").forEach { add(condition(it, address)) } }
-                    }
-                val filter =
-                    buildJsonObject {
-                        put("operator", "AND")
-                        putJsonArray("conditions") {
-                            add(condition("inMailbox", id))
-                            add(recipients)
-                        }
-                    }
-                exactMatches(
-                    filter,
-                    SENT_PROPERTIES,
-                ) { email -> listOf("to", "cc", "bcc").any { email.addressList(it).hasAddress(address) } }
-            }.orEmpty()
-        val rewrites = received.mapNotNull { readRewrite(it.texts(CORVID_REWRITE)) }
-        return SenderStats(
+    suspend fun counts(address: String): SenderCounts {
+        val received =
+            exactMatches(condition("from", address), COUNT_PROPERTIES, ascending = true) { it.addressList("from").hasAddress(address) }
+        val sent = mailboxRepository.findMailboxByRole("sent")?.id?.let { sentMatches(it, address) }.orEmpty()
+        return SenderCounts(
             received = received.size,
             firstSeen = received.firstOrNull()?.let { Instant.parse(it.getValue("receivedAt").jsonPrimitive.content) },
-            signed = received.count { readSeal(it.texts(AUTHENTICATION_RESULTS)) is Seal.Signed },
-            marked = rewrites.size,
-            trackersStripped = rewrites.sumOf { (it as? Rewrite.Stripped)?.stripped ?: 0 },
             sent = sent.size,
         )
     }
 
-    /** Oldest first, so the first match is the first message ever seen. A mailbox that changes mid-count is counted again. */
+    suspend fun window(address: String): SenderWindow {
+        val newest =
+            exactMatches(condition("from", address), WINDOW_PROPERTIES, ascending = false, enough = SENDER_WINDOW) {
+                it.addressList("from").hasAddress(address)
+            }.take(SENDER_WINDOW)
+        val rewrites = newest.mapNotNull { readRewrite(it.texts(CORVID_REWRITE)) }
+        return SenderWindow(
+            size = newest.size,
+            signed = newest.count { readSeal(it.texts(AUTHENTICATION_RESULTS)) is Seal.Signed },
+            marked = rewrites.size,
+            trackersStripped = rewrites.sumOf { (it as? Rewrite.Stripped)?.stripped ?: 0 },
+        )
+    }
+
+    private suspend fun sentMatches(
+        sentId: String,
+        address: String,
+    ): List<JsonObject> {
+        val recipients =
+            buildJsonObject {
+                put("operator", "OR")
+                putJsonArray("conditions") { listOf("to", "cc", "bcc").forEach { add(condition(it, address)) } }
+            }
+        val filter =
+            buildJsonObject {
+                put("operator", "AND")
+                putJsonArray("conditions") {
+                    add(condition("inMailbox", sentId))
+                    add(recipients)
+                }
+            }
+        return exactMatches(filter, SENT_PROPERTIES, ascending = true) { email ->
+            listOf("to", "cc", "bcc").any {
+                email.addressList(it).hasAddress(address)
+            }
+        }
+    }
+
+    /** Pages through every candidate until [enough] exact matches are kept; a mailbox that changes mid-count is counted again. */
     private suspend fun exactMatches(
         filter: JsonObject,
         properties: List<String>,
+        ascending: Boolean,
+        enough: Int = Int.MAX_VALUE,
         keep: (JsonObject) -> Boolean,
     ): List<JsonObject> {
         val kept = mutableListOf<JsonObject>()
         var position = 0
         var queryState: String? = null
         do {
-            val page = page(filter, properties, position)
+            val page = page(filter, properties, ascending, position)
             if (queryState != null && page.queryState != queryState) {
                 kept.clear()
                 position = 0
@@ -87,14 +108,15 @@ class SenderRepository(
             }
             queryState = page.queryState
             kept += page.emails.filter(keep)
-            position += STATS_PAGE
-        } while (position < page.total)
+            position += PAGE
+        } while (position < page.total && kept.size < enough)
         return kept
     }
 
     private suspend fun page(
         filter: JsonObject,
         properties: List<String>,
+        ascending: Boolean,
         position: Int,
     ): StatsPage {
         val query =
@@ -103,11 +125,11 @@ class SenderRepository(
                 putJsonArray("sort") {
                     addJsonObject {
                         put("property", "receivedAt")
-                        put("isAscending", true)
+                        put("isAscending", ascending)
                     }
                 }
                 put("position", position)
-                put("limit", STATS_PAGE)
+                put("limit", PAGE)
                 put("calculateTotal", true)
             }
         val get =

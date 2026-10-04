@@ -6,6 +6,8 @@ import com.verdenroz.corvid.core.jmap.createJmapHttpClient
 import com.verdenroz.corvid.core.testing.FakeEmail
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.withSendableAccount
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -47,7 +49,7 @@ class SenderRepositoryTest {
             fake.emails += from("lookalike", "lada@analytical.test")
             fake.emails += from("suffixed", "ada@analytical.test.evil")
 
-            assertEquals(2, senders(fake).stats(ADA).received)
+            assertEquals(2, senders(fake).counts(ADA).received)
         }
 
     @Test
@@ -58,7 +60,7 @@ class SenderRepositoryTest {
             fake.emails += from("first", ADA, at = "2025-03-02T10:00:00Z")
             fake.emails += from("later", ADA, at = "2026-01-01T00:00:00Z")
 
-            assertEquals(Instant.parse("2025-03-02T10:00:00Z"), senders(fake).stats(ADA).firstSeen)
+            assertEquals(Instant.parse("2025-03-02T10:00:00Z"), senders(fake).counts(ADA).firstSeen)
         }
 
     @Test
@@ -68,10 +70,10 @@ class SenderRepositoryTest {
             fake.emails += from("ok", ADA, headers = results(ADA_PASS))
             fake.emails += from("forged", ADA, headers = results("mx; dmarc=none", ADA_PASS))
 
-            val stats = senders(fake).stats(ADA)
+            val window = senders(fake).window(ADA)
 
-            assertEquals(1, stats.signed)
-            assertEquals(2, stats.received)
+            assertEquals(1, window.signed)
+            assertEquals(2, window.size)
         }
 
     @Test
@@ -83,10 +85,10 @@ class SenderRepositoryTest {
             fake.emails += from("forged", ADA, headers = rewrite("stripped=9 proxied=0 hosts=0 trackers=9", "none"))
             fake.emails += from("unmarked", ADA)
 
-            val stats = senders(fake).stats(ADA)
+            val window = senders(fake).window(ADA)
 
-            assertEquals(4, stats.trackersStripped)
-            assertEquals(2, stats.marked)
+            assertEquals(4, window.trackersStripped)
+            assertEquals(2, window.marked)
         }
 
     @Test
@@ -99,26 +101,26 @@ class SenderRepositoryTest {
             fake.emails += sent("lookalike", to = listOf("lada@analytical.test"))
             fake.emails += FakeEmail("inbox", "inbox", setOf("inbox"), "s", "bob@b.test", "2024-01-05T00:00:00Z", to = listOf(ADA))
 
-            assertEquals(3, senders(fake).stats(ADA).sent)
+            assertEquals(3, senders(fake).counts(ADA).sent)
         }
 
     @Test
     fun `a sender with more messages than one page is counted in full`() =
         runTest {
             val fake = FakeJmapServer().withSendableAccount()
-            repeat(600) { fake.emails += from("m$it", ADA, at = Instant.fromEpochSeconds(it.toLong()).toString()) }
+            repeat(1200) { fake.emails += from("m$it", ADA, at = Instant.fromEpochSeconds(it.toLong()).toString()) }
 
-            val stats = senders(fake).stats(ADA)
+            val counts = senders(fake).counts(ADA)
 
-            assertEquals(600, stats.received)
-            assertEquals(Instant.fromEpochSeconds(0), stats.firstSeen)
+            assertEquals(1200, counts.received)
+            assertEquals(Instant.fromEpochSeconds(0), counts.firstSeen)
         }
 
     @Test
     fun `a mailbox that changes between pages is counted again from the start`() =
         runTest {
             val fake = FakeJmapServer().withSendableAccount()
-            repeat(300) { fake.emails += from("m$it", ADA, at = Instant.fromEpochSeconds(it.toLong()).toString()) }
+            repeat(700) { fake.emails += from("m$it", ADA, at = Instant.fromEpochSeconds(it.toLong()).toString()) }
             var queries = 0
             fake.beforeEmailQuery = {
                 queries++
@@ -128,10 +130,57 @@ class SenderRepositoryTest {
                 }
             }
 
-            val stats = senders(fake).stats(ADA)
+            val counts = senders(fake).counts(ADA)
 
-            assertEquals(301, stats.received)
-            assertEquals(1, stats.signed)
-            assertEquals(Instant.fromEpochSeconds(-1), stats.firstSeen)
+            assertEquals(701, counts.received)
+            assertEquals(Instant.fromEpochSeconds(-1), counts.firstSeen)
+        }
+
+    @Test
+    fun `the window reads only the newest two hundred exact matches`() =
+        runTest {
+            val fake = FakeJmapServer().withSendableAccount()
+            fake.emails += from("oldest", ADA, at = Instant.fromEpochSeconds(0).toString(), headers = results(ADA_PASS))
+            repeat(200) { fake.emails += from("m$it", ADA, at = Instant.fromEpochSeconds(10L + it).toString()) }
+            repeat(50) {
+                fake.emails += from("l$it", "lada@analytical.test", at = Instant.fromEpochSeconds(1000L + it).toString(), headers = results(ADA_PASS))
+            }
+
+            val window = senders(fake).window(ADA)
+
+            assertEquals(SENDER_WINDOW, window.size)
+            assertEquals(0, window.signed)
+        }
+
+    @Test
+    fun `a cancelled count sends nothing after the page in flight`() =
+        runTest {
+            val fake = FakeJmapServer().withSendableAccount()
+            repeat(1200) { fake.emails += from("m$it", ADA, at = Instant.fromEpochSeconds(it.toLong()).toString()) }
+            val repository = senders(fake)
+            var queries = 0
+            lateinit var job: Job
+            fake.beforeEmailQuery = {
+                queries++
+                job.cancel()
+            }
+
+            job = launch { repository.counts(ADA) }
+            job.join()
+
+            assertEquals(1, queries)
+        }
+
+    @Test
+    fun `the window stops reading once it holds two hundred matches`() =
+        runTest {
+            val fake = FakeJmapServer().withSendableAccount()
+            repeat(1200) { fake.emails += from("m$it", ADA, at = Instant.fromEpochSeconds(it.toLong()).toString()) }
+            var queries = 0
+            fake.beforeEmailQuery = { queries++ }
+
+            senders(fake).window(ADA)
+
+            assertEquals(1, queries)
         }
 }
