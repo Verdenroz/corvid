@@ -59,15 +59,15 @@ class FiltersRepositoryTest {
         }
 
     @Test
-    fun `a save creates one active script named corvid-filters with the rule keyword`() =
+    fun `a save creates one active script named corvid with the rule keyword`() =
         runTest {
             val fake = FakeJmapServer()
 
             val result = repository(fake).save(listOf(RULE), replaceForeign = false)
 
             assertEquals(SaveResult.Saved, result)
-            assertEquals(listOf("corvid-filters" to true), fake.sieveScripts.map { it.name to it.isActive })
-            assertTrue("addflag \"corvid-rule-receipts\";" in fake.scriptText("corvid-filters"))
+            assertEquals(listOf("corvid" to true), fake.sieveScripts.map { it.name to it.isActive })
+            assertTrue("addflag \"corvid-rule-receipts\";" in fake.scriptText("corvid"))
         }
 
     @Test
@@ -106,7 +106,7 @@ class FiltersRepositoryTest {
         }
 
     @Test
-    fun `a confirmed save activates corvid-filters and keeps the foreign script`() =
+    fun `a confirmed save activates corvid and keeps the foreign script`() =
         runTest {
             val fake = FakeJmapServer()
             fake.sieveScripts += FakeSieveScript(id = "old", name = "vacation", blobId = "b0", isActive = true)
@@ -115,7 +115,7 @@ class FiltersRepositoryTest {
 
             assertEquals(SaveResult.Saved, result)
             assertEquals(
-                listOf("vacation" to false, "corvid-filters" to true),
+                listOf("vacation" to false, "corvid" to true),
                 fake.sieveScripts.map { it.name to it.isActive },
             )
         }
@@ -129,7 +129,7 @@ class FiltersRepositoryTest {
             val result = repository(fake).save(listOf(RULE), replaceForeign = false)
 
             assertEquals(SaveResult.Saved, result)
-            assertEquals(listOf("vacation" to false, "corvid-filters" to true), fake.sieveScripts.map { it.name to it.isActive })
+            assertEquals(listOf("vacation" to false, "corvid" to true), fake.sieveScripts.map { it.name to it.isActive })
         }
 
     @Test
@@ -152,7 +152,7 @@ class FiltersRepositoryTest {
 
             repository(fake).save(listOf(rule), replaceForeign = false)
 
-            assertTrue("fileinto :mailboxid \"m1\" \"Bin\";" in fake.scriptText("corvid-filters"))
+            assertTrue("fileinto :mailboxid \"m1\" \"Bin\";" in fake.scriptText("corvid"))
         }
 
     @Test
@@ -186,11 +186,11 @@ class FiltersRepositoryTest {
         }
 
     @Test
-    fun `a corvid-filters script whose rules line is truncated fails to load as a format error`() =
+    fun `a corvid script whose rules line is truncated fails to load as a format error`() =
         runTest {
             val fake = FakeJmapServer()
             fake.blobs["b0"] = "# corvid-rules v1 [{\nkeep;\n".encodeToByteArray()
-            fake.sieveScripts += FakeSieveScript(id = "s0", name = "corvid-filters", blobId = "b0")
+            fake.sieveScripts += FakeSieveScript(id = "s0", name = "corvid", blobId = "b0")
 
             assertFailsWith<FiltersFormatException> { repository(fake).load() }
         }

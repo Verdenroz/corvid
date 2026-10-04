@@ -58,7 +58,7 @@ class FiltersViewModelTest {
             vm.saveRule(null, rule("first"))
 
             assertEquals(listOf("first"), vm.ready().rules.map { it.name })
-            assertEquals(listOf("corvid-filters" to true), fake.sieveScripts.map { it.name to it.isActive })
+            assertEquals(listOf("corvid" to true), fake.sieveScripts.map { it.name to it.isActive })
         }
 
     @Test
@@ -93,7 +93,7 @@ class FiltersViewModelTest {
             vm.confirmReplace()
 
             assertFalse(vm.ready().confirming)
-            assertEquals(listOf("vacation" to false, "corvid-filters" to true), fake.sieveScripts.map { it.name to it.isActive })
+            assertEquals(listOf("vacation" to false, "corvid" to true), fake.sieveScripts.map { it.name to it.isActive })
         }
 
     @Test
@@ -175,11 +175,11 @@ class FiltersViewModelTest {
         }
 
     @Test
-    fun `an unreadable corvid-filters script fails the screen rather than offering an empty list`() =
+    fun `an unreadable corvid script fails the screen rather than offering an empty list`() =
         runViewModelTest {
             val fake = FakeJmapServer()
             fake.blobs["b0"] = "keep;\n".encodeToByteArray()
-            fake.sieveScripts += FakeSieveScript(id = "s0", name = "corvid-filters", blobId = "b0")
+            fake.sieveScripts += FakeSieveScript(id = "s0", name = "corvid", blobId = "b0")
 
             val vm = track(FiltersViewModel(repository(fake)))
 

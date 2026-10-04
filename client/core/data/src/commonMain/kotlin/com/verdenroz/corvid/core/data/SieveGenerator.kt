@@ -10,25 +10,22 @@ import com.verdenroz.corvid.core.model.isComplete
 
 internal const val RULE_KEYWORD_PREFIX = "corvid-rule-"
 
-private const val REQUIRE = "require [\"fileinto\", \"imap4flags\", \"mailboxid\"];"
-
 /**
- * The script is output only: the rule list rides in [rulesLine] and is never
+ * The Sieve is output only: the rule list rides in the rules line and is never
  * recovered from the Sieve below it. Flag actions run before a rule's
  * `fileinto` so the filed copy carries them, and a flag set by a later rule
  * does not reach a message an earlier rule already filed. A disabled or
  * incomplete rule stays in the rules line and leaves the script.
  * [trash] must be set when an enabled rule moves to Trash.
  */
-internal fun generateSieve(
-    rules: List<FilterRule>,
-    trash: FilterAction.MoveToFolder?,
-): String =
-    buildList {
-        add(rulesLine(rules))
-        add(REQUIRE)
-        rules.filter { it.enabled && it.isComplete }.forEach { add(it.toSieve(trash)) }
-    }.joinToString("\n", postfix = "\n")
+internal class RulesSection(
+    private val rules: List<FilterRule>,
+    private val trash: FilterAction.MoveToFolder?,
+) : ScriptSection {
+    override val requires = listOf("fileinto", "imap4flags", "mailboxid")
+    override val metadata get() = rulesLine(rules)
+    override val sieve get() = rules.filter { it.enabled && it.isComplete }.joinToString("\n") { it.toSieve(trash) }
+}
 
 private fun FilterRule.toSieve(trash: FilterAction.MoveToFolder?): String {
     val (fileActions, flagActions) = actions.partition { it is FilterAction.MoveToFolder || it is FilterAction.MoveToTrash }

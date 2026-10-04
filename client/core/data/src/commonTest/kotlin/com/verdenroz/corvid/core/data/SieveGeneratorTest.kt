@@ -34,7 +34,7 @@ private val TRASH = FilterAction.MoveToFolder("t1", "Trash")
 private fun body(
     rule: FilterRule,
     trash: FilterAction.MoveToFolder = TRASH,
-) = generateSieve(listOf(rule), trash).lines().drop(2).joinToString("\n").trim()
+) = CorvidScript(listOf(rule)).render(trash).lines().drop(2).joinToString("\n").trim()
 
 class SieveGeneratorTest {
     @Test
@@ -148,7 +148,7 @@ class SieveGeneratorTest {
     @Test
     fun `a disabled rule is left out of the script but kept in the rules line`() {
         val disabled = rule(condition(ConditionField.From, ConditionOperator.Contains), enabled = false)
-        val script = generateSieve(listOf(disabled), TRASH)
+        val script = CorvidScript(listOf(disabled)).render(TRASH)
 
         assertFalse("if " in script)
         assertEquals(listOf(disabled), parseRules(script))
@@ -157,10 +157,7 @@ class SieveGeneratorTest {
     @Test
     fun `a value with quotes backslashes and sieve syntax stays inert text`() {
         val script =
-            generateSieve(
-                listOf(rule(condition(ConditionField.Subject, ConditionOperator.Contains, HOSTILE))),
-                TRASH,
-            )
+            CorvidScript(listOf(rule(condition(ConditionField.Subject, ConditionOperator.Contains, HOSTILE)))).render(TRASH)
 
         val code = script.lines().filterNot { it.startsWith("#") }.joinToString("\n")
         assertTrue(quote(HOSTILE) in code)
@@ -171,7 +168,7 @@ class SieveGeneratorTest {
     fun `a hostile value comes back exactly from the saved script`() {
         val saved = rule(condition(ConditionField.Subject, ConditionOperator.Contains, HOSTILE))
 
-        val loaded = parseRules(generateSieve(listOf(saved), TRASH))
+        val loaded = parseRules(CorvidScript(listOf(saved)).render(TRASH))
 
         assertEquals(listOf(saved), loaded)
     }
@@ -193,7 +190,7 @@ class SieveGeneratorTest {
                 stop = true,
             )
 
-        assertEquals(listOf(saved), parseRules(generateSieve(listOf(saved), TRASH)))
+        assertEquals(listOf(saved), parseRules(CorvidScript(listOf(saved)).render(TRASH)))
     }
 
     @Test
@@ -207,7 +204,7 @@ class SieveGeneratorTest {
                 rule(condition(ConditionField.From, ConditionOperator.Contains), actions = listOf(FilterAction.MoveToFolder("", "x"))),
             )
 
-        val script = generateSieve(incomplete, TRASH)
+        val script = CorvidScript(incomplete).render(TRASH)
 
         assertFalse("if " in script)
         assertEquals(incomplete, parseRules(script))

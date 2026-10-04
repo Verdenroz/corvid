@@ -32,7 +32,7 @@ class FakeJmapServerSieveTest {
 
             val id = result.getValue("created").jsonObject.getValue("c1").jsonObject.getValue("id").jsonPrimitive.content
             val stored = fake.sieveScripts.single { it.id == id }
-            assertEquals("corvid-filters", stored.name)
+            assertEquals("corvid", stored.name)
             assertEquals(blobId, stored.blobId)
             assertEquals(listOf("old" to false, id to true), fake.sieveScripts.map { it.id to it.isActive })
         }
@@ -41,7 +41,7 @@ class FakeJmapServerSieveTest {
     fun `an updated script keeps its id and takes the new blob`() =
         runTest {
             val fake = FakeJmapServer()
-            fake.sieveScripts += FakeSieveScript(id = "s0", name = "corvid-filters", blobId = "b0")
+            fake.sieveScripts += FakeSieveScript(id = "s0", name = "corvid", blobId = "b0")
             val client = connect(fake)
 
             val result =
@@ -103,7 +103,7 @@ private fun createScript(
     buildJsonObject {
         putJsonObject("create") {
             putJsonObject(creationId) {
-                put("name", "corvid-filters")
+                put("name", "corvid")
                 put("blobId", blobId)
             }
         }

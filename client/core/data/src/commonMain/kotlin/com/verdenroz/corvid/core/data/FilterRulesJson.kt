@@ -21,8 +21,8 @@ import kotlinx.serialization.json.put
 
 private const val RULES_PREFIX = "# corvid-rules v1 "
 
-/** The `corvid-filters` script has no rules line, or one this client cannot read. */
-class FiltersFormatException : Exception("the corvid-filters script has no rule list this client can read")
+/** The `corvid` script has no rules line, or one this client cannot read. */
+class FiltersFormatException : Exception("the corvid script has no rule list this client can read")
 
 /** The one `#` line holding the rule list. Compact JSON escapes every control character, so it never spans lines. */
 internal fun rulesLine(rules: List<FilterRule>): String = RULES_PREFIX + buildJsonArray { rules.forEach { add(it.toJson()) } }
