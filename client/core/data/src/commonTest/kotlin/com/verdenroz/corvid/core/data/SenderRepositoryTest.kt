@@ -72,7 +72,7 @@ class SenderRepositoryTest {
             fake.emails += from("ok", ADA, headers = results(ADA_PASS))
             fake.emails += from("forged", ADA, headers = results("mx; dmarc=none", ADA_PASS))
 
-            val window = assertNotNull(senders(fake).window(ADA))
+            val window = assertNotNull(senders(fake).newest(ADA)?.let(::senderWindow))
 
             assertEquals(1, window.signed)
             assertEquals(2, window.size)
@@ -87,7 +87,7 @@ class SenderRepositoryTest {
             fake.emails += from("forged", ADA, headers = rewrite("stripped=9 proxied=0 hosts=0 trackers=9", "none"))
             fake.emails += from("unmarked", ADA)
 
-            val window = assertNotNull(senders(fake).window(ADA))
+            val window = assertNotNull(senders(fake).newest(ADA)?.let(::senderWindow))
 
             assertEquals(4, window.trackersStripped)
             assertEquals(2, window.marked)
@@ -149,7 +149,7 @@ class SenderRepositoryTest {
                 fake.emails += from("l$it", "lada@analytical.test", at = at, headers = results(ADA_PASS))
             }
 
-            val window = assertNotNull(senders(fake).window(ADA))
+            val window = assertNotNull(senders(fake).newest(ADA)?.let(::senderWindow))
 
             assertEquals(SENDER_WINDOW, window.size)
             assertEquals(0, window.signed)
@@ -182,7 +182,7 @@ class SenderRepositoryTest {
             var queries = 0
             fake.beforeEmailQuery = { queries++ }
 
-            senders(fake).window(ADA)
+            senders(fake).newest(ADA)?.let(::senderWindow)
 
             assertEquals(1, queries)
         }

@@ -17,7 +17,7 @@ internal fun parseRewrite(value: String): Rewrite? {
     val counts = mutableMapOf<String, Int>()
     var named = emptySet<String>()
     var omitted = 0
-    for (field in trimmed.split(Regex("\\s+"))) {
+    for (field in trimmed.split(WHITESPACE)) {
         val (key, raw) = field.split('=', limit = 2).takeIf { it.size == 2 } ?: return null
         when (key) {
             "stripped", "proxied", "hosts", "trackers" -> counts[key] = raw.toCount() ?: return null

@@ -106,6 +106,21 @@ class ReaderViewModelTest {
         }
 
     @Test
+    fun `answering a guess rereads only the labels, not the message`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.emails += guessed()
+            val vm = track(ReaderViewModel(repository(fake), "g1"))
+            vm.state.first { it is ReaderUiState.Loaded }
+            fake.emails[0] = fake.emails[0].copy(body = "edited on the server")
+
+            vm.answer(Correction.Right(Label.Guess("personal")))
+
+            val after = vm.state.first { it is ReaderUiState.Loaded && "personal" in it.email.keywords } as ReaderUiState.Loaded
+            assertEquals("b", after.email.body)
+        }
+
+    @Test
     fun `an answer the server refuses keeps the guess and says why`() =
         runViewModelTest {
             val fake = FakeJmapServer()

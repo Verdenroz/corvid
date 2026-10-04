@@ -2,7 +2,7 @@ package com.verdenroz.corvid.core.data
 
 import com.verdenroz.corvid.core.model.Seal
 
-private val WHITESPACE = Regex("\\s+")
+internal val WHITESPACE = Regex("\\s+")
 
 /**
  * Reads the receiving server's verdict out of `Authentication-Results`. Only the FIRST header

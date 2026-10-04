@@ -61,12 +61,12 @@ class LedgerViewModel(
                 if (role == null) {
                     MailFilter.Starred
                 } else {
-                    val mailbox = repository.findMailboxByRole(role)
-                    if (mailbox == null) {
+                    val id = repository.mailboxId(role)
+                    if (id == null) {
                         _state.value = LedgerUiState.Failed(uiText(Res.string.mailbox_no_mailbox, role))
                         return
                     }
-                    MailFilter.InMailbox(mailbox.id)
+                    MailFilter.InMailbox(id)
                 }
             loadPage(anchor = null)
         } catch (e: JmapException) {

@@ -33,7 +33,6 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.data.SenderRepository
 import com.verdenroz.corvid.core.data.clockTime
 import com.verdenroz.corvid.core.data.dayHeading
@@ -88,13 +87,12 @@ class SenderCardActions(
 
 @Composable
 fun SenderCard(
-    mailbox: MailboxRepository,
     senders: SenderRepository,
     address: String,
     wide: Boolean,
     actions: SenderCardActions,
 ) {
-    val model = remember(address) { SenderCardModel(mailbox, senders, address) }
+    val model = remember(address) { SenderCardModel(senders, address) }
     LaunchedEffect(model) { model.load() }
     val state by model.state.collectAsState()
     val latest = state.recent?.firstOrNull()
@@ -150,7 +148,7 @@ private fun Header(
                 .drawBehind {
                     val y = size.height - 0.5.dp.toPx()
                     drawLine(colors.line, Offset(0f, y), Offset(size.width, y), 1.dp.toPx())
-                }.padding(start = CorvidSpacing.gutter(wide), end = 18.dp, bottom = 18.dp),
+                }.padding(start = CorvidSpacing.gutter(wide), end = CorvidSpacing.gutter(wide), bottom = 18.dp),
     ) {
         SenderAvatar(name, sender is SenderKind.Source, seal, size = if (wide) 60.dp else 52.dp)
         Column(Modifier.weight(1f)) {

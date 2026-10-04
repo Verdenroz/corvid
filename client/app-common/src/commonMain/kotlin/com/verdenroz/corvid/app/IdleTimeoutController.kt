@@ -9,6 +9,7 @@ import kotlinx.coroutines.launch
 import kotlin.time.Clock
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 private val IDLE_TIMEOUT = 5.minutes
@@ -25,12 +26,17 @@ class IdleTimeoutController(
     private val clock: Clock = Clock.System,
 ) {
     private var job: Job? = null
+    private var lastActivity: Instant? = null
     private val _locksAt = MutableStateFlow<Instant?>(null)
     val locksAt: StateFlow<Instant?> = _locksAt
 
+    /** Activity under a second after the last one is ignored: pointer moves arrive far faster than the deadline needs. */
     fun recordActivity() {
+        val now = clock.now()
+        if (job?.isActive == true && lastActivity?.let { now - it < 1.seconds } == true) return
+        lastActivity = now
         job?.cancel()
-        _locksAt.value = clock.now() + timeout
+        _locksAt.value = now + timeout
         job =
             scope.launch {
                 delay(timeout)

@@ -15,6 +15,8 @@ import com.verdenroz.corvid.core.model.Identity
 import com.verdenroz.corvid.core.model.Mailbox
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -34,19 +36,16 @@ import kotlin.time.Instant
 
 private const val PAGE_SIZE = 50
 private const val MAX_BODY_VALUE_BYTES = 262_144
-private val EMAIL_PROPERTIES = listOf("id", "threadId", "subject", "from", "receivedAt", "keywords", "preview") + PROVENANCE_PROPERTIES
+internal val EMAIL_PROPERTIES = listOf("id", "threadId", "subject", "from", "receivedAt", "keywords", "preview") + PROVENANCE_PROPERTIES
 private val EMAIL_DETAIL_PROPERTIES =
     listOf("id", "subject", "from", "to", "cc", "replyTo", "messageId", "references", "receivedAt", "keywords", "textBody", "bodyValues") +
         PROVENANCE_PROPERTIES
 
-/** What a list shows: one mailbox, every starred message, or one sender's mail, wherever it is filed. */
+/** What a list shows: one mailbox, or every starred message wherever it is filed. */
 sealed interface MailFilter {
     data class InMailbox(val mailboxId: String) : MailFilter
 
     data object Starred : MailFilter
-
-    /** A server's `from` matches text, so the caller checks each result's address itself. */
-    data class From(val address: String) : MailFilter
 }
 
 sealed interface EmailPage {
@@ -75,7 +74,9 @@ sealed interface EmailLookup {
  * is stateless across pages.
  */
 class MailboxRepository(private val jmapClient: JmapClient) {
+    private val mutex = Mutex()
     private var identity: KnownIdentity? = null
+    private var roleIds: Map<String, String>? = null
     private val _keywordPatches = MutableSharedFlow<KeywordPatch>(extraBufferCapacity = 16)
 
     /** Every patch [updateKeywords] got through, so a list already on screen can apply it without refetching. */
@@ -84,7 +85,15 @@ class MailboxRepository(private val jmapClient: JmapClient) {
     suspend fun mailboxes(): List<Mailbox> =
         jmapClient.callOne("Mailbox/get", JsonObject(emptyMap())).getValue("list").jsonArray.map { it.jsonObject.toMailbox() }
 
+    /** Counts change with every message, so this always asks the server; for the id alone use [mailboxId]. */
     suspend fun findMailboxByRole(role: String): Mailbox? = mailboxes().firstOrNull { it.role == role }
+
+    /** The id of the mailbox with [role], fetched once: roles do not move while the app is open. */
+    suspend fun mailboxId(role: String): String? =
+        mutex.withLock {
+            val ids = roleIds ?: mailboxes().mapNotNull { box -> box.role?.let { it to box.id } }.toMap().also { roleIds = it }
+            ids[role]
+        }
 
     suspend fun page(
         filter: MailFilter,
@@ -96,7 +105,6 @@ class MailboxRepository(private val jmapClient: JmapClient) {
                     when (filter) {
                         is MailFilter.InMailbox -> put("inMailbox", filter.mailboxId)
                         is MailFilter.Starred -> put("hasKeyword", CorvidKeywords.FLAGGED)
-                        is MailFilter.From -> put("from", filter.address)
                     }
                 }
                 putJsonArray("sort") {
@@ -146,6 +154,17 @@ class MailboxRepository(private val jmapClient: JmapClient) {
         return EmailLookup.Found(result.getValue("list").jsonArray.first().jsonObject.toEmailDetail(ownDomain()))
     }
 
+    /** One message's keywords alone; null when it is gone. */
+    suspend fun keywords(id: String): Set<String>? {
+        val arguments =
+            buildJsonObject {
+                putJsonArray("ids") { add(JsonPrimitive(id)) }
+                putJsonArray("properties") { add(JsonPrimitive("keywords")) }
+            }
+        val found = jmapClient.callOne("Email/get", arguments).getValue("list").jsonArray.firstOrNull() ?: return null
+        return found.jsonObject.getValue("keywords").jsonObject.keys
+    }
+
     /**
      * Patches only the named keywords, so anything else on the message, including the labeler's,
      * is left as it is. Returns the server's reason when it refuses, null when it took the patch.
@@ -171,12 +190,12 @@ class MailboxRepository(private val jmapClient: JmapClient) {
     }
 
     /** The account's first identity, fetched once: who the account avatar is, and which senders are its own server. */
-    suspend fun identity(): Identity? {
-        val known = identity ?: KnownIdentity(fetchIdentity()).also { identity = it }
-        return known.identity
-    }
+    suspend fun identity(): Identity? =
+        mutex.withLock {
+            (identity ?: KnownIdentity(fetchIdentity()).also { identity = it }).identity
+        }
 
-    private suspend fun ownDomain(): String? = identity()?.email?.substringAfterLast('@')
+    internal suspend fun ownDomain(): String? = identity()?.email?.substringAfterLast('@')
 
     private suspend fun fetchIdentity(): Identity? =
         jmapClient.callOne("Identity/get", JsonObject(emptyMap())).getValue("list").jsonArray.firstOrNull()?.jsonObject?.let {
@@ -200,7 +219,7 @@ internal fun JsonObject.toMailbox() =
 
 // subject and from are nullable in RFC 8621: reading a null subject as a plain string
 // returns the literal word "null", and reading a null from as an array throws.
-private fun JsonObject.toEmailSummary(ownDomain: String?): EmailSummary {
+internal fun JsonObject.toEmailSummary(ownDomain: String?): EmailSummary {
     val from = addressList("from").firstOrNull()
     return EmailSummary(
         id = getValue("id").jsonPrimitive.content,

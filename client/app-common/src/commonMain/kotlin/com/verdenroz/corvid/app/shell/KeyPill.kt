@@ -5,10 +5,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
@@ -45,40 +47,42 @@ internal fun rememberRemaining(locksAt: Instant?): Duration? {
 }
 
 @Composable
-internal fun KeyPill(
-    host: String,
-    remaining: Duration,
-    timeout: Duration,
-    onLock: () -> Unit,
-) {
+private fun KeyState.remaining(): Duration? = rememberRemaining(locksAt.collectAsState().value)
+
+@Composable
+internal fun KeyPill(key: KeyState) {
+    val remaining = key.remaining() ?: return
     PillButton(
-        onClick = onLock,
+        onClick = key.onLock,
         onClickLabel = stringResource(Res.string.key_lock_now),
         contentPadding = PaddingValues(start = 7.dp, end = 13.dp),
     ) {
-        KeyRing(fraction(remaining, timeout))
-        KeyStatus(host, remaining)
+        KeyRing(fraction(remaining, key.timeout))
+        KeyStatus(key.host, remaining)
     }
 }
 
 @Composable
-internal fun KeyRingButton(
-    remaining: Duration,
-    timeout: Duration,
-    onLock: () -> Unit,
-) {
+internal fun KeyRingButton(key: KeyState) {
+    val remaining = key.remaining() ?: return
     Box(
         contentAlignment = Alignment.Center,
         modifier =
             Modifier
                 .size(40.dp)
                 .clip(CircleShape)
-                .clickable(onClickLabel = stringResource(Res.string.key_lock_now), role = Role.Button, onClick = onLock),
-    ) { KeyRing(fraction(remaining, timeout)) }
+                .clickable(onClickLabel = stringResource(Res.string.key_lock_now), role = Role.Button, onClick = key.onLock),
+    ) { KeyRing(fraction(remaining, key.timeout)) }
 }
 
 @Composable
-internal fun KeyStatus(
+internal fun KeyStatusLine(key: KeyState) {
+    val remaining = key.remaining() ?: return
+    Row(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)) { KeyStatus(key.host, remaining) }
+}
+
+@Composable
+private fun KeyStatus(
     host: String,
     remaining: Duration,
 ) {

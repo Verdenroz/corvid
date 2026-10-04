@@ -33,13 +33,15 @@ import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.CorvidMark
 import com.verdenroz.corvid.core.model.Identity
 import com.verdenroz.corvid.core.ui.provenance.SenderAvatar
+import kotlinx.coroutines.flow.StateFlow
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Duration
+import kotlin.time.Instant
 
-/** What the key pill shows; [remaining] is null in the moment before the idle timer first starts. */
+/** What the key controls show; they collect [locksAt] themselves, so only they tick each second. */
 internal class KeyState(
     val host: String,
-    val remaining: Duration?,
+    val locksAt: StateFlow<Instant?>,
     val timeout: Duration,
     val onLock: () -> Unit,
 )
@@ -67,7 +69,7 @@ internal fun WideTopBar(
             Box(Modifier.widthIn(min = 190.dp)) { Wordmark() }
             SearchField(Modifier.weight(1f, fill = false).widthIn(max = 520.dp))
             Spacer(Modifier.weight(0.01f))
-            key.remaining?.let { KeyPill(key.host, it, key.timeout, key.onLock) }
+            KeyPill(key)
             identity?.let { AccountAvatar(it) }
         }
         HorizontalDivider(color = colors.line)
@@ -87,17 +89,9 @@ internal fun NarrowTopBar(key: KeyState) {
             Box(Modifier.size(40.dp).unavailable(stringResource(Res.string.search_unavailable)), contentAlignment = Alignment.Center) {
                 Icon(CorvidIcons.Search, contentDescription = null, tint = colors.inkMuted)
             }
-            key.remaining?.let { KeyRingButton(it, key.timeout, key.onLock) }
+            KeyRingButton(key)
         }
-        key.remaining?.let {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
-            ) {
-                KeyStatus(key.host, it)
-            }
-        }
+        KeyStatusLine(key)
     }
 }
 

@@ -39,7 +39,6 @@ import com.verdenroz.corvid.app.shell.KeyState
 import com.verdenroz.corvid.app.shell.NarrowTopBar
 import com.verdenroz.corvid.app.shell.TabsBar
 import com.verdenroz.corvid.app.shell.WideTopBar
-import com.verdenroz.corvid.app.shell.rememberRemaining
 import com.verdenroz.corvid.core.data.ComposeRepository
 import com.verdenroz.corvid.core.data.FiltersRepository
 import com.verdenroz.corvid.core.data.MailboxRepository
@@ -81,7 +80,8 @@ internal fun UnlockedContent(
     val saved = rememberSaveableStateHolder()
     val navigator = remember(backStack, saved) { Navigator(backStack, saved) }
     val route = navigator.route
-    LaunchedEffect(route) { if (route is Route.Home) shell.refresh() }
+    val home = route is Route.Home
+    LaunchedEffect(home) { if (home) shell.refresh() }
     NavigationBackHandler(
         state = rememberNavigationEventState(NavigationEventInfo.None),
         isBackEnabled = shellHandlesBack(route, navigator.depth),
@@ -89,8 +89,7 @@ internal fun UnlockedContent(
     )
 
     val shellState by shell.state.collectAsState()
-    val locksAt by idleTimeout.locksAt.collectAsState()
-    val key = KeyState(host, rememberRemaining(locksAt), idleTimeout.timeout, onLock)
+    val key = remember(host, onLock) { KeyState(host, idleTimeout.locksAt, idleTimeout.timeout, onLock) }
     BoxWithConstraints(
         Modifier.fillMaxSize().pointerInput(Unit) {
             awaitPointerEventScope {
@@ -198,7 +197,6 @@ private fun Page(
         is Route.Filters -> FiltersScreen(remember(scope) { scope.get<FiltersRepository>() }, onBack = navigator::back)
         is Route.Sender ->
             SenderCard(
-                mailbox = remember(scope) { scope.get<MailboxRepository>() },
                 senders = remember(scope) { scope.get<SenderRepository>() },
                 address = route.address,
                 wide = wide,

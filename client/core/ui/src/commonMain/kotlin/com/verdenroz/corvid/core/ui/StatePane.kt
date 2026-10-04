@@ -51,7 +51,7 @@ fun StatePane(
         Column(Modifier.widthIn(max = 380.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             CorvidMark(width = 48.dp)
             Text(headline, style = CorvidTheme.type.display, color = headlineColor)
-            Box(Modifier.width(120.dp).height(3.dp).background(CorvidTheme.sheen, CorvidShape.pill))
+            Box(Modifier.width(120.dp).height(3.dp).background(colors.accent, CorvidShape.pill))
             detail?.let { Text(it, style = CorvidTheme.type.body, color = colors.inkMuted) }
             if (facts.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {

@@ -9,6 +9,8 @@ import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.FakeMailbox
 import com.verdenroz.corvid.core.testing.SENDABLE_ACCOUNT_EMAIL
 import com.verdenroz.corvid.core.testing.withSendableAccount
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -293,6 +295,34 @@ class MailboxRepositoryTest {
 
             assertEquals(SENDABLE_ACCOUNT_EMAIL, first?.email)
             assertEquals(first, second)
+            assertEquals(requests, fake.requestCount)
+        }
+
+    @Test
+    fun `two screens asking for the identity at once share one request`() =
+        runTest {
+            val fake = FakeJmapServer().withSendableAccount()
+            val repository = repository(fake)
+            val before = fake.requestCount
+
+            awaitAll(async { repository.identity() }, async { repository.identity() })
+
+            assertEquals(before + 1, fake.requestCount)
+        }
+
+    @Test
+    fun `a mailbox id is looked up by role once`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "m2", name = "Inbox", role = "inbox")
+            fake.mailboxes += FakeMailbox(id = "m3", name = "Sent", role = "sent")
+            val repository = repository(fake)
+
+            assertEquals("m2", repository.mailboxId("inbox"))
+            val requests = fake.requestCount
+            assertEquals("m3", repository.mailboxId("sent"))
+            assertEquals(null, repository.mailboxId("drafts"))
+
             assertEquals(requests, fake.requestCount)
         }
 }

@@ -5,6 +5,7 @@ import com.verdenroz.corvid.core.jmap.JmapClient
 import com.verdenroz.corvid.core.jmap.resultOrThrow
 import com.verdenroz.corvid.core.jmap.resultReference
 import com.verdenroz.corvid.core.model.EmailAddress
+import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.core.model.Rewrite
 import com.verdenroz.corvid.core.model.Seal
 import com.verdenroz.corvid.core.model.SenderCounts
@@ -27,13 +28,12 @@ const val SENDER_WINDOW = 200
 private const val MAX_RESTARTS = 3
 private val COUNT_PROPERTIES = listOf("id", "from", "receivedAt")
 private val SENT_PROPERTIES = listOf("id", "to", "cc", "bcc")
-private val WINDOW_PROPERTIES = listOf("id", "from", AUTHENTICATION_RESULTS, CORVID_REWRITE)
 
 /**
  * A server's `from` and `to` filters match text, so "ada@x.test" also finds "lada@x.test" and
  * "ada@x.test.evil". Every candidate is checked and kept only when an address matches exactly.
- * Counting reads three small properties per message; header facts read only the newest
- * [SENDER_WINDOW] matches. Both stop at the next request once their coroutine is cancelled, and
+ * Counting reads three small properties per message; [newest] reads whole summaries, so only
+ * [SENDER_WINDOW] of them. Both stop at the next request once their coroutine is cancelled, and
  * return null rather than a number when the mailbox keeps changing under them.
  */
 class SenderRepository(
@@ -46,7 +46,7 @@ class SenderRepository(
             exactMatches(fromThem, COUNT_PROPERTIES, ascending = true, PAGE) {
                 it.addressList("from").hasAddress(address)
             } ?: return null
-        val sentId = mailboxRepository.findMailboxByRole("sent")?.id
+        val sentId = mailboxRepository.mailboxId("sent")
         val sent = if (sentId == null) emptyList() else sentMatches(sentId, address) ?: return null
         return SenderCounts(
             received = received.size,
@@ -55,18 +55,14 @@ class SenderRepository(
         )
     }
 
-    suspend fun window(address: String): SenderWindow? {
-        val newest =
-            exactMatches(condition("from", address), WINDOW_PROPERTIES, ascending = false, SENDER_WINDOW, enough = SENDER_WINDOW) {
+    /** The newest [SENDER_WINDOW] messages from exactly [address], newest first. */
+    suspend fun newest(address: String): List<EmailSummary>? {
+        val matches =
+            exactMatches(condition("from", address), EMAIL_PROPERTIES, ascending = false, SENDER_WINDOW, enough = SENDER_WINDOW) {
                 it.addressList("from").hasAddress(address)
-            }?.take(SENDER_WINDOW) ?: return null
-        val rewrites = newest.mapNotNull { readRewrite(it.texts(CORVID_REWRITE)) }
-        return SenderWindow(
-            size = newest.size,
-            signed = newest.count { readSeal(it.texts(AUTHENTICATION_RESULTS)) is Seal.Signed },
-            marked = rewrites.size,
-            trackersStripped = rewrites.sumOf { (it as? Rewrite.Stripped)?.stripped ?: 0 },
-        )
+            } ?: return null
+        val domain = mailboxRepository.ownDomain()
+        return matches.take(SENDER_WINDOW).map { it.toEmailSummary(domain) }
     }
 
     private suspend fun sentMatches(
@@ -172,3 +168,14 @@ private fun condition(
 ): JsonObject = buildJsonObject { put(key, value) }
 
 private fun List<EmailAddress>.hasAddress(address: String): Boolean = any { it.email.equals(address, ignoreCase = true) }
+
+/** What a sender's newest messages say about them, from the provenance each one already carries. */
+fun senderWindow(newest: List<EmailSummary>): SenderWindow {
+    val rewrites = newest.mapNotNull { it.provenance.rewrite }
+    return SenderWindow(
+        size = newest.size,
+        signed = newest.count { it.provenance.seal is Seal.Signed },
+        marked = rewrites.size,
+        trackersStripped = rewrites.sumOf { (it as? Rewrite.Stripped)?.stripped ?: 0 },
+    )
+}

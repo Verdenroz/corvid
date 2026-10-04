@@ -34,7 +34,7 @@ object CorvidTheme {
         @Composable @ReadOnlyComposable
         get() = LocalCorvidColors.current
 
-    /** The feather's throw, violet held to 70% so it still reads violet; for the mark, key ring, custody edge and a state's eye line only. */
+    /** The feather's throw, violet held to 70% so it still reads violet; for the mark, the key ring and the custody edge only. */
     val sheen: Brush
         @Composable @ReadOnlyComposable
         get() = colors.let { Brush.linearGradient(0f to it.sheenStart, 0.7f to it.accent, 1f to it.sheenEnd) }

@@ -1,15 +1,23 @@
 package com.verdenroz.corvid.app
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
+
+@OptIn(ExperimentalCoroutinesApi::class)
+private fun TestScope.virtualClock(): Clock =
+    object : Clock {
+        override fun now() = Instant.fromEpochMilliseconds(testScheduler.currentTime)
+    }
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class IdleTimeoutControllerTest {
@@ -29,7 +37,7 @@ class IdleTimeoutControllerTest {
     fun `activity inside the window restarts the timer instead of firing early`() =
         runTest {
             var idleCount = 0
-            val controller = IdleTimeoutController(backgroundScope, onIdle = { idleCount++ }, timeout = 5.minutes)
+            val controller = IdleTimeoutController(backgroundScope, onIdle = { idleCount++ }, timeout = 5.minutes, clock = virtualClock())
 
             controller.recordActivity()
             advanceTimeBy(4.minutes)
@@ -37,6 +45,22 @@ class IdleTimeoutControllerTest {
             advanceTimeBy(4.minutes)
 
             assertEquals(0, idleCount)
+        }
+
+    @Test
+    fun `activity under a second after the last leaves the deadline where it was`() =
+        runTest {
+            val controller = IdleTimeoutController(backgroundScope, onIdle = {}, timeout = 5.minutes, clock = virtualClock())
+
+            controller.recordActivity()
+            val deadline = controller.locksAt.value
+            advanceTimeBy(500)
+            controller.recordActivity()
+            assertEquals(deadline, controller.locksAt.value)
+
+            advanceTimeBy(600)
+            controller.recordActivity()
+            assertEquals(deadline?.plus(1100.milliseconds), controller.locksAt.value)
         }
 
     @Test

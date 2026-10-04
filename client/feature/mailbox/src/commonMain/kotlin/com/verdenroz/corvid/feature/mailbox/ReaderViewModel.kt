@@ -14,6 +14,7 @@ import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.teach_refused
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class ReaderViewModel(
@@ -33,7 +34,7 @@ class ReaderViewModel(
         }
     }
 
-    /** Writes the answer, then reloads, so the labels shown are the server's, not a guess at them. */
+    /** Writes the answer, then rereads the keywords, so the labels shown are the server's, not a guess at them. */
     fun answer(correction: Correction) {
         val current = _state.value as? ReaderUiState.Loaded ?: return
         if (current.answering) return
@@ -41,7 +42,7 @@ class ReaderViewModel(
         viewModelScope.launch {
             try {
                 val refused = repository.updateKeywords(emailId, correction.keywordPatch())
-                if (refused == null) load() else fail(uiText(Res.string.teach_refused, UiText.FromServer(refused)))
+                if (refused == null) showKeywords() else fail(uiText(Res.string.teach_refused, UiText.FromServer(refused)))
             } catch (e: JmapException) {
                 fail(e.userMessage())
             }
@@ -54,6 +55,17 @@ class ReaderViewModel(
                 is EmailLookup.NotFound -> ReaderUiState.Gone
                 is EmailLookup.Found -> ReaderUiState.Loaded(lookup.detail)
             }
+    }
+
+    private suspend fun showKeywords() {
+        val keywords = repository.keywords(emailId)
+        _state.update { current ->
+            when {
+                current !is ReaderUiState.Loaded -> current
+                keywords == null -> ReaderUiState.Gone
+                else -> current.copy(email = current.email.copy(keywords = keywords), answering = false)
+            }
+        }
     }
 
     private fun fail(reason: UiText) {

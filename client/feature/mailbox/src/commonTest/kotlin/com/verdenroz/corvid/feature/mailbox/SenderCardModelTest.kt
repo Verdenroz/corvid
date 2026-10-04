@@ -28,8 +28,7 @@ private fun from(
 
 private suspend fun model(fake: FakeJmapServer): SenderCardModel {
     val client = JmapClient.connect(createJmapHttpClient(fake.engine), AuthLatch(), "http://127.0.0.1:9999")
-    val mailbox = MailboxRepository(client)
-    return SenderCardModel(mailbox, SenderRepository(client, mailbox), ADA)
+    return SenderCardModel(SenderRepository(client, MailboxRepository(client)), ADA)
 }
 
 class SenderCardModelTest {
