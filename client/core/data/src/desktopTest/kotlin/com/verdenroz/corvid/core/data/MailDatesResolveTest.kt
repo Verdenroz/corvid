@@ -26,4 +26,10 @@ class MailDatesResolveTest {
             assertEquals("Today", heading.title.resolve())
             assertEquals("Sunday 4 October", heading.detail.resolve())
         }
+
+    @Test
+    fun `a month and year resolves in full`() =
+        runTest {
+            assertEquals("March 2025", monthYear(Instant.parse("2025-03-02T10:00:00Z"), TimeZone.UTC).resolve())
+        }
 }

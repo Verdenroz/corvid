@@ -34,6 +34,7 @@ data class CorvidColors(
     val dangerTint: Color,
     val sheenStart: Color,
     val sheenEnd: Color,
+    val scrim: Color,
     val isDark: Boolean,
 )
 
@@ -57,6 +58,7 @@ val DarkCorvidColors =
         dangerTint = oklch(0.24f, 0.035f, 28f),
         sheenStart = oklch(0.70f, 0.15f, 300f),
         sheenEnd = oklch(0.74f, 0.12f, 160f),
+        scrim = oklch(0.15f, 0.02f, HUE, alpha = 0.5f),
         isDark = true,
     )
 
@@ -80,6 +82,7 @@ val LightCorvidColors =
         dangerTint = oklch(0.975f, 0.015f, 28f),
         sheenStart = oklch(0.58f, 0.17f, 300f),
         sheenEnd = oklch(0.64f, 0.13f, 160f),
+        scrim = oklch(0.15f, 0.02f, HUE, alpha = 0.3f),
         isDark = false,
     )
 

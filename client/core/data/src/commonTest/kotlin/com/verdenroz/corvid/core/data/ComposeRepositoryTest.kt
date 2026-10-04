@@ -257,4 +257,15 @@ class ComposeRepositoryTest {
             assertTrue(fake.submissions.isEmpty())
             assertEquals(listOf("orig"), fake.emails.map { it.id })
         }
+
+    @Test
+    fun `a message to a sender starts addressed, with a mailto subject when given`() =
+        runTest {
+            val (_, compose) = repositories(server())
+
+            val draft = assertIs<StartResult.Ready>(compose.start(ComposeIntent.To("leave@list.test", "unsubscribe"))).draft
+
+            assertEquals(listOf(EmailAddress(null, "leave@list.test")), draft.to)
+            assertEquals("unsubscribe", draft.subject)
+        }
 }

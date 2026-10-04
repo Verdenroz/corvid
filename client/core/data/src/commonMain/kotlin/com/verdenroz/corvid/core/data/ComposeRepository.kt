@@ -9,6 +9,7 @@ import com.verdenroz.corvid.core.jmap.resultOrThrow
 import com.verdenroz.corvid.core.jmap.setErrorReason
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.model.Draft
+import com.verdenroz.corvid.core.model.EmailAddress
 import com.verdenroz.corvid.core.model.EmailDetail
 import com.verdenroz.corvid.core.model.Identity
 import com.verdenroz.corvid.core.text.SystemTextResolver
@@ -87,6 +88,7 @@ class ComposeRepository(
         load().fold({ it }) { sending ->
             when (intent) {
                 is ComposeIntent.New -> StartResult.Ready(Draft())
+                is ComposeIntent.To -> StartResult.Ready(Draft(to = listOf(EmailAddress(null, intent.address)), subject = intent.subject))
                 is ComposeIntent.Reply ->
                     withOriginal(intent.emailId) {
                         replyDraft(it, sending.identity.email, intent.all, textResolver.resolve(replyAttribution(it, zone, clock.now())))

@@ -2,10 +2,15 @@ package com.verdenroz.corvid.feature.mailbox
 
 import androidx.compose.runtime.Composable
 import com.verdenroz.corvid.core.model.EmailAddress
+import com.verdenroz.corvid.core.model.Seal
 import com.verdenroz.corvid.core.model.SenderKind
 import com.verdenroz.corvid.core.model.SourceKind
+import com.verdenroz.corvid.core.text.UiText
+import com.verdenroz.corvid.core.text.uiText
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_no_sender
+import com.verdenroz.corvid.feature.mailbox.resources.reader_address
+import com.verdenroz.corvid.feature.mailbox.resources.reader_address_unverified
 import com.verdenroz.corvid.feature.mailbox.resources.source_automated
 import com.verdenroz.corvid.feature.mailbox.resources.source_mailing_list
 import com.verdenroz.corvid.feature.mailbox.resources.source_newsletter
@@ -30,3 +35,9 @@ internal fun SenderKind.sourceLabel(): String? =
             },
         )
     }
+
+/** A failed seal qualifies the address it failed to vouch for, so the header does not repeat the claim at face value. */
+internal fun senderAddress(
+    address: String,
+    seal: Seal,
+): UiText = uiText(if (seal is Seal.Failed) Res.string.reader_address_unverified else Res.string.reader_address, address)

@@ -32,6 +32,7 @@ internal fun HomeContent(
     tab: HomeTab,
     repository: MailboxRepository,
     onOpenEmail: (String) -> Unit,
+    onOpenSender: (String) -> Unit,
     onWrite: () -> Unit,
 ) {
     Box(Modifier.fillMaxSize()) {
@@ -39,7 +40,7 @@ internal fun HomeContent(
         if (ledger == null) {
             NotBuilt(tab)
         } else {
-            LedgerScreen(repository, ledger, onOpenEmail)
+            LedgerScreen(repository, ledger, onOpenEmail, onOpenSender)
         }
         WriteButton(onWrite, Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 22.dp))
     }

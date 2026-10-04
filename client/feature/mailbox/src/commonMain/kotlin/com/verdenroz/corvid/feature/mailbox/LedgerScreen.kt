@@ -48,6 +48,7 @@ fun LedgerScreen(
     repository: MailboxRepository,
     tab: LedgerTab,
     onOpenEmail: (String) -> Unit,
+    onOpenSender: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val viewModel = remember(repository, tab) { LedgerViewModel(repository, tab) }
@@ -61,7 +62,7 @@ fun LedgerScreen(
                 if (current.emails.isEmpty()) {
                     Quiet(stringResource(tab.emptyText()))
                 } else {
-                    Ledger(current, onOpenEmail, viewModel::loadMore)
+                    Ledger(current, onOpenEmail, onOpenSender, viewModel::loadMore)
                 }
         }
     }
@@ -72,6 +73,7 @@ fun LedgerScreen(
 private fun Ledger(
     state: LedgerUiState.Loaded,
     onOpenEmail: (String) -> Unit,
+    onOpenSender: (String) -> Unit,
     onLoadMore: () -> Unit,
 ) {
     val zone = remember { TimeZone.currentSystemDefault() }
@@ -87,7 +89,9 @@ private fun Ledger(
         LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 96.dp), modifier = Modifier.fillMaxSize()) {
             days.forEach { day ->
                 stickyHeader(key = day.date.toString()) { DayHeader(day, wide) }
-                items(day.emails, key = { it.id }) { email -> LedgerRow(email, zone, wide, onClick = { onOpenEmail(email.id) }) }
+                items(day.emails, key = {
+                    it.id
+                }) { email -> LedgerRow(email, zone, wide, onClick = { onOpenEmail(email.id) }, onOpenSender = onOpenSender) }
             }
         }
     }

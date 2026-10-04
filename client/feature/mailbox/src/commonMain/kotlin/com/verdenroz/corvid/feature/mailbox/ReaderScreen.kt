@@ -1,5 +1,6 @@
 package com.verdenroz.corvid.feature.mailbox
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -50,7 +51,6 @@ import com.verdenroz.corvid.feature.mailbox.resources.mailbox_no_subject
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_reply
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_reply_all
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_truncated
-import com.verdenroz.corvid.feature.mailbox.resources.reader_address
 import com.verdenroz.corvid.feature.mailbox.resources.reader_cc
 import com.verdenroz.corvid.feature.mailbox.resources.reader_link_disabled
 import com.verdenroz.corvid.feature.mailbox.resources.reader_to
@@ -64,6 +64,7 @@ fun ReaderScreen(
     emailId: String,
     onBack: () -> Unit,
     onCompose: (ComposeIntent) -> Unit,
+    onOpenSender: (String) -> Unit,
 ) {
     val viewModel = remember(repository, emailId) { ReaderViewModel(repository, emailId) }
     val state by viewModel.state.collectAsState()
@@ -81,6 +82,7 @@ fun ReaderScreen(
                         current.email,
                         wide,
                         onCompose,
+                        onOpenSender,
                     ) { guess -> TeachControls(guess, current.answering, current.answerError, viewModel::answer) }
             }
         }
@@ -110,6 +112,7 @@ private fun Reader(
     email: EmailDetail,
     wide: Boolean,
     onCompose: (ComposeIntent) -> Unit,
+    onOpenSender: (String) -> Unit,
     teach: @Composable (Label.Guess) -> Unit,
 ) {
     val colors = CorvidTheme.colors
@@ -132,7 +135,7 @@ private fun Reader(
                 color = if (email.provenance.seal is Seal.Failed) colors.danger else colors.ink,
             )
             Spacer(Modifier.height(16.dp))
-            SenderLine(email)
+            SenderLine(email, onOpenSender)
             Spacer(Modifier.height(16.dp))
             Custody(email, wide, teach)
             if (email.bodyTruncated) {
@@ -178,16 +181,21 @@ private fun Reader(
 }
 
 @Composable
-private fun SenderLine(email: EmailDetail) {
+private fun SenderLine(
+    email: EmailDetail,
+    onOpenSender: (String) -> Unit,
+) {
+    val open = email.from?.email?.let { { onOpenSender(it) } }
     val colors = CorvidTheme.colors
     val seal = email.provenance.seal
     val zone = remember { TimeZone.currentSystemDefault() }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        SenderAvatar(email.from.displayName(), email.provenance.sender is SenderKind.Source, seal)
+        SenderAvatar(email.from.displayName(), email.provenance.sender is SenderKind.Source, seal, onClick = open)
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
                     email.from.displayName(),
+                    modifier = if (open == null) Modifier else Modifier.clickable(onClick = open),
                     style = CorvidTheme.type.name,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
@@ -198,11 +206,11 @@ private fun SenderLine(email: EmailDetail) {
                     is Seal.Failed -> Icon(CorvidIcons.Alert, sealDescription(seal), tint = colors.danger, modifier = Modifier.size(15.dp))
                     is Seal.Unsigned -> Unit
                 }
-                email.from?.email?.takeIf { email.from?.name != null }?.let {
+                email.from?.email?.takeIf { email.from?.name != null || seal is Seal.Failed }?.let {
                     Text(
-                        stringResource(Res.string.reader_address, it),
+                        senderAddress(it, seal).asString(),
                         style = CorvidTheme.type.meta,
-                        color = colors.inkMuted,
+                        color = if (seal is Seal.Failed) colors.danger else colors.inkMuted,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )

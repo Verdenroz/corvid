@@ -58,4 +58,40 @@
     <string name="teach_change_hint">Label</string>
     <string name="teach_apply">Apply</string>
     <string name="reader_address">&lt;%1$s&gt;</string>
+    <string name="reader_address_unverified">&lt;%1$s&gt; · not verified</string>
+    <string name="card_source_kind">Source · %1$s</string>
+    <string name="card_authenticity">Authenticity</string>
+    <string name="card_writing_since">Writing since</string>
+    <string name="card_between_you">Between you</string>
+    <string name="card_writes">Writes</string>
+    <string name="card_trackers">Trackers stripped</string>
+    <string name="card_filed_as">Filed as</string>
+    <string name="card_recent">Recent</string>
+    <plurals name="card_signed_window">
+        <item quantity="one">Signed on %1$d of %2$d message</item>
+        <item quantity="other">Signed on %1$d of the last %2$d messages</item>
+    </plurals>
+    <plurals name="card_signed_by_window">
+        <item quantity="one">Signed by %1$s on %2$d of %3$d message</item>
+        <item quantity="other">Signed by %1$s on %2$d of the last %3$d messages</item>
+    </plurals>
+    <string name="card_between">%1$d from them · %2$d from you</string>
+    <plurals name="card_messages_since">
+        <item quantity="one">%1$d message since %2$s</item>
+        <item quantity="other">%1$d messages since %2$s</item>
+    </plurals>
+    <plurals name="card_trackers_window">
+        <item quantity="one">%1$d from %2$d message</item>
+        <item quantity="other">%1$d from the last %2$d messages</item>
+    </plurals>
+    <plurals name="card_no_trackers_window">
+        <item quantity="one">None in %1$d message</item>
+        <item quantity="other">None in the last %1$d messages</item>
+    </plurals>
+    <string name="card_no_tracker_record">No tracker record</string>
+    <string name="card_not_labelled">Not labelled</string>
+    <string name="card_write">Write</string>
+    <string name="card_unsubscribe">Unsubscribe</string>
+    <string name="card_make_filter">Make a filter</string>
+    <string name="card_close">Close</string>
 </resources>

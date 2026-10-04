@@ -45,6 +45,7 @@ import com.verdenroz.corvid.core.text.resources.month_short_may
 import com.verdenroz.corvid.core.text.resources.month_short_november
 import com.verdenroz.corvid.core.text.resources.month_short_october
 import com.verdenroz.corvid.core.text.resources.month_short_september
+import com.verdenroz.corvid.core.text.resources.month_year
 import com.verdenroz.corvid.core.text.resources.stamp_other_year
 import com.verdenroz.corvid.core.text.resources.stamp_this_year
 import com.verdenroz.corvid.core.text.uiText
@@ -76,6 +77,15 @@ fun clockTime(
     hour: Int,
     minute: Int,
 ): UiText = uiText(Res.string.clock_time, hour.twoDigits(), minute.twoDigits())
+
+/** "March 2025", for how long a sender has been writing. */
+fun monthYear(
+    instant: Instant,
+    zone: TimeZone,
+): UiText {
+    val at = instant.toLocalDateTime(zone)
+    return uiText(Res.string.month_year, at.month.long(), at.year.toString())
+}
 
 data class DayHeading(
     val title: UiText,

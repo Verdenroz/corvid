@@ -46,11 +46,13 @@ internal fun LedgerRow(
     zone: TimeZone,
     wide: Boolean,
     onClick: () -> Unit,
+    onOpenSender: (String) -> Unit,
 ) {
     val colors = CorvidTheme.colors
+    val openSender = email.from?.email?.let { { onOpenSender(it) } }
     val suspect = email.provenance.seal is Seal.Failed
     Column(Modifier.fillMaxWidth().background(if (suspect) colors.dangerTint else colors.surface).clickable(onClick = onClick)) {
-        if (wide) WideRow(email, zone) else NarrowRow(email, zone)
+        if (wide) WideRow(email, zone, openSender) else NarrowRow(email, zone, openSender)
         HorizontalDivider(color = colors.line)
     }
 }
@@ -59,6 +61,7 @@ internal fun LedgerRow(
 private fun WideRow(
     email: EmailSummary,
     zone: TimeZone,
+    openSender: (() -> Unit)?,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -66,8 +69,8 @@ private fun WideRow(
         modifier = Modifier.padding(start = 16.dp, end = 24.dp, top = 12.dp, bottom = 12.dp),
     ) {
         Time(email, zone, Modifier.width(58.dp))
-        Avatar(email, 40)
-        SenderName(email, Modifier.width(200.dp))
+        Avatar(email, 40, openSender)
+        SenderName(email, Modifier.width(200.dp), openSender)
         Summary(email, Modifier.weight(1f))
         (email.provenance.rewrite as? Rewrite.Stripped)?.takeIf { it.stripped > 0 }?.let { TrackerCount(it.stripped) }
     }
@@ -77,12 +80,13 @@ private fun WideRow(
 private fun NarrowRow(
     email: EmailSummary,
     zone: TimeZone,
+    openSender: (() -> Unit)?,
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(horizontal = 16.dp, vertical = 11.dp)) {
-        Avatar(email, 40)
+        Avatar(email, 40, openSender)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(verticalAlignment = Alignment.Top) {
-                SenderName(email, Modifier.weight(1f))
+                SenderName(email, Modifier.weight(1f), openSender)
                 Time(email, zone, Modifier.padding(start = 8.dp, top = 2.dp))
             }
             Summary(email, Modifier.fillMaxWidth())
@@ -115,12 +119,14 @@ private fun Time(
 private fun Avatar(
     email: EmailSummary,
     size: Int,
+    openSender: (() -> Unit)?,
 ) {
     SenderAvatar(
         name = email.from.displayName(),
         isSource = email.provenance.sender is SenderKind.Source,
         seal = email.provenance.seal,
         size = size.dp,
+        onClick = openSender,
     )
 }
 
@@ -128,10 +134,12 @@ private fun Avatar(
 private fun SenderName(
     email: EmailSummary,
     modifier: Modifier,
+    openSender: (() -> Unit)?,
 ) {
     Column(modifier) {
         Text(
             email.from.displayName(),
+            modifier = if (openSender == null) Modifier else Modifier.clickable(onClick = openSender),
             style = CorvidTheme.type.name,
             fontWeight = if (email.isUnread) FontWeight.Bold else FontWeight.Medium,
             maxLines = 1,
