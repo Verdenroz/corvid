@@ -52,6 +52,7 @@ import com.verdenroz.corvid.core.ui.WIDE_LAYOUT
 import com.verdenroz.corvid.feature.compose.ComposeScreen
 import com.verdenroz.corvid.feature.filters.FiltersScreen
 import com.verdenroz.corvid.feature.mailbox.ReaderScreen
+import com.verdenroz.corvid.feature.mailbox.SearchScreen
 import com.verdenroz.corvid.feature.mailbox.SenderCard
 import com.verdenroz.corvid.feature.mailbox.SenderCardActions
 import org.koin.compose.koinInject
@@ -70,6 +71,8 @@ internal fun UnlockedContent(
     val shell = remember(scope) { ShellViewModel(repository) }
     val ledgers = remember(repository) { Ledgers(repository) }
     DisposableEffect(ledgers) { onDispose { ledgers.clear() } }
+    val searches = remember(repository) { Searches(repository) }
+    DisposableEffect(searches) { onDispose { searches.clear() } }
 
     DisposableEffect(Unit) {
         idleTimeout.recordActivity()
@@ -80,6 +83,8 @@ internal fun UnlockedContent(
     val saved = rememberSaveableStateHolder()
     val navigator = remember(backStack, saved) { Navigator(backStack, saved) }
     val route = navigator.route
+    val entryKeys = (0 until navigator.depth).map(navigator::entryKey).toSet()
+    LaunchedEffect(entryKeys) { searches.retainOnly(entryKeys) }
     val home = route is Route.Home
     LaunchedEffect(home) { if (home) shell.refresh() }
     NavigationBackHandler(
@@ -117,7 +122,7 @@ internal fun UnlockedContent(
                             Box(if (floating) floating(entry, CorvidTheme.colors.line) else Modifier.fillMaxSize()) {
                                 CompositionLocalProvider(LocalBackGuard provides navigator.guard(index)) {
                                     saved.SaveableStateProvider(entryKey) {
-                                        Page(entry, navigator, scope) { Home(it, key, shellState, navigator, ledgers) }
+                                        Page(entry, navigator, scope, searches, entryKey) { Home(it, key, shellState, navigator, ledgers) }
                                     }
                                 }
                             }
@@ -190,6 +195,8 @@ private fun Page(
     route: Route,
     navigator: Navigator,
     scope: Scope,
+    searches: Searches,
+    entryKey: String,
     home: @Composable (Route.Home) -> Unit,
 ) {
     when (route) {
@@ -200,6 +207,13 @@ private fun Page(
                 route.emailId,
                 onBack = navigator::back,
                 onCompose = { navigator.push(Route.Compose(it)) },
+                onOpenSender = { navigator.push(Route.Sender(it)) },
+            )
+        is Route.Search ->
+            SearchScreen(
+                viewModel = if (route.query.isBlank()) null else searches.of(entryKey, route.query),
+                query = route.query,
+                onOpenEmail = { navigator.push(Route.Reader(it)) },
                 onOpenSender = { navigator.push(Route.Sender(it)) },
             )
         is Route.Compose -> ComposeScreen(remember(scope) { scope.get<ComposeRepository>() }, route.intent, onClose = navigator::back)

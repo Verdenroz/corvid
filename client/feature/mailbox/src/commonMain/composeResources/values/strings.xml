@@ -21,6 +21,7 @@
     <string name="ledger_empty_starred">Nothing starred.</string>
     <string name="ledger_empty_sent">Nothing sent from here yet.</string>
     <string name="ledger_empty_drafts">No drafts.</string>
+    <string name="search_no_results">Nothing matches “%1$s”.</string>
     <string name="custody_sender">Sender</string>
     <string name="custody_way_in">On the way in</string>
     <string name="custody_labelled">Labelled</string>

@@ -17,6 +17,8 @@ class RouteTest {
                 Route.Compose(ComposeIntent.To("ada@x.test")),
                 Route.Compose(ComposeIntent.To("leave@list.test", "unsubscribe? now")),
                 Route.Sender("ada@x.test"),
+                Route.Search(""),
+                Route.Search("q: \"2 of 3\" / ~"),
                 Route.Compose(ComposeIntent.Reply("e1", all = false)),
                 Route.Compose(ComposeIntent.Reply("e1", all = true)),
                 Route.Compose(ComposeIntent.Forward("e1")),

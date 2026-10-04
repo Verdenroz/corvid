@@ -51,4 +51,17 @@ class NavigatorTest {
         assertEquals(Route.Home(HomeTab.Inbox), nav.route)
         assertEquals(emptyList(), holder.removed)
     }
+
+    @Test
+    fun `replacing the top screen forgets its saved state and keeps the stack depth`() {
+        val holder = RecordingHolder()
+        val nav = navigator(holder, Route.Search("a"))
+        val searchKey = nav.entryKey(1)
+
+        nav.replace(Route.Search("ab"))
+
+        assertEquals(Route.Search("ab"), nav.route)
+        assertEquals(2, nav.depth)
+        assertEquals(listOf<Any>(searchKey), holder.removed)
+    }
 }

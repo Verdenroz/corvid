@@ -30,6 +30,12 @@ internal class Navigator(
         stack += route
     }
 
+    /** Swaps the top screen for [route], forgetting what the old one saved. */
+    fun replace(route: Route) {
+        forget(entryKey(stack.lastIndex))
+        stack[stack.lastIndex] = route
+    }
+
     fun selectTab(tab: HomeTab) {
         stack[0] = Route.Home(tab)
     }
@@ -37,12 +43,15 @@ internal class Navigator(
     /** Pops a pushed screen; from a home tab other than Inbox, returns to Inbox. */
     fun back() {
         if (stack.size > 1) {
-            val popped = entryKey(stack.lastIndex)
-            saved.removeState(popped)
-            guards -= popped
+            forget(entryKey(stack.lastIndex))
             stack.removeAt(stack.lastIndex)
         } else {
             selectTab(HomeTab.Inbox)
         }
+    }
+
+    private fun forget(key: String) {
+        saved.removeState(key)
+        guards -= key
     }
 }

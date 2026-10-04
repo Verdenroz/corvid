@@ -22,6 +22,10 @@ sealed interface Route {
     @Serializable
     data object Filters : Route
 
+    /** Messages matching [query]; a blank query lists nothing. */
+    @Serializable
+    data class Search(val query: String) : Route
+
     /** The card for one sender; a side sheet when wide, a page when narrow. */
     @Serializable
     data class Sender(val address: String) : Route

@@ -128,4 +128,41 @@ class LedgerViewModelTest {
 
             assertEquals(uiText(Res.string.mailbox_no_mailbox, "drafts"), failed.message)
         }
+
+    @Test
+    fun `a search lists matches from every mailbox newest first`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.emails += FakeEmail("a", "a", setOf("inbox"), "Invoice March", "a@x.test", "2024-01-01T00:00:00Z")
+            fake.emails += FakeEmail("b", "b", setOf("archive"), "Re: invoice", "b@x.test", "2024-01-02T00:00:00Z")
+            fake.emails += FakeEmail("c", "c", setOf("inbox"), "Lunch", "c@x.test", "2024-01-03T00:00:00Z")
+            val vm = track(LedgerViewModel(repository(fake), LedgerSource.Search("invoice")))
+
+            val loaded = vm.state.first { it is LedgerUiState.Loaded } as LedgerUiState.Loaded
+
+            assertEquals(listOf("b", "a"), loaded.emails.map { it.id })
+        }
+
+    @Test
+    fun `a search that matches nothing is an empty loaded list`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.emails += FakeEmail("a", "a", setOf("inbox"), "Lunch", "a@x.test", "2024-01-01T00:00:00Z")
+            val vm = track(LedgerViewModel(repository(fake), LedgerSource.Search("invoice")))
+
+            val loaded = vm.state.first { it is LedgerUiState.Loaded } as LedgerUiState.Loaded
+
+            assertTrue(loaded.emails.isEmpty())
+        }
+
+    @Test
+    fun `a search the server refuses fails like a tab does`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            val repository = repository(fake)
+            fake.apiProblem = "urn:ietf:params:jmap:error:limit"
+            val vm = track(LedgerViewModel(repository, LedgerSource.Search("invoice")))
+
+            vm.state.first { it is LedgerUiState.Failed }
+        }
 }

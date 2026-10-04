@@ -51,15 +51,27 @@ fun LedgerScreen(
 ) {
     val state by viewModel.state.collectAsState()
 
+    LedgerContent(state, stringResource(tab.emptyText()), onOpenEmail, onOpenSender, viewModel::loadMore, modifier)
+}
+
+@Composable
+internal fun LedgerContent(
+    state: LedgerUiState,
+    emptyText: String,
+    onOpenEmail: (String) -> Unit,
+    onOpenSender: (String) -> Unit,
+    onLoadMore: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Box(modifier.fillMaxSize()) {
-        when (val current = state) {
+        when (state) {
             is LedgerUiState.Loading -> Unit
-            is LedgerUiState.Failed -> QuietPane(current.message.asString())
+            is LedgerUiState.Failed -> QuietPane(state.message.asString())
             is LedgerUiState.Loaded ->
-                if (current.emails.isEmpty()) {
-                    QuietPane(stringResource(tab.emptyText()))
+                if (state.emails.isEmpty()) {
+                    QuietPane(emptyText)
                 } else {
-                    Ledger(current, onOpenEmail, onOpenSender, viewModel::loadMore)
+                    Ledger(state, onOpenEmail, onOpenSender, onLoadMore)
                 }
         }
     }
