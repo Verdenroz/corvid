@@ -114,7 +114,9 @@ class ComposeRepositoryTest {
             assertEquals("Re: Lunch", email.subject)
             assertEquals(listOf("alice@example.test"), email.to)
             assertEquals(
-                "\n\nreply_attribution[Fri 1 Mar 2024, 12:00, alice@example.test]\n> see you at noon\n>\n> bring cash",
+                "\n\nreply_attribution[" +
+                    "stamp_other_year[day_short_friday, 1, month_short_march, 2024, clock_time[12, 00]], alice@example.test]\n" +
+                    "> see you at noon\n>\n> bring cash",
                 email.body,
             )
         }
@@ -127,7 +129,14 @@ class ComposeRepositoryTest {
 
             val attribution = replyAttribution(mailboxes.original(), TimeZone.of("Europe/London"), now)
 
-            assertEquals(uiText(Res.string.reply_attribution, "Fri 1 Mar, 12:00", UiText.FromServer("alice@example.test")), attribution)
+            assertEquals(
+                uiText(
+                    Res.string.reply_attribution,
+                    stamp(mailboxes.original().receivedAt, TimeZone.of("Europe/London"), now),
+                    UiText.FromServer("alice@example.test"),
+                ),
+                attribution,
+            )
         }
 
     @Test

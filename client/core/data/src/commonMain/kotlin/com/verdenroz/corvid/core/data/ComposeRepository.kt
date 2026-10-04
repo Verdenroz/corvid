@@ -96,7 +96,7 @@ class ComposeRepository(
                         forwardDraft(
                             it,
                             textResolver.resolve(uiText(Res.string.forwarded_message)),
-                            stamp(it.receivedAt, zone, clock.now()),
+                            textResolver.resolve(stamp(it.receivedAt, zone, clock.now())),
                         )
                     }
             }

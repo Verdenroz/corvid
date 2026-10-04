@@ -4,4 +4,26 @@
     <string name="no_trash_folder">This account has no Trash folder.</string>
     <string name="reply_attribution">On %1$s, %2$s wrote:</string>
     <string name="forwarded_message">---------- Forwarded message ----------</string>
+    <string name="day_short_monday">Mon</string>
+    <string name="day_short_tuesday">Tue</string>
+    <string name="day_short_wednesday">Wed</string>
+    <string name="day_short_thursday">Thu</string>
+    <string name="day_short_friday">Fri</string>
+    <string name="day_short_saturday">Sat</string>
+    <string name="day_short_sunday">Sun</string>
+    <string name="month_short_january">Jan</string>
+    <string name="month_short_february">Feb</string>
+    <string name="month_short_march">Mar</string>
+    <string name="month_short_april">Apr</string>
+    <string name="month_short_may">May</string>
+    <string name="month_short_june">Jun</string>
+    <string name="month_short_july">Jul</string>
+    <string name="month_short_august">Aug</string>
+    <string name="month_short_september">Sep</string>
+    <string name="month_short_october">Oct</string>
+    <string name="month_short_november">Nov</string>
+    <string name="month_short_december">Dec</string>
+    <string name="clock_time">%1$s:%2$s</string>
+    <string name="stamp_this_year">%1$s %2$s %3$s, %4$s</string>
+    <string name="stamp_other_year">%1$s %2$s %3$s %4$s, %5$s</string>
 </resources>
