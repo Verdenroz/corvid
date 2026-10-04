@@ -25,4 +25,4 @@ internal data class CorvidScript(val rules: List<FilterRule> = emptyList()) {
     }
 }
 
-internal fun parseCorvidScript(text: String): CorvidScript = CorvidScript(rules = parseRules(text) ?: throw FiltersFormatException())
+internal fun parseCorvidScript(text: String): CorvidScript = CorvidScript(rules = parseRules(text))

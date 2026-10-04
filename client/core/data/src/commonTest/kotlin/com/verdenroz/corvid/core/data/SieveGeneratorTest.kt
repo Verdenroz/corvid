@@ -212,9 +212,9 @@ class SieveGeneratorTest {
 
     @Test
     fun `a rules line that is present but unreadable is a format error`() {
-        assertFailsWith<FiltersFormatException> { parseRules("# corvid-rules v1 [{\nkeep;\n") }
-        assertFailsWith<FiltersFormatException> { parseRules("# corvid-rules v1 [{\"name\":\"r\"}]\n") }
-        assertFailsWith<FiltersFormatException> {
+        assertFailsWith<FiltersFormatException.Unreadable> { parseRules("# corvid-rules v1 [{\nkeep;\n") }
+        assertFailsWith<FiltersFormatException.Unreadable> { parseRules("# corvid-rules v1 [{\"name\":\"r\"}]\n") }
+        assertFailsWith<FiltersFormatException.Unreadable> {
             parseRules(
                 "# corvid-rules v1 [{\"name\":\"r\",\"enabled\":\"x\",\"match\":\"All\"," +
                     "\"conditions\":[],\"actions\":[],\"stop\":1}]\n",
@@ -223,24 +223,55 @@ class SieveGeneratorTest {
     }
 
     @Test
-    fun `a script with no rules line parses as null`() {
-        assertEquals(null, parseRules("require [\"fileinto\"];\nkeep;\n"))
+    fun `a script with no rules line is unreadable`() {
+        assertFailsWith<FiltersFormatException.Unreadable> { parseRules("require [\"fileinto\"];\nkeep;\n") }
     }
 
     @Test
-    fun `the rules line keeps its pinned wire shape`() {
+    fun `a rules line from a newer version is refused as newer rather than unreadable`() {
+        assertFailsWith<FiltersFormatException.Newer> { parseRules("# corvid-rules v2 [{\"anything\":1}]\n") }
+    }
+
+    @Test
+    fun `a rules line of version zero is unreadable`() {
+        assertFailsWith<FiltersFormatException.Unreadable> { parseRules("# corvid-rules v0 []\n") }
+    }
+
+    @Test
+    fun `the rules line keeps its pinned wire shape for every field operator and action`() {
         val saved =
-            rule(
-                condition(ConditionField.From, ConditionOperator.Is, "a@b.test"),
-                actions = listOf(FilterAction.AddLabel("x"), FilterAction.MoveToFolder("m1", "A/B")),
+            FilterRule(
+                name = "r",
+                enabled = false,
+                match = MatchMode.Any,
+                conditions =
+                    listOf(
+                        condition(ConditionField.From, ConditionOperator.Contains, "a"),
+                        condition(ConditionField.ToOrCc, ConditionOperator.Is, "b"),
+                        condition(ConditionField.Subject, ConditionOperator.DoesNotContain, "c"),
+                        condition(ConditionField.ListId, ConditionOperator.Is, "d"),
+                    ),
+                actions =
+                    listOf(
+                        FilterAction.MoveToFolder("m1", "A/B"),
+                        FilterAction.AddLabel("x"),
+                        FilterAction.MarkRead,
+                        FilterAction.Star,
+                        FilterAction.MoveToTrash,
+                    ),
+                stop = true,
             )
 
-        assertEquals(
-            "# corvid-rules v1 [{\"name\":\"r\",\"enabled\":true,\"match\":\"All\"," +
-                "\"conditions\":[{\"field\":\"From\",\"operator\":\"Is\",\"value\":\"a@b.test\"}]," +
-                "\"actions\":[{\"type\":\"AddLabel\",\"value\":\"x\"}," +
-                "{\"type\":\"MoveToFolder\",\"id\":\"m1\",\"value\":\"A/B\"}],\"stop\":false}]",
-            rulesLine(listOf(saved)),
-        )
+        val expected =
+            "# corvid-rules v1 [{\"name\":\"r\",\"enabled\":false,\"match\":\"Any\",\"conditions\":[" +
+                "{\"field\":\"From\",\"operator\":\"Contains\",\"value\":\"a\"}," +
+                "{\"field\":\"ToOrCc\",\"operator\":\"Is\",\"value\":\"b\"}," +
+                "{\"field\":\"Subject\",\"operator\":\"DoesNotContain\",\"value\":\"c\"}," +
+                "{\"field\":\"ListId\",\"operator\":\"Is\",\"value\":\"d\"}],\"actions\":[" +
+                "{\"type\":\"MoveToFolder\",\"id\":\"m1\",\"name\":\"A/B\"}," +
+                "{\"type\":\"AddLabel\",\"value\":\"x\"},{\"type\":\"MarkRead\"}," +
+                "{\"type\":\"Star\"},{\"type\":\"MoveToTrash\"}],\"stop\":true}]"
+        assertEquals(expected, rulesLine(listOf(saved)))
+        assertEquals(listOf(saved), parseRules(expected))
     }
 }
