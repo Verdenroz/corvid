@@ -9,6 +9,8 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(projects.core.model)
+            api(libs.kotlinx.datetime)
+            api(projects.core.text)
             implementation(projects.core.common)
             implementation(projects.core.jmap)
             implementation(libs.koin.core)
@@ -24,6 +26,12 @@ kotlin {
         }
         commonTest.dependencies {
             implementation(projects.core.testing)
+        }
+        val desktopTest by getting {
+            dependencies {
+                // Resolving a string resource on the desktop JVM asks Skiko for the system theme.
+                implementation(org.jetbrains.compose.ComposePlugin.DesktopDependencies.currentOs)
+            }
         }
     }
 }

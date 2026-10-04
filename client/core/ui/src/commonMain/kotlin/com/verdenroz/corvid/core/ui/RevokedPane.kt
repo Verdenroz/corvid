@@ -1,13 +1,12 @@
 package com.verdenroz.corvid.core.ui
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.ui.resources.Res
+import com.verdenroz.corvid.core.ui.resources.revoked_detail
+import com.verdenroz.corvid.core.ui.resources.revoked_title
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Shown when a query that found nothing follows a key this session already
@@ -17,9 +16,10 @@ import androidx.compose.ui.Modifier
  */
 @Composable
 fun RevokedPane(modifier: Modifier = Modifier) {
-    Surface(modifier = modifier.fillMaxSize()) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-            Text("This device's access was revoked", style = MaterialTheme.typography.titleMedium)
-        }
-    }
+    StatePane(
+        stringResource(Res.string.revoked_title),
+        modifier,
+        detail = stringResource(Res.string.revoked_detail),
+        headlineColor = CorvidTheme.colors.danger,
+    )
 }

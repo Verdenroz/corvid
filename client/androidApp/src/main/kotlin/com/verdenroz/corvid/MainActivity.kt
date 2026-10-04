@@ -24,7 +24,7 @@ class MainActivity : ComponentActivity() {
     }
 
     // Single-activity app, so this activity's own stop/start is the app's
-    // background/foreground signal (decision 11's ON_STOP trigger).
+    // background/foreground signal.
     override fun onStop() {
         super.onStop()
         backgroundDropController.enteredBackground()

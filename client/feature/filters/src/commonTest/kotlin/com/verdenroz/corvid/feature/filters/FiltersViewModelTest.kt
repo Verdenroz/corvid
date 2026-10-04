@@ -1,9 +1,7 @@
 package com.verdenroz.corvid.feature.filters
 
+import androidx.compose.runtime.saveable.SaverScope
 import com.verdenroz.corvid.core.data.FiltersRepository
-import com.verdenroz.corvid.core.jmap.AuthLatch
-import com.verdenroz.corvid.core.jmap.JmapClient
-import com.verdenroz.corvid.core.jmap.createJmapHttpClient
 import com.verdenroz.corvid.core.model.ConditionField
 import com.verdenroz.corvid.core.model.ConditionOperator
 import com.verdenroz.corvid.core.model.FilterAction
@@ -13,14 +11,21 @@ import com.verdenroz.corvid.core.model.MatchMode
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.FakeSieveScript
 import com.verdenroz.corvid.core.testing.ViewModelTestScope
+import com.verdenroz.corvid.core.testing.client
 import com.verdenroz.corvid.core.testing.runViewModelTest
 import com.verdenroz.corvid.core.testing.withActiveScript
+import com.verdenroz.corvid.core.text.UiText
+import com.verdenroz.corvid.core.text.uiText
+import com.verdenroz.corvid.feature.filters.resources.Res
+import com.verdenroz.corvid.feature.filters.resources.filters_another_active
+import com.verdenroz.corvid.feature.filters.resources.filters_not_saved
 import kotlinx.coroutines.flow.first
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
-
-private const val BASE_URL = "http://127.0.0.1:9999"
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 private fun rule(
     name: String,
@@ -35,12 +40,14 @@ private fun rule(
 )
 
 private suspend fun repository(fake: FakeJmapServer): FiltersRepository {
-    val client = JmapClient.connect(createJmapHttpClient(fake.engine), AuthLatch(), BASE_URL)
+    val client = fake.client()
     return FiltersRepository(client)
 }
 
-private suspend fun ViewModelTestScope.viewModel(fake: FakeJmapServer): FiltersViewModel =
-    track(FiltersViewModel(repository(fake))).also { it.ready() }
+private suspend fun ViewModelTestScope.viewModel(
+    fake: FakeJmapServer,
+    restored: RuleDraft? = null,
+): FiltersViewModel = track(FiltersViewModel(repository(fake), restored)).also { it.ready() }
 
 private fun FiltersViewModel.save(
     index: Int?,
@@ -78,7 +85,7 @@ class FiltersViewModelTest {
 
             val ready = vm.ready()
             assertEquals(listOf("first"), ready.rules.map { it.name })
-            assertEquals(SaveStatus.Failed("Not saved: script rejected"), ready.save)
+            assertEquals(SaveStatus.Failed(uiText(Res.string.filters_not_saved, UiText.FromServer("script rejected"))), ready.save)
         }
 
     @Test
@@ -113,7 +120,7 @@ class FiltersViewModelTest {
             vm.dismissConfirmation()
 
             val ready = vm.ready()
-            assertEquals(SaveStatus.Failed("Not saved: another script is active"), ready.save)
+            assertEquals(SaveStatus.Failed(uiText(Res.string.filters_not_saved, uiText(Res.string.filters_another_active))), ready.save)
             assertEquals(listOf("first"), ready.rules.map { it.name })
             assertEquals(listOf("vacation" to true), fake.sieveScripts.map { it.name to it.isActive })
         }
@@ -141,6 +148,56 @@ class FiltersViewModelTest {
 
             vm.cancelEdit()
             assertEquals(null, vm.ready().editing)
+        }
+
+    @Test
+    fun `back on a changed rule asks first, and a second back discards it`() =
+        runViewModelTest {
+            val vm = viewModel(FakeJmapServer())
+            vm.startEdit(null)
+            vm.changeDraft(rule("half done"))
+
+            assertTrue(vm.back())
+            assertEquals(true, vm.ready().confirmingDiscard)
+            assertEquals(rule("half done"), vm.ready().editing?.rule)
+
+            assertTrue(vm.back())
+            assertEquals(null, vm.ready().editing)
+            assertEquals(false, vm.ready().confirmingDiscard)
+        }
+
+    @Test
+    fun `keep editing after back leaves the changed rule open`() =
+        runViewModelTest {
+            val vm = viewModel(FakeJmapServer())
+            vm.startEdit(null)
+            vm.changeDraft(rule("half done"))
+            vm.back()
+
+            vm.keepEditing()
+
+            assertEquals(false, vm.ready().confirmingDiscard)
+            assertEquals(rule("half done"), vm.ready().editing?.rule)
+        }
+
+    @Test
+    fun `back on an untouched rule closes the editor without asking`() =
+        runViewModelTest {
+            val vm = viewModel(FakeJmapServer())
+            vm.save(null, rule("a"))
+            vm.ready()
+            vm.startEdit(0)
+
+            assertTrue(vm.back())
+
+            assertEquals(null, vm.ready().editing)
+            assertEquals(false, vm.ready().confirmingDiscard)
+        }
+
+    @Test
+    fun `back with no rule open leaves the screen to the shell`() =
+        runViewModelTest {
+            assertFalse(viewModel(FakeJmapServer()).back())
         }
 
     @Test
@@ -239,4 +296,23 @@ class FiltersViewModelTest {
 
             assertIs<FiltersUiState.Failed>(vm.state.first { it !is FiltersUiState.Loading })
         }
+
+    @Test
+    fun `a rule being edited before the screen was rebuilt is open again, unchanged`() =
+        runViewModelTest {
+            val draft = RuleDraft(null, rule("half done", value = "invoice"))
+
+            val vm = viewModel(FakeJmapServer(), restored = draft)
+
+            assertEquals(draft, vm.ready().editing)
+        }
+
+    @Test
+    fun `an unsaved rule survives the round trip through saved state`() {
+        val draft = RuleDraft(2, rule("half done", value = "in/voice \"q\""))
+
+        val saved = with(RuleDraftSaver) { SaverScope { true }.save(draft) }
+
+        assertEquals(draft, RuleDraftSaver.restore(assertNotNull(saved)))
+    }
 }

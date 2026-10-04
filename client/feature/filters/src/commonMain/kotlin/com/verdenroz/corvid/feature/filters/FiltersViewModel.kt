@@ -5,15 +5,25 @@ import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.core.data.FiltersFormatException
 import com.verdenroz.corvid.core.data.FiltersRepository
 import com.verdenroz.corvid.core.data.SaveResult
+import com.verdenroz.corvid.core.data.userMessage
 import com.verdenroz.corvid.core.jmap.JmapException
-import com.verdenroz.corvid.core.jmap.userMessage
 import com.verdenroz.corvid.core.model.FilterRule
+import com.verdenroz.corvid.core.text.UiText
+import com.verdenroz.corvid.core.text.uiText
+import com.verdenroz.corvid.feature.filters.resources.Res
+import com.verdenroz.corvid.feature.filters.resources.filters_another_active
+import com.verdenroz.corvid.feature.filters.resources.filters_newer
+import com.verdenroz.corvid.feature.filters.resources.filters_not_saved
+import com.verdenroz.corvid.feature.filters.resources.filters_unreadable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-class FiltersViewModel(private val repository: FiltersRepository) : ViewModel() {
+class FiltersViewModel(
+    private val repository: FiltersRepository,
+    private val restored: RuleDraft? = null,
+) : ViewModel() {
     private val _state = MutableStateFlow<FiltersUiState>(FiltersUiState.Loading)
     val state: StateFlow<FiltersUiState> = _state
 
@@ -26,13 +36,27 @@ class FiltersViewModel(private val repository: FiltersRepository) : ViewModel() 
 
     fun changeDraft(rule: FilterRule) = update { it.copy(editing = it.editing?.copy(rule = rule)) }
 
-    fun cancelEdit() = update { it.copy(editing = null) }
+    fun cancelEdit() = update { it.copy(editing = null, confirmingDiscard = false) }
+
+    /**
+     * Back while the editor is open: an untouched draft closes, a changed one asks first, and a
+     * second back discards it. False when no editor is open, so back leaves the screen.
+     */
+    fun back(): Boolean {
+        val ready = _state.value as? FiltersUiState.Ready ?: return false
+        val draft = ready.editing ?: return false
+        val untouched = draft.rule == (draft.index?.let { ready.rules.getOrNull(it) } ?: FilterRule.blank())
+        if (ready.confirmingDiscard || untouched) cancelEdit() else update { it.copy(confirmingDiscard = true) }
+        return true
+    }
+
+    fun keepEditing() = update { it.copy(confirmingDiscard = false) }
 
     fun saveDraft() {
         val ready = _state.value as? FiltersUiState.Ready ?: return
         val draft = ready.editing ?: return
         if (ready.save is SaveStatus.Saving) return
-        update { it.copy(editing = null) }
+        update { it.copy(editing = null, confirmingDiscard = false) }
         persist(
             if (draft.index == null) ready.rules + draft.rule else ready.rules.replaced(draft.index, draft.rule),
             replaceForeign = false,
@@ -54,7 +78,7 @@ class FiltersViewModel(private val repository: FiltersRepository) : ViewModel() 
         persist(ready.rules, replaceForeign = true)
     }
 
-    fun dismissConfirmation() = fail("another script is active")
+    fun dismissConfirmation() = fail(uiText(Res.string.filters_another_active))
 
     private fun edit(change: (List<FilterRule>) -> List<FilterRule>) {
         val ready = _state.value as? FiltersUiState.Ready ?: return
@@ -66,9 +90,9 @@ class FiltersViewModel(private val repository: FiltersRepository) : ViewModel() 
         _state.value =
             try {
                 val set = repository.load()
-                FiltersUiState.Ready(set.rules, set.folders, foreignScript = set.foreignActiveScript)
+                FiltersUiState.Ready(set.rules, set.folders, foreignScript = set.foreignActiveScript, editing = restored)
             } catch (e: FiltersFormatException) {
-                FiltersUiState.Failed(e.message.orEmpty())
+                FiltersUiState.Failed(e.text())
             } catch (e: JmapException) {
                 FiltersUiState.Failed(e.userMessage())
             }
@@ -93,9 +117,15 @@ class FiltersViewModel(private val repository: FiltersRepository) : ViewModel() 
         }
     }
 
-    private fun fail(reason: String) = update { it.copy(save = SaveStatus.Failed("Not saved: $reason")) }
+    private fun fail(reason: UiText) = update { it.copy(save = SaveStatus.Failed(uiText(Res.string.filters_not_saved, reason))) }
 
     private fun update(change: (FiltersUiState.Ready) -> FiltersUiState.Ready) {
         _state.update { if (it is FiltersUiState.Ready) change(it) else it }
     }
 }
+
+private fun FiltersFormatException.text(): UiText =
+    when (this) {
+        is FiltersFormatException.Unreadable -> uiText(Res.string.filters_unreadable)
+        is FiltersFormatException.Newer -> uiText(Res.string.filters_newer)
+    }

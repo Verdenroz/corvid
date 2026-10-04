@@ -1,8 +1,5 @@
 package com.verdenroz.corvid.core.data
 
-import com.verdenroz.corvid.core.jmap.AuthLatch
-import com.verdenroz.corvid.core.jmap.JmapClient
-import com.verdenroz.corvid.core.jmap.createJmapHttpClient
 import com.verdenroz.corvid.core.model.ConditionField
 import com.verdenroz.corvid.core.model.ConditionOperator
 import com.verdenroz.corvid.core.model.FilterAction
@@ -13,15 +10,18 @@ import com.verdenroz.corvid.core.model.MatchMode
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.FakeMailbox
 import com.verdenroz.corvid.core.testing.FakeSieveScript
+import com.verdenroz.corvid.core.testing.client
 import com.verdenroz.corvid.core.testing.withActiveScript
+import com.verdenroz.corvid.core.text.UiText
+import com.verdenroz.corvid.core.text.resources.Res
+import com.verdenroz.corvid.core.text.resources.no_trash_folder
+import com.verdenroz.corvid.core.text.uiText
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
-
-private const val BASE_URL = "http://127.0.0.1:9999"
 
 private val RULE =
     FilterRule(
@@ -34,7 +34,7 @@ private val RULE =
     )
 
 private suspend fun repository(fake: FakeJmapServer): FiltersRepository {
-    val client = JmapClient.connect(createJmapHttpClient(fake.engine), AuthLatch(), BASE_URL)
+    val client = fake.client()
     return FiltersRepository(client)
 }
 
@@ -156,7 +156,7 @@ class FiltersRepositoryTest {
 
             val result = repository(fake).save(listOf(RULE), replaceForeign = false)
 
-            assertEquals("script rejected", assertIs<SaveResult.Rejected>(result).reason)
+            assertEquals(UiText.FromServer("script rejected"), assertIs<SaveResult.Rejected>(result).reason)
         }
 
     @Test
@@ -179,7 +179,7 @@ class FiltersRepositoryTest {
 
             val result = repository(fake).save(listOf(rule), replaceForeign = false)
 
-            assertIs<SaveResult.Rejected>(result)
+            assertEquals(SaveResult.Rejected(uiText(Res.string.no_trash_folder)), result)
             assertTrue(fake.sieveScripts.isEmpty())
         }
 

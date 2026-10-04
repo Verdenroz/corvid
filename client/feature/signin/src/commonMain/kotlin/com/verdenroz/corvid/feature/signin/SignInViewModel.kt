@@ -4,6 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.core.domain.SignInUseCase
 import com.verdenroz.corvid.core.model.ServerAddress
+import com.verdenroz.corvid.core.text.UiText
+import com.verdenroz.corvid.core.text.uiText
+import com.verdenroz.corvid.feature.signin.resources.Res
+import com.verdenroz.corvid.feature.signin.resources.signin_failed
+import com.verdenroz.corvid.feature.signin.resources.signin_issuer_not_https
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -14,7 +19,7 @@ sealed interface SignInUiState {
 
     data object SigningIn : SignInUiState
 
-    data class Failed(val message: String) : SignInUiState
+    data class Failed(val message: UiText) : SignInUiState
 }
 
 class SignInViewModel(private val signInUseCase: SignInUseCase) : ViewModel() {
@@ -31,9 +36,9 @@ class SignInViewModel(private val signInUseCase: SignInUseCase) : ViewModel() {
                 signInUseCase(ServerAddress(server.trimEnd('/')), issuer)
                 _state.value = SignInUiState.Idle
             } catch (e: OpenIdConnectException) {
-                _state.value = SignInUiState.Failed(e.message)
+                _state.value = SignInUiState.Failed(uiText(Res.string.signin_failed, UiText.FromServer(e.message)))
             } catch (e: IllegalArgumentException) {
-                _state.value = SignInUiState.Failed(e.message ?: "invalid identity provider")
+                _state.value = SignInUiState.Failed(uiText(Res.string.signin_issuer_not_https))
             }
         }
     }

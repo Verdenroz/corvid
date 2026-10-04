@@ -8,6 +8,7 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.verdenroz.corvid.app.BackgroundDropController
 import com.verdenroz.corvid.app.CorvidApp
+import com.verdenroz.corvid.app.EscapeBack
 import com.verdenroz.corvid.app.di.appModules
 import com.verdenroz.corvid.core.auth.InMemoryPreferencesFactory
 import com.verdenroz.corvid.core.auth.platformAuthModule
@@ -24,7 +25,9 @@ fun main() {
     application {
         val windowState = rememberWindowState()
         val icon = remember { windowIcon() }
-        Window(onCloseRequest = ::exitApplication, title = "Corvid", state = windowState, icon = icon) {
+        val escape = remember { EscapeBack() }
+        Window(onCloseRequest = ::exitApplication, title = "Corvid", state = windowState, icon = icon, onPreviewKeyEvent = escape::onKey) {
+            escape.Attach()
             // Desktop's closest equivalent to ON_STOP: minimising is the only
             // "backgrounded" signal this platform actually has.
             val backgroundDropController: BackgroundDropController = koinInject()

@@ -19,6 +19,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
@@ -38,8 +39,7 @@ private const val ACCOUNT_ID = "u1"
 /**
  * Interprets JMAP against an in-memory mailbox, advertising
  * `https://mail.corvid.test/jmap/...` with no port, the way a real Stalwart
- * deployment does before the caller rebases it. FileNode/blob endpoints
- * join in slice 5.
+ * deployment does before the caller rebases it.
  */
 class FakeJmapServer {
     var unauthorized: Boolean = false
@@ -49,7 +49,7 @@ class FakeJmapServer {
     /** Seconds sent back in `Retry-After`; non-null also switches the response to 429. */
     var rateLimitedFor: Long? = null
 
-    /** No token presented: capabilities only, no account (decision 5's anonymous session). */
+    /** No token presented: capabilities only, no account, as an anonymous session answers. */
     var unauthenticated: Boolean = false
 
     /** Drops one capability from the advertised session, to exercise the required-capability check. */
@@ -60,6 +60,9 @@ class FakeJmapServer {
 
     /** Bumped by a test to simulate a mailbox change invalidating an open query. */
     var queryState: String = "qs1"
+
+    /** Runs before each Email/query is answered, so a test can change the mailbox between pages. */
+    var beforeEmailQuery: () -> Unit = {}
 
     /** An RFC 7807 problem type (e.g. `urn:ietf:params:jmap:error:limit`) to answer every call with. */
     var apiProblem: String? = null
@@ -77,6 +80,9 @@ class FakeJmapServer {
     val emails: MutableList<FakeEmail> = mutableListOf()
     val identities: MutableList<FakeIdentity> = mutableListOf()
     val submissions: MutableList<FakeSubmission> = mutableListOf()
+
+    /** Every Email/set update patch received, in order, as the client sent it. */
+    val emailPatches: MutableList<Pair<String, JsonObject>> = mutableListOf()
     val fileNodes: MutableList<FakeFileNode> = mutableListOf()
     val sieveScripts: MutableList<FakeSieveScript> = mutableListOf()
     val blobs: MutableMap<String, ByteArray> = mutableMapOf()
@@ -225,7 +231,7 @@ class FakeJmapServer {
             "Core/echo" -> listOf(name to arguments)
             "Mailbox/get" -> listOf(name to getResponse("s1", mailboxes, arguments, FakeMailbox::id) { it.toJson() })
             "Email/query" -> listOf(emailQuery(arguments))
-            "Email/get" -> listOf(name to getResponse("s1", emails, arguments, FakeEmail::id) { it.toJson() })
+            "Email/get" -> listOf(name to getResponse("s1", emails, arguments, FakeEmail::id) { it.toJson(arguments.requestedHeaders()) })
             "Identity/get" -> listOf(name to getResponse("i1", identities, arguments, FakeIdentity::id) { it.toJson() })
             "Email/set" -> listOf(name to emailSet(arguments, createdIds))
             "EmailSubmission/set" -> submissionSet(arguments, createdIds)
@@ -288,16 +294,16 @@ class FakeJmapServer {
         }
 
     private fun emailQuery(arguments: JsonObject): Pair<String, JsonObject> {
-        val inMailbox = arguments["filter"]?.jsonObject?.get("inMailbox")?.jsonPrimitive?.contentOrNull
+        beforeEmailQuery()
+        val filter = arguments["filter"]?.jsonObject
         val limit = arguments["limit"]?.jsonPrimitive?.intOrNull ?: 50
         val anchor = arguments["anchor"]?.jsonPrimitive?.contentOrNull
         val anchorOffset = arguments["anchorOffset"]?.jsonPrimitive?.intOrNull ?: 0
         val position = arguments["position"]?.jsonPrimitive?.intOrNull ?: 0
+        val ascending = arguments["sort"]?.jsonArray?.firstOrNull()?.jsonObject?.get("isAscending")?.jsonPrimitive?.booleanOrNull ?: false
 
-        val matching =
-            emails
-                .filter { inMailbox == null || inMailbox in it.mailboxIds }
-                .sortedByDescending { it.receivedAt }
+        val filtered = emails.filter { it.matches(filter) }
+        val matching = if (ascending) filtered.sortedBy { it.receivedAt } else filtered.sortedByDescending { it.receivedAt }
 
         val start =
             if (anchor != null) {
@@ -334,9 +340,20 @@ class FakeJmapServer {
                     put("threadId", id)
                 }
             }
+        val updated = mutableMapOf<String, JsonObject>()
+        val notUpdated = mutableMapOf<String, JsonObject>()
+        arguments["update"]?.jsonObject?.forEach { (id, patch) ->
+            if (emails.none { it.id == id }) {
+                notUpdated[id] = problem("notFound", "no such email")
+            } else {
+                emails.replaceAll { if (it.id == id) it.patched(patch.jsonObject) else it }
+                emailPatches += id to patch.jsonObject
+                updated[id] = JsonObject(emptyMap())
+            }
+        }
         val destroyed = arguments["destroy"]?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty()
         emails.removeAll { it.id in destroyed }
-        return setResponse("s0", "s1", created = created, destroyed = destroyed)
+        return setResponse("s0", "s1", created = created, updated = updated, destroyed = destroyed, notUpdated = notUpdated)
     }
 
     private fun submissionSet(
@@ -577,8 +594,9 @@ private fun FakeMailbox.toJson(): JsonObject =
         put("unreadEmails", unreadEmails)
     }
 
-private fun FakeEmail.toJson(): JsonObject =
+private fun FakeEmail.toJson(headerProperties: List<String>): JsonObject =
     buildJsonObject {
+        headerProperties.forEach { put(it, headerValue(it)) }
         put("id", id)
         put("threadId", threadId)
         put("subject", subject)
@@ -668,7 +686,7 @@ private fun JsonObject.toFakeEmail(id: String): FakeEmail {
 private fun FakeEmail.patched(patch: JsonObject): FakeEmail =
     patch.entries.fold(this) { email, (path, value) ->
         val property = path.substringBefore("/")
-        val key = path.substringAfter("/")
+        val key = path.substringAfter("/").replace("~1", "/").replace("~0", "~")
         val present = value !is JsonNull
         when (property) {
             "mailboxIds" -> email.copy(mailboxIds = if (present) email.mailboxIds + key else email.mailboxIds - key)

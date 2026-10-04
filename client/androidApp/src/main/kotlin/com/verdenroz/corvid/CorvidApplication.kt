@@ -28,7 +28,7 @@ class CorvidApplication : Application() {
         registerScreenOffTrigger(keyHolder)
     }
 
-    // Decision 11: a lost network drops the key immediately, no grace timer.
+    // A lost network drops the key immediately, with no grace timer.
     private fun registerNetworkLossTrigger(keyHolder: KeyHolder) {
         val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         connectivityManager.registerDefaultNetworkCallback(

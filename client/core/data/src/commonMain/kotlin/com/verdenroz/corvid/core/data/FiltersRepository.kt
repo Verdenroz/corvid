@@ -3,6 +3,7 @@ package com.verdenroz.corvid.core.data
 import com.verdenroz.corvid.core.jmap.JmapClient
 import com.verdenroz.corvid.core.model.FilterRule
 import com.verdenroz.corvid.core.model.MailboxRef
+import com.verdenroz.corvid.core.text.UiText
 
 data class FilterSet(
     val rules: List<FilterRule>,
@@ -16,8 +17,8 @@ sealed interface SaveResult {
     /** Nothing was written: activating Corvid's script would deactivate [scriptName]. */
     data class NeedsConfirmation(val scriptName: String) : SaveResult
 
-    /** The server refused the script, or the rules cannot be written; [reason] is its own words. */
-    data class Rejected(val reason: String) : SaveResult
+    /** The server refused the script, in its own words, or the rules cannot be written. */
+    data class Rejected(val reason: UiText) : SaveResult
 }
 
 class FiltersRepository(jmapClient: JmapClient) {

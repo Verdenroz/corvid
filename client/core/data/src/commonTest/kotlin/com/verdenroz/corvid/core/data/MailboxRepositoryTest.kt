@@ -1,23 +1,25 @@
 package com.verdenroz.corvid.core.data
 
-import com.verdenroz.corvid.core.jmap.AuthLatch
-import com.verdenroz.corvid.core.jmap.JmapClient
-import com.verdenroz.corvid.core.jmap.createJmapHttpClient
 import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.core.testing.FakeEmail
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.FakeMailbox
+import com.verdenroz.corvid.core.testing.SENDABLE_ACCOUNT_EMAIL
+import com.verdenroz.corvid.core.testing.client
+import com.verdenroz.corvid.core.testing.withSendableAccount
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.time.Instant
 
-private const val BASE_URL = "http://127.0.0.1:9999"
 private const val EMAIL_COUNT = 170
 
 private suspend fun repository(fake: FakeJmapServer): MailboxRepository {
-    val client = JmapClient.connect(createJmapHttpClient(fake.engine), AuthLatch(), BASE_URL)
+    val client = fake.client()
     return MailboxRepository(client)
 }
 
@@ -74,7 +76,7 @@ class MailboxRepositoryTest {
             val all = mutableListOf<EmailSummary>()
             var anchor: String? = null
             do {
-                val page = assertIs<EmailPage.Found>(repository.page("inbox", anchor))
+                val page = assertIs<EmailPage.Found>(repository.page(MailFilter.InMailbox("inbox"), anchor))
                 all += page.emails
                 anchor = page.emails.lastOrNull()?.id
             } while (page.emails.isNotEmpty())
@@ -82,7 +84,7 @@ class MailboxRepositoryTest {
             assertEquals(EMAIL_COUNT + 2, all.size)
             assertEquals(all.map { it.id }.toSet().size, all.size)
             assertEquals("", all.first { it.id == "no-subject" }.subject)
-            assertEquals("", all.first { it.id == "no-from" }.from)
+            assertNull(all.first { it.id == "no-from" }.from)
         }
 
     @Test
@@ -91,7 +93,7 @@ class MailboxRepositoryTest {
             val fake = FakeJmapServer()
             fake.emails += FakeEmail("e1", "e1", setOf("inbox"), "s1", "a@example.test", "2024-01-01T00:00:00Z")
 
-            val page = repository(fake).page("inbox", anchor = "does-not-exist")
+            val page = repository(fake).page(MailFilter.InMailbox("inbox"), anchor = "does-not-exist")
 
             assertIs<EmailPage.AnchorNotFound>(page)
         }
@@ -276,5 +278,48 @@ class MailboxRepositoryTest {
             val lookup = repository(fake).getEmail("gone")
 
             assertIs<EmailLookup.NotFound>(lookup)
+        }
+
+    @Test
+    fun `the account identity is fetched once and then remembered`() =
+        runTest {
+            val fake = FakeJmapServer().withSendableAccount()
+            val repository = repository(fake)
+
+            val first = repository.identity()
+            val requests = fake.requestCount
+            val second = repository.identity()
+
+            assertEquals(SENDABLE_ACCOUNT_EMAIL, first?.email)
+            assertEquals(first, second)
+            assertEquals(requests, fake.requestCount)
+        }
+
+    @Test
+    fun `two screens asking for the identity at once share one request`() =
+        runTest {
+            val fake = FakeJmapServer().withSendableAccount()
+            val repository = repository(fake)
+            val before = fake.requestCount
+
+            awaitAll(async { repository.identity() }, async { repository.identity() })
+
+            assertEquals(before + 1, fake.requestCount)
+        }
+
+    @Test
+    fun `a mailbox id is looked up by role once`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "m2", name = "Inbox", role = "inbox")
+            fake.mailboxes += FakeMailbox(id = "m3", name = "Sent", role = "sent")
+            val repository = repository(fake)
+
+            assertEquals("m2", repository.mailboxId("inbox"))
+            val requests = fake.requestCount
+            assertEquals("m3", repository.mailboxId("sent"))
+            assertEquals(null, repository.mailboxId("drafts"))
+
+            assertEquals(requests, fake.requestCount)
         }
 }

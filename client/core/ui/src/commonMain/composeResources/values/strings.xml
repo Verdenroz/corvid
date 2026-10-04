@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="discard">Discard</string>
+    <string name="keep_editing">Keep editing</string>
+    <string name="locked_title">Locked</string>
+    <string name="locked_unlock">Unlock</string>
+    <string name="revoked_title">Revoked</string>
+    <string name="revoked_detail">This device's key is gone from the server. Enroll it again from a device that still has access.</string>
+    <string name="unreachable_title">Unreachable</string>
+    <string name="unreachable_retry">Retry</string>
+    <string name="label_guess">%1$s?</string>
+    <string name="seal_signed_by">Signed by %1$s</string>
+    <string name="seal_signed">Signed</string>
+    <string name="seal_failed">Failed authentication</string>
+    <plurals name="trackers_removed">
+        <item quantity="one">%1$d tracker removed</item>
+        <item quantity="other">%1$d trackers removed</item>
+    </plurals>
+    <string name="locked_detail">The key went back to your server. Nothing readable stays on this device until you unlock.</string>
+    <string name="locked_server">Server</string>
+    <string name="locked_device">This device</string>
+    <string name="locked_device_dropped">%1$s, key dropped at %2$s</string>
+    <string name="unreachable_detail">%1$s Nothing was wiped. Try again when the server answers.</string>
+    <string name="connecting_title">Connecting.</string>
+</resources>

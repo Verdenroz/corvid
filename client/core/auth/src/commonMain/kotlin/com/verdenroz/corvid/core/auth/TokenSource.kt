@@ -26,7 +26,7 @@ sealed interface AuthState {
 }
 
 /**
- * Holds tokens in memory only (decision 5): nothing here ever touches disk.
+ * Holds tokens in memory only: nothing here ever touches disk.
  * [adopt] pairs tokens with the exact [OpenIdConnectClient] that issued them,
  * since discovery is per server address and only known once signed in.
  * Observes the [AuthLatch] so the first 401 from any endpoint signs out
@@ -48,7 +48,7 @@ class TokenSource(
     init {
         // Unconfined so a trip wipes the token in the same call, not on the
         // scope dispatcher's next turn: a reader racing the trip must never
-        // observe a token that decision 5 already says is gone.
+        // observe a token the sign-out already wiped.
         scope.launch(Dispatchers.Unconfined) {
             authLatch.tripped.collect { tripped -> if (tripped) signOut() }
         }

@@ -28,4 +28,36 @@ class CorvidKeywordsTest {
         assertEquals("corvid-rule-receipts-2024", CorvidKeywords.ruleKeyword("Receipts 2024"))
         assertEquals("corvid-rule--t-", CorvidKeywords.ruleKeyword("Été"))
     }
+
+    @Test
+    fun `each namespace reads as the label kind that wrote it`() {
+        assertEquals(Label.Yours("receipts"), CorvidKeywords.labelOf("receipts"))
+        assertEquals(Label.Labeler("receipts"), CorvidKeywords.labelOf("corvid-receipts"))
+        assertEquals(Label.Guess("newsletter"), CorvidKeywords.labelOf("corvid-llm-label-newsletter"))
+        assertEquals(Label.Rule("ops"), CorvidKeywords.labelOf("corvid-rule-ops"))
+    }
+
+    @Test
+    fun `flags and the model's markers are not labels`() {
+        listOf("\$seen", "\$flagged", "corvid-llm-done", "corvid-llm-oversized").forEach {
+            assertEquals(null, CorvidKeywords.labelOf(it), it)
+        }
+    }
+
+    @Test
+    fun `a message's labels drop the bookkeeping and read in name order`() {
+        val keywords = setOf("\$seen", "corvid-llm-done", "receipts", "corvid-llm-label-bills", "corvid-rule-ops")
+
+        assertEquals(listOf(Label.Guess("bills"), Label.Rule("ops"), Label.Yours("receipts")), labelsOf(keywords))
+    }
+
+    @Test
+    fun `a label the user types becomes their own keyword`() {
+        assertEquals("tax-2026", CorvidKeywords.userKeyword(" Tax 2026 "))
+    }
+
+    @Test
+    fun `a typed label that would read as corvid's or a flag is refused`() {
+        listOf("corvid-ops", "Corvid-Ops", "", "   ", "---").forEach { assertEquals(null, CorvidKeywords.userKeyword(it), it) }
+    }
 }

@@ -1,16 +1,23 @@
 package com.verdenroz.corvid.core.data
 
-import com.verdenroz.corvid.core.jmap.Invocation
 import com.verdenroz.corvid.core.jmap.JmapClient
 import com.verdenroz.corvid.core.jmap.MethodOutcome
 import com.verdenroz.corvid.core.jmap.callOne
 import com.verdenroz.corvid.core.jmap.resultOrThrow
 import com.verdenroz.corvid.core.jmap.resultReference
+import com.verdenroz.corvid.core.jmap.setErrorReason
+import com.verdenroz.corvid.core.model.CorvidKeywords
 import com.verdenroz.corvid.core.model.EmailAddress
 import com.verdenroz.corvid.core.model.EmailDetail
 import com.verdenroz.corvid.core.model.EmailSummary
+import com.verdenroz.corvid.core.model.Identity
 import com.verdenroz.corvid.core.model.Mailbox
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.addJsonObject
@@ -28,14 +35,27 @@ import kotlin.time.Instant
 
 private const val PAGE_SIZE = 50
 private const val MAX_BODY_VALUE_BYTES = 262_144
-private val EMAIL_PROPERTIES = listOf("id", "threadId", "subject", "from", "receivedAt", "keywords", "preview")
+internal val EMAIL_PROPERTIES = listOf("id", "threadId", "subject", "from", "receivedAt", "keywords", "preview") + PROVENANCE_PROPERTIES
 private val EMAIL_DETAIL_PROPERTIES =
-    listOf("id", "subject", "from", "to", "cc", "replyTo", "messageId", "references", "receivedAt", "textBody", "bodyValues")
+    listOf("id", "subject", "from", "to", "cc", "replyTo", "messageId", "references", "receivedAt", "keywords", "textBody", "bodyValues") +
+        PROVENANCE_PROPERTIES
+
+/** What a list shows: one mailbox, or every starred message wherever it is filed. */
+sealed interface MailFilter {
+    data class InMailbox(val mailboxId: String) : MailFilter
+
+    data object Starred : MailFilter
+}
 
 sealed interface EmailPage {
     data class Found(val emails: List<EmailSummary>, val queryState: String) : EmailPage
 
     data object AnchorNotFound : EmailPage
+}
+
+/** Keywords set (true) or cleared (false) on one message, as the server accepted them. */
+data class KeywordPatch(val emailId: String, val patch: Map<String, Boolean>) {
+    fun applyTo(keywords: Set<String>): Set<String> = keywords + patch.filterValues { it }.keys - patch.filterValues { !it }.keys
 }
 
 sealed interface EmailLookup {
@@ -46,25 +66,47 @@ sealed interface EmailLookup {
 }
 
 /**
- * Query and get run as one JMAP request (decision 8), the get's `ids`
+ * Query and get run as one JMAP request, the get's `ids`
  * resolved server-side from the query's result via a [resultReference].
  * Whether an anchor lost meaning (queryState changed) is for the caller to
  * decide by comparing to the queryState it already holds; this repository
  * is stateless across pages.
  */
 class MailboxRepository(private val jmapClient: JmapClient) {
+    private val identityLock = Mutex()
+    private val rolesLock = Mutex()
+    private var identity: KnownIdentity? = null
+    private var roleIds: Map<String, String>? = null
+    private val _keywordPatches = MutableSharedFlow<KeywordPatch>(extraBufferCapacity = 16)
+
+    /** Every patch [updateKeywords] got through, so a list already on screen can apply it without refetching. */
+    val keywordPatches: SharedFlow<KeywordPatch> = _keywordPatches
+
     suspend fun mailboxes(): List<Mailbox> =
         jmapClient.callOne("Mailbox/get", JsonObject(emptyMap())).getValue("list").jsonArray.map { it.jsonObject.toMailbox() }
 
+    /** Counts change with every message, so this always asks the server; for the id alone use [mailboxId]. */
     suspend fun findMailboxByRole(role: String): Mailbox? = mailboxes().firstOrNull { it.role == role }
 
+    /** The id of the mailbox with [role], fetched once: roles do not move while the app is open. */
+    suspend fun mailboxId(role: String): String? =
+        rolesLock.withLock {
+            val ids = roleIds ?: mailboxes().mapNotNull { box -> box.role?.let { it to box.id } }.toMap().also { roleIds = it }
+            ids[role]
+        }
+
     suspend fun page(
-        mailboxId: String,
+        filter: MailFilter,
         anchor: String?,
     ): EmailPage {
         val queryArguments =
             buildJsonObject {
-                putJsonObject("filter") { put("inMailbox", mailboxId) }
+                putJsonObject("filter") {
+                    when (filter) {
+                        is MailFilter.InMailbox -> put("inMailbox", filter.mailboxId)
+                        is MailFilter.Starred -> put("hasKeyword", CorvidKeywords.FLAGGED)
+                    }
+                }
                 putJsonArray("sort") {
                     addJsonObject {
                         put("property", "receivedAt")
@@ -78,23 +120,12 @@ class MailboxRepository(private val jmapClient: JmapClient) {
                     put("anchorOffset", 1)
                 }
             }
-        val getArguments =
-            buildJsonObject {
-                put("#ids", resultReference(resultOf = "c0", name = "Email/query", path = "/ids"))
-                putJsonArray("properties") { EMAIL_PROPERTIES.forEach { add(JsonPrimitive(it)) } }
-            }
-        val outcomes =
-            jmapClient.call(
-                listOf(
-                    Invocation("Email/query", queryArguments, "c0"),
-                    Invocation("Email/get", getArguments, "c1"),
-                ),
-            )
-        val queryOutcome = outcomes.getValue("c0")
-        if ((queryOutcome as? MethodOutcome.Failure)?.error?.type == "anchorNotFound") return EmailPage.AnchorNotFound
-        val queryResult = queryOutcome.resultOrThrow()
-        val getResult = outcomes.getValue("c1").resultOrThrow()
-        val emails = getResult.getValue("list").jsonArray.map { it.jsonObject.toEmailSummary() }
+        val outcomes = jmapClient.queryAndGet(queryArguments, EMAIL_PROPERTIES)
+        if ((outcomes.query as? MethodOutcome.Failure)?.error?.type == "anchorNotFound") return EmailPage.AnchorNotFound
+        val queryResult = outcomes.query.resultOrThrow()
+        val getResult = outcomes.get.resultOrThrow()
+        val domain = ownDomain()
+        val emails = getResult.getValue("list").jsonArray.map { it.jsonObject.toEmailSummary(domain) }
         return EmailPage.Found(emails, queryResult.getValue("queryState").jsonPrimitive.content)
     }
 
@@ -108,8 +139,54 @@ class MailboxRepository(private val jmapClient: JmapClient) {
             }
         val result = jmapClient.callOne("Email/get", arguments)
         if (result.getValue("notFound").jsonArray.isNotEmpty()) return EmailLookup.NotFound
-        return EmailLookup.Found(result.getValue("list").jsonArray.first().jsonObject.toEmailDetail())
+        return EmailLookup.Found(result.getValue("list").jsonArray.first().jsonObject.toEmailDetail(ownDomain()))
     }
+
+    /** One message's keywords alone; null when it is gone. */
+    suspend fun keywords(id: String): Set<String>? {
+        val arguments =
+            buildJsonObject {
+                putJsonArray("ids") { add(JsonPrimitive(id)) }
+                putJsonArray("properties") { add(JsonPrimitive("keywords")) }
+            }
+        val found = jmapClient.callOne("Email/get", arguments).getValue("list").jsonArray.firstOrNull() ?: return null
+        return found.jsonObject.getValue("keywords").jsonObject.keys
+    }
+
+    /**
+     * Patches only the named keywords, so anything else on the message, including the labeler's,
+     * is left as it is. Returns the server's reason when it refuses, null when it took the patch.
+     */
+    suspend fun updateKeywords(
+        id: String,
+        patch: Map<String, Boolean>,
+    ): String? {
+        val arguments =
+            buildJsonObject {
+                putJsonObject("update") {
+                    putJsonObject(id) {
+                        patch.forEach {
+                                (keyword, set) ->
+                            put("keywords/${keyword.pointerEscaped()}", if (set) JsonPrimitive(true) else JsonNull)
+                        }
+                    }
+                }
+            }
+        val refused = jmapClient.callOne("Email/set", arguments).setErrorReason("notUpdated", id)
+        if (refused == null) _keywordPatches.emit(KeywordPatch(id, patch))
+        return refused
+    }
+
+    /** The account's first identity, fetched once: who the account avatar is, and which senders are its own server. */
+    suspend fun identity(): Identity? =
+        identityLock.withLock {
+            (identity ?: KnownIdentity(fetchIdentity()).also { identity = it }).identity
+        }
+
+    internal suspend fun ownDomain(): String? = identity()?.email?.substringAfterLast('@')
+
+    private suspend fun fetchIdentity(): Identity? =
+        jmapClient.callOne("Identity/get", JsonObject(emptyMap())).getValue("list").jsonArray.firstOrNull()?.jsonObject?.toIdentity()
 }
 
 internal fun JsonObject.toMailbox() =
@@ -124,18 +201,21 @@ internal fun JsonObject.toMailbox() =
 
 // subject and from are nullable in RFC 8621: reading a null subject as a plain string
 // returns the literal word "null", and reading a null from as an array throws.
-private fun JsonObject.toEmailSummary() =
-    EmailSummary(
+internal fun JsonObject.toEmailSummary(ownDomain: String?): EmailSummary {
+    val from = addressList("from").firstOrNull()
+    return EmailSummary(
         id = getValue("id").jsonPrimitive.content,
         threadId = getValue("threadId").jsonPrimitive.content,
         subject = get("subject")?.jsonPrimitive?.contentOrNull.orEmpty(),
-        from = fromAddress(),
+        from = from,
         receivedAt = Instant.parse(getValue("receivedAt").jsonPrimitive.content),
         keywords = getValue("keywords").jsonObject.keys,
         preview = getValue("preview").jsonPrimitive.content,
+        provenance = provenance(from, ownDomain),
     )
+}
 
-private fun JsonObject.fromAddress(): String = addressList("from").firstOrNull()?.toText().orEmpty()
+private class KnownIdentity(val identity: Identity?)
 
 /** email is null for MIME group syntax ("undisclosed-recipients:;"), which carries a name and no address. */
 private fun JsonObject.toEmailAddress(): EmailAddress? {
@@ -143,7 +223,7 @@ private fun JsonObject.toEmailAddress(): EmailAddress? {
     return EmailAddress(name = get("name")?.jsonPrimitive?.contentOrNull, email = email)
 }
 
-private fun JsonObject.addressList(key: String): List<EmailAddress> =
+internal fun JsonObject.addressList(key: String): List<EmailAddress> =
     (get(key) as? JsonArray)?.mapNotNull { it.jsonObject.toEmailAddress() }.orEmpty()
 
 private fun JsonObject.idList(key: String): List<String> = (get(key) as? JsonArray)?.map { it.jsonPrimitive.content }.orEmpty()
@@ -153,7 +233,7 @@ private fun JsonObject.idList(key: String): List<String> = (get(key) as? JsonArr
  * HTML-only message arrives here as one text/html part, flattened rather than
  * shown, since this client has no HTML renderer.
  */
-private fun JsonObject.toEmailDetail(): EmailDetail {
+private fun JsonObject.toEmailDetail(ownDomain: String?): EmailDetail {
     val bodyValues = getValue("bodyValues").jsonObject
     val parts =
         getValue("textBody").jsonArray.map { part ->
@@ -165,10 +245,11 @@ private fun JsonObject.toEmailDetail(): EmailDetail {
             val text = if (type == "text/html") flattenHtml(raw) else raw
             text to value.getValue("isTruncated").jsonPrimitive.boolean
         }
+    val from = addressList("from").firstOrNull()
     return EmailDetail(
         id = getValue("id").jsonPrimitive.content,
         subject = get("subject")?.jsonPrimitive?.contentOrNull.orEmpty(),
-        from = addressList("from").firstOrNull(),
+        from = from,
         to = addressList("to"),
         cc = addressList("cc"),
         replyTo = addressList("replyTo"),
@@ -177,5 +258,10 @@ private fun JsonObject.toEmailDetail(): EmailDetail {
         receivedAt = Instant.parse(getValue("receivedAt").jsonPrimitive.content),
         body = parts.joinToString("\n\n") { it.first },
         bodyTruncated = parts.any { it.second },
+        keywords = getValue("keywords").jsonObject.keys,
+        provenance = provenance(from, ownDomain),
     )
 }
+
+/** RFC 6901: a keyword holding `~` or `/` must not split the patch path. */
+private fun String.pointerEscaped(): String = replace("~", "~0").replace("/", "~1")

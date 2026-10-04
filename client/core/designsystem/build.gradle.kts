@@ -12,6 +12,7 @@ kotlin {
             api(libs.compose.foundation)
             api(libs.compose.material3)
             implementation(libs.compose.ui)
+            implementation(libs.compose.components.resources)
         }
     }
 }

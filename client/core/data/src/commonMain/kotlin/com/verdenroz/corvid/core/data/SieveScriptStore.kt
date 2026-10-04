@@ -7,6 +7,10 @@ import com.verdenroz.corvid.core.jmap.resultOrThrow
 import com.verdenroz.corvid.core.model.Mailbox
 import com.verdenroz.corvid.core.model.MailboxRef
 import com.verdenroz.corvid.core.model.refs
+import com.verdenroz.corvid.core.text.UiText
+import com.verdenroz.corvid.core.text.resources.Res
+import com.verdenroz.corvid.core.text.resources.no_trash_folder
+import com.verdenroz.corvid.core.text.uiText
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -56,10 +60,10 @@ internal class SieveScriptStore(private val jmapClient: JmapClient) {
         snapshot.foreignActive?.let { if (!replaceForeign) return SaveResult.NeedsConfirmation(it.name) }
 
         val trashId = snapshot.mailboxes.firstOrNull { it.role == "trash" }?.id
-        if (script.needsTrash && trashId == null) return SaveResult.Rejected("this account has no Trash folder")
+        if (script.needsTrash && trashId == null) return SaveResult.Rejected(uiText(Res.string.no_trash_folder))
         val blobId = jmapClient.uploadBlob(script.render(trashId).encodeToByteArray(), SIEVE_TYPE)
         val reason = jmapClient.callOne("SieveScript/set", setScript(snapshot.own, blobId)).setFailure(snapshot.own)
-        return if (reason == null) SaveResult.Saved else SaveResult.Rejected(reason)
+        return if (reason == null) SaveResult.Saved else SaveResult.Rejected(UiText.FromServer(reason))
     }
 
     private suspend fun snapshot(): Snapshot {

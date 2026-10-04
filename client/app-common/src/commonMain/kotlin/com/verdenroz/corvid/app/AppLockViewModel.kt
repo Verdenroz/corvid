@@ -2,6 +2,15 @@ package com.verdenroz.corvid.app
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.verdenroz.corvid.appcommon.resources.Res
+import com.verdenroz.corvid.appcommon.resources.unreachable_enroll_offline
+import com.verdenroz.corvid.appcommon.resources.unreachable_enroll_refused
+import com.verdenroz.corvid.appcommon.resources.unreachable_folders_ambiguous
+import com.verdenroz.corvid.appcommon.resources.unreachable_heartbeat
+import com.verdenroz.corvid.appcommon.resources.unreachable_key_damaged
+import com.verdenroz.corvid.appcommon.resources.unreachable_key_unreachable
+import com.verdenroz.corvid.appcommon.resources.unreachable_server
+import com.verdenroz.corvid.appcommon.resources.unreachable_session
 import com.verdenroz.corvid.core.auth.AuthState
 import com.verdenroz.corvid.core.auth.TokenSource
 import com.verdenroz.corvid.core.jmap.AuthLatch
@@ -15,6 +24,7 @@ import com.verdenroz.corvid.core.keyring.DeviceKeyLookup
 import com.verdenroz.corvid.core.keyring.DeviceKeyRepository
 import com.verdenroz.corvid.core.keyring.KeyHolder
 import com.verdenroz.corvid.core.keyring.KeyState
+import com.verdenroz.corvid.core.text.uiText
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -23,13 +33,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
+import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 
 private val HEARTBEAT_INTERVAL = 60.seconds
 
 /**
  * Drives [AppLockState] from [TokenSource], [KeyHolder] and a device key
- * lookup built fresh for each signed-in server (decision 10). Owns the one
+ * lookup built fresh for each signed-in server. Owns the one
  * [JmapClient] a session gets: constructed once on sign-in, outlived by
  * nothing, declared into [UnlockedScopeHolder] once Unlocked so a scoped
  * repository can reuse it without knowing how it was built.
@@ -60,6 +72,16 @@ class AppLockViewModel(
         }
         viewModelScope.launch { keyHolder.state.collect(::onKeyState) }
     }
+
+    /** The signed-in server's short name, for the key pill. */
+    val serverHost: String?
+        get() = (tokenSource.state.value as? AuthState.SignedIn)?.server?.baseUrl?.let(::shortHost)
+
+    /** What the locked screen can say for certain: whichever of these this session knows. */
+    val lockFacts: LockFacts
+        get() = LockFacts((tokenSource.state.value as? AuthState.SignedIn)?.server?.baseUrl?.let(::host), deviceName, lockedAt)
+
+    private var lockedAt: Instant? = null
 
     fun submitDeviceName(name: String) {
         deviceName = name
@@ -122,9 +144,9 @@ class AppLockViewModel(
             val name = deviceName
             if (name != null) resolveKey(name) else _state.value = AppLockState.Connecting(needsDeviceName = true)
         } catch (e: JmapException) {
-            _state.value = AppLockState.Unreachable("could not reach the server")
+            _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_server))
         } catch (e: JmapSessionException) {
-            _state.value = AppLockState.Unreachable("the server's session response is unusable")
+            _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_session))
         }
     }
 
@@ -141,9 +163,9 @@ class AppLockViewModel(
                 } else {
                     _state.value = AppLockState.NeedsEnrollment(name)
                 }
-            is DeviceKeyLookup.Damaged -> _state.value = AppLockState.Unreachable("the device key is damaged")
-            is DeviceKeyLookup.Ambiguous -> _state.value = AppLockState.Unreachable("more than one device folder exists")
-            is DeviceKeyLookup.Unreachable -> _state.value = AppLockState.Unreachable("the device key could not be reached")
+            is DeviceKeyLookup.Damaged -> _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_key_damaged))
+            is DeviceKeyLookup.Ambiguous -> _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_folders_ambiguous))
+            is DeviceKeyLookup.Unreachable -> _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_key_unreachable))
         }
     }
 
@@ -156,9 +178,9 @@ class AppLockViewModel(
             enrolledThisSession = true
             keyHolder.unlock(key)
         } catch (e: JmapException) {
-            _state.value = AppLockState.Unreachable("could not reach the server to enroll this device")
+            _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_enroll_offline))
         } catch (e: DeviceKeyConflict) {
-            _state.value = AppLockState.Unreachable(e.message ?: "could not enroll this device")
+            _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_enroll_refused))
         }
     }
 
@@ -181,7 +203,10 @@ class AppLockViewModel(
                 heartbeatJob?.cancel()
                 heartbeatJob = null
                 unlockedScopeHolder.close()
-                if (_state.value is AppLockState.Unlocked) _state.value = AppLockState.Locked
+                if (_state.value is AppLockState.Unlocked) {
+                    lockedAt = Clock.System.now()
+                    _state.value = AppLockState.Locked
+                }
             }
         }
     }
@@ -206,7 +231,13 @@ class AppLockViewModel(
     // state, so this keeps the pane's "unreachable" message rather than
     // reading as though the user tapped Lock.
     private fun dropForUnreachableHeartbeat() {
-        _state.value = AppLockState.Unreachable("the heartbeat failed")
+        _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_heartbeat))
         keyHolder.drop()
     }
 }
+
+data class LockFacts(
+    val server: String?,
+    val device: String?,
+    val lockedAt: Instant?,
+)

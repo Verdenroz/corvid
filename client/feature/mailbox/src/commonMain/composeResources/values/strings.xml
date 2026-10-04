@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="mailbox_no_mailbox">This account has no %1$s mailbox.</string>
+    <string name="mailbox_back">Back</string>
+    <string name="mailbox_reply">Reply</string>
+    <string name="mailbox_reply_all">Reply all</string>
+    <string name="mailbox_forward">Forward</string>
+    <string name="mailbox_no_subject">(no subject)</string>
+    <string name="mailbox_gone">This message no longer exists.</string>
+    <string name="mailbox_from">From: %1$s</string>
+    <string name="reader_to">to %1$s</string>
+    <string name="reader_cc">cc %1$s</string>
+    <string name="mailbox_truncated">This message was truncated.</string>
+    <string name="mailbox_no_sender">Unknown sender</string>
+    <string name="mailbox_separator">-</string>
+    <string name="source_own_server">Your server</string>
+    <string name="source_mailing_list">Mailing list</string>
+    <string name="source_newsletter">Newsletter</string>
+    <string name="source_automated">Automated</string>
+    <string name="ledger_empty_inbox">Nothing waiting.</string>
+    <string name="ledger_empty_starred">Nothing starred.</string>
+    <string name="ledger_empty_sent">Nothing sent from here yet.</string>
+    <string name="ledger_empty_drafts">No drafts.</string>
+    <string name="custody_sender">Sender</string>
+    <string name="custody_way_in">On the way in</string>
+    <string name="custody_labelled">Labelled</string>
+    <string name="custody_signed_by">Signed by %1$s</string>
+    <string name="custody_signed">Signed</string>
+    <string name="custody_dmarc_passed">DMARC passed</string>
+    <string name="custody_not_authenticated">Not authenticated</string>
+    <string name="custody_claims_signed_by">Claims %1$s; signed by %2$s</string>
+    <string name="custody_claims_unsigned">Claims %1$s; nobody signed it</string>
+    <string name="custody_dmarc_failed">DMARC failed</string>
+    <string name="custody_unsigned">Unsigned</string>
+    <string name="custody_unsigned_detail">Delivered, but nobody vouched for it</string>
+    <plurals name="custody_trackers_removed">
+        <item quantity="one">%1$d tracker removed</item>
+        <item quantity="other">%1$d trackers removed</item>
+    </plurals>
+    <string name="custody_no_trackers">No trackers found</string>
+    <string name="custody_skipped">Not checked for trackers</string>
+    <string name="custody_skipped_detail">Delivered as it arrived</string>
+    <plurals name="custody_images_proxied">
+        <item quantity="one">%1$d image loads through your server</item>
+        <item quantity="other">%1$d images load through your server</item>
+    </plurals>
+    <string name="custody_links_disabled">Links disabled</string>
+    <string name="custody_guess">A guess from the model. Teach it:</string>
+    <string name="custody_by_rule">By your filter</string>
+    <string name="custody_by_labeler">By the labeler</string>
+    <string name="custody_by_you">By you</string>
+    <string name="custody_nothing">Nothing yet</string>
+    <string name="teach_right">Right</string>
+    <string name="teach_wrong">Wrong</string>
+    <string name="teach_change">Change</string>
+    <string name="reader_link_disabled">(link disabled by Corvid)</string>
+    <string name="teach_refused">Not saved: %1$s</string>
+    <string name="teach_change_hint">Label</string>
+    <string name="teach_apply">Apply</string>
+    <string name="reader_address">&lt;%1$s&gt;</string>
+    <string name="reader_address_unverified">&lt;%1$s&gt; · not verified</string>
+    <string name="card_source_kind">Source · %1$s</string>
+    <string name="card_authenticity">Authenticity</string>
+    <string name="card_writing_since">Writing since</string>
+    <string name="card_between_you">Between you</string>
+    <string name="card_writes">Writes</string>
+    <string name="card_trackers">Trackers stripped</string>
+    <string name="card_filed_as">Filed as</string>
+    <string name="card_recent">Recent</string>
+    <string name="card_between">%1$d from them · %2$d from you</string>
+    <plurals name="card_messages_since">
+        <item quantity="one">%1$d message since %2$s</item>
+        <item quantity="other">%1$d messages since %2$s</item>
+    </plurals>
+    <string name="card_no_tracker_record">No tracker record</string>
+    <string name="card_not_labelled">Not labelled</string>
+    <string name="card_write">Write</string>
+    <string name="card_unsubscribe">Unsubscribe</string>
+    <string name="card_make_filter">Make a filter</string>
+    <string name="card_close">Close</string>
+    <plurals name="card_signed_of">
+        <item quantity="one">Signed on %1$d of %2$d message</item>
+        <item quantity="other">Signed on %1$d of %2$d messages</item>
+    </plurals>
+    <string name="card_signed_last">Signed on %1$d of the last %2$d messages</string>
+    <plurals name="card_signed_by_of">
+        <item quantity="one">Signed by %1$s on %2$d of %3$d message</item>
+        <item quantity="other">Signed by %1$s on %2$d of %3$d messages</item>
+    </plurals>
+    <string name="card_signed_by_last">Signed by %1$s on %2$d of the last %3$d messages</string>
+    <plurals name="card_trackers_of">
+        <item quantity="one">%1$d from %2$d message</item>
+        <item quantity="other">%1$d from %2$d messages</item>
+    </plurals>
+    <string name="card_trackers_last">%1$d from %2$d of the last %3$d messages</string>
+    <plurals name="card_no_trackers_of">
+        <item quantity="one">None found in %1$d message</item>
+        <item quantity="other">None found in %1$d messages</item>
+    </plurals>
+    <string name="card_no_trackers_last">None found in %1$d of the last %2$d messages</string>
+    <string name="card_failed_claims">This sender failed authentication. Mail claiming to be %1$s didn't come from it.</string>
+    <string name="card_failed">This sender failed authentication.</string>
+</resources>

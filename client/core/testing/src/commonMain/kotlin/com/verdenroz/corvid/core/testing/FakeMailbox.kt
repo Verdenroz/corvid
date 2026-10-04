@@ -29,6 +29,8 @@ data class FakeEmail(
     val bodyType: String = "text/plain",
     val body: String? = null,
     val bodyTruncated: Boolean = false,
+    /** Raw header values by field name, in the order they appear in the message. */
+    val headers: Map<String, List<String>> = emptyMap(),
 )
 
 data class FakeIdentity(

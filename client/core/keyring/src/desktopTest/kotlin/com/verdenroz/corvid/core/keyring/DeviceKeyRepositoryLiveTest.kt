@@ -44,8 +44,8 @@ private const val FILENODE = "urn:ietf:params:jmap:filenode"
  * 48000-48999), never n1. `CORVID_RIG_PASSWORD` is the admin password
  * `stalwart-cli update Bootstrap` printed for that container.
  *
- * Ignored by default: DeviceKeyRepository itself is bearer-only (decision
- * 5), and this rig has no OIDC issuer to mint one from, so this test
+ * Ignored by default: DeviceKeyRepository itself is bearer-only, and this
+ * rig has no OIDC issuer to mint one from, so this test
  * speaks basic auth directly rather than through JmapClient. It exists to
  * have run once against the real capability, not to run in CI.
  */
