@@ -23,6 +23,8 @@ podman pod rm -f corvid >/dev/null 2>&1 || true
 podman ps -aq --filter 'name=^corvid-' | xargs -r podman rm -f >/dev/null
 
 echo "== units"
+systemctl disable --now corvid-update.timer corvid-update.path 2>/dev/null || true
+rm -f /etc/systemd/system/corvid-update.{service,timer,path}
 rm -f "$QUADLET_DIR"/corvid.pod "$QUADLET_DIR"/corvid-*.container
 # Masks are symlinks to /dev/null; removing them leaves nothing for the next install to trip on.
 find /etc/systemd/system -maxdepth 1 -name 'corvid-*.service' -lname /dev/null -delete
