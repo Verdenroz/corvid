@@ -222,7 +222,9 @@ class FakeJmapServerMethodCallTest {
             val outcomes = client.call(sendInvocations())
 
             assertIs<MethodOutcome.Success>(outcomes.getValue("c0"))
-            val submission = assertIs<MethodOutcome.Success>(outcomes.getValue("c1")).result
+            val outcome = assertIs<MethodOutcome.Success>(outcomes.getValue("c1"))
+            assertEquals(listOf("Email/set"), outcome.implicit.map { it.name })
+            val submission = outcome.result
             assertEquals("sub1", submission.getValue("created").jsonObject.getValue("s").jsonObject.getValue("id").jsonPrimitive.content)
             assertEquals(setOf("sent"), fake.emails.single().mailboxIds)
             assertEquals(emptySet(), fake.emails.single().keywords)

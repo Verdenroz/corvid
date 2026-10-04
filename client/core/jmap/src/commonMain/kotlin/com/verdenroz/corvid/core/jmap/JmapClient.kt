@@ -80,13 +80,12 @@ class JmapClient private constructor(
                 parsed.sessionState != session.state -> discoverSession(httpClient, authLatch, baseUrl, bearerToken)
                 else -> session
             }
-        // EmailSubmission/set answers twice under one callId when onSuccessUpdateEmail ran; the first is the submission's.
-        val outcomes = parsed.methodResponses.distinctBy { it.callId }.associate { it.callId to it.toOutcome() }
-        val missing = invocations.map { it.callId } - outcomes.keys
+        val responses = parsed.methodResponses.groupBy { it.callId }
+        val missing = invocations.map { it.callId } - responses.keys
         if (missing.isNotEmpty()) {
             throw JmapException(JmapError.Request(type = "incompleteResponse", detail = "no response for $missing"))
         }
-        return outcomes
+        return invocations.associate { it.callId to outcomeOf(it, responses.getValue(it.callId)) }
     }
 
     /** RFC 8620 requires accountId on every /get, /query and /set; callers never carry
@@ -135,17 +134,29 @@ class JmapClient private constructor(
     }
 }
 
-private fun Invocation.toOutcome(): MethodOutcome =
-    if (name == "error") {
-        MethodOutcome.Failure(
+/**
+ * A call can be answered more than once under its callId: RFC 8621 has
+ * EmailSubmission/set follow itself with an Email/set for onSuccessUpdateEmail.
+ * The response named for the request's method (or an error) is the outcome;
+ * the rest ride along as [MethodOutcome.Success.implicit].
+ */
+private fun outcomeOf(
+    request: Invocation,
+    responses: List<Invocation>,
+): MethodOutcome {
+    val own =
+        responses.firstOrNull { it.name == request.name || it.name == "error" }
+            ?: throw JmapException(JmapError.Request(type = "incompleteResponse", detail = "no response for ${request.callId}"))
+    if (own.name == "error") {
+        return MethodOutcome.Failure(
             JmapError.Method(
-                type = arguments["type"]?.jsonPrimitive?.contentOrNull.orEmpty(),
-                description = arguments["description"]?.jsonPrimitive?.contentOrNull,
+                type = own.arguments["type"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                description = own.arguments["description"]?.jsonPrimitive?.contentOrNull,
             ),
         )
-    } else {
-        MethodOutcome.Success(arguments)
     }
+    return MethodOutcome.Success(own.arguments, responses - own)
+}
 
 private suspend fun discoverSession(
     httpClient: HttpClient,
