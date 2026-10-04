@@ -29,7 +29,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -39,6 +38,7 @@ import com.verdenroz.corvid.core.data.SenderRepository
 import com.verdenroz.corvid.core.data.clockTime
 import com.verdenroz.corvid.core.data.dayHeading
 import com.verdenroz.corvid.core.data.monthYear
+import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.PillButton
@@ -119,7 +119,7 @@ fun SenderCard(
                 modifier =
                     Modifier.fillMaxWidth().background(
                         CorvidTheme.colors.dangerSoft,
-                    ).padding(horizontal = if (wide) 26.dp else 18.dp, vertical = 10.dp),
+                    ).padding(horizontal = CorvidSpacing.gutter(wide), vertical = 10.dp),
             )
         }
         Facts(state, latest, isSource, wide)
@@ -148,14 +148,9 @@ private fun Header(
             Modifier
                 .fillMaxWidth()
                 .drawBehind {
-                    val y = size.height - 1.dp.toPx()
-                    drawLine(
-                        Brush.linearGradient(listOf(colors.sheenStart, colors.sheenEnd)),
-                        Offset(0f, y),
-                        Offset(size.width, y),
-                        2.dp.toPx(),
-                    )
-                }.padding(start = if (wide) 26.dp else 18.dp, end = 18.dp, bottom = 18.dp),
+                    val y = size.height - 0.5.dp.toPx()
+                    drawLine(colors.line, Offset(0f, y), Offset(size.width, y), 1.dp.toPx())
+                }.padding(start = CorvidSpacing.gutter(wide), end = 18.dp, bottom = 18.dp),
     ) {
         SenderAvatar(name, sender is SenderKind.Source, seal, size = if (wide) 60.dp else 52.dp)
         Column(Modifier.weight(1f)) {
@@ -242,7 +237,7 @@ private fun FactCell(
     modifier: Modifier,
 ) {
     val colors = CorvidTheme.colors
-    Column(modifier.padding(horizontal = if (wide) 26.dp else 18.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(modifier.padding(horizontal = CorvidSpacing.gutter(wide), vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(stringResource(fact.key).uppercase(), style = CorvidTheme.type.label, color = colors.inkFaint)
         val labels = fact.labels?.keywords?.mapNotNull(CorvidKeywords::labelOf)
         when {
@@ -270,7 +265,7 @@ private fun Actions(
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.padding(horizontal = if (wide) 26.dp else 18.dp, vertical = 14.dp),
+        modifier = Modifier.padding(horizontal = CorvidSpacing.gutter(wide), vertical = 14.dp),
     ) {
         if (isSource) {
             if (provenance != null && unsubscribe != null) {
@@ -306,7 +301,7 @@ private fun History(
     val zone = remember { TimeZone.currentSystemDefault() }
     val today = Clock.System.now().toLocalDateTime(zone).date
     val separator = stringResource(Res.string.mailbox_separator)
-    LazyColumn(modifier.fillMaxWidth().padding(horizontal = if (wide) 26.dp else 18.dp)) {
+    LazyColumn(modifier.fillMaxWidth().padding(horizontal = CorvidSpacing.gutter(wide))) {
         item {
             Text(
                 stringResource(Res.string.card_recent).uppercase(),
@@ -322,7 +317,7 @@ private fun History(
             ) {
                 Text(
                     whenArrived(email, zone, today),
-                    style = CorvidTheme.type.meta.copy(fontFeatureSettings = "tnum"),
+                    style = CorvidTheme.type.metaNumeric,
                     color = colors.inkFaint,
                     modifier = Modifier.width(74.dp),
                 )

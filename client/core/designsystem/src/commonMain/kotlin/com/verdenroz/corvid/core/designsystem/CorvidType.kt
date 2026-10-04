@@ -30,6 +30,8 @@ data class CorvidType(
     val body: TextStyle,
     val meta: TextStyle,
     val metaStrong: TextStyle,
+    /** [meta] with tabular figures, so counts and times keep their width as they change. */
+    val metaNumeric: TextStyle,
     val chip: TextStyle,
     val action: TextStyle,
     val label: TextStyle,
@@ -93,6 +95,7 @@ internal fun corvidType(isDark: Boolean): CorvidType {
             ),
         meta = TextStyle(fontFamily = text, fontSize = 12.5.sp, lineHeight = 17.sp),
         metaStrong = TextStyle(fontFamily = text, fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp, lineHeight = 17.sp),
+        metaNumeric = TextStyle(fontFamily = text, fontSize = 12.5.sp, lineHeight = 17.sp, fontFeatureSettings = "tnum"),
         chip = TextStyle(fontFamily = text, fontWeight = FontWeight.SemiBold, fontSize = 11.5.sp, lineHeight = 15.sp),
         action = TextStyle(fontFamily = text, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, lineHeight = 18.sp),
         label =

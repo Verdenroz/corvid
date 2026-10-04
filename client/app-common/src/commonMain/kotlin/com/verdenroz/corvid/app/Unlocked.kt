@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -44,15 +44,17 @@ import com.verdenroz.corvid.core.data.ComposeRepository
 import com.verdenroz.corvid.core.data.FiltersRepository
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.data.SenderRepository
+import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.ui.LocalBackGuard
+import com.verdenroz.corvid.core.ui.LocalWideLayout
+import com.verdenroz.corvid.core.ui.WIDE_LAYOUT
 import com.verdenroz.corvid.feature.compose.ComposeScreen
 import com.verdenroz.corvid.feature.filters.FiltersScreen
 import com.verdenroz.corvid.feature.mailbox.ReaderScreen
 import com.verdenroz.corvid.feature.mailbox.SenderCard
 import com.verdenroz.corvid.feature.mailbox.SenderCardActions
-import com.verdenroz.corvid.feature.mailbox.WIDE_LEDGER
 import org.koin.compose.koinInject
 import org.koin.core.scope.Scope
 
@@ -99,22 +101,24 @@ internal fun UnlockedContent(
             }
         },
     ) {
-        val wide = maxWidth >= WIDE_LEDGER
-        Column(Modifier.fillMaxSize()) {
-            if (wide) WideTopBar(key, shellState.identity)
-            val top = navigator.depth - 1
-            val floats = wide && top > 0 && (route is Route.Sender || route is Route.Compose)
-            Box(Modifier.weight(1f)) {
-                // One keyed call site for every visible entry, so crossing the breakpoint moves a screen rather than rebuilding it.
-                (if (floats) listOf(top - 1, top) else listOf(top)).forEach { index ->
-                    val entryKey = navigator.entryKey(index)
-                    key(entryKey) {
-                        val entry = navigator[index]
-                        val floating = floats && index == top
-                        if (floating && entry is Route.Sender) Scrim(navigator::back)
-                        Box(if (floating) floating(entry, CorvidTheme.colors.line) else Modifier.fillMaxSize()) {
-                            CompositionLocalProvider(LocalBackGuard provides navigator.guard(index)) {
-                                saved.SaveableStateProvider(entryKey) { Page(entry, wide, key, shellState, scope, navigator, ledgers) }
+        val wide = maxWidth >= WIDE_LAYOUT
+        CompositionLocalProvider(LocalWideLayout provides wide) {
+            Column(Modifier.fillMaxSize()) {
+                if (wide) WideTopBar(key, shellState.identity)
+                val top = navigator.depth - 1
+                val floats = wide && top > 0 && (route is Route.Sender || route is Route.Compose)
+                Box(Modifier.weight(1f)) {
+                    // One keyed call site for every visible entry, so crossing the breakpoint moves a screen rather than rebuilding it.
+                    (if (floats) listOf(top - 1, top) else listOf(top)).forEach { index ->
+                        val entryKey = navigator.entryKey(index)
+                        key(entryKey) {
+                            val entry = navigator[index]
+                            val floating = floats && index == top
+                            if (floating && entry is Route.Sender) Scrim(navigator::back)
+                            Box(if (floating) floating(entry, CorvidTheme.colors.line) else Modifier.fillMaxSize()) {
+                                CompositionLocalProvider(LocalBackGuard provides navigator.guard(index)) {
+                                    saved.SaveableStateProvider(entryKey) { Page(entry, wide, key, shellState, scope, navigator, ledgers) }
+                                }
                             }
                         }
                     }
@@ -141,7 +145,7 @@ private fun BoxScope.floating(
     if (route is Route.Sender) {
         Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(540.dp).shadow(16.dp)
     } else {
-        val shape = RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp)
+        val shape = CorvidShape.medium.copy(bottomStart = CornerSize(0), bottomEnd = CornerSize(0))
         Modifier
             .align(Alignment.BottomEnd)
             .padding(end = 24.dp)

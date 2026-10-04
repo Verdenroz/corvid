@@ -9,13 +9,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.component.CorvidTextField
 import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.designsystem.component.PrimaryButton
 import com.verdenroz.corvid.core.model.FilterRule
@@ -44,12 +44,7 @@ internal fun RuleEditor(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        OutlinedTextField(
-            value = rule.name,
-            onValueChange = { onChange(rule.copy(name = it)) },
-            label = { Text(stringResource(Res.string.filters_name)) },
-            modifier = Modifier.fillMaxWidth(),
-        )
+        CorvidTextField(rule.name, { onChange(rule.copy(name = it)) }, stringResource(Res.string.filters_name), Modifier.fillMaxWidth())
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(stringResource(Res.string.filters_match))
             Picker(rule.match.label(), MatchMode.entries, { it.label() }) { onChange(rule.copy(match = it)) }

@@ -4,7 +4,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -25,8 +24,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.text.asString
+import com.verdenroz.corvid.core.ui.LocalWideLayout
+import com.verdenroz.corvid.core.ui.QuietPane
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.ledger_empty_drafts
 import com.verdenroz.corvid.feature.mailbox.resources.ledger_empty_inbox
@@ -36,9 +38,6 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Clock
-
-/** Below this width a row stacks the sender over the subject. */
-val WIDE_LEDGER = 720.dp
 
 private const val LOAD_AHEAD = 8
 
@@ -55,10 +54,10 @@ fun LedgerScreen(
     Box(modifier.fillMaxSize()) {
         when (val current = state) {
             is LedgerUiState.Loading -> Unit
-            is LedgerUiState.Failed -> Quiet(current.message.asString())
+            is LedgerUiState.Failed -> QuietPane(current.message.asString())
             is LedgerUiState.Loaded ->
                 if (current.emails.isEmpty()) {
-                    Quiet(stringResource(tab.emptyText()))
+                    QuietPane(stringResource(tab.emptyText()))
                 } else {
                     Ledger(current, onOpenEmail, onOpenSender, viewModel::loadMore)
                 }
@@ -82,8 +81,8 @@ private fun Ledger(
     LaunchedEffect(nearEnd, state.emails.size) {
         if (state.canLoadMore && nearEnd >= listState.layoutInfo.totalItemsCount - LOAD_AHEAD) onLoadMore()
     }
-    BoxWithConstraints {
-        val wide = maxWidth >= WIDE_LEDGER
+    val wide = LocalWideLayout.current
+    Box {
         LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 96.dp), modifier = Modifier.fillMaxSize()) {
             days.forEach { day ->
                 stickyHeader(key = day.date.toString()) { DayHeader(day, wide) }
@@ -105,7 +104,7 @@ private fun DayHeader(
         Row(
             verticalAlignment = Alignment.Bottom,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier.padding(start = if (wide) 24.dp else 16.dp, end = 16.dp, top = 18.dp, bottom = 8.dp),
+            modifier = Modifier.padding(start = CorvidSpacing.gutter(wide), end = 16.dp, top = 18.dp, bottom = 8.dp),
         ) {
             Text(day.heading.title.asString(), style = CorvidTheme.type.dayHeader)
             Text(
@@ -116,13 +115,6 @@ private fun DayHeader(
             )
         }
         HorizontalDivider(color = colors.line)
-    }
-}
-
-@Composable
-private fun Quiet(text: String) {
-    Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
-        Text(text, style = CorvidTheme.type.body, color = CorvidTheme.colors.inkMuted)
     }
 }
 

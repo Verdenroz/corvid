@@ -12,16 +12,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidMark
 
@@ -52,11 +51,7 @@ fun StatePane(
         Column(Modifier.widthIn(max = 380.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             CorvidMark(width = 48.dp)
             Text(headline, style = CorvidTheme.type.display, color = headlineColor)
-            Box(
-                Modifier.width(
-                    120.dp,
-                ).height(3.dp).background(Brush.linearGradient(listOf(colors.sheenStart, colors.sheenEnd)), RoundedCornerShape(3.dp)),
-            )
+            Box(Modifier.width(120.dp).height(3.dp).background(CorvidTheme.sheen, CorvidShape.pill))
             detail?.let { Text(it, style = CorvidTheme.type.body, color = colors.inkMuted) }
             if (facts.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {

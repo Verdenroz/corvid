@@ -108,7 +108,7 @@ private fun Time(
         if (email.isUnread) Box(Modifier.size(7.dp).background(CorvidTheme.colors.accent, CircleShape))
         Text(
             clockTime(at.hour, at.minute).asString(),
-            style = CorvidTheme.type.meta.copy(fontFeatureSettings = "tnum"),
+            style = CorvidTheme.type.metaNumeric,
             color = CorvidTheme.colors.inkFaint,
         )
     }

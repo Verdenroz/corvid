@@ -2,23 +2,26 @@ package com.verdenroz.corvid.core.designsystem
 
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Shapes
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-internal val CorvidShapes =
-    Shapes(
-        extraSmall = RoundedCornerShape(6.dp),
-        small = RoundedCornerShape(8.dp),
-        medium = RoundedCornerShape(12.dp),
-        large = RoundedCornerShape(16.dp),
-        extraLarge = RoundedCornerShape(16.dp),
-    )
-
-/** A 4dp grid, named by role rather than size. */
-object CorvidSpacing {
-    val xxs = 4.dp
-    val xs = 8.dp
-    val sm = 12.dp
-    val md = 16.dp
-    val lg = 24.dp
-    val xl = 32.dp
+/** Corners: [pill] for buttons and counts, [small] for chips and keys, [medium] for fields, frames and panels. */
+object CorvidShape {
+    val pill = RoundedCornerShape(50)
+    val small = RoundedCornerShape(6.dp)
+    val medium = RoundedCornerShape(12.dp)
 }
+
+/** One horizontal gutter for every screen edge, wide and narrow. */
+object CorvidSpacing {
+    fun gutter(wide: Boolean): Dp = if (wide) 24.dp else 16.dp
+}
+
+internal val MaterialShapes =
+    Shapes(
+        extraSmall = CorvidShape.small,
+        small = CorvidShape.small,
+        medium = CorvidShape.medium,
+        large = CorvidShape.medium,
+        extraLarge = CorvidShape.medium,
+    )

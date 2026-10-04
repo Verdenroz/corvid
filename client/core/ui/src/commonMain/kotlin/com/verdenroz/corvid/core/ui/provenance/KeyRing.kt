@@ -6,7 +6,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.Dp
@@ -20,6 +19,7 @@ fun KeyRing(
     size: Dp = 22.dp,
 ) {
     val colors = CorvidTheme.colors
+    val sheen = CorvidTheme.sheen
     Canvas(modifier.size(size)) {
         val width = this.size.width * 2.5f / 22f
         val inset = width / 2 + this.size.width * 0.5f / 22f
@@ -27,12 +27,7 @@ fun KeyRing(
         val topLeft = Offset(inset, inset)
         drawArc(colors.line, 0f, 360f, useCenter = false, topLeft = topLeft, size = arc, style = Stroke(width))
         drawArc(
-            brush =
-                Brush.linearGradient(
-                    listOf(colors.sheenStart, colors.sheenEnd),
-                    Offset.Zero,
-                    Offset(this.size.width, this.size.height),
-                ),
+            brush = sheen,
             startAngle = -90f,
             sweepAngle = 360f * fraction.coerceIn(0f, 1f),
             useCenter = false,

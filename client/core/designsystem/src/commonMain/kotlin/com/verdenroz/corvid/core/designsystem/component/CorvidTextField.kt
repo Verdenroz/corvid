@@ -1,13 +1,12 @@
 package com.verdenroz.corvid.core.designsystem.component
 
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 
 /** Material's field for its focus and accessibility; the hairline, radius and type are Corvid's. */
@@ -26,7 +25,7 @@ fun CorvidTextField(
         label = { Text(label) },
         singleLine = true,
         keyboardOptions = keyboardOptions,
-        shape = RoundedCornerShape(10.dp),
+        shape = CorvidShape.medium,
         textStyle = CorvidTheme.type.name.copy(color = colors.ink),
         colors =
             OutlinedTextFieldDefaults.colors(

@@ -3,7 +3,6 @@ package com.verdenroz.corvid.feature.mailbox
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -42,6 +41,8 @@ import com.verdenroz.corvid.core.model.Label
 import com.verdenroz.corvid.core.model.Seal
 import com.verdenroz.corvid.core.model.SenderKind
 import com.verdenroz.corvid.core.text.asString
+import com.verdenroz.corvid.core.ui.LocalWideLayout
+import com.verdenroz.corvid.core.ui.QuietPane
 import com.verdenroz.corvid.core.ui.provenance.SenderAvatar
 import com.verdenroz.corvid.core.ui.provenance.openUntrusted
 import com.verdenroz.corvid.core.ui.provenance.sealDescription
@@ -71,14 +72,14 @@ fun ReaderScreen(
     val viewModel = remember(repository, emailId) { ReaderViewModel(repository, emailId) }
     val state by viewModel.state.collectAsState()
 
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val wide = maxWidth >= WIDE_LEDGER
+    val wide = LocalWideLayout.current
+    Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             ActionBar(wide, onBack)
             when (val current = state) {
                 is ReaderUiState.Loading -> Unit
-                is ReaderUiState.Failed -> Quiet(current.message.asString())
-                is ReaderUiState.Gone -> Quiet(stringResource(Res.string.mailbox_gone))
+                is ReaderUiState.Failed -> QuietPane(current.message.asString())
+                is ReaderUiState.Gone -> QuietPane(stringResource(Res.string.mailbox_gone))
                 is ReaderUiState.Loaded ->
                     Reader(
                         current.email,
@@ -250,12 +251,5 @@ private fun SenderLine(
             }
         }
         Text(stamp(email.receivedAt, zone, Clock.System.now()).asString(), style = CorvidTheme.type.meta, color = colors.inkMuted)
-    }
-}
-
-@Composable
-private fun Quiet(text: String) {
-    Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
-        Text(text, style = CorvidTheme.type.body, color = CorvidTheme.colors.inkMuted)
     }
 }

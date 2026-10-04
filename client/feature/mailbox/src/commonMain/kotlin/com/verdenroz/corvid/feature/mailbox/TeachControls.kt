@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -21,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.Correction
+import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.PillButton
@@ -86,7 +86,7 @@ private fun ChangeField(
                 Modifier
                     .widthIn(min = 120.dp, max = 200.dp)
                     .height(28.dp)
-                    .border(1.dp, colors.line, RoundedCornerShape(8.dp))
+                    .border(1.dp, colors.line, CorvidShape.small)
                     .padding(horizontal = 10.dp, vertical = 6.dp),
             decorationBox = { field ->
                 if (text.isEmpty()) {

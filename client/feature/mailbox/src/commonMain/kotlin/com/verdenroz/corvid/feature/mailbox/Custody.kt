@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -21,11 +20,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.model.CorvidKeywords
@@ -61,8 +61,6 @@ import com.verdenroz.corvid.feature.mailbox.resources.custody_way_in
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
-private val CustodyShape = RoundedCornerShape(12.dp)
-
 /**
  * Who sent it, what happened on the way in and who labelled it, side by side when [wide]. A
  * message the milter never saw has no middle cell: a missing header is not a clean message.
@@ -75,21 +73,14 @@ internal fun Custody(
 ) {
     val colors = CorvidTheme.colors
     val bad = email.provenance.suspect
-    val edge =
-        if (bad) {
-            Brush.linearGradient(
-                listOf(colors.danger, colors.danger),
-            )
-        } else {
-            Brush.linearGradient(listOf(colors.sheenStart, colors.sheenEnd))
-        }
+    val edge = if (bad) SolidColor(colors.danger) else CorvidTheme.sheen
     val cells =
         buildList<@Composable (Modifier) -> Unit> {
             add { SenderCell(email.provenance.seal, it.then(if (bad) Modifier.background(colors.dangerSoft) else Modifier)) }
             email.provenance.rewrite?.let { rewrite -> add { WayInCell(rewrite, bad, it) } }
             add { LabelledCell(email.keywords.mapNotNull(CorvidKeywords::labelOf), teach, it) }
         }
-    val frame = Modifier.fillMaxWidth().clip(CustodyShape).border(1.dp, edge, CustodyShape)
+    val frame = Modifier.fillMaxWidth().clip(CorvidShape.medium).border(1.dp, edge, CorvidShape.medium)
     if (wide) {
         Row(frame.height(IntrinsicSize.Min)) {
             cells.forEachIndexed { index, cell ->

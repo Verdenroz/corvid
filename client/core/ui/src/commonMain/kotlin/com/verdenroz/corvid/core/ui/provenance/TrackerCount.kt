@@ -29,6 +29,6 @@ fun TrackerCount(
         modifier = modifier.clearAndSetSemantics { contentDescription = description },
     ) {
         Icon(CorvidIcons.EyeOff, contentDescription = null, tint = CorvidTheme.colors.inkFaint, modifier = Modifier.size(14.dp))
-        Text(count.toString(), style = CorvidTheme.type.meta.copy(fontFeatureSettings = "tnum"), color = CorvidTheme.colors.inkFaint)
+        Text(count.toString(), style = CorvidTheme.type.metaNumeric, color = CorvidTheme.colors.inkFaint)
     }
 }

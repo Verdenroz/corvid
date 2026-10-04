@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -19,14 +18,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
+import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.model.Label
 import com.verdenroz.corvid.core.ui.resources.Res
 import com.verdenroz.corvid.core.ui.resources.label_guess
 import org.jetbrains.compose.resources.stringResource
-
-private val ChipShape = RoundedCornerShape(6.dp)
 
 /** Who set a label shows in its outline: filled is a person's or the labeler's, dashed with "?" is a model guess, a funnel is a filter. */
 @Composable
@@ -38,10 +36,10 @@ fun LabelChip(
     val name = label.name.replaceFirstChar { it.uppercase() }
     val shaped =
         when (label) {
-            is Label.Yours -> modifier.background(colors.accentSoft, ChipShape)
-            is Label.Labeler -> modifier.background(colors.chip, ChipShape)
+            is Label.Yours -> modifier.background(colors.accentSoft, CorvidShape.small)
+            is Label.Labeler -> modifier.background(colors.chip, CorvidShape.small)
             is Label.Guess -> modifier.dashedOutline(colors.inkFaint)
-            is Label.Rule -> modifier.border(1.dp, colors.line, ChipShape)
+            is Label.Rule -> modifier.border(1.dp, colors.line, CorvidShape.small)
         }
     val ink = if (label is Label.Yours || label is Label.Labeler) colors.onAccentSoft else colors.inkMuted
     Row(

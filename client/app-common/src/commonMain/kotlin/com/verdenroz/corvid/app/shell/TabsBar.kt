@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -37,6 +36,7 @@ import com.verdenroz.corvid.appcommon.resources.tab_people
 import com.verdenroz.corvid.appcommon.resources.tab_sent
 import com.verdenroz.corvid.appcommon.resources.tab_sources
 import com.verdenroz.corvid.appcommon.resources.tab_starred
+import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import org.jetbrains.compose.resources.StringResource
@@ -93,7 +93,7 @@ private fun Tab(
         modifier =
             Modifier
                 .height(32.dp)
-                .clip(RoundedCornerShape(50))
+                .clip(CorvidShape.pill)
                 .background(if (selected) colors.accentSoft else colors.surface)
                 .clickable(role = Role.Tab, onClick = onClick)
                 .semantics { this.selected = selected }
@@ -107,7 +107,7 @@ private fun Tab(
             color = ink,
         )
         count?.takeIf { it > 0 }?.let {
-            Text(it.toString(), style = CorvidTheme.type.meta.copy(fontFeatureSettings = "tnum"), color = ink)
+            Text(it.toString(), style = CorvidTheme.type.metaNumeric, color = ink)
         }
     }
 }

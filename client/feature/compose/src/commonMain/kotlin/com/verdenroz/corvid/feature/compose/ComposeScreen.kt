@@ -40,6 +40,7 @@ import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.DiscardQuestion
 import com.verdenroz.corvid.core.ui.GuardBack
+import com.verdenroz.corvid.core.ui.QuietPane
 import com.verdenroz.corvid.feature.compose.resources.Res
 import com.verdenroz.corvid.feature.compose.resources.compose_bcc
 import com.verdenroz.corvid.feature.compose.resources.compose_cc
@@ -74,7 +75,7 @@ fun ComposeScreen(
         when (val current = state) {
             is ComposeUiState.Loading -> Unit
             is ComposeUiState.Sent -> LaunchedEffect(Unit) { onClose() }
-            is ComposeUiState.Failed -> Quiet(current.message.asString())
+            is ComposeUiState.Failed -> QuietPane(current.message.asString())
             is ComposeUiState.Editing -> {
                 if (current.confirmingDiscard) {
                     DiscardQuestion(
@@ -206,11 +207,4 @@ private fun Body(
             }
         },
     )
-}
-
-@Composable
-private fun Quiet(text: String) {
-    Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
-        Text(text, style = CorvidTheme.type.body, color = CorvidTheme.colors.inkMuted)
-    }
 }

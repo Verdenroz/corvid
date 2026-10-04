@@ -12,19 +12,22 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.appcommon.resources.Res
 import com.verdenroz.corvid.appcommon.resources.app_name
-import com.verdenroz.corvid.appcommon.resources.search
 import com.verdenroz.corvid.appcommon.resources.search_placeholder
 import com.verdenroz.corvid.appcommon.resources.search_shortcut
+import com.verdenroz.corvid.appcommon.resources.search_unavailable
+import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.CorvidMark
@@ -49,7 +52,6 @@ internal fun Wordmark() {
     }
 }
 
-/** The search field is drawn but not wired yet. */
 @Composable
 internal fun WideTopBar(
     key: KeyState,
@@ -82,8 +84,8 @@ internal fun NarrowTopBar(key: KeyState) {
         ) {
             Wordmark()
             Spacer(Modifier.weight(1f))
-            Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
-                Icon(CorvidIcons.Search, contentDescription = stringResource(Res.string.search), tint = colors.inkMuted)
+            Box(Modifier.size(40.dp).unavailable(stringResource(Res.string.search_unavailable)), contentAlignment = Alignment.Center) {
+                Icon(CorvidIcons.Search, contentDescription = null, tint = colors.inkMuted)
             }
             key.remaining?.let { KeyRingButton(it, key.timeout, key.onLock) }
         }
@@ -99,6 +101,12 @@ internal fun NarrowTopBar(key: KeyState) {
     }
 }
 
+private fun Modifier.unavailable(description: String): Modifier =
+    clearAndSetSemantics {
+        contentDescription = description
+        disabled()
+    }
+
 @Composable
 private fun SearchField(modifier: Modifier) {
     val colors = CorvidTheme.colors
@@ -106,9 +114,9 @@ private fun SearchField(modifier: Modifier) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         modifier =
-            modifier.fillMaxWidth().height(
+            modifier.unavailable(stringResource(Res.string.search_unavailable)).fillMaxWidth().height(
                 40.dp,
-            ).background(colors.hover, RoundedCornerShape(12.dp)).padding(start = 12.dp, end = 8.dp),
+            ).background(colors.hover, CorvidShape.medium).padding(start = 12.dp, end = 8.dp),
     ) {
         Icon(CorvidIcons.Search, contentDescription = null, tint = colors.inkMuted, modifier = Modifier.size(20.dp))
         Text(
@@ -121,7 +129,7 @@ private fun SearchField(modifier: Modifier) {
             stringResource(Res.string.search_shortcut),
             style = CorvidTheme.type.chip,
             color = colors.inkMuted,
-            modifier = Modifier.border(1.dp, colors.line, RoundedCornerShape(5.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
+            modifier = Modifier.border(1.dp, colors.line, CorvidShape.small).padding(horizontal = 6.dp, vertical = 1.dp),
         )
     }
 }

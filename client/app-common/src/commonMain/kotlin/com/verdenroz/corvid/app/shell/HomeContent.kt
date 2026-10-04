@@ -6,8 +6,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -22,8 +20,10 @@ import com.verdenroz.corvid.appcommon.resources.placeholder_labels
 import com.verdenroz.corvid.appcommon.resources.placeholder_people
 import com.verdenroz.corvid.appcommon.resources.placeholder_sources
 import com.verdenroz.corvid.appcommon.resources.write
+import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
+import com.verdenroz.corvid.core.ui.QuietPane
 import com.verdenroz.corvid.feature.mailbox.LedgerScreen
 import org.jetbrains.compose.resources.stringResource
 
@@ -54,14 +54,7 @@ private fun NotBuilt(tab: HomeTab) {
             HomeTab.Sources -> Res.string.placeholder_sources
             else -> Res.string.placeholder_labels
         }
-    Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
-        Text(
-            stringResource(text),
-            style = CorvidTheme.type.body,
-            color = CorvidTheme.colors.inkMuted,
-            modifier = Modifier.widthIn(max = 420.dp),
-        )
-    }
+    QuietPane(stringResource(text))
 }
 
 @Composable
@@ -72,7 +65,7 @@ private fun WriteButton(
     val colors = CorvidTheme.colors
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(16.dp),
+        shape = CorvidShape.medium,
         color = colors.accent,
         contentColor = colors.onAccent,
         shadowElevation = 6.dp,

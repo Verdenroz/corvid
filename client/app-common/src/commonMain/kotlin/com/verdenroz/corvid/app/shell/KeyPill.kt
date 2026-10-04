@@ -1,15 +1,12 @@
 package com.verdenroz.corvid.app.shell
 
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -25,6 +22,7 @@ import com.verdenroz.corvid.appcommon.resources.key_countdown
 import com.verdenroz.corvid.appcommon.resources.key_lock_now
 import com.verdenroz.corvid.appcommon.resources.key_status
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.ui.provenance.KeyRing
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
@@ -53,17 +51,10 @@ internal fun KeyPill(
     timeout: Duration,
     onLock: () -> Unit,
 ) {
-    val colors = CorvidTheme.colors
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(9.dp),
-        modifier =
-            Modifier
-                .height(36.dp)
-                .clip(RoundedCornerShape(50))
-                .border(1.dp, colors.line, RoundedCornerShape(50))
-                .clickable(onClickLabel = stringResource(Res.string.key_lock_now), role = Role.Button, onClick = onLock)
-                .padding(start = 7.dp, end = 13.dp),
+    PillButton(
+        onClick = onLock,
+        onClickLabel = stringResource(Res.string.key_lock_now),
+        contentPadding = PaddingValues(start = 7.dp, end = 13.dp),
     ) {
         KeyRing(fraction(remaining, timeout))
         KeyStatus(host, remaining)
@@ -95,7 +86,7 @@ internal fun KeyStatus(
         Text(host, style = CorvidTheme.type.meta, fontWeight = FontWeight.SemiBold, color = CorvidTheme.colors.ink)
         Text(
             stringResource(Res.string.key_status, countdown(remaining)),
-            style = CorvidTheme.type.meta.copy(fontFeatureSettings = "tnum"),
+            style = CorvidTheme.type.metaNumeric,
             color = CorvidTheme.colors.inkMuted,
         )
     }

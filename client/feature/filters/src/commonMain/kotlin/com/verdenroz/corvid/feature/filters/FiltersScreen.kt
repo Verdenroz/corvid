@@ -2,7 +2,6 @@ package com.verdenroz.corvid.feature.filters
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -38,6 +37,7 @@ import com.verdenroz.corvid.core.model.FilterRule
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.DiscardQuestion
 import com.verdenroz.corvid.core.ui.GuardBack
+import com.verdenroz.corvid.core.ui.QuietPane
 import com.verdenroz.corvid.feature.filters.resources.Res
 import com.verdenroz.corvid.feature.filters.resources.filters_add_rule
 import com.verdenroz.corvid.feature.filters.resources.filters_back
@@ -77,9 +77,7 @@ fun FiltersScreen(
         when (val current = state) {
             is FiltersUiState.Loading -> Unit
             is FiltersUiState.Failed ->
-                Centered {
-                    Text(current.message.asString(), style = CorvidTheme.type.body, color = CorvidTheme.colors.inkMuted)
-                }
+                QuietPane(current.message.asString())
             is FiltersUiState.Ready -> {
                 val draft = current.editing
                 if (current.save is SaveStatus.Confirming) {
@@ -113,11 +111,6 @@ fun FiltersScreen(
             }
         }
     }
-}
-
-@Composable
-private fun Centered(content: @Composable () -> Unit) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { content() }
 }
 
 @Composable

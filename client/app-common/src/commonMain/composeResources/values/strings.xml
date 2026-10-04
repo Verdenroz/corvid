@@ -18,7 +18,7 @@
     <string name="app_name">Corvid</string>
     <string name="search_placeholder">Search mail, people and sources</string>
     <string name="search_shortcut">Ctrl K</string>
-    <string name="search">Search</string>
+    <string name="search_unavailable">Search isn't available yet</string>
     <string name="key_status">· key held · locks in %1$s</string>
     <string name="key_countdown">%1$s:%2$s</string>
     <string name="key_lock_now">Lock now</string>
