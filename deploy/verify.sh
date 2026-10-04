@@ -22,7 +22,7 @@ bad()  { echo "  FAIL  $*"; ((fail++)); }
 warn() { echo "  warn  $*"; }
 
 echo "== services =="
-for s in corvid-unbound corvid-mail corvid-milter corvid-imgproxy corvid-labeler; do
+for s in corvid-unbound corvid-mail corvid-milter corvid-imgproxy corvid-labeler corvid-sentinel; do
   if systemctl is-active --quiet "$s.service"; then
     ok "$s active"
   elif [[ "$(systemctl is-enabled "$s.service" 2>/dev/null)" == masked ]]; then
