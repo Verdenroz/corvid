@@ -1,18 +1,14 @@
 package com.verdenroz.corvid.core.data
 
-import com.verdenroz.corvid.core.jmap.Invocation
 import com.verdenroz.corvid.core.jmap.JmapClient
 import com.verdenroz.corvid.core.jmap.resultOrThrow
-import com.verdenroz.corvid.core.jmap.resultReference
 import com.verdenroz.corvid.core.model.EmailAddress
 import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.core.model.Rewrite
 import com.verdenroz.corvid.core.model.Seal
 import com.verdenroz.corvid.core.model.SenderCounts
 import com.verdenroz.corvid.core.model.SenderWindow
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.int
@@ -141,17 +137,12 @@ class SenderRepository(
                 put("limit", pageSize)
                 put("calculateTotal", true)
             }
-        val get =
-            buildJsonObject {
-                put("#ids", resultReference(resultOf = "c0", name = "Email/query", path = "/ids"))
-                put("properties", JsonArray(properties.map(::JsonPrimitive)))
-            }
-        val outcomes = jmapClient.call(listOf(Invocation("Email/query", query, "c0"), Invocation("Email/get", get, "c1")))
-        val found = outcomes.getValue("c0").resultOrThrow()
+        val outcomes = jmapClient.queryAndGet(query, properties)
+        val found = outcomes.query.resultOrThrow()
         return StatsPage(
             total = found.getValue("total").jsonPrimitive.int,
             queryState = found.getValue("queryState").jsonPrimitive.content,
-            emails = outcomes.getValue("c1").resultOrThrow().getValue("list").jsonArray.map { it.jsonObject },
+            emails = outcomes.get.resultOrThrow().getValue("list").jsonArray.map { it.jsonObject },
         )
     }
 }

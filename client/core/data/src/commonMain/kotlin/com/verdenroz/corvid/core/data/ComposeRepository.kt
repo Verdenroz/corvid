@@ -166,7 +166,7 @@ class ComposeRepository(
     }
 }
 
-private fun JsonObject.toIdentity() =
+internal fun JsonObject.toIdentity() =
     Identity(
         id = getValue("id").jsonPrimitive.content,
         name = get("name")?.jsonPrimitive?.contentOrNull.orEmpty(),

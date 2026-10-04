@@ -1,6 +1,7 @@
 plugins {
     id("corvid.kmp.library")
     id("corvid.compose.multiplatform")
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android { namespace = "com.verdenroz.corvid.app" }

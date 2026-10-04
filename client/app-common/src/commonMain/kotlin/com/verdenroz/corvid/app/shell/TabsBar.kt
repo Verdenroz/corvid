@@ -42,7 +42,7 @@ import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
-/** Tabs, not a drawer: Labels and Filters sit apart at the far end when wide; narrow, the row scrolls. */
+/** Wide, Labels and Filters sit apart at the far end; narrow, the whole row scrolls. */
 @Composable
 internal fun TabsBar(
     current: HomeTab,

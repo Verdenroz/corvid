@@ -204,7 +204,6 @@ private fun RuleRow(
     }
 }
 
-/** Inline, not a dialog: the question sits above the rules it would change. */
 @Composable
 private fun ConfirmReplace(
     scriptName: String,

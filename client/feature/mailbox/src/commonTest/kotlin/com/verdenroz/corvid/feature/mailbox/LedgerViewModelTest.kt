@@ -1,12 +1,10 @@
 package com.verdenroz.corvid.feature.mailbox
 
 import com.verdenroz.corvid.core.data.MailboxRepository
-import com.verdenroz.corvid.core.jmap.AuthLatch
-import com.verdenroz.corvid.core.jmap.JmapClient
-import com.verdenroz.corvid.core.jmap.createJmapHttpClient
 import com.verdenroz.corvid.core.testing.FakeEmail
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.FakeMailbox
+import com.verdenroz.corvid.core.testing.client
 import com.verdenroz.corvid.core.testing.runViewModelTest
 import com.verdenroz.corvid.core.text.uiText
 import com.verdenroz.corvid.feature.mailbox.resources.Res
@@ -20,12 +18,11 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
-private const val BASE_URL = "http://127.0.0.1:9999"
 private const val EMAIL_COUNT = 60
 
 class LedgerViewModelTest {
     private suspend fun repository(fake: FakeJmapServer): MailboxRepository {
-        val client = JmapClient.connect(createJmapHttpClient(fake.engine), AuthLatch(), BASE_URL)
+        val client = fake.client()
         return MailboxRepository(client)
     }
 

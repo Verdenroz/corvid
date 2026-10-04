@@ -1,6 +1,5 @@
 package com.verdenroz.corvid.core.data
 
-import com.verdenroz.corvid.core.jmap.Invocation
 import com.verdenroz.corvid.core.jmap.JmapClient
 import com.verdenroz.corvid.core.jmap.MethodOutcome
 import com.verdenroz.corvid.core.jmap.callOne
@@ -121,22 +120,10 @@ class MailboxRepository(private val jmapClient: JmapClient) {
                     put("anchorOffset", 1)
                 }
             }
-        val getArguments =
-            buildJsonObject {
-                put("#ids", resultReference(resultOf = "c0", name = "Email/query", path = "/ids"))
-                putJsonArray("properties") { EMAIL_PROPERTIES.forEach { add(JsonPrimitive(it)) } }
-            }
-        val outcomes =
-            jmapClient.call(
-                listOf(
-                    Invocation("Email/query", queryArguments, "c0"),
-                    Invocation("Email/get", getArguments, "c1"),
-                ),
-            )
-        val queryOutcome = outcomes.getValue("c0")
-        if ((queryOutcome as? MethodOutcome.Failure)?.error?.type == "anchorNotFound") return EmailPage.AnchorNotFound
-        val queryResult = queryOutcome.resultOrThrow()
-        val getResult = outcomes.getValue("c1").resultOrThrow()
+        val outcomes = jmapClient.queryAndGet(queryArguments, EMAIL_PROPERTIES)
+        if ((outcomes.query as? MethodOutcome.Failure)?.error?.type == "anchorNotFound") return EmailPage.AnchorNotFound
+        val queryResult = outcomes.query.resultOrThrow()
+        val getResult = outcomes.get.resultOrThrow()
         val domain = ownDomain()
         val emails = getResult.getValue("list").jsonArray.map { it.jsonObject.toEmailSummary(domain) }
         return EmailPage.Found(emails, queryResult.getValue("queryState").jsonPrimitive.content)
@@ -199,13 +186,7 @@ class MailboxRepository(private val jmapClient: JmapClient) {
     internal suspend fun ownDomain(): String? = identity()?.email?.substringAfterLast('@')
 
     private suspend fun fetchIdentity(): Identity? =
-        jmapClient.callOne("Identity/get", JsonObject(emptyMap())).getValue("list").jsonArray.firstOrNull()?.jsonObject?.let {
-            Identity(
-                id = it.getValue("id").jsonPrimitive.content,
-                name = it["name"]?.jsonPrimitive?.contentOrNull.orEmpty(),
-                email = it.getValue("email").jsonPrimitive.content,
-            )
-        }
+        jmapClient.callOne("Identity/get", JsonObject(emptyMap())).getValue("list").jsonArray.firstOrNull()?.jsonObject?.toIdentity()
 }
 
 internal fun JsonObject.toMailbox() =

@@ -1,10 +1,8 @@
 package com.verdenroz.corvid.core.data
 
-import com.verdenroz.corvid.core.jmap.AuthLatch
-import com.verdenroz.corvid.core.jmap.JmapClient
-import com.verdenroz.corvid.core.jmap.createJmapHttpClient
 import com.verdenroz.corvid.core.testing.FakeEmail
 import com.verdenroz.corvid.core.testing.FakeJmapServer
+import com.verdenroz.corvid.core.testing.client
 import com.verdenroz.corvid.core.testing.withSendableAccount
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -37,7 +35,7 @@ private fun from(
 ) = FakeEmail(id, id, setOf("inbox"), "s", address, at, headers = headers)
 
 private suspend fun senders(fake: FakeJmapServer): SenderRepository {
-    val client = JmapClient.connect(createJmapHttpClient(fake.engine), AuthLatch(), "http://127.0.0.1:9999")
+    val client = fake.client()
     return SenderRepository(client, MailboxRepository(client))
 }
 

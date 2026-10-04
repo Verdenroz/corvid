@@ -18,7 +18,6 @@ import com.verdenroz.corvid.core.ui.RevokedPane
 import com.verdenroz.corvid.core.ui.UnreachablePane
 import com.verdenroz.corvid.feature.signin.SignInScreen
 import kotlinx.datetime.TimeZone
-import kotlinx.datetime.toLocalDateTime
 import org.koin.compose.viewmodel.koinViewModel
 import kotlin.time.Instant
 
@@ -51,7 +50,4 @@ fun CorvidApp(viewModel: AppLockViewModel = koinViewModel()) {
 }
 
 @Composable
-private fun droppedAt(at: Instant): String {
-    val local = at.toLocalDateTime(TimeZone.currentSystemDefault())
-    return clockTime(local.hour, local.minute).asString()
-}
+private fun droppedAt(at: Instant): String = clockTime(at, TimeZone.currentSystemDefault()).asString()

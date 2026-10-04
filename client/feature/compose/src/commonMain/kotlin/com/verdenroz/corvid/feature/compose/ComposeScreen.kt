@@ -135,16 +135,7 @@ private fun Fields(
         Field(
             stringResource(Res.string.compose_to),
             state.form.to,
-            trailing =
-                if (copies) {
-                    null
-                } else {
-                    (
-                        {
-                            copies = true
-                        }
-                    )
-                },
+            onShowCopies = if (copies) null else ({ copies = true }),
         ) { onEdit { copy(to = it) } }
         if (copies) {
             Field(stringResource(Res.string.compose_cc), state.form.cc) { onEdit { copy(cc = it) } }
@@ -159,7 +150,7 @@ private fun Fields(
 private fun Field(
     label: String,
     value: String,
-    trailing: (() -> Unit)? = null,
+    onShowCopies: (() -> Unit)? = null,
     onChange: (String) -> Unit,
 ) {
     val colors = CorvidTheme.colors
@@ -174,7 +165,7 @@ private fun Field(
                 cursorBrush = SolidColor(colors.accent),
                 modifier = Modifier.weight(1f),
             )
-            trailing?.let {
+            onShowCopies?.let {
                 Text(
                     stringResource(Res.string.compose_show_copies),
                     style = CorvidTheme.type.meta,

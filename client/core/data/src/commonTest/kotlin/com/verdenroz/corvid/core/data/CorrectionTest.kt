@@ -1,11 +1,9 @@
 package com.verdenroz.corvid.core.data
 
-import com.verdenroz.corvid.core.jmap.AuthLatch
-import com.verdenroz.corvid.core.jmap.JmapClient
-import com.verdenroz.corvid.core.jmap.createJmapHttpClient
 import com.verdenroz.corvid.core.model.Label
 import com.verdenroz.corvid.core.testing.FakeEmail
 import com.verdenroz.corvid.core.testing.FakeJmapServer
+import com.verdenroz.corvid.core.testing.client
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -29,7 +27,7 @@ private suspend fun answer(
     fake: FakeJmapServer,
     correction: Correction,
 ): String? {
-    val client = JmapClient.connect(createJmapHttpClient(fake.engine), AuthLatch(), "http://127.0.0.1:9999")
+    val client = fake.client()
     return MailboxRepository(client).updateKeywords("m1", correction.keywordPatch())
 }
 

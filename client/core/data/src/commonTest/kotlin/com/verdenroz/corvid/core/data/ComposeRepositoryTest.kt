@@ -1,8 +1,5 @@
 package com.verdenroz.corvid.core.data
 
-import com.verdenroz.corvid.core.jmap.AuthLatch
-import com.verdenroz.corvid.core.jmap.JmapClient
-import com.verdenroz.corvid.core.jmap.createJmapHttpClient
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.model.Draft
 import com.verdenroz.corvid.core.model.EmailAddress
@@ -12,6 +9,7 @@ import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.FakeMailbox
 import com.verdenroz.corvid.core.testing.KeyedTextResolver
 import com.verdenroz.corvid.core.testing.SENDABLE_ACCOUNT_EMAIL
+import com.verdenroz.corvid.core.testing.client
 import com.verdenroz.corvid.core.testing.withSendableAccount
 import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.resources.Res
@@ -25,7 +23,6 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
-private const val BASE_URL = "http://127.0.0.1:9999"
 private const val OWN = SENDABLE_ACCOUNT_EMAIL
 
 private fun server(): FakeJmapServer {
@@ -49,7 +46,7 @@ private fun server(): FakeJmapServer {
 }
 
 private suspend fun repositories(fake: FakeJmapServer): Pair<MailboxRepository, ComposeRepository> {
-    val client = JmapClient.connect(createJmapHttpClient(fake.engine), AuthLatch(), BASE_URL)
+    val client = fake.client()
     val mailboxes = MailboxRepository(client)
     return mailboxes to ComposeRepository(client, mailboxes, KeyedTextResolver, TimeZone.UTC)
 }

@@ -36,6 +36,7 @@ import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.model.ComposeIntent
+import com.verdenroz.corvid.core.model.EmailAddress
 import com.verdenroz.corvid.core.model.EmailDetail
 import com.verdenroz.corvid.core.model.Label
 import com.verdenroz.corvid.core.model.Seal
@@ -58,6 +59,7 @@ import com.verdenroz.corvid.feature.mailbox.resources.reader_cc
 import com.verdenroz.corvid.feature.mailbox.resources.reader_link_disabled
 import com.verdenroz.corvid.feature.mailbox.resources.reader_to
 import kotlinx.datetime.TimeZone
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Clock
 
@@ -221,35 +223,24 @@ private fun SenderLine(
                     )
                 }
             }
-            if (email.to.isNotEmpty()) {
-                Text(
-                    stringResource(
-                        Res.string.reader_to,
-                        email.to.joinToString {
-                            it.name ?: it.email
-                        },
-                    ),
-                    style = CorvidTheme.type.meta,
-                    color = colors.inkMuted,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            if (email.cc.isNotEmpty()) {
-                Text(
-                    stringResource(
-                        Res.string.reader_cc,
-                        email.cc.joinToString {
-                            it.name ?: it.email
-                        },
-                    ),
-                    style = CorvidTheme.type.meta,
-                    color = colors.inkMuted,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+            RecipientLine(Res.string.reader_to, email.to)
+            RecipientLine(Res.string.reader_cc, email.cc)
         }
         Text(stamp(email.receivedAt, zone, Clock.System.now()).asString(), style = CorvidTheme.type.meta, color = colors.inkMuted)
     }
+}
+
+@Composable
+private fun RecipientLine(
+    line: StringResource,
+    recipients: List<EmailAddress>,
+) {
+    if (recipients.isEmpty()) return
+    Text(
+        stringResource(line, recipients.map { it.displayName() }.joinToString()),
+        style = CorvidTheme.type.meta,
+        color = CorvidTheme.colors.inkMuted,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
 }

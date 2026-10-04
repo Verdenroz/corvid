@@ -1,14 +1,12 @@
 package com.verdenroz.corvid.core.data
 
-import com.verdenroz.corvid.core.jmap.AuthLatch
-import com.verdenroz.corvid.core.jmap.JmapClient
-import com.verdenroz.corvid.core.jmap.createJmapHttpClient
 import com.verdenroz.corvid.core.model.Rewrite
 import com.verdenroz.corvid.core.model.Seal
 import com.verdenroz.corvid.core.model.SenderKind
 import com.verdenroz.corvid.core.model.SourceKind
 import com.verdenroz.corvid.core.testing.FakeEmail
 import com.verdenroz.corvid.core.testing.FakeJmapServer
+import com.verdenroz.corvid.core.testing.client
 import com.verdenroz.corvid.core.testing.withSendableAccount
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -22,8 +20,7 @@ private fun email(
     headers: Map<String, List<String>>,
 ) = FakeEmail(id, id, setOf("inbox"), "s", from, "2024-01-01T00:00:00Z", headers = headers, body = "b")
 
-private suspend fun repository(fake: FakeJmapServer) =
-    MailboxRepository(JmapClient.connect(createJmapHttpClient(fake.engine), AuthLatch(), "http://127.0.0.1:9999"))
+private suspend fun repository(fake: FakeJmapServer) = MailboxRepository(fake.client())
 
 class ProvenanceTest {
     @Test

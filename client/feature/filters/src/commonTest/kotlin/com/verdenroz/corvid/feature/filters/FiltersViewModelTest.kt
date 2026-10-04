@@ -2,9 +2,6 @@ package com.verdenroz.corvid.feature.filters
 
 import androidx.compose.runtime.saveable.SaverScope
 import com.verdenroz.corvid.core.data.FiltersRepository
-import com.verdenroz.corvid.core.jmap.AuthLatch
-import com.verdenroz.corvid.core.jmap.JmapClient
-import com.verdenroz.corvid.core.jmap.createJmapHttpClient
 import com.verdenroz.corvid.core.model.ConditionField
 import com.verdenroz.corvid.core.model.ConditionOperator
 import com.verdenroz.corvid.core.model.FilterAction
@@ -14,6 +11,7 @@ import com.verdenroz.corvid.core.model.MatchMode
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.FakeSieveScript
 import com.verdenroz.corvid.core.testing.ViewModelTestScope
+import com.verdenroz.corvid.core.testing.client
 import com.verdenroz.corvid.core.testing.runViewModelTest
 import com.verdenroz.corvid.core.testing.withActiveScript
 import com.verdenroz.corvid.core.text.UiText
@@ -29,8 +27,6 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
-private const val BASE_URL = "http://127.0.0.1:9999"
-
 private fun rule(
     name: String,
     value: String = "x",
@@ -44,7 +40,7 @@ private fun rule(
 )
 
 private suspend fun repository(fake: FakeJmapServer): FiltersRepository {
-    val client = JmapClient.connect(createJmapHttpClient(fake.engine), AuthLatch(), BASE_URL)
+    val client = fake.client()
     return FiltersRepository(client)
 }
 

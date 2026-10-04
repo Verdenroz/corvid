@@ -5,9 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,7 +17,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -36,7 +33,6 @@ import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.SenderRepository
 import com.verdenroz.corvid.core.data.clockTime
 import com.verdenroz.corvid.core.data.dayHeading
-import com.verdenroz.corvid.core.data.monthYear
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
@@ -44,36 +40,22 @@ import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.designsystem.component.PrimaryButton
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.model.EmailSummary
-import com.verdenroz.corvid.core.model.Seal
 import com.verdenroz.corvid.core.model.SenderKind
-import com.verdenroz.corvid.core.model.labels
 import com.verdenroz.corvid.core.text.asString
-import com.verdenroz.corvid.core.ui.provenance.LabelChip
 import com.verdenroz.corvid.core.ui.provenance.SenderAvatar
 import com.verdenroz.corvid.core.ui.provenance.openUntrusted
 import com.verdenroz.corvid.feature.mailbox.resources.Res
-import com.verdenroz.corvid.feature.mailbox.resources.card_authenticity
-import com.verdenroz.corvid.feature.mailbox.resources.card_between
-import com.verdenroz.corvid.feature.mailbox.resources.card_between_you
 import com.verdenroz.corvid.feature.mailbox.resources.card_close
-import com.verdenroz.corvid.feature.mailbox.resources.card_filed_as
 import com.verdenroz.corvid.feature.mailbox.resources.card_make_filter
-import com.verdenroz.corvid.feature.mailbox.resources.card_messages_since
-import com.verdenroz.corvid.feature.mailbox.resources.card_not_labelled
 import com.verdenroz.corvid.feature.mailbox.resources.card_recent
 import com.verdenroz.corvid.feature.mailbox.resources.card_source_kind
-import com.verdenroz.corvid.feature.mailbox.resources.card_trackers
 import com.verdenroz.corvid.feature.mailbox.resources.card_unsubscribe
 import com.verdenroz.corvid.feature.mailbox.resources.card_write
-import com.verdenroz.corvid.feature.mailbox.resources.card_writes
-import com.verdenroz.corvid.feature.mailbox.resources.card_writing_since
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_no_subject
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_separator
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
-import org.jetbrains.compose.resources.StringResource
-import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Clock
 
@@ -168,83 +150,6 @@ private fun Header(
                 style = CorvidTheme.type.meta,
                 color = if (latest?.provenance?.suspect == true) colors.danger else colors.inkMuted,
             )
-        }
-    }
-}
-
-@Composable
-private fun Facts(
-    state: SenderCardState,
-    latest: EmailSummary?,
-    isSource: Boolean,
-    wide: Boolean,
-) {
-    val zone = remember { TimeZone.currentSystemDefault() }
-    val window = state.window
-    val counts = state.counts
-    val signer = (latest?.provenance?.seal as? Seal.Signed)?.signer
-    val authenticity = window?.let { authenticityFact(it, counts?.received, if (isSource) signer else null)?.asString() }
-    val trackers = window?.let { trackersFact(it, counts?.received)?.asString() }
-    val since = counts?.firstSeen?.let { monthYear(it, zone).asString() }
-    val facts =
-        if (isSource) {
-            listOf(
-                Fact(Res.string.card_authenticity, authenticity, window != null && window.signed < window.size),
-                Fact(
-                    Res.string.card_writes,
-                    counts?.let {
-                            c ->
-                        since?.let { pluralStringResource(Res.plurals.card_messages_since, c.received, c.received, it) }
-                    },
-                ),
-                Fact(Res.string.card_trackers, trackers),
-                Fact(Res.string.card_filed_as, null, labels = latest),
-            )
-        } else {
-            listOf(
-                Fact(Res.string.card_authenticity, authenticity, window != null && window.signed < window.size),
-                Fact(Res.string.card_writing_since, since),
-                Fact(Res.string.card_between_you, counts?.let { stringResource(Res.string.card_between, it.received, it.sent) }),
-                Fact(Res.string.card_trackers, trackers),
-            )
-        }
-    Column {
-        facts.chunked(2).forEach { pair ->
-            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
-                pair.forEachIndexed { index, fact ->
-                    if (index > 0) VerticalDivider(color = CorvidTheme.colors.line)
-                    FactCell(fact, wide, Modifier.weight(1f).fillMaxHeight())
-                }
-            }
-            HorizontalDivider(color = CorvidTheme.colors.line)
-        }
-    }
-}
-
-private class Fact(
-    val key: StringResource,
-    val value: String?,
-    val warn: Boolean = false,
-    val labels: EmailSummary? = null,
-)
-
-@Composable
-private fun FactCell(
-    fact: Fact,
-    wide: Boolean,
-    modifier: Modifier,
-) {
-    val colors = CorvidTheme.colors
-    Column(modifier.padding(horizontal = CorvidSpacing.gutter(wide), vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(stringResource(fact.key).uppercase(), style = CorvidTheme.type.label, color = colors.inkFaint)
-        val labels = fact.labels?.labels
-        when {
-            labels != null && labels.isNotEmpty() ->
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) { labels.forEach { LabelChip(it) } }
-            labels != null -> Text(stringResource(Res.string.card_not_labelled), style = CorvidTheme.type.metaStrong)
-            else -> Text(fact.value.orEmpty(), style = CorvidTheme.type.metaStrong, color = if (fact.warn) colors.danger else colors.ink)
         }
     }
 }

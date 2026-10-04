@@ -116,7 +116,9 @@ internal fun UnlockedContent(
                             if (floating && entry is Route.Sender) Scrim(navigator::back)
                             Box(if (floating) floating(entry, CorvidTheme.colors.line) else Modifier.fillMaxSize()) {
                                 CompositionLocalProvider(LocalBackGuard provides navigator.guard(index)) {
-                                    saved.SaveableStateProvider(entryKey) { Page(entry, wide, key, shellState, scope, navigator, ledgers) }
+                                    saved.SaveableStateProvider(entryKey) {
+                                        Page(entry, navigator, scope) { Home(it, key, shellState, navigator, ledgers) }
+                                    }
                                 }
                             }
                         }
@@ -156,42 +158,49 @@ private fun BoxScope.floating(
     }
 
 @Composable
-private fun Page(
-    route: Route,
-    wide: Boolean,
+private fun Home(
+    route: Route.Home,
     key: KeyState,
     shellState: ShellState,
-    scope: Scope,
     navigator: Navigator,
     ledgers: Ledgers,
 ) {
-    val openSender: (String) -> Unit = { navigator.push(Route.Sender(it)) }
+    val wide = LocalWideLayout.current
+    Column {
+        if (!wide) NarrowTopBar(key)
+        TabsBar(
+            current = route.tab,
+            inboxUnread = shellState.inboxUnread,
+            wide = wide,
+            onSelect = navigator::selectTab,
+            onFilters = { navigator.push(Route.Filters) },
+        )
+        HomeContent(
+            tab = route.tab,
+            ledgers = ledgers,
+            onOpenEmail = { navigator.push(Route.Reader(it)) },
+            onOpenSender = { navigator.push(Route.Sender(it)) },
+            onWrite = { navigator.push(Route.Compose(ComposeIntent.New)) },
+        )
+    }
+}
+
+@Composable
+private fun Page(
+    route: Route,
+    navigator: Navigator,
+    scope: Scope,
+    home: @Composable (Route.Home) -> Unit,
+) {
     when (route) {
-        is Route.Home ->
-            Column {
-                if (!wide) NarrowTopBar(key)
-                TabsBar(
-                    current = route.tab,
-                    inboxUnread = shellState.inboxUnread,
-                    wide = wide,
-                    onSelect = navigator::selectTab,
-                    onFilters = { navigator.push(Route.Filters) },
-                )
-                HomeContent(
-                    tab = route.tab,
-                    ledgers = ledgers,
-                    onOpenEmail = { navigator.push(Route.Reader(it)) },
-                    onOpenSender = openSender,
-                    onWrite = { navigator.push(Route.Compose(ComposeIntent.New)) },
-                )
-            }
+        is Route.Home -> home(route)
         is Route.Reader ->
             ReaderScreen(
                 remember(scope) { scope.get<MailboxRepository>() },
                 route.emailId,
                 onBack = navigator::back,
                 onCompose = { navigator.push(Route.Compose(it)) },
-                onOpenSender = openSender,
+                onOpenSender = { navigator.push(Route.Sender(it)) },
             )
         is Route.Compose -> ComposeScreen(remember(scope) { scope.get<ComposeRepository>() }, route.intent, onClose = navigator::back)
         is Route.Filters -> FiltersScreen(remember(scope) { scope.get<FiltersRepository>() }, onBack = navigator::back)
@@ -199,7 +208,7 @@ private fun Page(
             SenderCard(
                 senders = remember(scope) { scope.get<SenderRepository>() },
                 address = route.address,
-                wide = wide,
+                wide = LocalWideLayout.current,
                 actions =
                     SenderCardActions(
                         close = navigator::back,

@@ -37,7 +37,6 @@ import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_no_subject
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_separator
 import kotlinx.datetime.TimeZone
-import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -69,7 +68,7 @@ private fun WideRow(
         modifier = Modifier.padding(start = 16.dp, end = 24.dp, top = 12.dp, bottom = 12.dp),
     ) {
         Time(email, zone, Modifier.width(58.dp))
-        Avatar(email, 40, openSender)
+        Avatar(email, openSender)
         SenderName(email, Modifier.width(200.dp), openSender)
         Summary(email, Modifier.weight(1f))
         (email.provenance.rewrite as? Rewrite.Stripped)?.takeIf { it.stripped > 0 }?.let { TrackerCount(it.stripped) }
@@ -83,7 +82,7 @@ private fun NarrowRow(
     openSender: (() -> Unit)?,
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(horizontal = 16.dp, vertical = 11.dp)) {
-        Avatar(email, 40, openSender)
+        Avatar(email, openSender)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(verticalAlignment = Alignment.Top) {
                 SenderName(email, Modifier.weight(1f), openSender)
@@ -100,7 +99,6 @@ private fun Time(
     zone: TimeZone,
     modifier: Modifier,
 ) {
-    val at = email.receivedAt.toLocalDateTime(zone)
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
@@ -108,7 +106,7 @@ private fun Time(
     ) {
         if (email.isUnread) Box(Modifier.size(7.dp).background(CorvidTheme.colors.accent, CircleShape))
         Text(
-            clockTime(at.hour, at.minute).asString(),
+            clockTime(email.receivedAt, zone).asString(),
             style = CorvidTheme.type.metaNumeric,
             color = CorvidTheme.colors.inkFaint,
         )
@@ -118,14 +116,13 @@ private fun Time(
 @Composable
 private fun Avatar(
     email: EmailSummary,
-    size: Int,
     openSender: (() -> Unit)?,
 ) {
     SenderAvatar(
         name = email.from.displayName(),
         isSource = email.provenance.sender is SenderKind.Source,
         seal = email.provenance.seal,
-        size = size.dp,
+        size = 40.dp,
         onClick = openSender,
     )
 }

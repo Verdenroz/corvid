@@ -2,15 +2,13 @@ package com.verdenroz.corvid.feature.compose
 
 import com.verdenroz.corvid.core.data.ComposeRepository
 import com.verdenroz.corvid.core.data.MailboxRepository
-import com.verdenroz.corvid.core.jmap.AuthLatch
-import com.verdenroz.corvid.core.jmap.JmapClient
-import com.verdenroz.corvid.core.jmap.createJmapHttpClient
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.testing.FakeEmail
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.KeyedTextResolver
 import com.verdenroz.corvid.core.testing.SENDABLE_ACCOUNT_EMAIL
 import com.verdenroz.corvid.core.testing.ViewModelTestScope
+import com.verdenroz.corvid.core.testing.client
 import com.verdenroz.corvid.core.testing.runViewModelTest
 import com.verdenroz.corvid.core.testing.withSendableAccount
 import com.verdenroz.corvid.core.text.UiText
@@ -26,7 +24,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
-private const val BASE_URL = "http://127.0.0.1:9999"
 private const val OWN = SENDABLE_ACCOUNT_EMAIL
 
 private val ORIGINAL =
@@ -50,7 +47,7 @@ class ComposeViewModelTest {
         intent: ComposeIntent = ComposeIntent.New,
         restored: ComposeForm? = null,
     ): ComposeViewModel {
-        val client = JmapClient.connect(createJmapHttpClient(fake.engine), AuthLatch(), BASE_URL)
+        val client = fake.client()
         return track(ComposeViewModel(ComposeRepository(client, MailboxRepository(client), KeyedTextResolver), intent, restored))
     }
 

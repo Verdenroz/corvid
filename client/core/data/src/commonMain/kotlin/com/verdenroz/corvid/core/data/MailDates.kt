@@ -78,6 +78,11 @@ fun clockTime(
     minute: Int,
 ): UiText = uiText(Res.string.clock_time, hour.twoDigits(), minute.twoDigits())
 
+fun clockTime(
+    instant: Instant,
+    zone: TimeZone,
+): UiText = instant.toLocalDateTime(zone).let { clockTime(it.hour, it.minute) }
+
 /** "March 2025", for how long a sender has been writing. */
 fun monthYear(
     instant: Instant,
