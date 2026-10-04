@@ -255,3 +255,30 @@ fn a_kill_mid_pass_keeps_what_the_earlier_messages_taught() {
         "six messages of evidence were recorded before the kill"
     );
 }
+
+#[test]
+fn a_cold_started_message_is_not_a_correction_on_the_next_poll() {
+    let (_dir, path) = scratch();
+    let mailbox = Fake::default();
+    taught(&path, &mailbox);
+    backlog(&mailbox, "billing@acme.test", "u", 3);
+    let voice = Voice::always(Utterance::Choose("receipts"));
+    run(&path, &mailbox, &voice, 3);
+    let before = learned_for(&path, "acme.test");
+    let corrections = corvid_ingest::open(&path).unwrap().corrections();
+    mailbox.touch("u0");
+
+    poll(&path, &mailbox).unwrap();
+
+    assert_eq!(
+        corvid_ingest::open(&path).unwrap().corrections(),
+        corrections
+    );
+    assert_eq!(learned_for(&path, "acme.test"), before);
+    assert!(mailbox.keywords_of("u0").contains("corvid-llm-done"));
+    assert!(
+        mailbox
+            .keywords_of("u0")
+            .contains("corvid-llm-label-receipts")
+    );
+}

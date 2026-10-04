@@ -70,6 +70,17 @@ fn writes_its_labels_inside_its_own_namespace() {
 }
 
 #[test]
+fn never_writes_a_label_that_lands_in_a_reserved_namespace() {
+    let mut ingest = Ingest::default();
+    teach(&mut ingest, &acme(), &["llm-x", "rule-x", "receipts"], 12);
+
+    assert_eq!(
+        ingest.label("m1", &acme(), 12.0),
+        keywords(&["corvid-receipts"])
+    );
+}
+
+#[test]
 fn writes_nothing_for_an_unknown_sender() {
     let mut ingest = Ingest::default();
     teach(&mut ingest, &acme(), &["receipts"], 12);
@@ -538,4 +549,54 @@ fn an_answer_too_long_to_use_is_marked_without_a_label() {
     assert!(keywords.contains("corvid-llm-done"));
     assert!(keywords.contains("corvid-llm-oversized"));
     assert!(corvid_ingest::model_labels(&keywords).is_empty());
+}
+
+fn cold_started(label: &str) -> Ingest {
+    let mut ingest = Ingest::default();
+    ingest.learn("m1", &acme(), &owned(&[label]), 0.0);
+    ingest
+}
+
+fn corrections_after(keywords_now: &[&str]) -> u64 {
+    let mut ingest = cold_started("receipts");
+    ingest.reconcile("m1", &acme(), &keywords(keywords_now), 1.0);
+    ingest.corrections()
+}
+
+#[test]
+fn a_cold_started_message_left_alone_is_not_a_correction() {
+    assert_eq!(
+        corrections_after(&["corvid-llm-done", "corvid-llm-label-receipts"]),
+        0
+    );
+}
+
+#[test]
+fn confirming_a_models_label_is_agreement() {
+    assert_eq!(corrections_after(&["corvid-llm-done", "receipts"]), 0);
+}
+
+#[test]
+fn rejecting_a_models_label_is_a_correction() {
+    assert_eq!(corrections_after(&["corvid-llm-done"]), 1);
+}
+
+#[test]
+fn replacing_a_models_label_is_a_correction() {
+    assert_eq!(corrections_after(&["corvid-llm-done", "work"]), 1);
+}
+
+#[test]
+fn a_user_learned_message_ignores_model_labels() {
+    let mut ingest = Ingest::default();
+    ingest.reconcile("m1", &acme(), &keywords(&["work"]), 0.0);
+
+    ingest.reconcile(
+        "m1",
+        &acme(),
+        &keywords(&["work", "corvid-llm-label-receipts"]),
+        1.0,
+    );
+
+    assert_eq!(ingest.corrections(), 1, "only the first answer counted");
 }

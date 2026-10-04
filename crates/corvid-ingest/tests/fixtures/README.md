@@ -11,9 +11,12 @@ understanding against itself.
   to cope with data shaped by old bugs, and a rebuilt fixture would leave them out: built from a
   correct model of the format, it could only show the current understanding, not what was
   actually written. Keep the file, not a script that makes one.
-- `replayed-cursor.state`: schema 3, two counted messages, holding the truncated cursor that the
+- `replayed-cursor.state`: schema 4, two counted messages, holding the truncated cursor that the
   server accepts and answers with a replay. The cursor is still the bad one because the halt
   correctly declined to advance it.
+
+Written at schema 3; the schema 4 bump added an empty `cold_started` list and recomputed the
+checksum by hand, since the file's contents are otherwise unchanged.
 
 The run that produced these also left a third file, recording the state after a replay was
 consumed: 48 messages counted from one truncation. It reproduces nothing, so it is not kept.

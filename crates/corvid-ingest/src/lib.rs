@@ -39,6 +39,19 @@ pub const MODEL_DONE: &str = "corvid-llm-done";
 /// gets longer.
 pub const MODEL_OVERSIZED: &str = "corvid-llm-oversized";
 
+/// Where a client's filters write labels at delivery, inside the labeler's namespace so they are
+/// never read back as the user's.
+pub const RULE_NAMESPACE: &str = "corvid-rule-";
+
+/// Whether the prior wrote this keyword, which is the only kind the poll may add or remove.
+///
+/// Model and rule keywords share the prefix but belong to other writers.
+pub fn is_prior_keyword(keyword: &str) -> bool {
+    keyword.starts_with(NAMESPACE)
+        && !keyword.starts_with(MODEL_NAMESPACE)
+        && !keyword.starts_with(RULE_NAMESPACE)
+}
+
 /// The keywords to write for a model's verdict, which always include the marker.
 ///
 /// Returning the marker from the same call makes "always marked" hold at every call site.
@@ -121,6 +134,7 @@ pub struct Ingest {
     prior: Prior,
     census: Census,
     learned: BTreeMap<String, (BTreeSet<String>, f64)>,
+    cold_started: BTreeSet<String>,
     counted: BTreeSet<String>,
     sightings: BTreeMap<String, u64>,
     cursor: Option<String>,
@@ -146,11 +160,16 @@ impl Ingest {
             .applied
             .iter()
             .map(|label| format!("{NAMESPACE}{label}"))
+            .filter(|keyword| is_prior_keyword(keyword))
             .collect()
     }
 
     /// Learns from the keywords the user set on a message, which are the ones outside the
     /// namespace.
+    ///
+    /// A message learned from a model's labels also reads those labels while they remain, since
+    /// the model's guess is what the prior recorded: the user keeping it is agreement, and only
+    /// removing or replacing it is a correction.
     ///
     /// A message the user has never labelled carries no signal: no keyword means the user did
     /// not look. Only a change from a set already seen counts, so removing every label is a real
@@ -164,7 +183,10 @@ impl Ingest {
         if self.sightings.insert(id.to_owned(), fingerprint) == Some(fingerprint) {
             self.unchanged += 1;
         }
-        let labels = own_labels(keywords);
+        let mut labels = own_labels(keywords);
+        if self.cold_started.contains(id) {
+            labels.extend(model_labels(keywords));
+        }
         if labels.is_empty() && !self.learned.contains_key(id) {
             return;
         }
@@ -231,6 +253,7 @@ impl Ingest {
     /// Guarded like a correction, since a batch over historical mail is the thing most likely
     /// to run twice.
     pub fn learn(&mut self, id: &str, key: &SenderKey, labels: &[String], at: f64) {
+        self.cold_started.insert(id.to_owned());
         self.record(id, key, labels.iter().cloned().collect(), at);
     }
 

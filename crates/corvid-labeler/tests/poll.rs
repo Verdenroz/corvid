@@ -33,6 +33,34 @@ fn labels_a_message_from_a_sender_it_has_learned_about() {
 }
 
 #[test]
+fn a_poll_leaves_rule_and_model_keywords_alone() {
+    let (_dir, path) = scratch();
+    let mailbox = Fake::default();
+    taught(&path, &mailbox);
+    mailbox.deliver(
+        "new",
+        "billing@acme.test",
+        &[
+            "corvid-rule-work",
+            "corvid-llm-done",
+            "corvid-llm-label-work",
+        ],
+        12.0,
+    );
+
+    poll(&path, &mailbox).unwrap();
+
+    let kept = mailbox.keywords_of("new");
+    for keyword in [
+        "corvid-rule-work",
+        "corvid-llm-done",
+        "corvid-llm-label-work",
+    ] {
+        assert!(kept.contains(keyword), "{keyword} was stripped");
+    }
+}
+
+#[test]
 fn a_refused_write_stops_the_poll_before_the_cursor_moves() {
     let (_dir, path) = scratch();
     let mailbox = Fake::default();
