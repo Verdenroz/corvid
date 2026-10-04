@@ -14,8 +14,8 @@ internal interface ScriptSection {
 internal data class CorvidScript(val rules: List<FilterRule> = emptyList()) {
     val needsTrash: Boolean get() = rules.any { it.enabled && FilterAction.MoveToTrash in it.actions }
 
-    fun render(trash: FilterAction.MoveToFolder?): String {
-        val sections = listOf<ScriptSection>(RulesSection(rules, trash))
+    fun render(trashId: String?): String {
+        val sections = listOf<ScriptSection>(RulesSection(rules, trashId))
         val requires = sections.flatMap { it.requires }.distinct()
         return buildList {
             sections.forEach { add(it.metadata) }

@@ -5,6 +5,7 @@ import com.verdenroz.corvid.core.model.ConditionOperator
 import com.verdenroz.corvid.core.model.FilterAction
 import com.verdenroz.corvid.core.model.FilterCondition
 import com.verdenroz.corvid.core.model.FilterRule
+import com.verdenroz.corvid.core.model.MailboxRef
 import com.verdenroz.corvid.core.model.MatchMode
 
 internal fun ConditionField.label(): String =
@@ -33,7 +34,7 @@ internal fun FilterAction.label(): String =
 
 internal fun FilterAction.summary(): String =
     when (this) {
-        is FilterAction.MoveToFolder -> "Move to ${mailboxName.replace("/", " / ")}"
+        is FilterAction.MoveToFolder -> "Move to ${folder.displayPath()}"
         is FilterAction.AddLabel -> "Add label $label"
         else -> label()
     }
@@ -44,3 +45,5 @@ internal fun FilterRule.summary(): String {
     val joiner = if (match == MatchMode.All) " and " else " or "
     return conditions.joinToString(joiner) { it.summary() } + ": " + actions.joinToString(", ") { it.summary() }
 }
+
+internal fun MailboxRef.displayPath(): String = path.joinToString(" / ")

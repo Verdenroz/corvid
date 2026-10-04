@@ -1,7 +1,7 @@
 package com.verdenroz.corvid.feature.filters
 
-import com.verdenroz.corvid.core.model.FilterAction
 import com.verdenroz.corvid.core.model.FilterRule
+import com.verdenroz.corvid.core.model.MailboxRef
 
 sealed interface FiltersUiState {
     data object Loading : FiltersUiState
@@ -15,7 +15,7 @@ sealed interface FiltersUiState {
      */
     data class Ready(
         val rules: List<FilterRule>,
-        val folders: List<FilterAction.MoveToFolder>,
+        val folders: List<MailboxRef>,
         val foreignScript: String? = null,
         val confirming: Boolean = false,
         val saving: Boolean = false,

@@ -15,22 +15,22 @@ import com.verdenroz.corvid.core.model.isComplete
  * `fileinto` so the filed copy carries them, and a flag set by a later rule
  * does not reach a message an earlier rule already filed. A disabled or
  * incomplete rule stays in the rules line and leaves the script.
- * [trash] must be set when an enabled rule moves to Trash.
+ * [trashId] must be set when an enabled rule moves to Trash.
  */
 internal class RulesSection(
     private val rules: List<FilterRule>,
-    private val trash: FilterAction.MoveToFolder?,
+    private val trashId: String?,
 ) : ScriptSection {
     override val requires = listOf("fileinto", "imap4flags", "mailboxid")
     override val metadata get() = rulesLine(rules)
-    override val sieve get() = rules.filter { it.enabled && it.isComplete }.joinToString("\n") { it.toSieve(trash) }
+    override val sieve get() = rules.filter { it.enabled && it.isComplete }.joinToString("\n") { it.toSieve(trashId) }
 }
 
-private fun FilterRule.toSieve(trash: FilterAction.MoveToFolder?): String {
+private fun FilterRule.toSieve(trashId: String?): String {
     val (fileActions, flagActions) = actions.partition { it is FilterAction.MoveToFolder || it is FilterAction.MoveToTrash }
     val lines =
         flagActions.map { "addflag ${quote(it.flag())};" } +
-            fileActions.map { it.folder(trash).fileinto() } +
+            fileActions.map { it.fileinto(trashId) } +
             listOfNotNull("stop;".takeIf { stop })
     val combinator = if (match == MatchMode.All) "allof" else "anyof"
     return "if $combinator (${conditions.joinToString(", ") { it.toSieve() }}) {\n" +
@@ -59,8 +59,6 @@ private fun ConditionField.headers(): String =
         ConditionField.ListId -> quote("list-id")
     }
 
-private fun FilterAction.MoveToFolder.fileinto() = "fileinto :mailboxid ${quote(mailboxId)} ${quote(mailboxName)};"
-
 private fun FilterAction.flag(): String =
     when (this) {
         is FilterAction.MarkRead -> "\\Seen"
@@ -69,10 +67,11 @@ private fun FilterAction.flag(): String =
         else -> error("not a flag action: $this")
     }
 
-private fun FilterAction.folder(trash: FilterAction.MoveToFolder?): FilterAction.MoveToFolder =
+/** The second argument is the name Sieve falls back to when the id no longer exists. */
+private fun FilterAction.fileinto(trashId: String?): String =
     when (this) {
-        is FilterAction.MoveToFolder -> this
-        is FilterAction.MoveToTrash -> checkNotNull(trash) { "no trash folder" }
+        is FilterAction.MoveToFolder -> "fileinto :mailboxid ${quote(folder.id)} ${quote(folder.path.joinToString("/"))};"
+        is FilterAction.MoveToTrash -> "fileinto :mailboxid ${quote(checkNotNull(trashId) { "no trash folder" })} ${quote("Trash")};"
         else -> error("not a filing action: $this")
     }
 

@@ -2,7 +2,6 @@ package com.verdenroz.corvid.core.data
 
 import com.verdenroz.corvid.core.jmap.JmapClient
 import com.verdenroz.corvid.core.jmap.callOne
-import com.verdenroz.corvid.core.model.FilterAction
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -34,9 +33,9 @@ internal class SieveScriptStore(
         val foreign = scripts.foreignActive()
         if (foreign != null && !replaceForeign) return SaveResult.NeedsConfirmation(foreign.name)
 
-        val trash = mailboxRepository.findMailboxByRole("trash")?.let { FilterAction.MoveToFolder(it.id, it.name) }
-        if (script.needsTrash && trash == null) return SaveResult.Rejected("this account has no Trash folder")
-        val blobId = jmapClient.uploadBlob(script.render(trash).encodeToByteArray(), SIEVE_TYPE)
+        val trashId = mailboxRepository.findMailboxByRole("trash")?.id
+        if (script.needsTrash && trashId == null) return SaveResult.Rejected("this account has no Trash folder")
+        val blobId = jmapClient.uploadBlob(script.render(trashId).encodeToByteArray(), SIEVE_TYPE)
         val own = scripts.firstOrNull { it.name == SCRIPT_NAME }
         val reason = jmapClient.callOne("SieveScript/set", setScript(own, blobId)).setFailure(own)
         return if (reason == null) SaveResult.Saved else SaveResult.Rejected(reason)

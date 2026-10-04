@@ -30,13 +30,14 @@ import com.verdenroz.corvid.core.model.ConditionOperator
 import com.verdenroz.corvid.core.model.FilterAction
 import com.verdenroz.corvid.core.model.FilterCondition
 import com.verdenroz.corvid.core.model.FilterRule
+import com.verdenroz.corvid.core.model.MailboxRef
 import com.verdenroz.corvid.core.model.MatchMode
 import com.verdenroz.corvid.core.model.isComplete
 
 @Composable
 internal fun RuleEditor(
     initial: FilterRule,
-    folders: List<FilterAction.MoveToFolder>,
+    folders: List<MailboxRef>,
     onSave: (FilterRule) -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -119,14 +120,14 @@ private fun ConditionRow(
 @Composable
 private fun ActionRow(
     action: FilterAction,
-    folders: List<FilterAction.MoveToFolder>,
+    folders: List<MailboxRef>,
     canRemove: Boolean,
     onChange: (FilterAction) -> Unit,
     onRemove: () -> Unit,
 ) {
     val kinds =
         listOf(
-            folders.firstOrNull() ?: FilterAction.MoveToFolder("", ""),
+            FilterAction.MoveToFolder(folders.firstOrNull() ?: MailboxRef.None),
             FilterAction.AddLabel(""),
             FilterAction.MarkRead,
             FilterAction.Star,
@@ -139,7 +140,11 @@ private fun ActionRow(
         }
         when (action) {
             is FilterAction.MoveToFolder ->
-                Picker(action.mailboxName.ifEmpty { "Choose a folder" }, folders, { it.mailboxName.replace("/", " / ") }) { onChange(it) }
+                Picker(
+                    selected = if (action.folder.path.isEmpty()) "Choose a folder" else action.folder.displayPath(),
+                    options = folders,
+                    label = { it.displayPath() },
+                ) { onChange(FilterAction.MoveToFolder(it)) }
             is FilterAction.AddLabel ->
                 OutlinedTextField(
                     value = action.label,

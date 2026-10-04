@@ -5,6 +5,7 @@ import com.verdenroz.corvid.core.model.ConditionOperator
 import com.verdenroz.corvid.core.model.FilterAction
 import com.verdenroz.corvid.core.model.FilterCondition
 import com.verdenroz.corvid.core.model.FilterRule
+import com.verdenroz.corvid.core.model.MailboxRef
 import com.verdenroz.corvid.core.model.MatchMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -29,11 +30,11 @@ private fun condition(
     value: String = "x",
 ) = FilterCondition(field, operator, value)
 
-private val TRASH = FilterAction.MoveToFolder("t1", "Trash")
+private const val TRASH = "t1"
 
 private fun body(
     rule: FilterRule,
-    trash: FilterAction.MoveToFolder = TRASH,
+    trash: String = TRASH,
 ) = CorvidScript(listOf(rule)).render(trash).lines().drop(2).joinToString("\n").trim()
 
 class SieveGeneratorTest {
@@ -120,7 +121,7 @@ class SieveGeneratorTest {
             body(
                 rule(
                     condition(ConditionField.From, ConditionOperator.Contains),
-                    actions = listOf(FilterAction.MoveToFolder("m7", "Work"), FilterAction.MarkRead),
+                    actions = listOf(FilterAction.MoveToFolder(MailboxRef("m7", listOf("Work"))), FilterAction.MarkRead),
                 ),
             )
 
@@ -132,10 +133,10 @@ class SieveGeneratorTest {
         val script =
             body(
                 rule(condition(ConditionField.From, ConditionOperator.Contains), actions = listOf(FilterAction.MoveToTrash)),
-                trash = FilterAction.MoveToFolder("t9", "Deleted Items"),
+                trash = "t9",
             )
 
-        assertTrue("fileinto :mailboxid \"t9\" \"Deleted Items\";" in script)
+        assertTrue("fileinto :mailboxid \"t9\" \"Trash\";" in script)
     }
 
     @Test
@@ -180,7 +181,7 @@ class SieveGeneratorTest {
                 condition(ConditionField.ToOrCc, ConditionOperator.DoesNotContain, "é\n日本"),
                 actions =
                     listOf(
-                        FilterAction.MoveToFolder("m8", "Work/Sub"),
+                        FilterAction.MoveToFolder(MailboxRef("m8", listOf("Work/Sub"))),
                         FilterAction.AddLabel("Bills & Co"),
                         FilterAction.MarkRead,
                         FilterAction.Star,
@@ -201,7 +202,10 @@ class SieveGeneratorTest {
                 rule(condition(ConditionField.From, ConditionOperator.Contains, " ")),
                 rule(condition(ConditionField.From, ConditionOperator.Contains), actions = emptyList()),
                 rule(condition(ConditionField.From, ConditionOperator.Contains), actions = listOf(FilterAction.AddLabel(""))),
-                rule(condition(ConditionField.From, ConditionOperator.Contains), actions = listOf(FilterAction.MoveToFolder("", "x"))),
+                rule(
+                    condition(ConditionField.From, ConditionOperator.Contains),
+                    actions = listOf(FilterAction.MoveToFolder(MailboxRef("", listOf("x")))),
+                ),
             )
 
         val script = CorvidScript(incomplete).render(TRASH)
@@ -253,7 +257,7 @@ class SieveGeneratorTest {
                     ),
                 actions =
                     listOf(
-                        FilterAction.MoveToFolder("m1", "A/B"),
+                        FilterAction.MoveToFolder(MailboxRef("m1", listOf("A", "B"))),
                         FilterAction.AddLabel("x"),
                         FilterAction.MarkRead,
                         FilterAction.Star,
@@ -268,7 +272,7 @@ class SieveGeneratorTest {
                 "{\"field\":\"ToOrCc\",\"operator\":\"Is\",\"value\":\"b\"}," +
                 "{\"field\":\"Subject\",\"operator\":\"DoesNotContain\",\"value\":\"c\"}," +
                 "{\"field\":\"ListId\",\"operator\":\"Is\",\"value\":\"d\"}],\"actions\":[" +
-                "{\"type\":\"MoveToFolder\",\"id\":\"m1\",\"name\":\"A/B\"}," +
+                "{\"type\":\"MoveToFolder\",\"id\":\"m1\",\"path\":[\"A\",\"B\"]}," +
                 "{\"type\":\"AddLabel\",\"value\":\"x\"},{\"type\":\"MarkRead\"}," +
                 "{\"type\":\"Star\"},{\"type\":\"MoveToTrash\"}],\"stop\":true}]"
         assertEquals(expected, rulesLine(listOf(saved)))

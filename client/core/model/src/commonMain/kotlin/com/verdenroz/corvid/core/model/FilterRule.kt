@@ -13,8 +13,8 @@ data class FilterCondition(
 )
 
 sealed interface FilterAction {
-    /** Filed by [mailboxId], so a rename or a nested folder still resolves; [mailboxName] is for display. */
-    data class MoveToFolder(val mailboxId: String, val mailboxName: String) : FilterAction
+    /** Filed by the folder's id, so a rename or a nested folder still resolves. */
+    data class MoveToFolder(val folder: MailboxRef) : FilterAction
 
     /** Written as the keyword `corvid-rule-<label>`, so rule output never reads as the user's own label. */
     data class AddLabel(val label: String) : FilterAction
@@ -47,7 +47,7 @@ val FilterRule.isComplete: Boolean
 private val FilterAction.isComplete: Boolean
     get() =
         when (this) {
-            is FilterAction.MoveToFolder -> mailboxId.isNotBlank()
+            is FilterAction.MoveToFolder -> folder.id.isNotBlank()
             is FilterAction.AddLabel -> label.isNotBlank()
             else -> true
         }

@@ -8,6 +8,7 @@ import com.verdenroz.corvid.core.model.ConditionOperator
 import com.verdenroz.corvid.core.model.FilterAction
 import com.verdenroz.corvid.core.model.FilterCondition
 import com.verdenroz.corvid.core.model.FilterRule
+import com.verdenroz.corvid.core.model.MailboxRef
 import com.verdenroz.corvid.core.model.MatchMode
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.FakeMailbox
@@ -152,7 +153,7 @@ class FiltersRepositoryTest {
 
             repository(fake).save(listOf(rule), replaceForeign = false)
 
-            assertTrue("fileinto :mailboxid \"m1\" \"Bin\";" in fake.scriptText("corvid"))
+            assertTrue("fileinto :mailboxid \"m1\" \"Trash\";" in fake.scriptText("corvid"))
         }
 
     @Test
@@ -177,9 +178,9 @@ class FiltersRepositoryTest {
 
             assertEquals(
                 listOf(
-                    FilterAction.MoveToFolder("m1", "Finance"),
-                    FilterAction.MoveToFolder("m2", "Finance/Receipts"),
-                    FilterAction.MoveToFolder("m3", "Receipts"),
+                    MailboxRef("m1", listOf("Finance")),
+                    MailboxRef("m2", listOf("Finance", "Receipts")),
+                    MailboxRef("m3", listOf("Receipts")),
                 ),
                 repository(fake).folders(),
             )

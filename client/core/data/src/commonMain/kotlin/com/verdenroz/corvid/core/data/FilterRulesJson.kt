@@ -5,6 +5,7 @@ import com.verdenroz.corvid.core.model.ConditionOperator
 import com.verdenroz.corvid.core.model.FilterAction
 import com.verdenroz.corvid.core.model.FilterCondition
 import com.verdenroz.corvid.core.model.FilterRule
+import com.verdenroz.corvid.core.model.MailboxRef
 import com.verdenroz.corvid.core.model.MatchMode
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -68,7 +69,7 @@ private data class ConditionDto(
 private sealed class ActionDto {
     @Serializable
     @SerialName("MoveToFolder")
-    data class MoveToFolder(val id: String, val name: String) : ActionDto()
+    data class MoveToFolder(val id: String, val path: List<String>) : ActionDto()
 
     @Serializable
     @SerialName("AddLabel")
@@ -153,7 +154,7 @@ private fun FilterCondition.toDto() =
 
 private fun FilterAction.toDto(): ActionDto =
     when (this) {
-        is FilterAction.MoveToFolder -> ActionDto.MoveToFolder(mailboxId, mailboxName)
+        is FilterAction.MoveToFolder -> ActionDto.MoveToFolder(folder.id, folder.path)
         is FilterAction.AddLabel -> ActionDto.AddLabel(label)
         is FilterAction.MarkRead -> ActionDto.MarkRead
         is FilterAction.Star -> ActionDto.Star
@@ -190,7 +191,7 @@ private fun ConditionDto.toModel() =
 
 private fun ActionDto.toModel(): FilterAction =
     when (this) {
-        is ActionDto.MoveToFolder -> FilterAction.MoveToFolder(id, name)
+        is ActionDto.MoveToFolder -> FilterAction.MoveToFolder(MailboxRef(id, path))
         is ActionDto.AddLabel -> FilterAction.AddLabel(value)
         is ActionDto.MarkRead -> FilterAction.MarkRead
         is ActionDto.Star -> FilterAction.Star
