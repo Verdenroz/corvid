@@ -2,11 +2,16 @@ package com.verdenroz.corvid.core.data
 
 import com.verdenroz.corvid.core.model.Draft
 import com.verdenroz.corvid.core.model.EmailDetail
+import kotlinx.datetime.TimeZone
+import kotlin.time.Clock
+import kotlin.time.Instant
 
 fun replyDraft(
     original: EmailDetail,
     ownEmail: String,
     all: Boolean,
+    zone: TimeZone = TimeZone.currentSystemDefault(),
+    now: Instant = Clock.System.now(),
 ): Draft {
     val sender = listOfNotNull(original.from)
     val to = original.replyTo.ifEmpty { sender }
@@ -18,7 +23,7 @@ fun replyDraft(
         to = to,
         cc = cc,
         subject = withPrefix("Re", original.subject),
-        body = "\n\nOn ${original.receivedAt}, ${original.from?.toText().orEmpty()} wrote:\n$quoted",
+        body = "\n\nOn ${stamp(original.receivedAt, zone, now)}, ${original.from?.toText().orEmpty()} wrote:\n$quoted",
         inReplyTo = original.messageId,
         references = original.references + original.messageId,
     )

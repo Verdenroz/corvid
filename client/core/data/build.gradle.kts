@@ -9,6 +9,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(projects.core.model)
+            api(libs.kotlinx.datetime)
             implementation(projects.core.common)
             implementation(projects.core.jmap)
             implementation(libs.koin.core)

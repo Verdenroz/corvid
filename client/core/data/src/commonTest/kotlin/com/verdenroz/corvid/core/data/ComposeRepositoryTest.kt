@@ -13,10 +13,13 @@ import com.verdenroz.corvid.core.testing.FakeMailbox
 import com.verdenroz.corvid.core.testing.SENDABLE_ACCOUNT_EMAIL
 import com.verdenroz.corvid.core.testing.withSendableAccount
 import kotlinx.coroutines.test.runTest
+import kotlinx.datetime.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.time.Instant
 
 private const val BASE_URL = "http://127.0.0.1:9999"
 private const val OWN = SENDABLE_ACCOUNT_EMAIL
@@ -43,7 +46,8 @@ private fun server(): FakeJmapServer {
 
 private suspend fun repositories(fake: FakeJmapServer): Pair<MailboxRepository, ComposeRepository> {
     val client = JmapClient.connect(createJmapHttpClient(fake.engine), AuthLatch(), BASE_URL)
-    return MailboxRepository(client) to ComposeRepository(client)
+    val mailboxes = MailboxRepository(client)
+    return mailboxes to ComposeRepository(client, mailboxes)
 }
 
 private suspend fun MailboxRepository.original(): EmailDetail = assertIs<EmailLookup.Found>(getEmail("orig")).detail
@@ -85,7 +89,7 @@ class ComposeRepositoryTest {
             assertEquals("i1", submission.identityId)
             val email = fake.emails.single { it.id == submission.emailId }
             assertEquals(setOf("sent"), email.mailboxIds)
-            assertEquals(emptySet(), email.keywords)
+            assertEquals(setOf("\$seen"), email.keywords)
             assertEquals(listOf("dan@example.test"), email.to)
             assertEquals(OWN, email.from)
             assertEquals("hello", email.body)
@@ -95,9 +99,9 @@ class ComposeRepositoryTest {
     fun `a reply carries in-reply-to and references and quotes the original`() =
         runTest {
             val fake = server()
-            val (mailboxes, compose) = repositories(fake)
+            val (_, compose) = repositories(fake)
 
-            val draft = assertIs<StartResult.Ready>(compose.start(ComposeIntent.Reply(mailboxes.original(), all = false))).draft
+            val draft = assertIs<StartResult.Ready>(compose.start(ComposeIntent.Reply("orig", all = false))).draft
             compose.send(draft)
 
             val email = fake.emails.single { it.id == fake.submissions.single().emailId }
@@ -105,10 +109,42 @@ class ComposeRepositoryTest {
             assertEquals(listOf("m0@example.test", "m1@example.test"), email.references)
             assertEquals("Re: Lunch", email.subject)
             assertEquals(listOf("alice@example.test"), email.to)
-            assertEquals(
-                "\n\nOn 2024-03-01T12:00:00Z, alice@example.test wrote:\n> see you at noon\n>\n> bring cash",
-                email.body,
-            )
+            val body = assertNotNull(email.body)
+            assertTrue(body.startsWith("\n\nOn "))
+            assertTrue(body.endsWith(", alice@example.test wrote:\n> see you at noon\n>\n> bring cash"))
+        }
+
+    @Test
+    fun `the reply attribution names the original's local day and time, not an ISO stamp`() =
+        runTest {
+            val (mailboxes, _) = repositories(server())
+            val now = Instant.parse("2024-06-01T00:00:00Z")
+
+            val draft = replyDraft(mailboxes.original(), OWN, all = false, zone = TimeZone.of("Europe/London"), now = now)
+
+            assertTrue(draft.body.startsWith("\n\nOn Fri 1 Mar, 12:00, alice@example.test wrote:\n"))
+        }
+
+    @Test
+    fun `a reply to a message deleted before compose opened says the original is gone`() =
+        runTest {
+            val fake = server()
+            val (_, compose) = repositories(fake)
+            fake.emails.clear()
+
+            assertEquals(StartResult.OriginalGone, compose.start(ComposeIntent.Reply("orig", all = false)))
+            assertEquals(StartResult.OriginalGone, compose.start(ComposeIntent.Forward("orig")))
+        }
+
+    @Test
+    fun `a sent message is filed as read`() =
+        runTest {
+            val fake = server()
+            val (_, compose) = repositories(fake)
+
+            compose.send(Draft(to = listOf(EmailAddress(null, "dan@example.test")), body = "hello"))
+
+            assertEquals(setOf("\$seen"), fake.emails.single { it.id == fake.submissions.single().emailId }.keywords)
         }
 
     @Test

@@ -37,9 +37,9 @@ fun ReaderScreen(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(8.dp)) {
             Button(onClick = onBack) { Text("Back") }
             (state as? ReaderUiState.Loaded)?.email?.let { email ->
-                Button(onClick = { onCompose(ComposeIntent.Reply(email, all = false)) }) { Text("Reply") }
-                Button(onClick = { onCompose(ComposeIntent.Reply(email, all = true)) }) { Text("Reply all") }
-                Button(onClick = { onCompose(ComposeIntent.Forward(email)) }) { Text("Forward") }
+                Button(onClick = { onCompose(ComposeIntent.Reply(email.id, all = false)) }) { Text("Reply") }
+                Button(onClick = { onCompose(ComposeIntent.Reply(email.id, all = true)) }) { Text("Reply all") }
+                Button(onClick = { onCompose(ComposeIntent.Forward(email.id)) }) { Text("Forward") }
             }
         }
         when (val current = state) {

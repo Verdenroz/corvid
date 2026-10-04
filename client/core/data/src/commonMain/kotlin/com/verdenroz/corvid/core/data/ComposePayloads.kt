@@ -61,6 +61,7 @@ internal fun submit(
                 put("mailboxIds/$draftsId", JsonNull)
                 put("mailboxIds/$sentId", true)
                 put("keywords/\$draft", JsonNull)
+                put("keywords/\$seen", true)
             }
         }
     }

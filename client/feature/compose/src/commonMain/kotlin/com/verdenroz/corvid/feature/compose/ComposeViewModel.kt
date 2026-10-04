@@ -28,6 +28,7 @@ class ComposeViewModel(
                 _state.value =
                     when (val start = composeRepository.start(intent)) {
                         is StartResult.Ready -> ComposeUiState.Editing(seed = start.draft, form = start.draft.toForm())
+                        is StartResult.OriginalGone -> ComposeUiState.Failed("The message you were answering no longer exists.")
                         is SendUnavailable -> ComposeUiState.Failed(start.message())
                     }
             } catch (e: JmapException) {

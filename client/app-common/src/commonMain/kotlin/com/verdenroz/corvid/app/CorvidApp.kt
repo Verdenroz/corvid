@@ -20,10 +20,14 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import com.verdenroz.corvid.core.data.ComposeRepository
 import com.verdenroz.corvid.core.data.FiltersRepository
 import com.verdenroz.corvid.core.data.MailboxRepository
@@ -102,7 +106,7 @@ private fun UnlockedContent(
                 }
             },
     ) {
-        val backStack = remember { mutableStateListOf<Route>(Route.Inbox) }
+        val backStack = rememberSaveable(saver = RouteStackSaver) { mutableStateListOf<Route>(Route.Inbox) }
         Row(
             modifier = Modifier.fillMaxWidth().padding(8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
@@ -111,6 +115,11 @@ private fun UnlockedContent(
             Button(onClick = onLock) { Text("Lock") }
         }
         val pop = { backStack.removeAt(backStack.lastIndex) }
+        NavigationBackHandler(
+            state = rememberNavigationEventState(NavigationEventInfo.None),
+            isBackEnabled = backStack.size > 1,
+            onBackCompleted = { pop() },
+        )
         when (val route = backStack.last()) {
             is Route.Inbox ->
                 InboxScreen(

@@ -9,6 +9,7 @@ import com.verdenroz.corvid.core.jmap.resultOrThrow
 import com.verdenroz.corvid.core.jmap.setErrorReason
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.model.Draft
+import com.verdenroz.corvid.core.model.EmailDetail
 import com.verdenroz.corvid.core.model.Identity
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -30,6 +31,9 @@ sealed interface SendUnavailable : StartResult, SendResult {
 
 sealed interface StartResult {
     data class Ready(val draft: Draft) : StartResult
+
+    /** The message a reply or forward answers was deleted or moved before compose opened. */
+    data object OriginalGone : StartResult
 }
 
 sealed interface SendResult {
@@ -62,19 +66,29 @@ private inline fun <R> Loaded.fold(
  * refusal comes back as [SendResult.Rejected] rather than a thrown error: the
  * caller keeps the text and shows why.
  */
-class ComposeRepository(private val jmapClient: JmapClient) {
+class ComposeRepository(
+    private val jmapClient: JmapClient,
+    private val mailboxRepository: MailboxRepository,
+) {
     private val mutex = Mutex()
     private var ready: Loaded.Ready? = null
 
     suspend fun start(intent: ComposeIntent): StartResult =
         load().fold({ it }) { sending ->
-            StartResult.Ready(
-                when (intent) {
-                    is ComposeIntent.New -> Draft()
-                    is ComposeIntent.Reply -> replyDraft(intent.original, sending.identity.email, intent.all)
-                    is ComposeIntent.Forward -> forwardDraft(intent.original)
-                },
-            )
+            when (intent) {
+                is ComposeIntent.New -> StartResult.Ready(Draft())
+                is ComposeIntent.Reply -> withOriginal(intent.emailId) { replyDraft(it, sending.identity.email, intent.all) }
+                is ComposeIntent.Forward -> withOriginal(intent.emailId, ::forwardDraft)
+            }
+        }
+
+    private suspend fun withOriginal(
+        emailId: String,
+        draft: (EmailDetail) -> Draft,
+    ): StartResult =
+        when (val lookup = mailboxRepository.getEmail(emailId)) {
+            is EmailLookup.Found -> StartResult.Ready(draft(lookup.detail))
+            is EmailLookup.NotFound -> StartResult.OriginalGone
         }
 
     suspend fun send(draft: Draft): SendResult = load().fold({ it }) { transmit(it, draft) }
