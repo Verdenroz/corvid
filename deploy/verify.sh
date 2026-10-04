@@ -22,7 +22,13 @@ bad()  { echo "  FAIL  $*"; ((fail++)); }
 warn() { echo "  warn  $*"; }
 
 echo "== services =="
-for s in corvid-unbound corvid-mail corvid-milter corvid-imgproxy corvid-labeler corvid-sentinel; do
+services=(corvid-unbound corvid-mail corvid-milter corvid-imgproxy corvid-labeler corvid-sentinel)
+# A service that started before the mail server exits 75 and sits "activating" through RestartSec.
+deadline=$((SECONDS + 60))
+while (( SECONDS < deadline )) && systemctl is-active "${services[@]/%/.service}" | grep -qx activating; do
+  sleep 2
+done
+for s in "${services[@]}"; do
   if systemctl is-active --quiet "$s.service"; then
     ok "$s active"
   elif [[ "$(systemctl is-enabled "$s.service" 2>/dev/null)" == masked ]]; then
