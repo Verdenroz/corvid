@@ -12,6 +12,11 @@ kotlin {
             api(libs.compose.foundation)
             api(libs.compose.material3)
             implementation(libs.compose.ui)
+            implementation(libs.compose.components.resources)
         }
     }
+}
+
+compose.resources {
+    packageOfResClass = "com.verdenroz.corvid.core.designsystem.resources"
 }

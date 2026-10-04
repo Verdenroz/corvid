@@ -4,9 +4,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Surface
@@ -43,19 +46,21 @@ fun CorvidApp(viewModel: AppLockViewModel = koinViewModel()) {
     val state by viewModel.state.collectAsState()
 
     CorvidTheme {
-        when (val current = state) {
-            is AppLockState.SignedOut -> SignInScreen()
-            is AppLockState.Connecting ->
-                if (current.needsDeviceName) {
-                    DeviceNamePrompt(onSubmit = viewModel::submitDeviceName)
-                } else {
-                    ConnectingPane()
-                }
-            is AppLockState.Unlocked -> UnlockedContent(onLock = viewModel::lock)
-            is AppLockState.Unreachable -> UnreachablePane(reason = current.reason, onRetry = viewModel::retry)
-            is AppLockState.Locked -> LockedPane(onUnlock = viewModel::unlock)
-            is AppLockState.Revoked -> RevokedPane()
-            is AppLockState.NeedsEnrollment -> EnrollmentPrompt(deviceName = current.deviceName, onConfirm = viewModel::confirmEnroll)
+        Box(modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+            when (val current = state) {
+                is AppLockState.SignedOut -> SignInScreen()
+                is AppLockState.Connecting ->
+                    if (current.needsDeviceName) {
+                        DeviceNamePrompt(onSubmit = viewModel::submitDeviceName)
+                    } else {
+                        ConnectingPane()
+                    }
+                is AppLockState.Unlocked -> UnlockedContent(onLock = viewModel::lock)
+                is AppLockState.Unreachable -> UnreachablePane(reason = current.reason, onRetry = viewModel::retry)
+                is AppLockState.Locked -> LockedPane(onUnlock = viewModel::unlock)
+                is AppLockState.Revoked -> RevokedPane()
+                is AppLockState.NeedsEnrollment -> EnrollmentPrompt(deviceName = current.deviceName, onConfirm = viewModel::confirmEnroll)
+            }
         }
     }
 }
