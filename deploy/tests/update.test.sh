@@ -51,6 +51,7 @@ for which in old new; do
     cat > "$work/images/$which/$step.sh" <<SH
 #!/bin/bash
 echo "$step $which" >> "\$WORK/log"
+echo "$step \${CORVID_UPDATING:-}" >> "\$WORK/updating"
 [[ ! -e "\$WORK/$which-$step-fails" ]]
 SH
     chmod +x "$work/images/$which/$step.sh"
@@ -66,7 +67,7 @@ tag() { cat "$work/tags/$(echo "$1" | tr '/:' '__')"; }
 
 # fresh: a host running "old" from the registry tag, the registry still serving "old"
 fresh() {
-  rm -rf "$corvid" "$work/tags" "$work/log" "$work/podman.log" \
+  rm -rf "$corvid" "$work/tags" "$work/log" "$work/updating" "$work/podman.log" \
     "$work"/*-fails "$work/pull-fails" "$work/masked"
   mkdir -p "$corvid/deploy" "$corvid/update" "$work/tags"
   cp -a "$work/images/old/." "$corvid/deploy/"
@@ -118,6 +119,7 @@ check "bootstraps then deploys the new files" '[[ "$(cat "$work/log")" == $'"'"'
 check "the registry tag points at the new image" '[[ "$(tag ghcr.io/example/corvid:stable)" == new ]]'
 check "the host deploy dir holds the new files" '[[ "$(cat "$corvid/deploy/which")" == new ]]'
 check "the previous deploy dir is kept" '[[ "$(cat "$corvid/deploy.prev/which")" == old ]]'
+check "tells deploy.sh not to queue its own check" '[[ "$(cat "$work/updating")" == $'"'"'bootstrap \ndeploy 1'"'"' ]]'
 check "records updated" 'valid_status && [[ "$(field result)" == updated && "$(field running)" == 1.1.0 && "$(field latest)" == 1.1.0 ]]'
 
 echo "== a failing deploy restores the previous image and files"

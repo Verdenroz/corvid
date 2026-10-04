@@ -68,7 +68,8 @@ print(json.dumps(status))' >"$tmp"
   mv "$tmp" "$update_dir/status.json"
 }
 
-deploy_from() { bash "$1/bootstrap.sh" && bash "$1/deploy.sh"; }
+# CORVID_UPDATING keeps deploy.sh from queuing a check that would overwrite this run's status.
+deploy_from() { bash "$1/bootstrap.sh" && CORVID_UPDATING=1 bash "$1/deploy.sh"; }
 keep_old() { podman tag "$rollback_tag" "$ref"; }
 
 mode=timer

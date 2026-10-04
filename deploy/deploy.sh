@@ -142,3 +142,7 @@ if [[ -z "${CORVID_INSTALLER:-}" ]]; then
   step "verifying"
   "$HERE/verify.sh" "$MAIL_DOMAIN" "$MAIL_HOSTNAME"
 fi
+
+if [[ -z "${CORVID_UPDATING:-}" && -e /etc/systemd/system/corvid-update.path ]]; then
+  echo check > "$CORVID_DIR/update/request"
+fi
