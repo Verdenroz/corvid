@@ -1,3 +1,4 @@
 target/
 .git/
 *.local.md
+deploy/tests/

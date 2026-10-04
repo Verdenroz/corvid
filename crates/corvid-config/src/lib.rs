@@ -939,6 +939,52 @@ mod server_tests {
     }
 
     #[test]
+    fn every_deploy_file_the_scripts_read_is_copied_into_the_image() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let image = std::fs::read_to_string(root.join("deploy/Containerfile")).unwrap();
+        assert!(
+            image.contains("COPY deploy /usr/share/corvid/deploy\n"),
+            "deploy/Containerfile does not copy deploy/"
+        );
+        let ignored: Vec<String> = std::fs::read_to_string(root.join(".dockerignore"))
+            .unwrap()
+            .lines()
+            .filter_map(|l| l.strip_prefix("deploy/"))
+            .map(|l| l.trim_end_matches('/').to_string())
+            .collect();
+
+        for entry in std::fs::read_dir(root.join("deploy")).unwrap() {
+            let script = entry.unwrap().path();
+            if script.extension().is_none_or(|x| x != "sh") {
+                continue;
+            }
+            let text = std::fs::read_to_string(&script).unwrap();
+            for marker in ["$HERE/", "$HERE\"/", "$here/", "$here\"/"] {
+                for (i, _) in text.match_indices(marker) {
+                    let rest = &text[i + marker.len()..];
+                    let end = rest
+                        .find(|c: char| !(c.is_ascii_alphanumeric() || "._-".contains(c)))
+                        .unwrap_or(rest.len());
+                    let name = &rest[..end];
+                    if name.is_empty() || rest[end..].starts_with('*') {
+                        continue;
+                    }
+                    assert!(
+                        root.join("deploy").join(name).exists(),
+                        "{} reads deploy/{name}, which does not exist",
+                        script.display()
+                    );
+                    assert!(
+                        !ignored.iter().any(|g| name.starts_with(g.as_str())),
+                        "{} reads deploy/{name}, which .dockerignore keeps out of the image",
+                        script.display()
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn every_plan_variable_comes_from_the_server_section() {
         let shell = Config::parse(SERVER).unwrap().shell().unwrap();
         let supplied: Vec<&str> = shell.lines().filter_map(|l| l.split('=').next()).collect();
