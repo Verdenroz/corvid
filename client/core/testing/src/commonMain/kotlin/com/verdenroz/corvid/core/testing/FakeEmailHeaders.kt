@@ -52,6 +52,7 @@ internal fun FakeEmail.matches(filter: JsonObject?): Boolean {
             "to" -> to.any { it.contains(wanted, ignoreCase = true) }
             "cc" -> cc.any { it.contains(wanted, ignoreCase = true) }
             "bcc" -> bcc.any { it.contains(wanted, ignoreCase = true) }
+            "text" -> (listOfNotNull(subject, from, fromName, preview, body) + to + cc + bcc).any { it.contains(wanted, ignoreCase = true) }
             else -> error("unsupported filter $key")
         }
     }

@@ -40,11 +40,13 @@ private val EMAIL_DETAIL_PROPERTIES =
     listOf("id", "subject", "from", "to", "cc", "replyTo", "messageId", "references", "receivedAt", "keywords", "textBody", "bodyValues") +
         PROVENANCE_PROPERTIES
 
-/** What a list shows: one mailbox, or every starred message wherever it is filed. */
+/** What a list shows: one mailbox, every starred message wherever it is filed, or every message matching a text search. */
 sealed interface MailFilter {
     data class InMailbox(val mailboxId: String) : MailFilter
 
     data object Starred : MailFilter
+
+    data class Search(val text: String) : MailFilter
 }
 
 sealed interface EmailPage {
@@ -105,6 +107,7 @@ class MailboxRepository(private val jmapClient: JmapClient) {
                     when (filter) {
                         is MailFilter.InMailbox -> put("inMailbox", filter.mailboxId)
                         is MailFilter.Starred -> put("hasKeyword", CorvidKeywords.FLAGGED)
+                        is MailFilter.Search -> put("text", filter.text)
                     }
                 }
                 putJsonArray("sort") {
