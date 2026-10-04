@@ -13,6 +13,7 @@ rollback_tag=localhost/corvid:rollback
 deploy_dir="$CORVID_DIR/deploy"
 update_dir="$CORVID_DIR/update"
 failed_marker="$CORVID_DIR/.update-failed"
+deployed_marker="$CORVID_DIR/.deployed-id"
 smtp_port="${CORVID_SMTP_PORT:-25}"
 
 registry_ref() {
@@ -99,7 +100,9 @@ if [[ -e "$update_dir/request" ]]; then
 fi
 
 load_server
-running="$(version_of "$ref")"
+[[ -e "$deployed_marker" ]] || image_id "$ref" > "$deployed_marker"
+deployed_id="$(cat "$deployed_marker")"
+running="$(version_of "$deployed_id")"
 latest=""
 result=failed
 detail="stopped before finishing"
@@ -119,8 +122,7 @@ if [[ "$mode" == timer && "$UPDATE_AUTO" != true ]]; then
   exit 0
 fi
 
-old_id="$(image_id "$ref")"
-podman tag "$ref" "$rollback_tag"
+podman tag "$deployed_id" "$rollback_tag"
 if ! podman pull -q "$ref" >/dev/null; then
   detail="could not pull $ref"
   echo "$detail" >&2
@@ -128,7 +130,7 @@ if ! podman pull -q "$ref" >/dev/null; then
 fi
 new_id="$(image_id "$ref")"
 latest="$(version_of "$ref")"
-if [[ "$new_id" == "$old_id" ]]; then
+if [[ "$new_id" == "$deployed_id" ]]; then
   result=current
   detail=""
   exit 0
@@ -160,6 +162,7 @@ rm -rf "$deploy_dir"
 mv "$deploy_dir.new" "$deploy_dir"
 
 if deploy_from "$deploy_dir"; then
+  echo "$new_id" > "$deployed_marker"
   rm -f "$failed_marker"
   running="$latest"
   result=updated

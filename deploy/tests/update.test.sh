@@ -26,7 +26,8 @@ case "$1" in
     [[ ! -e "$WORK/pull-fails" ]] || exit 1
     cat "$WORK/registry-id" > "$(tagfile "$3")" ;;
   create) echo "ctr-$(resolve "$2")" ;;
-  cp) src="${2#ctr-}"; src="${src%%:*}"; cp -a "$WORK/images/$src/." "$3/" ;;
+  cp) [[ ! -e "$WORK/cp-fails" ]] || exit 1
+    src="${2#ctr-}"; src="${src%%:*}"; cp -a "$WORK/images/$src/." "$3/" ;;
   rm) ;;
 esac
 SH
@@ -148,6 +149,14 @@ fresh; echo new > "$work/registry-id"; touch "$work/pull-fails"
 run
 check "exits 1 and keeps the old image" '[[ $status -eq 1 && "$(tag ghcr.io/example/corvid:stable)" == old && ! -s "$work/log" ]]'
 check "records failed" 'valid_status && [[ "$(field result)" == failed && "$(field latest)" == None ]]'
+
+echo "== an update cut short after the pull is deployed on the next run"
+fresh; echo new > "$work/registry-id"; touch "$work/cp-fails"
+run
+check "the interrupted run fails and deploys nothing" '[[ $status -ne 0 && ! -s "$work/log" ]] && [[ "$(field result)" == failed ]]'
+rm "$work/cp-fails"
+run
+check "the next run deploys instead of reporting current" '[[ $status -eq 0 ]] && deployed && [[ "$(field result)" == updated ]]'
 
 echo "== a check records the latest version and deploys nothing"
 fresh; echo new > "$work/registry-id"
