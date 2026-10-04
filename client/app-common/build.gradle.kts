@@ -37,5 +37,10 @@ kotlin {
             implementation(projects.core.testing)
             implementation(libs.kotlinx.coroutines.test)
         }
+        val desktopTest by getting {
+            dependencies {
+                implementation(libs.compose.ui.test)
+            }
+        }
     }
 }
