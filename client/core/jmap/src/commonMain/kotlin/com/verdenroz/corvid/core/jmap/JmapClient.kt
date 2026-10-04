@@ -21,10 +21,10 @@ import kotlinx.serialization.json.jsonPrimitive
 import java.io.IOException
 import javax.net.ssl.SSLException
 
-internal const val CORE_CAPABILITY = "urn:ietf:params:jmap:core"
-internal const val MAIL_CAPABILITY = "urn:ietf:params:jmap:mail"
-internal const val SUBMISSION_CAPABILITY = "urn:ietf:params:jmap:submission"
-internal const val FILENODE_CAPABILITY = "urn:ietf:params:jmap:filenode"
+const val CORE_CAPABILITY = "urn:ietf:params:jmap:core"
+const val MAIL_CAPABILITY = "urn:ietf:params:jmap:mail"
+const val SUBMISSION_CAPABILITY = "urn:ietf:params:jmap:submission"
+const val FILENODE_CAPABILITY = "urn:ietf:params:jmap:filenode"
 
 /**
  * A session against a rebased JMAP endpoint. [connect] discovers it; [call]
