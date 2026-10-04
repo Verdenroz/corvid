@@ -13,9 +13,13 @@ sealed interface FiltersUiState {
         val rules: List<FilterRule>,
         val folders: List<MailboxRef>,
         val foreignScript: String? = null,
+        val editing: RuleDraft? = null,
         val save: SaveStatus = SaveStatus.Idle,
     ) : FiltersUiState
 }
+
+/** A rule being typed into the editor; a null [index] is a rule not yet in the list. */
+data class RuleDraft(val index: Int?, val rule: FilterRule)
 
 sealed interface SaveStatus {
     data object Idle : SaveStatus

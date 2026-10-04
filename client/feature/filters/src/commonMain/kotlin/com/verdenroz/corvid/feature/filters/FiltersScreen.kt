@@ -20,17 +20,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.FiltersRepository
 import com.verdenroz.corvid.core.model.FilterRule
-
-/** [index] is null for a rule being added. */
-private data class Editing(val index: Int?, val rule: FilterRule)
 
 @Composable
 fun FiltersScreen(
@@ -39,7 +34,6 @@ fun FiltersScreen(
 ) {
     val viewModel = remember(repository) { FiltersViewModel(repository) }
     val state by viewModel.state.collectAsState()
-    var editing by remember { mutableStateOf<Editing?>(null) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Button(onClick = onBack, modifier = Modifier.padding(8.dp)) { Text("Back") }
@@ -47,25 +41,23 @@ fun FiltersScreen(
             is FiltersUiState.Loading -> Centered { CircularProgressIndicator() }
             is FiltersUiState.Failed -> Centered { Text(current.message) }
             is FiltersUiState.Ready -> {
-                val target = editing
-                if (target == null) {
+                val draft = current.editing
+                if (draft == null) {
                     RuleList(
                         state = current,
-                        onAdd = { editing = Editing(null, FilterRule.blank()) },
-                        onEdit = { index -> editing = Editing(index, current.rules[index]) },
+                        onAdd = { viewModel.startEdit(null) },
+                        onEdit = viewModel::startEdit,
                         onToggle = viewModel::toggle,
                         onMove = viewModel::move,
                         onDelete = viewModel::delete,
                     )
                 } else {
                     RuleEditor(
-                        initial = target.rule,
+                        rule = draft.rule,
                         folders = current.folders,
-                        onSave = { rule ->
-                            viewModel.saveRule(target.index, rule)
-                            editing = null
-                        },
-                        onCancel = { editing = null },
+                        onChange = viewModel::changeDraft,
+                        onSave = viewModel::saveDraft,
+                        onCancel = viewModel::cancelEdit,
                     )
                 }
                 if (current.save is SaveStatus.Confirming) {

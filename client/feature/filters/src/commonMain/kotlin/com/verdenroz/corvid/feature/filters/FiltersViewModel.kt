@@ -21,11 +21,23 @@ class FiltersViewModel(private val repository: FiltersRepository) : ViewModel() 
         viewModelScope.launch { load() }
     }
 
-    /** A null [index] appends. */
-    fun saveRule(
-        index: Int?,
-        rule: FilterRule,
-    ) = edit { rules -> if (index == null) rules + rule else rules.replaced(index, rule) }
+    /** A null [index] starts a new rule. */
+    fun startEdit(index: Int?) = update { it.copy(editing = RuleDraft(index, index?.let { i -> it.rules[i] } ?: FilterRule.blank())) }
+
+    fun changeDraft(rule: FilterRule) = update { it.copy(editing = it.editing?.copy(rule = rule)) }
+
+    fun cancelEdit() = update { it.copy(editing = null) }
+
+    fun saveDraft() {
+        val ready = _state.value as? FiltersUiState.Ready ?: return
+        val draft = ready.editing ?: return
+        if (ready.save is SaveStatus.Saving) return
+        update { it.copy(editing = null) }
+        persist(
+            if (draft.index == null) ready.rules + draft.rule else ready.rules.replaced(draft.index, draft.rule),
+            replaceForeign = false,
+        )
+    }
 
     fun delete(index: Int) = edit { rules -> rules.removedAt(index) }
 

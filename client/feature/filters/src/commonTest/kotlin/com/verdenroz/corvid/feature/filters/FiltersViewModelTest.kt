@@ -42,6 +42,15 @@ private suspend fun repository(fake: FakeJmapServer): FiltersRepository {
 private suspend fun ViewModelTestScope.viewModel(fake: FakeJmapServer): FiltersViewModel =
     track(FiltersViewModel(repository(fake))).also { it.ready() }
 
+private fun FiltersViewModel.save(
+    index: Int?,
+    rule: FilterRule,
+) {
+    startEdit(index)
+    changeDraft(rule)
+    saveDraft()
+}
+
 private suspend fun FiltersViewModel.ready(): FiltersUiState.Ready =
     state.first { it is FiltersUiState.Ready && it.save != SaveStatus.Saving } as FiltersUiState.Ready
 
@@ -52,7 +61,7 @@ class FiltersViewModelTest {
             val fake = FakeJmapServer()
             val vm = viewModel(fake)
 
-            vm.saveRule(null, rule("first"))
+            vm.save(null, rule("first"))
 
             assertEquals(listOf("first"), vm.ready().rules.map { it.name })
             assertEquals(listOf("corvid" to true), fake.sieveScripts.map { it.name to it.isActive })
@@ -65,7 +74,7 @@ class FiltersViewModelTest {
             fake.invalidSieve = true
             val vm = viewModel(fake)
 
-            vm.saveRule(null, rule("first"))
+            vm.save(null, rule("first"))
 
             val ready = vm.ready()
             assertEquals(listOf("first"), ready.rules.map { it.name })
@@ -79,7 +88,7 @@ class FiltersViewModelTest {
             fake.withActiveScript()
             val vm = viewModel(fake)
 
-            vm.saveRule(null, rule("first"))
+            vm.save(null, rule("first"))
 
             val asked = vm.ready()
             assertEquals(SaveStatus.Confirming, asked.save)
@@ -98,7 +107,7 @@ class FiltersViewModelTest {
             val fake = FakeJmapServer()
             fake.withActiveScript()
             val vm = viewModel(fake)
-            vm.saveRule(null, rule("first"))
+            vm.save(null, rule("first"))
             vm.ready()
 
             vm.dismissConfirmation()
@@ -110,12 +119,62 @@ class FiltersViewModelTest {
         }
 
     @Test
+    fun `an edit in progress survives being re-read from the ViewModel`() =
+        runViewModelTest {
+            val vm = viewModel(FakeJmapServer())
+
+            vm.startEdit(null)
+            vm.changeDraft(rule("typing", value = "half"))
+
+            assertEquals(RuleDraft(null, rule("typing", value = "half")), vm.ready().editing)
+        }
+
+    @Test
+    fun `starting an edit on a listed rule opens that rule and cancelling closes it`() =
+        runViewModelTest {
+            val vm = viewModel(FakeJmapServer())
+            vm.save(null, rule("a"))
+            vm.ready()
+
+            vm.startEdit(0)
+            assertEquals(RuleDraft(0, rule("a")), vm.ready().editing)
+
+            vm.cancelEdit()
+            assertEquals(null, vm.ready().editing)
+        }
+
+    @Test
+    fun `saving the draft closes the editor and lists the rule`() =
+        runViewModelTest {
+            val vm = viewModel(FakeJmapServer())
+
+            vm.save(null, rule("first"))
+
+            val ready = vm.ready()
+            assertEquals(null, ready.editing)
+            assertEquals(listOf("first"), ready.rules.map { it.name })
+        }
+
+    @Test
+    fun `saving the draft while another save is in flight keeps the editor open`() =
+        runViewModelTest {
+            val vm = viewModel(FakeJmapServer())
+            vm.save(null, rule("first"))
+
+            vm.startEdit(null)
+            vm.changeDraft(rule("second"))
+            vm.saveDraft()
+
+            assertEquals(RuleDraft(null, rule("second")), vm.ready().editing)
+        }
+
+    @Test
     fun `an edit issued while a save is in flight is ignored`() =
         runViewModelTest {
             val vm = viewModel(FakeJmapServer())
 
-            vm.saveRule(null, rule("first"))
-            vm.saveRule(null, rule("second"))
+            vm.save(null, rule("first"))
+            vm.save(null, rule("second"))
 
             assertEquals(listOf("first"), vm.ready().rules.map { it.name })
         }
@@ -125,9 +184,9 @@ class FiltersViewModelTest {
         runViewModelTest {
             val fake = FakeJmapServer()
             val vm = viewModel(fake)
-            vm.saveRule(null, rule("a"))
+            vm.save(null, rule("a"))
             vm.ready()
-            vm.saveRule(null, rule("b"))
+            vm.save(null, rule("b"))
             vm.ready()
 
             vm.move(0, 1)
@@ -141,9 +200,9 @@ class FiltersViewModelTest {
         runViewModelTest {
             val fake = FakeJmapServer()
             val vm = viewModel(fake)
-            vm.saveRule(null, rule("a"))
+            vm.save(null, rule("a"))
             vm.ready()
-            vm.saveRule(null, rule("b"))
+            vm.save(null, rule("b"))
             vm.ready()
 
             vm.toggle(0)
@@ -159,12 +218,12 @@ class FiltersViewModelTest {
     fun `editing a rule replaces it in place`() =
         runViewModelTest {
             val vm = viewModel(FakeJmapServer())
-            vm.saveRule(null, rule("a"))
+            vm.save(null, rule("a"))
             vm.ready()
-            vm.saveRule(null, rule("b"))
+            vm.save(null, rule("b"))
             vm.ready()
 
-            vm.saveRule(0, rule("renamed"))
+            vm.save(0, rule("renamed"))
 
             assertEquals(listOf("renamed", "b"), vm.ready().rules.map { it.name })
         }
