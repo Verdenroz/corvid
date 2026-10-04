@@ -6,10 +6,12 @@ import io.ktor.client.call.body
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
+import io.ktor.client.request.request
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
@@ -114,6 +116,48 @@ class JmapClient private constructor(
         return response.body<JsonObject>().getValue("blobId").jsonPrimitive.content
     }
 
+    /**
+     * A request to the web tier outside JMAP, such as `/corvid/update`, with the same bearer
+     * token. A 404 is a reply, not a failure: it means the server does not offer the path.
+     */
+    suspend fun webGet(path: String): WebReply = webCall(HttpMethod.Get, path, null)
+
+    suspend fun webPost(
+        path: String,
+        body: JsonObject,
+    ): WebReply = webCall(HttpMethod.Post, path, body)
+
+    private suspend fun webCall(
+        method: HttpMethod,
+        path: String,
+        body: JsonObject?,
+    ): WebReply {
+        val response =
+            guarded(authLatch, passThrough = setOf(HttpStatusCode.NotFound)) {
+                httpClient.request("$baseUrl$path") {
+                    this.method = method
+                    bearerToken()?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+                    body?.let {
+                        contentType(ContentType.Application.Json)
+                        setBody(it)
+                    }
+                }
+            }
+        val json =
+            if (response.status != HttpStatusCode.OK) {
+                null
+            } else {
+                try {
+                    response.body<JsonObject>()
+                } catch (e: NoTransformationFoundException) {
+                    throw JmapException(JmapError.Request(type = "notJSON", detail = e.message))
+                } catch (e: SerializationException) {
+                    throw JmapException(JmapError.Request(type = "notJSON", detail = e.message))
+                }
+            }
+        return WebReply(response.status.value, json)
+    }
+
     suspend fun downloadBlob(
         blobId: String,
         name: String,
@@ -134,6 +178,12 @@ class JmapClient private constructor(
         return response.body()
     }
 }
+
+/** [body] is the JSON object of a 200 answer, null for any other status. */
+class WebReply(
+    val status: Int,
+    val body: JsonObject?,
+)
 
 /**
  * A call can be answered more than once under its callId: RFC 8621 has
@@ -205,6 +255,7 @@ private suspend fun guardedPost(
  */
 private suspend fun guarded(
     authLatch: AuthLatch,
+    passThrough: Set<HttpStatusCode> = emptySet(),
     request: suspend () -> HttpResponse,
 ): HttpResponse {
     if (authLatch.tripped.value) throw JmapException(JmapError.Unauthorized)
@@ -227,6 +278,7 @@ private suspend fun guarded(
             throw JmapException(JmapError.RateLimited(retryAfter))
         }
     }
+    if (response.status in passThrough) return response
     // Every other 4xx is an RFC 7807 problem body (unknownCapability, notJSON, notRequest,
     // limit, ...): the request itself was rejected, so it must never be retried like a Server.
     if (response.status.value in 400..499) {

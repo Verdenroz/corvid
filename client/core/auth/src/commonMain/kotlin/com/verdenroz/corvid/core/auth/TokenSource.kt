@@ -18,6 +18,7 @@ import org.publicvalue.multiplatform.oidc.util.accessTokenExpired
 import kotlin.time.Duration.Companion.seconds
 
 private val REFRESH_MARGIN = 60.seconds
+private const val DISCOVERY_PATH = "/.well-known/openid-configuration"
 
 sealed interface AuthState {
     data object SignedOut : AuthState
@@ -44,6 +45,10 @@ class TokenSource(
     private var client: OpenIdConnectClient? = null
     private var tokens: AccessTokenResponse? = null
     private var server: ServerAddress? = null
+
+    /** The identity provider this session signed in through, for display; null while signed out. */
+    val issuerUrl: String?
+        get() = client?.config?.discoveryUri?.removeSuffix(DISCOVERY_PATH)
 
     init {
         // Unconfined so a trip wipes the token in the same call, not on the

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -25,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.appcommon.resources.Res
 import com.verdenroz.corvid.appcommon.resources.app_name
 import com.verdenroz.corvid.appcommon.resources.search_placeholder
+import com.verdenroz.corvid.appcommon.resources.settings_open
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.CorvidMark
@@ -56,6 +58,7 @@ internal fun WideTopBar(
     key: KeyState,
     identity: Identity?,
     search: SearchInput,
+    onOpenSettings: () -> Unit,
 ) {
     val colors = CorvidTheme.colors
     Column(Modifier.background(colors.surface)) {
@@ -68,7 +71,7 @@ internal fun WideTopBar(
             SearchField(search, shortcutHint = true, modifier = Modifier.weight(1f, fill = false).widthIn(max = 520.dp))
             Spacer(Modifier.weight(0.01f))
             KeyPill(key)
-            identity?.let { AccountAvatar(it) }
+            AccountAvatar(identity, onOpenSettings)
         }
         HorizontalDivider(color = colors.line)
     }
@@ -78,6 +81,7 @@ internal fun WideTopBar(
 internal fun NarrowTopBar(
     key: KeyState,
     onSearch: () -> Unit,
+    onOpenSettings: () -> Unit,
 ) {
     val colors = CorvidTheme.colors
     Column(Modifier.background(colors.surface)) {
@@ -97,6 +101,9 @@ internal fun NarrowTopBar(
             ) {
                 Icon(CorvidIcons.Search, contentDescription = null, tint = colors.inkMuted)
             }
+            IconButton(onClick = onOpenSettings, modifier = Modifier.size(40.dp)) {
+                Icon(CorvidIcons.Settings, stringResource(Res.string.settings_open), tint = colors.inkMuted)
+            }
             KeyRingButton(key)
         }
         KeyStatusLine(key)
@@ -104,6 +111,21 @@ internal fun NarrowTopBar(
 }
 
 @Composable
-private fun AccountAvatar(identity: Identity) {
-    SenderAvatar(name = identity.name.ifBlank { identity.email }, isSource = false, seal = null, size = 32.dp)
+private fun AccountAvatar(
+    identity: Identity?,
+    onClick: () -> Unit,
+) {
+    Box(
+        Modifier.clip(
+            CircleShape,
+        ).clickable(onClickLabel = stringResource(Res.string.settings_open), role = Role.Button, onClick = onClick),
+    ) {
+        if (identity == null) {
+            Box(Modifier.size(32.dp).background(CorvidTheme.colors.hover, CircleShape), contentAlignment = Alignment.Center) {
+                Icon(CorvidIcons.Person, contentDescription = null, tint = CorvidTheme.colors.inkMuted, modifier = Modifier.size(18.dp))
+            }
+        } else {
+            SenderAvatar(name = identity.name.ifBlank { identity.email }, isSource = false, seal = null, size = 32.dp)
+        }
+    }
 }

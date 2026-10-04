@@ -100,6 +100,15 @@ class AppLockViewModel(
 
     fun lock() = keyHolder.drop()
 
+    fun signOut() = tokenSource.signOut()
+
+    /** The signed-in server and identity provider as the settings screen states them. */
+    val accountHosts: AccountHosts?
+        get() =
+            (tokenSource.state.value as? AuthState.SignedIn)?.let { signedIn ->
+                AccountHosts(host(signedIn.server.baseUrl), tokenSource.issuerUrl?.let(::host))
+            }
+
     /** Throttled by [reconnectPolicy], the same policy an automatic reconnect would use. */
     fun retry() {
         val name = deviceName
@@ -235,6 +244,11 @@ class AppLockViewModel(
         keyHolder.drop()
     }
 }
+
+data class AccountHosts(
+    val server: String,
+    val identityProvider: String?,
+)
 
 data class LockFacts(
     val server: String?,

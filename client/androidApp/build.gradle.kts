@@ -16,6 +16,7 @@ dependencies {
     implementation(projects.appCommon)
     implementation(projects.core.common)
     implementation(projects.core.auth)
+    implementation(projects.core.prefs)
     implementation(projects.core.keyring)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.core.ktx)

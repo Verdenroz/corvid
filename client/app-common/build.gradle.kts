@@ -6,8 +6,21 @@ plugins {
 
 android { namespace = "com.verdenroz.corvid.app" }
 
+val generateBuildInfo by tasks.registering {
+    val version = providers.gradleProperty("corvid.version").getOrElse("0.1.0")
+    val outputDir = layout.buildDirectory.dir("generated/buildinfo")
+    inputs.property("version", version)
+    outputs.dir(outputDir)
+    doLast {
+        val file = outputDir.get().file("com/verdenroz/corvid/app/BuildInfo.kt").asFile
+        file.parentFile.mkdirs()
+        file.writeText("package com.verdenroz.corvid.app\n\ninternal const val APP_VERSION = \"$version\"\n")
+    }
+}
+
 kotlin {
     sourceSets {
+        commonMain { kotlin.srcDir(generateBuildInfo.map { it.outputs.files }) }
         commonMain.dependencies {
             api(projects.core.designsystem)
             api(projects.core.ui)
@@ -17,6 +30,7 @@ kotlin {
             implementation(projects.core.auth)
             implementation(projects.core.domain)
             implementation(projects.core.keyring)
+            implementation(projects.core.prefs)
             implementation(projects.core.data)
             implementation(projects.core.text)
             implementation(libs.compose.components.resources)
@@ -24,6 +38,7 @@ kotlin {
             implementation(projects.feature.mailbox)
             implementation(projects.feature.compose)
             implementation(projects.feature.filters)
+            implementation(projects.feature.settings)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.koin.core)
             implementation(libs.koin.compose)

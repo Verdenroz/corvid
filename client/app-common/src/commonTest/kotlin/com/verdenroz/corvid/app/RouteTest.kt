@@ -12,6 +12,7 @@ class RouteTest {
                 Route.Home(HomeTab.Inbox),
                 Route.Home(HomeTab.Drafts),
                 Route.Filters,
+                Route.Settings,
                 Route.Reader("e1"),
                 Route.Compose(ComposeIntent.New),
                 Route.Compose(ComposeIntent.To("ada@x.test")),

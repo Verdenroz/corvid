@@ -14,6 +14,7 @@ kotlin {
             api(libs.ktor.client.mock)
             api(libs.kotlinx.coroutines.test)
             api(libs.jetbrains.lifecycle.viewmodel)
+            api(libs.androidx.datastore.preferences.core)
             implementation(libs.ktor.client.core)
             implementation(libs.kotlinx.serialization.json)
         }

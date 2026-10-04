@@ -61,6 +61,7 @@ import com.verdenroz.corvid.core.data.SenderRepository
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.model.ComposeIntent
+import com.verdenroz.corvid.core.prefs.DevicePreferences
 import com.verdenroz.corvid.core.ui.LocalBackGuard
 import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.core.ui.WIDE_LAYOUT
@@ -83,8 +84,11 @@ private fun KeyEvent.isSearchShortcut() = type == KeyEventType.KeyDown && key ==
 @Composable
 internal fun UnlockedContent(
     host: String,
+    hosts: AccountHosts,
     onLock: () -> Unit,
+    onSignOut: () -> Unit,
     idleTimeout: IdleTimeoutController = koinInject(),
+    preferences: DevicePreferences = koinInject(),
     scopeHolder: UnlockedScopeHolder = koinInject(),
 ) {
     val scope = scopeHolder.current()
@@ -95,6 +99,8 @@ internal fun UnlockedContent(
     val searches = remember(repository) { Searches(repository) }
     DisposableEffect(searches) { onDispose { searches.clear() } }
 
+    val autoLock = preferences.settings.collectAsState().value.autoLock.timeout
+    LaunchedEffect(autoLock) { idleTimeout.setTimeout(autoLock) }
     DisposableEffect(Unit) {
         idleTimeout.recordActivity()
         onDispose { idleTimeout.stop() }
@@ -126,7 +132,7 @@ internal fun UnlockedContent(
     val searchInput = SearchInput(typed, { typed = it }, { navigator.search(typed) }, searchFocus)
 
     val shellState by shell.state.collectAsState()
-    val key = remember(host, onLock) { KeyState(host, idleTimeout.locksAt, idleTimeout.timeout, onLock) }
+    val key = remember(host, autoLock, onLock) { KeyState(host, idleTimeout.locksAt, autoLock, onLock) }
     BoxWithConstraints(
         Modifier.fillMaxSize().pointerInput(Unit) {
             awaitPointerEventScope {
@@ -145,7 +151,14 @@ internal fun UnlockedContent(
                     (wide && event.isSearchShortcut()).also { if (it) searchFocus.requestFocus() }
                 },
             ) {
-                if (wide) WideTopBar(key, shellState.identity, searchInput)
+                if (wide) {
+                    WideTopBar(
+                        key,
+                        shellState.identity,
+                        searchInput,
+                        onOpenSettings = { if (route != Route.Settings) navigator.push(Route.Settings) },
+                    )
+                }
                 if (!wide && route is Route.Search) SearchTopBar(searchInput, navigator::handleBack)
                 val top = navigator.depth - 1
                 val floats = wide && top > 0 && (route is Route.Sender || route is Route.Compose)
@@ -160,7 +173,21 @@ internal fun UnlockedContent(
                             Box(if (floating) floating(entry, CorvidTheme.colors.line) else Modifier.fillMaxSize()) {
                                 CompositionLocalProvider(LocalBackGuard provides navigator.guard(index)) {
                                     saved.SaveableStateProvider(entryKey) {
-                                        Page(entry, navigator, scope, searches, entryKey) { Home(it, key, shellState, navigator, ledgers) }
+                                        Page(
+                                            entry,
+                                            navigator,
+                                            scope,
+                                            searches,
+                                            entryKey,
+                                            settings = {
+                                                SettingsPage(
+                                                    preferences,
+                                                    scope,
+                                                    SettingsSession(hosts, shellState.identity, onLock, onSignOut),
+                                                    navigator,
+                                                )
+                                            },
+                                        ) { Home(it, key, shellState, navigator, ledgers) }
                                     }
                                 }
                             }
@@ -210,7 +237,7 @@ private fun Home(
 ) {
     val wide = LocalWideLayout.current
     Column {
-        if (!wide) NarrowTopBar(key, onSearch = { navigator.push(Route.Search("")) })
+        if (!wide) NarrowTopBar(key, onSearch = { navigator.push(Route.Search("")) }, onOpenSettings = { navigator.push(Route.Settings) })
         TabsBar(
             current = route.tab,
             inboxUnread = shellState.inboxUnread,
@@ -235,6 +262,7 @@ private fun Page(
     scope: Scope,
     searches: Searches,
     entryKey: String,
+    settings: @Composable () -> Unit,
     home: @Composable (Route.Home) -> Unit,
 ) {
     when (route) {
@@ -256,6 +284,7 @@ private fun Page(
             )
         is Route.Compose -> ComposeScreen(remember(scope) { scope.get<ComposeRepository>() }, route.intent, onClose = navigator::back)
         is Route.Filters -> FiltersScreen(remember(scope) { scope.get<FiltersRepository>() }, onBack = navigator::back)
+        is Route.Settings -> settings()
         is Route.Sender ->
             SenderCard(
                 senders = remember(scope) { scope.get<SenderRepository>() },

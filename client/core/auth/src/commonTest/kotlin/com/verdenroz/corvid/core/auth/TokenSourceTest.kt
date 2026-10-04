@@ -46,6 +46,19 @@ class TokenSourceTest {
         }
 
     @Test
+    fun `the issuer is the client's discovery address without its well-known path, and gone after sign-out`() =
+        runTest {
+            val source = TokenSource(AuthLatch(), backgroundScope)
+            val client = createOidcClient("https://idp.corvid.test:4443/.well-known/openid-configuration", "corvid:/cb")
+            source.adopt(client, freshToken(), TEST_SERVER)
+            assertEquals("https://idp.corvid.test:4443", source.issuerUrl)
+
+            source.signOut()
+
+            assertNull(source.issuerUrl)
+        }
+
+    @Test
     fun `a fresh token is returned without going through the client at all`() =
         runTest {
             val source = TokenSource(AuthLatch(), backgroundScope)
