@@ -6,6 +6,7 @@ mod notice;
 mod service;
 mod signature;
 mod state;
+mod update;
 mod webhook;
 
 pub use decide::{Alert, Reason, decide};
