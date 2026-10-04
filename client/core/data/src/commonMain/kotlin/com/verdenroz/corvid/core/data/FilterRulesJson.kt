@@ -31,6 +31,10 @@ sealed class FiltersFormatException(message: String) : Exception(message) {
 internal fun rulesLine(rules: List<FilterRule>): String =
     "# corvid-rules v$CURRENT_VERSION " + Json.encodeToString(RULES, rules.map { it.toDto() })
 
+fun encodeRule(rule: FilterRule): String = rulesLine(listOf(rule))
+
+fun decodeRule(saved: String): FilterRule = parseRules(saved).single()
+
 internal fun parseRules(script: String): List<FilterRule> {
     val line = script.lineSequence().firstNotNullOfOrNull { RULES_LINE.matchEntire(it) } ?: throw FiltersFormatException.Unreadable()
     val version = line.groupValues[1].toIntOrNull() ?: throw FiltersFormatException.Unreadable()

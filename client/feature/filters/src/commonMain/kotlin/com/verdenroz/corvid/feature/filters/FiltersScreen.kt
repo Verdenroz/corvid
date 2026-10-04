@@ -18,9 +18,13 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -54,8 +58,10 @@ fun FiltersScreen(
     repository: FiltersRepository,
     onBack: () -> Unit,
 ) {
-    val viewModel = remember(repository) { FiltersViewModel(repository) }
+    var savedDraft by rememberSaveable(stateSaver = RuleDraftSaver) { mutableStateOf<RuleDraft?>(null) }
+    val viewModel = remember(repository) { FiltersViewModel(repository, savedDraft) }
     val state by viewModel.state.collectAsState()
+    (state as? FiltersUiState.Ready)?.let { ready -> if (ready.editing != savedDraft) SideEffect { savedDraft = ready.editing } }
 
     Column(modifier = Modifier.fillMaxSize().background(CorvidTheme.colors.surface)) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 4.dp, top = 4.dp, end = 16.dp)) {

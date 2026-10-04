@@ -24,9 +24,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
+/** [restored] is the form as the user left it before the screen was recreated; it wins over the fresh draft. */
 class ComposeViewModel(
     private val composeRepository: ComposeRepository,
     private val intent: ComposeIntent,
+    private val restored: ComposeForm? = null,
 ) : ViewModel() {
     private val _state = MutableStateFlow<ComposeUiState>(ComposeUiState.Loading)
     val state: StateFlow<ComposeUiState> = _state
@@ -36,7 +38,7 @@ class ComposeViewModel(
             try {
                 _state.value =
                     when (val start = composeRepository.start(intent)) {
-                        is StartResult.Ready -> ComposeUiState.Editing(seed = start.draft, form = start.draft.toForm())
+                        is StartResult.Ready -> ComposeUiState.Editing(seed = start.draft, form = restored ?: start.draft.toForm())
                         is StartResult.OriginalGone -> ComposeUiState.Failed(uiText(Res.string.compose_original_gone))
                         is SendUnavailable -> ComposeUiState.Failed(start.message())
                     }

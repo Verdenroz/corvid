@@ -48,9 +48,10 @@ class ComposeViewModelTest {
     private suspend fun ViewModelTestScope.viewModel(
         fake: FakeJmapServer,
         intent: ComposeIntent = ComposeIntent.New,
+        restored: ComposeForm? = null,
     ): ComposeViewModel {
         val client = JmapClient.connect(createJmapHttpClient(fake.engine), AuthLatch(), BASE_URL)
-        return track(ComposeViewModel(ComposeRepository(client, MailboxRepository(client), KeyedTextResolver), intent))
+        return track(ComposeViewModel(ComposeRepository(client, MailboxRepository(client), KeyedTextResolver), intent, restored))
     }
 
     private suspend fun ComposeViewModel.editing() = state.first { it is ComposeUiState.Editing } as ComposeUiState.Editing
@@ -234,5 +235,15 @@ class ComposeViewModelTest {
             vm.editing()
 
             assertEquals(true, vm.requestClose())
+        }
+
+    @Test
+    fun `text typed before the screen was rebuilt comes back, and still counts as unsent`() =
+        runViewModelTest {
+            val typed = ComposeForm(to = "ada@x.test", cc = "", bcc = "", subject = "", body = "half a thought")
+            val vm = viewModel(server(), ComposeIntent.Reply("orig", all = false), restored = typed)
+
+            assertEquals(typed, vm.editing().form)
+            assertEquals(false, vm.requestClose())
         }
 }

@@ -1,5 +1,6 @@
 package com.verdenroz.corvid.feature.compose
 
+import androidx.compose.runtime.saveable.Saver
 import com.verdenroz.corvid.core.model.Draft
 import com.verdenroz.corvid.core.text.UiText
 
@@ -11,6 +12,12 @@ data class ComposeForm(
     val subject: String,
     val body: String,
 )
+
+val ComposeFormSaver: Saver<ComposeForm?, List<String>> =
+    Saver(
+        save = { form -> form?.let { listOf(it.to, it.cc, it.bcc, it.subject, it.body) } },
+        restore = { saved -> ComposeForm(saved[0], saved[1], saved[2], saved[3], saved[4]) },
+    )
 
 sealed interface ComposeUiState {
     data object Loading : ComposeUiState

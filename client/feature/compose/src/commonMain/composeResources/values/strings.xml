@@ -19,4 +19,5 @@
     <string name="compose_discard_question">Discard this message?</string>
     <string name="compose_discard">Discard</string>
     <string name="compose_keep_editing">Keep editing</string>
+    <string name="compose_show_copies">Cc, Bcc</string>
 </resources>

@@ -20,7 +20,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-class FiltersViewModel(private val repository: FiltersRepository) : ViewModel() {
+class FiltersViewModel(
+    private val repository: FiltersRepository,
+    private val restored: RuleDraft? = null,
+) : ViewModel() {
     private val _state = MutableStateFlow<FiltersUiState>(FiltersUiState.Loading)
     val state: StateFlow<FiltersUiState> = _state
 
@@ -73,7 +76,7 @@ class FiltersViewModel(private val repository: FiltersRepository) : ViewModel() 
         _state.value =
             try {
                 val set = repository.load()
-                FiltersUiState.Ready(set.rules, set.folders, foreignScript = set.foreignActiveScript)
+                FiltersUiState.Ready(set.rules, set.folders, foreignScript = set.foreignActiveScript, editing = restored)
             } catch (e: FiltersFormatException) {
                 FiltersUiState.Failed(e.text())
             } catch (e: JmapException) {

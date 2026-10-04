@@ -1,5 +1,6 @@
 package com.verdenroz.corvid.feature.filters
 
+import androidx.compose.runtime.saveable.SaverScope
 import com.verdenroz.corvid.core.data.FiltersRepository
 import com.verdenroz.corvid.core.jmap.AuthLatch
 import com.verdenroz.corvid.core.jmap.JmapClient
@@ -24,6 +25,7 @@ import kotlinx.coroutines.flow.first
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 
 private const val BASE_URL = "http://127.0.0.1:9999"
 
@@ -44,8 +46,10 @@ private suspend fun repository(fake: FakeJmapServer): FiltersRepository {
     return FiltersRepository(client)
 }
 
-private suspend fun ViewModelTestScope.viewModel(fake: FakeJmapServer): FiltersViewModel =
-    track(FiltersViewModel(repository(fake))).also { it.ready() }
+private suspend fun ViewModelTestScope.viewModel(
+    fake: FakeJmapServer,
+    restored: RuleDraft? = null,
+): FiltersViewModel = track(FiltersViewModel(repository(fake), restored)).also { it.ready() }
 
 private fun FiltersViewModel.save(
     index: Int?,
@@ -244,4 +248,23 @@ class FiltersViewModelTest {
 
             assertIs<FiltersUiState.Failed>(vm.state.first { it !is FiltersUiState.Loading })
         }
+
+    @Test
+    fun `a rule being edited before the screen was rebuilt is open again, unchanged`() =
+        runViewModelTest {
+            val draft = RuleDraft(null, rule("half done", value = "invoice"))
+
+            val vm = viewModel(FakeJmapServer(), restored = draft)
+
+            assertEquals(draft, vm.ready().editing)
+        }
+
+    @Test
+    fun `an unsaved rule survives the round trip through saved state`() {
+        val draft = RuleDraft(2, rule("half done", value = "in/voice \"q\""))
+
+        val saved = with(RuleDraftSaver) { SaverScope { true }.save(draft) }
+
+        assertEquals(draft, RuleDraftSaver.restore(assertNotNull(saved)))
+    }
 }

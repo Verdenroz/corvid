@@ -1,6 +1,7 @@
 package com.verdenroz.corvid.feature.compose
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,9 +21,13 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
@@ -47,6 +52,7 @@ import com.verdenroz.corvid.feature.compose.resources.compose_discard_question
 import com.verdenroz.corvid.feature.compose.resources.compose_keep_editing
 import com.verdenroz.corvid.feature.compose.resources.compose_message
 import com.verdenroz.corvid.feature.compose.resources.compose_send
+import com.verdenroz.corvid.feature.compose.resources.compose_show_copies
 import com.verdenroz.corvid.feature.compose.resources.compose_subject
 import com.verdenroz.corvid.feature.compose.resources.compose_title_forward
 import com.verdenroz.corvid.feature.compose.resources.compose_title_new
@@ -60,8 +66,10 @@ fun ComposeScreen(
     intent: ComposeIntent,
     onClose: () -> Unit,
 ) {
-    val viewModel = remember(composeRepository, intent) { ComposeViewModel(composeRepository, intent) }
+    var savedForm by rememberSaveable(stateSaver = ComposeFormSaver) { mutableStateOf<ComposeForm?>(null) }
+    val viewModel = remember(composeRepository, intent) { ComposeViewModel(composeRepository, intent, savedForm) }
     val state by viewModel.state.collectAsState()
+    (state as? ComposeUiState.Editing)?.form?.let { if (it != savedForm) SideEffect { savedForm = it } }
     val close = { if (viewModel.requestClose()) onClose() }
     NavigationBackHandler(state = rememberNavigationEventState(NavigationEventInfo.None), isBackEnabled = true, onBackCompleted = close)
 
@@ -143,9 +151,25 @@ private fun Fields(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
         }
-        Field(stringResource(Res.string.compose_to), state.form.to) { onEdit { copy(to = it) } }
-        Field(stringResource(Res.string.compose_cc), state.form.cc) { onEdit { copy(cc = it) } }
-        Field(stringResource(Res.string.compose_bcc), state.form.bcc) { onEdit { copy(bcc = it) } }
+        var copies by rememberSaveable { mutableStateOf(state.form.cc.isNotEmpty() || state.form.bcc.isNotEmpty()) }
+        Field(
+            stringResource(Res.string.compose_to),
+            state.form.to,
+            trailing =
+                if (copies) {
+                    null
+                } else {
+                    (
+                        {
+                            copies = true
+                        }
+                    )
+                },
+        ) { onEdit { copy(to = it) } }
+        if (copies) {
+            Field(stringResource(Res.string.compose_cc), state.form.cc) { onEdit { copy(cc = it) } }
+            Field(stringResource(Res.string.compose_bcc), state.form.bcc) { onEdit { copy(bcc = it) } }
+        }
         Field(stringResource(Res.string.compose_subject), state.form.subject) { onEdit { copy(subject = it) } }
         Body(state.form.body) { onEdit { copy(body = it) } }
     }
@@ -155,6 +179,7 @@ private fun Fields(
 private fun Field(
     label: String,
     value: String,
+    trailing: (() -> Unit)? = null,
     onChange: (String) -> Unit,
 ) {
     val colors = CorvidTheme.colors
@@ -169,6 +194,14 @@ private fun Field(
                 cursorBrush = SolidColor(colors.accent),
                 modifier = Modifier.weight(1f),
             )
+            trailing?.let {
+                Text(
+                    stringResource(Res.string.compose_show_copies),
+                    style = CorvidTheme.type.meta,
+                    color = colors.inkMuted,
+                    modifier = Modifier.clickable(onClick = it).padding(8.dp),
+                )
+            }
         }
         HorizontalDivider(color = colors.line)
     }
