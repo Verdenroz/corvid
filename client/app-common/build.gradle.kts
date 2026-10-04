@@ -6,8 +6,21 @@ plugins {
 
 android { namespace = "com.verdenroz.corvid.app" }
 
+val generateBuildInfo by tasks.registering {
+    val version = providers.gradleProperty("corvid.version").getOrElse("0.1.0")
+    val outputDir = layout.buildDirectory.dir("generated/buildinfo")
+    inputs.property("version", version)
+    outputs.dir(outputDir)
+    doLast {
+        val file = outputDir.get().file("com/verdenroz/corvid/app/BuildInfo.kt").asFile
+        file.parentFile.mkdirs()
+        file.writeText("package com.verdenroz.corvid.app\n\ninternal const val APP_VERSION = \"$version\"\n")
+    }
+}
+
 kotlin {
     sourceSets {
+        commonMain { kotlin.srcDir(generateBuildInfo.map { it.outputs.files }) }
         commonMain.dependencies {
             api(projects.core.designsystem)
             api(projects.core.ui)

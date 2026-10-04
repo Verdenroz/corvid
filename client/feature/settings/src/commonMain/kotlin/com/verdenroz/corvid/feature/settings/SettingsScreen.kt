@@ -14,11 +14,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.verdenroz.corvid.core.data.UpdateRepository
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
@@ -64,11 +67,16 @@ data class AccountFacts(
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
+    updates: UpdateRepository,
+    appVersion: String,
     account: AccountFacts,
     onBack: () -> Unit,
     onOpenFilters: () -> Unit,
 ) {
     val state by viewModel.state.collectAsState()
+    val about = remember(updates) { AboutViewModel(updates) }
+    DisposableEffect(about) { onDispose(about::stop) }
+    val aboutState by about.state.collectAsState()
     val gutter = CorvidSpacing.gutter(LocalWideLayout.current)
 
     Column(modifier = Modifier.fillMaxSize().background(CorvidTheme.colors.surface)) {
@@ -112,6 +120,7 @@ fun SettingsScreen(
                         onClick = onOpenFilters,
                     )
                 }
+                AboutSection(appVersion, aboutState, about)
             }
         }
     }

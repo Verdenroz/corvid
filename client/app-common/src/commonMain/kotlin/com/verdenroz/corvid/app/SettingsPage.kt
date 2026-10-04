@@ -2,11 +2,13 @@ package com.verdenroz.corvid.app
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import com.verdenroz.corvid.core.data.UpdateRepository
 import com.verdenroz.corvid.core.model.Identity
 import com.verdenroz.corvid.core.prefs.DevicePreferences
 import com.verdenroz.corvid.feature.settings.AccountFacts
 import com.verdenroz.corvid.feature.settings.SettingsScreen
 import com.verdenroz.corvid.feature.settings.SettingsViewModel
+import org.koin.core.scope.Scope
 
 internal class SettingsSession(
     val hosts: AccountHosts,
@@ -18,6 +20,7 @@ internal class SettingsSession(
 @Composable
 internal fun SettingsPage(
     preferences: DevicePreferences,
+    scope: Scope,
     session: SettingsSession,
     navigator: Navigator,
 ) {
@@ -29,5 +32,14 @@ internal fun SettingsPage(
             server = session.hosts.server,
             identityProvider = session.hosts.identityProvider,
         )
-    SettingsScreen(viewModel, account, onBack = navigator::back, onOpenFilters = { navigator.push(Route.Filters) })
+    SettingsScreen(
+        viewModel,
+        remember(scope) {
+            scope.get<UpdateRepository>()
+        },
+        APP_VERSION,
+        account,
+        onBack = navigator::back,
+        onOpenFilters = { navigator.push(Route.Filters) },
+    )
 }

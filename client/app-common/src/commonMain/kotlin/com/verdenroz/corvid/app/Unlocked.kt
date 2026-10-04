@@ -175,6 +175,7 @@ internal fun UnlockedContent(
                                             settings = {
                                                 SettingsPage(
                                                     preferences,
+                                                    scope,
                                                     SettingsSession(hosts, shellState.identity, onLock, onSignOut),
                                                     navigator,
                                                 )

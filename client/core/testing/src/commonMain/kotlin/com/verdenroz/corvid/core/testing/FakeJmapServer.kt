@@ -10,6 +10,7 @@ import io.ktor.client.engine.mock.respond
 import io.ktor.client.request.HttpRequestData
 import io.ktor.client.request.HttpResponseData
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.OutgoingContent
 import io.ktor.http.headersOf
@@ -104,6 +105,25 @@ class FakeJmapServer {
     /** Fails every EmailSubmission `create` with `notCreated`, as a rejected sender or recipient would. */
     var refuseSubmission: Boolean = false
 
+    /** The server's release report; null answers `/corvid/update` with 404, as an older server does. */
+    var update: FakeUpdate? = null
+
+    /** Reports served by successive GETs of `/corvid/update`, after [update]; the last one stays. */
+    val updateAfterReads: MutableList<FakeUpdate> = mutableListOf()
+
+    /** Answers GET `/corvid/update` with a 500. */
+    var updateBroken: Boolean = false
+
+    /** The next this many GETs of `/corvid/update` fail as a dropped connection, the way a restarting server's do. */
+    var updateReadsDropped: Int = 0
+
+    /** The `action` of each POST to `/corvid/update`, in order. */
+    val updateActions: MutableList<String> = mutableListOf()
+
+    /** The Authorization header the last `/corvid/update` request carried. */
+    var updateAuthorization: String? = null
+        private set
+
     var requestCount: Int = 0
         private set
 
@@ -119,6 +139,7 @@ class FakeJmapServer {
             path.endsWith("/jmap/api/") -> apiResponse(request)
             path.startsWith("/jmap/upload/") -> uploadResponse(request)
             path.startsWith("/jmap/download/") -> downloadResponse(path)
+            path == "/corvid/update" -> updateResponse(request)
             else -> respond("not found", HttpStatusCode.NotFound)
         }
     }
@@ -142,6 +163,23 @@ class FakeJmapServer {
         val blobId = path.removePrefix("/jmap/download/").split("/").getOrNull(1)
         val bytes = blobs[blobId] ?: return respond("blob not found", HttpStatusCode.NotFound)
         return respond(bytes, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, listOf("application/octet-stream")))
+    }
+
+    private fun MockRequestHandleScope.updateResponse(request: HttpRequestData): HttpResponseData {
+        updateAuthorization = request.headers[HttpHeaders.Authorization]
+        val current = update ?: return respond("not found", HttpStatusCode.NotFound)
+        if (request.method == HttpMethod.Post) {
+            val body = (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
+            updateActions += JmapJson.parseToJsonElement(body).jsonObject.getValue("action").jsonPrimitive.content
+            return respond("", HttpStatusCode.Accepted)
+        }
+        if (updateBroken) return respond("", HttpStatusCode.InternalServerError)
+        if (updateReadsDropped > 0) {
+            updateReadsDropped--
+            throw IOException("simulated restart")
+        }
+        if (updateAfterReads.isNotEmpty()) update = updateAfterReads.removeAt(0)
+        return respond(current.toJson().toString(), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, listOf("application/json")))
     }
 
     private fun MockRequestHandleScope.sessionResponse(): HttpResponseData {
