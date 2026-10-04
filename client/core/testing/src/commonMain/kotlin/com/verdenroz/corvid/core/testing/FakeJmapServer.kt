@@ -231,6 +231,17 @@ class FakeJmapServer {
         }
     }
 
+    /** The items a /get asked for by `ids` (all of them when it named none), and the ids that matched nothing. */
+    private fun <T> select(
+        items: List<T>,
+        arguments: JsonObject,
+        idOf: (T) -> String,
+    ): Pair<List<T>, List<String>> {
+        val ids = arguments["ids"]?.jsonArray?.map { it.jsonPrimitive.content }
+        val selected = if (ids == null) items else ids.mapNotNull { id -> items.find { idOf(it) == id } }
+        return selected to ids.orEmpty().filter { id -> items.none { idOf(it) == id } }
+    }
+
     private fun <T> getResponse(
         state: String,
         items: List<T>,
@@ -238,9 +249,7 @@ class FakeJmapServer {
         idOf: (T) -> String,
         toJson: (T) -> JsonObject,
     ): JsonObject {
-        val ids = arguments["ids"]?.jsonArray?.map { it.jsonPrimitive.content }
-        val selected = if (ids == null) items else ids.mapNotNull { id -> items.find { idOf(it) == id } }
-        val notFound = ids.orEmpty().filter { id -> items.none { idOf(it) == id } }
+        val (selected, notFound) = select(items, arguments, idOf)
         return buildJsonObject {
             put("accountId", ACCOUNT_ID)
             put("state", state)

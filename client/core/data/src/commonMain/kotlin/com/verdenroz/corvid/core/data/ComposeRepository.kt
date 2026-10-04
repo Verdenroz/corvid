@@ -45,6 +45,15 @@ private sealed interface Loaded {
     data class Unavailable(val reason: SendUnavailable) : Loaded
 }
 
+private inline fun <R> Loaded.fold(
+    onUnavailable: (SendUnavailable) -> R,
+    onReady: (Loaded.Ready) -> R,
+): R =
+    when (this) {
+        is Loaded.Unavailable -> onUnavailable(reason)
+        is Loaded.Ready -> onReady(this)
+    }
+
 /**
  * The identity and the Drafts and Sent mailboxes are fetched once, in one
  * request, and kept for as long as the repository lives. One request then
@@ -57,27 +66,23 @@ class ComposeRepository(private val jmapClient: JmapClient) {
     private val mutex = Mutex()
     private var ready: Loaded.Ready? = null
 
-    suspend fun start(intent: ComposeIntent): StartResult {
-        val sending =
-            when (val loaded = load()) {
-                is Loaded.Unavailable -> return loaded.reason
-                is Loaded.Ready -> loaded
-            }
-        val draft =
-            when (intent) {
-                is ComposeIntent.New -> Draft()
-                is ComposeIntent.Reply -> replyDraft(intent.original, sending.identity.email, intent.all)
-                is ComposeIntent.Forward -> forwardDraft(intent.original)
-            }
-        return StartResult.Ready(draft)
-    }
+    suspend fun start(intent: ComposeIntent): StartResult =
+        load().fold({ it }) { sending ->
+            StartResult.Ready(
+                when (intent) {
+                    is ComposeIntent.New -> Draft()
+                    is ComposeIntent.Reply -> replyDraft(intent.original, sending.identity.email, intent.all)
+                    is ComposeIntent.Forward -> forwardDraft(intent.original)
+                },
+            )
+        }
 
-    suspend fun send(draft: Draft): SendResult {
-        val sending =
-            when (val loaded = load()) {
-                is Loaded.Unavailable -> return loaded.reason
-                is Loaded.Ready -> loaded
-            }
+    suspend fun send(draft: Draft): SendResult = load().fold({ it }) { transmit(it, draft) }
+
+    private suspend fun transmit(
+        sending: Loaded.Ready,
+        draft: Draft,
+    ): SendResult {
         val outcomes =
             jmapClient.call(
                 listOf(
@@ -132,14 +137,13 @@ private fun JsonObject.toIdentity() =
         email = getValue("email").jsonPrimitive.content,
     )
 
-private fun Map<String, MethodOutcome>.rejection(): String? {
-    val email = getValue("c0")
-    val submission = getValue("c1")
-    if (email is MethodOutcome.Failure) return email.error.reason
-    (email as MethodOutcome.Success).result.setErrorReason("notCreated", "draft")?.let { return it }
-    if (submission is MethodOutcome.Failure) return submission.error.reason
-    return (submission as MethodOutcome.Success).result.setErrorReason("notCreated", "submission")
-}
+private fun Map<String, MethodOutcome>.rejection(): String? = getValue("c0").refusal("draft") ?: getValue("c1").refusal("submission")
+
+private fun MethodOutcome.refusal(creationId: String): String? =
+    when (this) {
+        is MethodOutcome.Failure -> error.reason
+        is MethodOutcome.Success -> result.setErrorReason("notCreated", creationId)
+    }
 
 private fun Map<String, MethodOutcome>.createdDraftId(): String? =
     (getValue("c0") as? MethodOutcome.Success)?.result?.get("created")?.jsonObject?.get("draft")?.jsonObject

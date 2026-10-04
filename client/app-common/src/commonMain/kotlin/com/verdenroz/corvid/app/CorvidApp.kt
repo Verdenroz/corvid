@@ -72,7 +72,7 @@ private fun UnlockedContent(
     idleTimeout: IdleTimeoutController = koinInject(),
     scopeHolder: UnlockedScopeHolder = koinInject(),
 ) {
-    val scope = scopeHolder.open()
+    val scope = scopeHolder.current()
     val repository = remember(scope) { scope.get<MailboxRepository>() }
     val composeRepository = remember(scope) { scope.get<ComposeRepository>() }
 

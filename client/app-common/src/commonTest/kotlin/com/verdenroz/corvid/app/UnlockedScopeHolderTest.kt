@@ -11,6 +11,7 @@ import kotlinx.coroutines.test.runTest
 import org.koin.dsl.koinApplication
 import org.koin.dsl.module
 import kotlin.test.Test
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotSame
 import kotlin.test.assertSame
 
@@ -43,6 +44,16 @@ class UnlockedScopeHolderTest {
 
             assertNotSame(first, second)
         }
+
+    @Test
+    fun `the current scope is gone once the scope is closed`() {
+        val holder = UnlockedScopeHolder(koinApplication { modules(module { }) }.koin)
+        holder.open()
+
+        holder.close()
+
+        assertFailsWith<IllegalStateException> { holder.current() }
+    }
 
     @Test
     fun `closing without ever opening is a no-op`() {
