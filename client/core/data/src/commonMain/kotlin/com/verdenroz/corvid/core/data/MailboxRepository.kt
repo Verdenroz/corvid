@@ -153,7 +153,7 @@ private fun JsonObject.fromAddress(): String =
 private fun JsonObject.formatAddress(): String? {
     val email = get("email")?.jsonPrimitive?.contentOrNull ?: return null
     val name = get("name")?.jsonPrimitive?.contentOrNull
-    return if (name != null) "$name <$email>" else email
+    return formatAddress(name, email)
 }
 
 private fun JsonObject.addressList(key: String): List<String> =

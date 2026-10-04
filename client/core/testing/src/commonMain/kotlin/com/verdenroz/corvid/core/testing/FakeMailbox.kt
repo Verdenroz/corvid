@@ -22,6 +22,7 @@ data class FakeEmail(
     val cc: List<String> = emptyList(),
     val bcc: List<String> = emptyList(),
     val replyTo: List<String> = emptyList(),
+    val fromName: String? = null,
     val messageId: List<String> = emptyList(),
     val inReplyTo: List<String> = emptyList(),
     val references: List<String> = emptyList(),

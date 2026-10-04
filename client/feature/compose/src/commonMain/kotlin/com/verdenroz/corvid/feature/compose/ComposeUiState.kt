@@ -28,6 +28,8 @@ sealed interface ComposeUiState {
     /** [error] is why the last send did not go out; [form] is untouched by it. */
     data class Editing(
         val form: ComposeForm,
+        val inReplyTo: List<String> = emptyList(),
+        val references: List<String> = emptyList(),
         val sending: Boolean = false,
         val error: String? = null,
     ) : ComposeUiState

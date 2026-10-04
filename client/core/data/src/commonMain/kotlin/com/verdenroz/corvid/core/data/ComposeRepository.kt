@@ -138,7 +138,7 @@ private fun JsonObjectBuilder.putAddresses(
     putJsonArray(key) {
         addresses.forEach { address ->
             addJsonObject {
-                val name = address.substringBefore('<', "").trim()
+                val name = nameOf(address)
                 if (name.isNotEmpty()) put("name", name)
                 put("email", emailOf(address))
             }
@@ -146,7 +146,7 @@ private fun JsonObjectBuilder.putAddresses(
     }
 }
 
-private fun formatAddress(identity: Identity) = if (identity.name.isEmpty()) identity.email else "${identity.name} <${identity.email}>"
+private fun formatAddress(identity: Identity) = formatAddress(identity.name.ifEmpty { null }, identity.email)
 
 private fun Map<String, MethodOutcome>.rejection(): String? {
     val email = getValue("c0")

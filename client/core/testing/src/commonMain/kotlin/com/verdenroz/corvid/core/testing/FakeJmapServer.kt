@@ -552,7 +552,7 @@ private fun FakeEmail.toJson(): JsonObject =
         } else {
             putJsonArray("from") {
                 addJsonObject {
-                    put("name", null as String?)
+                    put("name", fromName)
                     put("email", from)
                 }
             }

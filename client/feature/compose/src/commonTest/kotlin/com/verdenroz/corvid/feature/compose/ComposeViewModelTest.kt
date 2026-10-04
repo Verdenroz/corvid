@@ -123,6 +123,36 @@ class ComposeViewModelTest {
         }
 
     @Test
+    fun `a sent reply carries the original's message id as in-reply-to and references`() =
+        runTest(testDispatcher) {
+            val fake = server()
+            val vm = viewModel(fake, ComposeMode.Reply("orig", all = false))
+            vm.editing()
+
+            vm.send()
+
+            assertEquals(ComposeUiState.Sent, vm.settled())
+            val email = fake.emails.single { it.id == fake.submissions.single().emailId }
+            assertEquals(listOf("m1@example.test"), email.inReplyTo)
+            assertEquals(listOf("m1@example.test"), email.references)
+        }
+
+    @Test
+    fun `replying to a sender whose name contains a comma sends to one address`() =
+        runTest(testDispatcher) {
+            val fake = server()
+            fake.emails.replaceAll { it.copy(from = "jane@example.test", fromName = "Doe, Jane") }
+            val vm = viewModel(fake, ComposeMode.Reply("orig", all = false))
+            assertEquals("\"Doe, Jane\" <jane@example.test>", vm.editing().form.to)
+
+            vm.send()
+
+            vm.settled()
+            val email = fake.emails.single { it.id == fake.submissions.single().emailId }
+            assertEquals(listOf("jane@example.test"), email.to)
+        }
+
+    @Test
     fun `reply all leaves the account's own address out of cc`() =
         runTest(testDispatcher) {
             val vm = viewModel(server(), ComposeMode.Reply("orig", all = true))

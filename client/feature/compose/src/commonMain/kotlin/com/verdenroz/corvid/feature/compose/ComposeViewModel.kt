@@ -8,6 +8,7 @@ import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.data.SendResult
 import com.verdenroz.corvid.core.data.forwardDraft
 import com.verdenroz.corvid.core.data.replyDraft
+import com.verdenroz.corvid.core.data.splitAddresses
 import com.verdenroz.corvid.core.jmap.JmapError
 import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.model.Draft
@@ -30,7 +31,12 @@ class ComposeViewModel(
             try {
                 identity = composeRepository.identity()
                 val draft = initialDraft()
-                _state.value = if (draft == null) ComposeUiState.Gone else ComposeUiState.Editing(draft.toForm())
+                _state.value =
+                    if (draft == null) {
+                        ComposeUiState.Gone
+                    } else {
+                        ComposeUiState.Editing(draft.toForm(), draft.inReplyTo, draft.references)
+                    }
             } catch (e: JmapException) {
                 _state.value = ComposeUiState.Failed((e.error as? JmapError.Request)?.detail ?: "could not reach the server")
             }
@@ -45,7 +51,7 @@ class ComposeViewModel(
     fun send() {
         val current = _state.value as? ComposeUiState.Editing ?: return
         if (current.sending) return
-        val draft = current.form.toDraft()
+        val draft = current.form.toDraft(current.inReplyTo, current.references)
         if (draft.to.isEmpty()) {
             _state.value = current.copy(error = "Add a recipient.")
             return
@@ -87,7 +93,15 @@ private fun Draft.toForm() =
         body = body,
     )
 
-private fun ComposeForm.toDraft(): Draft {
-    fun recipients(text: String) = text.split(',', ';').map { it.trim() }.filter { it.isNotEmpty() }
-    return Draft(to = recipients(to), cc = recipients(cc), bcc = recipients(bcc), subject = subject, body = body)
-}
+private fun ComposeForm.toDraft(
+    inReplyTo: List<String>,
+    references: List<String>,
+) = Draft(
+    to = splitAddresses(to),
+    cc = splitAddresses(cc),
+    bcc = splitAddresses(bcc),
+    subject = subject,
+    body = body,
+    inReplyTo = inReplyTo,
+    references = references,
+)

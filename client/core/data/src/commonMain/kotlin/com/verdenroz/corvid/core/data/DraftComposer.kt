@@ -38,9 +38,6 @@ fun forwardDraft(original: EmailDetail): Draft {
     )
 }
 
-internal fun emailOf(address: String): String =
-    if ('<' in address) address.substringAfter('<').substringBefore('>').trim() else address.trim()
-
 private fun withPrefix(
     prefix: String,
     subject: String,
