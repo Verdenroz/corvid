@@ -134,6 +134,7 @@ pub struct Ingest {
     prior: Prior,
     census: Census,
     learned: BTreeMap<String, (BTreeSet<String>, f64)>,
+    cold_started: BTreeSet<String>,
     counted: BTreeSet<String>,
     sightings: BTreeMap<String, u64>,
     cursor: Option<String>,
@@ -166,6 +167,10 @@ impl Ingest {
     /// Learns from the keywords the user set on a message, which are the ones outside the
     /// namespace.
     ///
+    /// A message learned from a model's labels also reads those labels while they remain, since
+    /// the model's guess is what the prior recorded: the user keeping it is agreement, and only
+    /// removing or replacing it is a correction.
+    ///
     /// A message the user has never labelled carries no signal: no keyword means the user did
     /// not look. Only a change from a set already seen counts, so removing every label is a real
     /// answer rather than silence.
@@ -178,7 +183,10 @@ impl Ingest {
         if self.sightings.insert(id.to_owned(), fingerprint) == Some(fingerprint) {
             self.unchanged += 1;
         }
-        let labels = own_labels(keywords);
+        let mut labels = own_labels(keywords);
+        if self.cold_started.contains(id) {
+            labels.extend(model_labels(keywords));
+        }
         if labels.is_empty() && !self.learned.contains_key(id) {
             return;
         }
@@ -245,6 +253,7 @@ impl Ingest {
     /// Guarded like a correction, since a batch over historical mail is the thing most likely
     /// to run twice.
     pub fn learn(&mut self, id: &str, key: &SenderKey, labels: &[String], at: f64) {
+        self.cold_started.insert(id.to_owned());
         self.record(id, key, labels.iter().cloned().collect(), at);
     }
 

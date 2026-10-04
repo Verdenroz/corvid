@@ -9,7 +9,7 @@ use crate::Ingest;
 /// census's sampling rate leaves old files deserializing cleanly, and their counts pool with new
 /// ones computed under a different rule: no error, valid checksum, wrong numbers. Those values
 /// are pinned by tests where they are defined, which fail and name this constant.
-const SCHEMA: u32 = 3;
+const SCHEMA: u32 = 4;
 
 /// A missing file is a first run; anything else unreadable is fatal. See [`corvid_store::open`].
 pub fn open(path: &Path) -> io::Result<Ingest> {
@@ -24,6 +24,7 @@ corvid_store::pin_shape!(Ingest {
     prior,
     census,
     learned,
+    cold_started,
     counted,
     sightings,
     cursor,
