@@ -326,10 +326,13 @@ class FakeJmapServer {
                     put("threadId", id)
                 }
         }
+        val destroyed = arguments["destroy"]?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty()
+        emails.removeAll { it.id in destroyed }
         return buildJsonObject {
             put("accountId", ACCOUNT_ID)
             put("oldState", "s0")
             put("newState", "s1")
+            if (destroyed.isNotEmpty()) put("destroyed", JsonArray(destroyed.map { JsonPrimitive(it) }))
             if (created.isNotEmpty()) putJsonObject("created") { created.forEach { (k, v) -> put(k, v) } }
         }
     }
@@ -557,6 +560,7 @@ private fun FakeEmail.toJson(): JsonObject =
         putAddressList("to", to)
         putAddressList("cc", cc)
         putAddressList("bcc", bcc)
+        putAddressList("replyTo", replyTo)
         putIdList("messageId", messageId)
         putIdList("inReplyTo", inReplyTo)
         putIdList("references", references)

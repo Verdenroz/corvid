@@ -27,7 +27,8 @@ import kotlin.time.Instant
 private const val PAGE_SIZE = 50
 private const val MAX_BODY_VALUE_BYTES = 262_144
 private val EMAIL_PROPERTIES = listOf("id", "threadId", "subject", "from", "receivedAt", "keywords", "preview")
-private val EMAIL_DETAIL_PROPERTIES = listOf("id", "subject", "from", "to", "cc", "receivedAt", "textBody", "bodyValues")
+private val EMAIL_DETAIL_PROPERTIES =
+    listOf("id", "subject", "from", "to", "cc", "replyTo", "messageId", "references", "receivedAt", "textBody", "bodyValues")
 
 sealed interface EmailPage {
     data class Found(val emails: List<EmailSummary>, val queryState: String) : EmailPage
@@ -116,7 +117,7 @@ class MailboxRepository(private val jmapClient: JmapClient) {
     ): JsonObject = jmapClient.call(listOf(Invocation(method, arguments, "c0"))).getValue("c0").resultOrThrow()
 }
 
-private fun MethodOutcome.resultOrThrow(): JsonObject =
+internal fun MethodOutcome.resultOrThrow(): JsonObject =
     when (this) {
         is MethodOutcome.Success -> result
         is MethodOutcome.Failure -> throw JmapException(error)
@@ -158,6 +159,8 @@ private fun JsonObject.formatAddress(): String? {
 private fun JsonObject.addressList(key: String): List<String> =
     (get(key) as? JsonArray)?.mapNotNull { it.jsonObject.formatAddress() }.orEmpty()
 
+private fun JsonObject.idList(key: String): List<String> = (get(key) as? JsonArray)?.map { it.jsonPrimitive.content }.orEmpty()
+
 /**
  * textBody already picks the best single-part representation per RFC 8621; an
  * HTML-only message arrives here as one text/html part, flattened rather than
@@ -181,6 +184,9 @@ private fun JsonObject.toEmailDetail(): EmailDetail {
         from = fromAddress(),
         to = addressList("to"),
         cc = addressList("cc"),
+        replyTo = addressList("replyTo"),
+        messageId = idList("messageId"),
+        references = idList("references"),
         receivedAt = Instant.parse(getValue("receivedAt").jsonPrimitive.content),
         body = parts.joinToString("\n\n") { it.first },
         bodyTruncated = parts.any { it.second },
