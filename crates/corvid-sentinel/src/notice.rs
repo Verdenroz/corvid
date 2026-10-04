@@ -3,6 +3,7 @@ use sha2::{Digest, Sha256};
 use crate::dates;
 use crate::decide::{Alert, Reason};
 use crate::state::CredentialKind;
+use crate::update::Failure;
 
 /// Renders a batch's alerts as one plain-text message, ready for `Email/import`.
 ///
@@ -33,6 +34,25 @@ pub fn unparseable(body: &[u8], to: &str) -> Vec<u8> {
             "A webhook batch of {} bytes verified but could not be parsed. sha256: {digest}",
             body.len()
         ),
+    )
+}
+
+/// A notice for an update run that was rolled back or failed outright.
+pub fn update_failed(failure: &Failure, to: &str) -> Vec<u8> {
+    let host = to.rsplit_once('@').map_or(to, |(_, domain)| domain);
+    let outcome = match failure.result.as_str() {
+        "rolledBack" => "was rolled back",
+        _ => "failed and the rollback failed too",
+    };
+    let detail = failure
+        .detail
+        .as_deref()
+        .unwrap_or("No detail was recorded.");
+    message(
+        &format!("Corvid update to {} {outcome} on {host}", failure.version),
+        &dates::rfc2822(&failure.checked_at).unwrap_or_else(dates::rfc2822_now),
+        to,
+        &format!("{detail}\r\n\r\nThe log is in the journal: journalctl -u corvid-update.service"),
     )
 }
 

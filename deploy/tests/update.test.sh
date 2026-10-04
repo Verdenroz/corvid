@@ -126,16 +126,14 @@ check "the previous deploy dir is kept" '[[ "$(cat "$corvid/deploy.prev/which")"
 check "sends no mail" '[[ ! -e "$work/smtp/messages" ]]'
 check "records updated" 'valid_status && [[ "$(field result)" == updated && "$(field running)" == 1.1.0 && "$(field latest)" == 1.1.0 ]]'
 
-echo "== a failing deploy restores the previous image and files and mails postmaster"
+echo "== a failing deploy restores the previous image and files"
 fresh; echo new > "$work/registry-id"; touch "$work/new-deploy-fails"
 run
 check "exits 1" '[[ $status -eq 1 ]]'
 check "the registry tag points at the old image again" '[[ "$(tag ghcr.io/example/corvid:stable)" == old ]]'
 check "the old deploy files are back" '[[ "$(cat "$corvid/deploy/which")" == old ]]'
 check "the old files were deployed again" '[[ "$(tail -1 "$work/log")" == "deploy old" ]]'
-check "postmaster is mailed" 'grep -q "^To: postmaster@example.com" "$work/smtp/messages"'
-check "the mail names the failed version and the log" 'grep -q "Subject: Corvid update to 1.1.0 failed" "$work/smtp/messages" && grep -q "journalctl -u corvid-update.service" "$work/smtp/messages"'
-check "the session ends with QUIT" '[[ "$(tail -1 "$work/smtp/commands")" == QUIT ]]'
+check "sends no mail, since the sentinel reports a rollback" '[[ ! -e "$work/smtp/messages" ]]'
 check "records rolledBack" 'valid_status && [[ "$(field result)" == rolledBack && "$(field running)" == 1.0.0 && "$(field latest)" == 1.1.0 ]]'
 check "the failed release is remembered" '[[ "$(cat "$corvid/.update-failed")" == new ]]'
 
@@ -150,7 +148,10 @@ check "records skipped" '[[ "$(field result)" == skipped ]]'
 echo "== a rollback that fails too is reported as failed"
 fresh; echo new > "$work/registry-id"; touch "$work/new-deploy-fails" "$work/old-deploy-fails"
 run
-check "records failed and still mails" 'valid_status && [[ "$(field result)" == failed ]] && grep -q "needs attention" "$work/smtp/messages"'
+check "records failed" 'valid_status && [[ "$(field result)" == failed ]]'
+check "mails postmaster, since the sentinel may be down too" 'grep -q "^To: postmaster@example.com" "$work/smtp/messages" && grep -q "needs attention" "$work/smtp/messages"'
+check "the mail names the failed version and the log" 'grep -q "Subject: Corvid update to 1.1.0 failed" "$work/smtp/messages" && grep -q "journalctl -u corvid-update.service" "$work/smtp/messages"'
+check "the session ends with QUIT" '[[ "$(tail -1 "$work/smtp/commands")" == QUIT ]]'
 
 echo "== a failed pull changes nothing"
 fresh; echo new > "$work/registry-id"; touch "$work/pull-fails"

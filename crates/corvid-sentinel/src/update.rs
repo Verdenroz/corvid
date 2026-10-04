@@ -37,6 +37,46 @@ impl Action {
     }
 }
 
+#[derive(Deserialize)]
+struct Status {
+    running: String,
+    latest: Option<String>,
+    #[serde(rename = "checkedAt")]
+    checked_at: Option<String>,
+    result: String,
+    detail: Option<String>,
+}
+
+pub struct Failure {
+    pub checked_at: String,
+    pub version: String,
+    pub result: String,
+    pub detail: Option<String>,
+}
+
+/// The failed run in `status.json` that `noticed` does not cover yet, if any.
+pub fn failure(dir: &Path, noticed: Option<&str>) -> io::Result<Option<Failure>> {
+    let body = match std::fs::read(dir.join("status.json")) {
+        Ok(body) => body,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error),
+    };
+    let status: Status = serde_json::from_slice(&body)?;
+    let Some(checked_at) = status.checked_at else {
+        return Ok(None);
+    };
+    let failed = matches!(status.result.as_str(), "rolledBack" | "failed");
+    if !failed || noticed == Some(checked_at.as_str()) {
+        return Ok(None);
+    }
+    Ok(Some(Failure {
+        checked_at,
+        version: status.latest.unwrap_or(status.running),
+        result: status.result,
+        detail: status.detail,
+    }))
+}
+
 pub fn routes(dir: PathBuf) -> Router {
     Router::new()
         .route("/corvid/update", get(status).post(request))

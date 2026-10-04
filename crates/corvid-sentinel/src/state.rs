@@ -5,7 +5,8 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 /// Bump whenever `Seen`'s shape changes.
-const SCHEMA: u32 = 1;
+const SCHEMA: u32 = 2;
+const PREVIOUS_SCHEMA: u32 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum CredentialKind {
@@ -27,6 +28,9 @@ pub struct Seen {
     /// Address to the epoch second a too-many-attempts notice last fired for it. A ban is never
     /// rate-limited, so it needs no entry here.
     pub too_many_attempts_notified: BTreeMap<String, i64>,
+    /// The `checkedAt` of the last failed update run a notice was delivered for.
+    #[serde(default)]
+    pub update_noticed: Option<String>,
 }
 
 corvid_store::pin_shape!(Identity {
@@ -37,11 +41,22 @@ corvid_store::pin_shape!(Identity {
 });
 corvid_store::pin_shape!(Seen {
     identities,
-    too_many_attempts_notified
+    too_many_attempts_notified,
+    update_noticed
 });
 
 pub fn open(path: &Path) -> io::Result<Seen> {
-    corvid_store::open(path, SCHEMA)
+    match corvid_store::load(path, SCHEMA) {
+        Ok(seen) => Ok(seen.unwrap_or_default()),
+        // Schema 1 lacks `update_noticed`, which reads back as None.
+        Err(error) if error.kind() == io::ErrorKind::InvalidData => {
+            corvid_store::load(path, PREVIOUS_SCHEMA)
+                .ok()
+                .flatten()
+                .ok_or(error)
+        }
+        Err(error) => Err(error),
+    }
 }
 
 pub fn save(path: &Path, seen: &Seen) -> io::Result<()> {

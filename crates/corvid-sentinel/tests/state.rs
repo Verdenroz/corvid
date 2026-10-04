@@ -43,3 +43,34 @@ fn a_truncated_state_file_refuses_to_start_fresh() {
 
     assert!(open(&path).is_err());
 }
+
+#[test]
+fn a_schema_1_state_file_loads_with_its_contents_and_no_update_noticed() {
+    let (_dir, path) = scratch();
+    let v1 = serde_json::json!({
+        "identities": [{
+            "account": "alice@corvid.test",
+            "kind": "Primary",
+            "listener": "imaps",
+            "remote_ip": "203.0.113.9"
+        }],
+        "too_many_attempts_notified": {"203.0.113.9": 100}
+    });
+    corvid_store::save(&path, 1, &v1).unwrap();
+
+    let seen = open(&path).unwrap();
+
+    assert_eq!(seen.identities.len(), 1);
+    assert_eq!(seen.too_many_attempts_notified["203.0.113.9"], 100);
+    assert_eq!(seen.update_noticed, None);
+    save(&path, &seen).unwrap();
+    assert_eq!(open(&path).unwrap().identities, seen.identities);
+}
+
+#[test]
+fn a_state_file_from_an_unknown_schema_is_still_refused() {
+    let (_dir, path) = scratch();
+    corvid_store::save(&path, 99, &Seen::default()).unwrap();
+
+    assert!(open(&path).is_err());
+}

@@ -1,5 +1,6 @@
 use std::io;
 use std::process::ExitCode;
+use std::time::Duration;
 
 use corvid_config::{EX_TEMPFAIL, or_exit, secret, section};
 use corvid_sentinel::{Config, Jmap, open, router};
@@ -8,6 +9,7 @@ use tokio::signal;
 
 /// Where the host's update directory is mounted; absent where no host updater exists.
 const UPDATE_DIR: &str = "/var/lib/corvid-update";
+const UPDATE_POLL: Duration = Duration::from_secs(60);
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -63,6 +65,7 @@ async fn main() -> ExitCode {
         seen,
         notifier: jmap,
         update_dir: UPDATE_DIR.into(),
+        update_poll: UPDATE_POLL,
     });
 
     let listener = TcpListener::bind(&bind).await.expect("cannot bind");
