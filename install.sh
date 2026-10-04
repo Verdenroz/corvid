@@ -581,7 +581,8 @@ step "waiting for certificates (Let's Encrypt, up to 10 minutes)"
 on_host 'set -a; . /opt/corvid/corvid.env; set +a; for _ in $(seq 1 60); do n=$(stalwart-cli query Certificate 2>/dev/null | awk "NR>1" | wc -l); [ "$n" -gt 0 ] && { echo "  $n certificate(s) issued"; exit 0; }; sleep 10; done; echo "  none yet; Stalwart keeps retrying, and the checks below report it"'
 
 step "verifying"
-on_host "cd /opt/corvid/deploy && bash verify.sh '$domain' '$hostname'" || true
+verified=0
+on_host "cd /opt/corvid/deploy && bash verify.sh '$domain' '$hostname'" || verified=$?
 
 step "checking the ports from this machine"
 # Only an outside connection finds a cloud firewall, and a bare TCP connect proves nothing
@@ -608,6 +609,7 @@ elif (( ${#closed[@]} )); then
 else
   ok "465, 587, 993 and $web_port answer from here"
 fi
+(( verified == 0 )) || die "installed, but verification failed; fix the FAIL lines above and rerun"
 
 cat <<EOF
 
