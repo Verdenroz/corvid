@@ -291,6 +291,7 @@ cannot pull it.
 To roll back by hand, on the host:
 
     podman tag localhost/corvid:rollback "$(cat /opt/corvid/image.ref)"
+    podman image inspect -f '{{.Id}}' localhost/corvid:rollback > /opt/corvid/.deployed-id
     rm -rf /opt/corvid/deploy && mv /opt/corvid/deploy.prev /opt/corvid/deploy
     /opt/corvid/deploy/bootstrap.sh && /opt/corvid/deploy/deploy.sh
 
