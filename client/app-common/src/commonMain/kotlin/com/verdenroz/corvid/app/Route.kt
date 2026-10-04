@@ -26,6 +26,9 @@ sealed interface Route {
     @Serializable
     data class Search(val query: String) : Route
 
+    @Serializable
+    data object Settings : Route
+
     /** The card for one sender; a side sheet when wide, a page when narrow. */
     @Serializable
     data class Sender(val address: String) : Route

@@ -2,13 +2,11 @@ package com.verdenroz.corvid.core.prefs
 
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.preferencesOf
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.verdenroz.corvid.core.testing.InMemoryPreferencesStore
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -16,15 +14,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.time.Duration.Companion.minutes
 
-private class InMemoryStore(initial: Preferences = emptyPreferences()) : DataStore<Preferences> {
-    private val state = MutableStateFlow(initial)
-    override val data: Flow<Preferences> = state
-
-    override suspend fun updateData(transform: suspend (t: Preferences) -> Preferences): Preferences =
-        transform(state.value).also { state.value = it }
-}
-
-private fun TestScope.preferences(store: DataStore<Preferences> = InMemoryStore()) =
+private fun TestScope.preferences(store: DataStore<Preferences> = InMemoryPreferencesStore()) =
     DevicePreferences(store, backgroundScope, DeviceSettings())
 
 @OptIn(ExperimentalCoroutinesApi::class)

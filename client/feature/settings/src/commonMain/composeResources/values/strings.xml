@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_title">Settings</string>
+    <string name="settings_back">Back</string>
+    <string name="settings_account">Account</string>
+    <string name="settings_name">Name</string>
+    <string name="settings_address">Address</string>
+    <string name="settings_server">Server</string>
+    <string name="settings_identity_provider">Identity provider</string>
+    <string name="settings_sign_out">Sign out</string>
+    <string name="settings_sign_out_question">Sign out of this device?</string>
+    <string name="settings_cancel">Cancel</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_theme">Theme</string>
+    <string name="settings_theme_system">System</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_security">Security</string>
+    <string name="settings_auto_lock">Lock after</string>
+    <string name="settings_auto_lock_option">%1$d min</string>
+    <string name="settings_auto_lock_detail">Idle time before the key drops and the app locks.</string>
+    <string name="settings_lock_now">Lock now</string>
+    <string name="settings_filters">Filters</string>
+    <string name="settings_filters_row">Edit your filters</string>
+    <string name="settings_filters_detail">Rules the server applies as mail arrives.</string>
+</resources>

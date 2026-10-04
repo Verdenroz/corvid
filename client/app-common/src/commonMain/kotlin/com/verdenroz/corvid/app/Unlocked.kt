@@ -84,7 +84,9 @@ private fun KeyEvent.isSearchShortcut() = type == KeyEventType.KeyDown && key ==
 @Composable
 internal fun UnlockedContent(
     host: String,
+    hosts: AccountHosts,
     onLock: () -> Unit,
+    onSignOut: () -> Unit,
     idleTimeout: IdleTimeoutController = koinInject(),
     preferences: DevicePreferences = koinInject(),
     scopeHolder: UnlockedScopeHolder = koinInject(),
@@ -164,7 +166,20 @@ internal fun UnlockedContent(
                             Box(if (floating) floating(entry, CorvidTheme.colors.line) else Modifier.fillMaxSize()) {
                                 CompositionLocalProvider(LocalBackGuard provides navigator.guard(index)) {
                                     saved.SaveableStateProvider(entryKey) {
-                                        Page(entry, navigator, scope, searches, entryKey) { Home(it, key, shellState, navigator, ledgers) }
+                                        Page(
+                                            entry,
+                                            navigator,
+                                            scope,
+                                            searches,
+                                            entryKey,
+                                            settings = {
+                                                SettingsPage(
+                                                    preferences,
+                                                    SettingsSession(hosts, shellState.identity, onLock, onSignOut),
+                                                    navigator,
+                                                )
+                                            },
+                                        ) { Home(it, key, shellState, navigator, ledgers) }
                                     }
                                 }
                             }
@@ -239,6 +254,7 @@ private fun Page(
     scope: Scope,
     searches: Searches,
     entryKey: String,
+    settings: @Composable () -> Unit,
     home: @Composable (Route.Home) -> Unit,
 ) {
     when (route) {
@@ -260,6 +276,7 @@ private fun Page(
             )
         is Route.Compose -> ComposeScreen(remember(scope) { scope.get<ComposeRepository>() }, route.intent, onClose = navigator::back)
         is Route.Filters -> FiltersScreen(remember(scope) { scope.get<FiltersRepository>() }, onBack = navigator::back)
+        is Route.Settings -> settings()
         is Route.Sender ->
             SenderCard(
                 senders = remember(scope) { scope.get<SenderRepository>() },

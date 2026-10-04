@@ -12,6 +12,9 @@ kotlin {
             implementation(projects.core.common)
             implementation(libs.koin.core)
         }
+        commonTest.dependencies {
+            implementation(projects.core.testing)
+        }
         androidMain.dependencies {
             implementation(libs.koin.android)
         }

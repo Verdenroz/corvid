@@ -50,7 +50,13 @@ fun CorvidApp(
                     } else {
                         ConnectingPane()
                     }
-                is AppLockState.Unlocked -> UnlockedContent(host = viewModel.serverHost.orEmpty(), onLock = viewModel::lock)
+                is AppLockState.Unlocked ->
+                    UnlockedContent(
+                        host = viewModel.serverHost.orEmpty(),
+                        hosts = viewModel.accountHosts ?: AccountHosts(server = "", identityProvider = null),
+                        onLock = viewModel::lock,
+                        onSignOut = viewModel::signOut,
+                    )
                 is AppLockState.Unreachable -> UnreachablePane(reason = current.reason, onRetry = viewModel::retry)
                 is AppLockState.Locked -> {
                     val facts = viewModel.lockFacts
