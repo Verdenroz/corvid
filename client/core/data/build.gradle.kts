@@ -9,7 +9,9 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(projects.core.model)
+            implementation(projects.core.common)
             implementation(projects.core.jmap)
+            implementation(libs.koin.core)
             implementation(libs.kotlinx.serialization.json)
         }
         androidMain.dependencies {

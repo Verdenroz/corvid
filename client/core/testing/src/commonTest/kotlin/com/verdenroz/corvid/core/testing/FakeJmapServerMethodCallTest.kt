@@ -10,13 +10,17 @@ import com.verdenroz.corvid.core.jmap.createJmapHttpClient
 import com.verdenroz.corvid.core.jmap.resultReference
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.putJsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -194,6 +198,56 @@ class FakeJmapServerMethodCallTest {
                 client.call(listOf(Invocation("Mailbox/get", buildJsonObject {}, "c0")))
             }
         }
+
+    @Test
+    fun `Identity get lists the identities the account may send as`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.identities += FakeIdentity(id = "i1", email = "verde@example.test")
+            val client = connect(fake)
+
+            val outcome = client.call(listOf(Invocation("Identity/get", buildJsonObject {}, "c0"))).getValue("c0")
+
+            val list = assertIs<MethodOutcome.Success>(outcome).result.getValue("list").jsonArray
+            assertEquals(listOf("verde@example.test"), list.map { it.jsonObject.getValue("email").jsonPrimitive.content })
+        }
+
+    @Test
+    fun `a submission with onSuccessUpdateEmail moves the email and answers twice under its callId`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.identities += FakeIdentity(id = "i1", email = "verde@example.test")
+            val client = connect(fake)
+
+            val outcomes = client.call(sendInvocations())
+
+            assertIs<MethodOutcome.Success>(outcomes.getValue("c0"))
+            val outcome = assertIs<MethodOutcome.Success>(outcomes.getValue("c1"))
+            assertEquals(listOf("Email/set"), outcome.implicit.map { it.name })
+            val submission = outcome.result
+            assertEquals("sub1", submission.getValue("created").jsonObject.getValue("s").jsonObject.getValue("id").jsonPrimitive.content)
+            assertEquals(setOf("sent"), fake.emails.single().mailboxIds)
+            assertEquals(emptySet(), fake.emails.single().keywords)
+        }
+
+    @Test
+    fun `a refused submission leaves the email in drafts and reports notCreated`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.identities += FakeIdentity(id = "i1", email = "verde@example.test")
+            fake.refuseSubmission = true
+            val client = connect(fake)
+
+            val outcomes = client.call(sendInvocations())
+
+            val submission = assertIs<MethodOutcome.Success>(outcomes.getValue("c1")).result
+            assertEquals(
+                "forbiddenToSend",
+                submission.getValue("notCreated").jsonObject.getValue("s").jsonObject.getValue("type").jsonPrimitive.content,
+            )
+            assertEquals(setOf("drafts"), fake.emails.single().mailboxIds)
+            assertTrue(fake.submissions.isEmpty())
+        }
 }
 
 private fun JsonObjectBuilder.putFilter(mailboxId: String) {
@@ -201,3 +255,43 @@ private fun JsonObjectBuilder.putFilter(mailboxId: String) {
 }
 
 private suspend fun connect(fake: FakeJmapServer): JmapClient = JmapClient.connect(createJmapHttpClient(fake.engine), AuthLatch(), BASE_URL)
+
+private fun sendInvocations() =
+    listOf(
+        Invocation(
+            "Email/set",
+            buildJsonObject {
+                putJsonObject("create") {
+                    putJsonObject("e") {
+                        putJsonObject("mailboxIds") { put("drafts", true) }
+                        putJsonObject("keywords") { put("\$draft", true) }
+                        putJsonArray("from") { addJsonObject { put("email", "verde@example.test") } }
+                        putJsonArray("to") { addJsonObject { put("email", "a@example.test") } }
+                        put("subject", "hello")
+                        putJsonArray("textBody") { addJsonObject { put("partId", "1") } }
+                        putJsonObject("bodyValues") { putJsonObject("1") { put("value", "hi") } }
+                    }
+                }
+            },
+            "c0",
+        ),
+        Invocation(
+            "EmailSubmission/set",
+            buildJsonObject {
+                putJsonObject("create") {
+                    putJsonObject("s") {
+                        put("identityId", "i1")
+                        put("emailId", "#e")
+                    }
+                }
+                putJsonObject("onSuccessUpdateEmail") {
+                    putJsonObject("#s") {
+                        put("mailboxIds/drafts", JsonNull)
+                        put("mailboxIds/sent", true)
+                        put("keywords/\$draft", JsonNull)
+                    }
+                }
+            },
+            "c1",
+        ),
+    )

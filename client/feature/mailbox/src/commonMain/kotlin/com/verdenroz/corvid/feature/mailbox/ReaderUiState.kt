@@ -1,16 +1,11 @@
 package com.verdenroz.corvid.feature.mailbox
 
+import com.verdenroz.corvid.core.model.EmailDetail
+
 sealed interface ReaderUiState {
     data object Loading : ReaderUiState
 
-    data class Loaded(
-        val subject: String,
-        val from: String,
-        val to: List<String>,
-        val cc: List<String>,
-        val body: String,
-        val bodyTruncated: Boolean,
-    ) : ReaderUiState
+    data class Loaded(val email: EmailDetail) : ReaderUiState
 
     /** Deleted or moved out from under the reader between the inbox list and opening it. */
     data object Gone : ReaderUiState

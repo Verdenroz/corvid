@@ -19,6 +19,7 @@ kotlin {
             implementation(projects.core.data)
             implementation(projects.feature.signin)
             implementation(projects.feature.mailbox)
+            implementation(projects.feature.compose)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.koin.core)
             implementation(libs.koin.compose)

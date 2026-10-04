@@ -2,7 +2,7 @@ package com.verdenroz.corvid.core.jmap
 
 import kotlinx.serialization.Serializable
 
-internal val REQUIRED_CAPABILITIES = listOf(CORE_CAPABILITY, MAIL_CAPABILITY, FILENODE_CAPABILITY)
+val REQUIRED_CAPABILITIES = listOf(CORE_CAPABILITY, MAIL_CAPABILITY, SUBMISSION_CAPABILITY, FILENODE_CAPABILITY)
 
 @Serializable
 internal data class JmapRequest(

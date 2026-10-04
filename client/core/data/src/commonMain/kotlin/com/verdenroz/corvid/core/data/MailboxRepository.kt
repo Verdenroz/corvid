@@ -2,9 +2,11 @@ package com.verdenroz.corvid.core.data
 
 import com.verdenroz.corvid.core.jmap.Invocation
 import com.verdenroz.corvid.core.jmap.JmapClient
-import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.jmap.MethodOutcome
+import com.verdenroz.corvid.core.jmap.callOne
+import com.verdenroz.corvid.core.jmap.resultOrThrow
 import com.verdenroz.corvid.core.jmap.resultReference
+import com.verdenroz.corvid.core.model.EmailAddress
 import com.verdenroz.corvid.core.model.EmailDetail
 import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.core.model.Mailbox
@@ -27,7 +29,8 @@ import kotlin.time.Instant
 private const val PAGE_SIZE = 50
 private const val MAX_BODY_VALUE_BYTES = 262_144
 private val EMAIL_PROPERTIES = listOf("id", "threadId", "subject", "from", "receivedAt", "keywords", "preview")
-private val EMAIL_DETAIL_PROPERTIES = listOf("id", "subject", "from", "to", "cc", "receivedAt", "textBody", "bodyValues")
+private val EMAIL_DETAIL_PROPERTIES =
+    listOf("id", "subject", "from", "to", "cc", "replyTo", "messageId", "references", "receivedAt", "textBody", "bodyValues")
 
 sealed interface EmailPage {
     data class Found(val emails: List<EmailSummary>, val queryState: String) : EmailPage
@@ -51,7 +54,7 @@ sealed interface EmailLookup {
  */
 class MailboxRepository(private val jmapClient: JmapClient) {
     suspend fun findMailboxByRole(role: String): Mailbox? {
-        val result = call("Mailbox/get", JsonObject(emptyMap()))
+        val result = jmapClient.callOne("Mailbox/get", JsonObject(emptyMap()))
         return result.getValue("list").jsonArray
             .map { it.jsonObject.toMailbox() }
             .firstOrNull { it.role == role }
@@ -105,22 +108,11 @@ class MailboxRepository(private val jmapClient: JmapClient) {
                 put("fetchTextBodyValues", true)
                 put("maxBodyValueBytes", MAX_BODY_VALUE_BYTES)
             }
-        val result = call("Email/get", arguments)
+        val result = jmapClient.callOne("Email/get", arguments)
         if (result.getValue("notFound").jsonArray.isNotEmpty()) return EmailLookup.NotFound
         return EmailLookup.Found(result.getValue("list").jsonArray.first().jsonObject.toEmailDetail())
     }
-
-    private suspend fun call(
-        method: String,
-        arguments: JsonObject,
-    ): JsonObject = jmapClient.call(listOf(Invocation(method, arguments, "c0"))).getValue("c0").resultOrThrow()
 }
-
-private fun MethodOutcome.resultOrThrow(): JsonObject =
-    when (this) {
-        is MethodOutcome.Success -> result
-        is MethodOutcome.Failure -> throw JmapException(error)
-    }
 
 private fun JsonObject.toMailbox() =
     Mailbox(
@@ -145,18 +137,18 @@ private fun JsonObject.toEmailSummary() =
         preview = getValue("preview").jsonPrimitive.content,
     )
 
-private fun JsonObject.fromAddress(): String =
-    (get("from") as? JsonArray)?.mapNotNull { it.jsonObject.formatAddress() }?.firstOrNull().orEmpty()
+private fun JsonObject.fromAddress(): String = addressList("from").firstOrNull()?.toText().orEmpty()
 
 /** email is null for MIME group syntax ("undisclosed-recipients:;"), which carries a name and no address. */
-private fun JsonObject.formatAddress(): String? {
+private fun JsonObject.toEmailAddress(): EmailAddress? {
     val email = get("email")?.jsonPrimitive?.contentOrNull ?: return null
-    val name = get("name")?.jsonPrimitive?.contentOrNull
-    return if (name != null) "$name <$email>" else email
+    return EmailAddress(name = get("name")?.jsonPrimitive?.contentOrNull, email = email)
 }
 
-private fun JsonObject.addressList(key: String): List<String> =
-    (get(key) as? JsonArray)?.mapNotNull { it.jsonObject.formatAddress() }.orEmpty()
+private fun JsonObject.addressList(key: String): List<EmailAddress> =
+    (get(key) as? JsonArray)?.mapNotNull { it.jsonObject.toEmailAddress() }.orEmpty()
+
+private fun JsonObject.idList(key: String): List<String> = (get(key) as? JsonArray)?.map { it.jsonPrimitive.content }.orEmpty()
 
 /**
  * textBody already picks the best single-part representation per RFC 8621; an
@@ -178,9 +170,12 @@ private fun JsonObject.toEmailDetail(): EmailDetail {
     return EmailDetail(
         id = getValue("id").jsonPrimitive.content,
         subject = get("subject")?.jsonPrimitive?.contentOrNull.orEmpty(),
-        from = fromAddress(),
+        from = addressList("from").firstOrNull(),
         to = addressList("to"),
         cc = addressList("cc"),
+        replyTo = addressList("replyTo"),
+        messageId = idList("messageId"),
+        references = idList("references"),
         receivedAt = Instant.parse(getValue("receivedAt").jsonPrimitive.content),
         body = parts.joinToString("\n\n") { it.first },
         bodyTruncated = parts.any { it.second },

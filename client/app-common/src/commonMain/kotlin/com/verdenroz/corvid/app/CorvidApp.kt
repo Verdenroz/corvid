@@ -13,18 +13,20 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import com.verdenroz.corvid.core.data.ComposeRepository
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.ui.LockedPane
 import com.verdenroz.corvid.core.ui.RevokedPane
 import com.verdenroz.corvid.core.ui.UnreachablePane
+import com.verdenroz.corvid.feature.compose.ComposeScreen
 import com.verdenroz.corvid.feature.mailbox.InboxScreen
 import com.verdenroz.corvid.feature.mailbox.ReaderScreen
 import com.verdenroz.corvid.feature.signin.SignInScreen
@@ -45,7 +47,7 @@ fun CorvidApp(viewModel: AppLockViewModel = koinViewModel()) {
                 } else {
                     ConnectingPane()
                 }
-            is AppLockState.Unlocked -> UnlockedContent(repository = current.mailboxRepository, onLock = viewModel::lock)
+            is AppLockState.Unlocked -> UnlockedContent(onLock = viewModel::lock)
             is AppLockState.Unreachable -> UnreachablePane(reason = current.reason, onRetry = viewModel::retry)
             is AppLockState.Locked -> LockedPane(onUnlock = viewModel::unlock)
             is AppLockState.Revoked -> RevokedPane()
@@ -66,10 +68,14 @@ private fun ConnectingPane() {
 /** Every pointer event here resets decision 11's idle timer. */
 @Composable
 private fun UnlockedContent(
-    repository: MailboxRepository,
     onLock: () -> Unit,
     idleTimeout: IdleTimeoutController = koinInject(),
+    scopeHolder: UnlockedScopeHolder = koinInject(),
 ) {
+    val scope = scopeHolder.current()
+    val repository = remember(scope) { scope.get<MailboxRepository>() }
+    val composeRepository = remember(scope) { scope.get<ComposeRepository>() }
+
     DisposableEffect(Unit) {
         idleTimeout.recordActivity()
         onDispose { idleTimeout.stop() }
@@ -89,12 +95,23 @@ private fun UnlockedContent(
         Box(modifier = Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.CenterEnd) {
             Button(onClick = onLock) { Text("Lock") }
         }
-        var openEmailId by remember { mutableStateOf<String?>(null) }
-        val emailId = openEmailId
-        if (emailId == null) {
-            InboxScreen(repository, onOpenEmail = { openEmailId = it })
-        } else {
-            ReaderScreen(repository, emailId, onBack = { openEmailId = null })
+        val backStack = remember { mutableStateListOf<Route>(Route.Inbox) }
+        val pop = { backStack.removeAt(backStack.lastIndex) }
+        when (val route = backStack.last()) {
+            is Route.Inbox ->
+                InboxScreen(
+                    repository,
+                    onOpenEmail = { backStack += Route.Reader(it) },
+                    onCompose = { backStack += Route.Compose(ComposeIntent.New) },
+                )
+            is Route.Reader ->
+                ReaderScreen(
+                    repository,
+                    route.emailId,
+                    onBack = { pop() },
+                    onCompose = { backStack += Route.Compose(it) },
+                )
+            is Route.Compose -> ComposeScreen(composeRepository, route.intent, onClose = { pop() })
         }
     }
 }

@@ -62,6 +62,7 @@ class EmbeddedServerConnectTest {
               "capabilities": {
                 "urn:ietf:params:jmap:core": {},
                 "urn:ietf:params:jmap:mail": {},
+                "urn:ietf:params:jmap:submission": {},
                 "urn:ietf:params:jmap:filenode": {}
               },
               "primaryAccounts": {"urn:ietf:params:jmap:mail": "u1"},
