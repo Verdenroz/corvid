@@ -19,7 +19,7 @@ import org.jetbrains.compose.resources.stringResource
  * No key exists yet for [deviceName]: could be its first sign-in, or an
  * operator revoke. Either way, enrolling means this device gets new access,
  * so it needs its own tap rather than following straight from naming the
- * device (decision 10: never automatic).
+ * device.
  */
 @Composable
 fun EnrollmentPrompt(

@@ -39,8 +39,7 @@ private const val ACCOUNT_ID = "u1"
 /**
  * Interprets JMAP against an in-memory mailbox, advertising
  * `https://mail.corvid.test/jmap/...` with no port, the way a real Stalwart
- * deployment does before the caller rebases it. FileNode/blob endpoints
- * join in slice 5.
+ * deployment does before the caller rebases it.
  */
 class FakeJmapServer {
     var unauthorized: Boolean = false
@@ -50,7 +49,7 @@ class FakeJmapServer {
     /** Seconds sent back in `Retry-After`; non-null also switches the response to 429. */
     var rateLimitedFor: Long? = null
 
-    /** No token presented: capabilities only, no account (decision 5's anonymous session). */
+    /** No token presented: capabilities only, no account, as an anonymous session answers. */
     var unauthenticated: Boolean = false
 
     /** Drops one capability from the advertised session, to exercise the required-capability check. */

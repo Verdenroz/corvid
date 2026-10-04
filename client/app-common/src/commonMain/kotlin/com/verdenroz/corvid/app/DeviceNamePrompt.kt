@@ -21,8 +21,8 @@ import com.verdenroz.corvid.appcommon.resources.device_name_title
 import com.verdenroz.corvid.core.keyring.DEVICE_NAME_PATTERN
 import org.jetbrains.compose.resources.stringResource
 
-/** Asked once per session, the first time a signed-in device has no key yet (decision 10:
- *  an existing file is never adopted, so this name always creates a fresh one). */
+/** Asked once per session, the first time a signed-in device has no key yet. An existing key
+ *  file is never adopted, so this name always creates a fresh one. */
 @Composable
 fun DeviceNamePrompt(onSubmit: (String) -> Unit) {
     var name by rememberSaveable { mutableStateOf("") }

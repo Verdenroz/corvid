@@ -87,7 +87,7 @@ private fun EmailRow(
 }
 
 /** corvid-llm- is the cold-start pass's own guess, never a person's or the labeler's
- *  trained verdict (CLAUDE.md, "keyword provenance"): a different container color is
+ *  trained verdict: a different container color is
  *  enough to keep that distinction visible without a second UI language for it. */
 @Composable
 private fun LabelChip(keyword: String) {

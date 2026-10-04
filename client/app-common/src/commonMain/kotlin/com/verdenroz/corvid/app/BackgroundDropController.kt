@@ -9,7 +9,7 @@ import kotlin.time.Duration.Companion.seconds
 private val BACKGROUND_TIMEOUT = 30.seconds
 
 /**
- * Decision 11's ON_STOP/window-minimised trigger: the platform calls
+ * Drops the key when the app is backgrounded or minimised: the platform calls
  * [enteredBackground] and, unless [enteredForeground] cancels it first, the
  * key drops 30 seconds later.
  */

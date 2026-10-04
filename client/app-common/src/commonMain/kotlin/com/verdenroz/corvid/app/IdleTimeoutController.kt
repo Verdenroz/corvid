@@ -10,7 +10,7 @@ import kotlin.time.Duration.Companion.minutes
 private val IDLE_TIMEOUT = 5.minutes
 
 /**
- * Decision 11's 5-minute idle trigger. [recordActivity] restarts the timer
+ * Drops the key after 5 idle minutes. [recordActivity] restarts the timer
  * from zero; the root composable calls it on every pointer event it sees.
  */
 class IdleTimeoutController(

@@ -48,7 +48,7 @@ import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 
-/** The lock gate: swaps every route for a pane per [AppLockState] (decision 2). */
+/** The lock gate: swaps every route for a pane per [AppLockState]. */
 @Composable
 fun CorvidApp(viewModel: AppLockViewModel = koinViewModel()) {
     val state by viewModel.state.collectAsState()
@@ -82,7 +82,7 @@ private fun ConnectingPane() {
     }
 }
 
-/** Every pointer event here resets decision 11's idle timer. */
+/** Every pointer event here resets the idle timer. */
 @Composable
 private fun UnlockedContent(
     onLock: () -> Unit,

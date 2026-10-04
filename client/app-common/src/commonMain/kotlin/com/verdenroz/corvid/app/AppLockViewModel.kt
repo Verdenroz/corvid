@@ -39,7 +39,7 @@ private val HEARTBEAT_INTERVAL = 60.seconds
 
 /**
  * Drives [AppLockState] from [TokenSource], [KeyHolder] and a device key
- * lookup built fresh for each signed-in server (decision 10). Owns the one
+ * lookup built fresh for each signed-in server. Owns the one
  * [JmapClient] a session gets: constructed once on sign-in, outlived by
  * nothing, declared into [UnlockedScopeHolder] once Unlocked so a scoped
  * repository can reuse it without knowing how it was built.

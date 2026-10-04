@@ -64,7 +64,7 @@ class DeviceKeyRepository(private val jmapClient: JmapClient) {
         }
 
     /**
-     * Always destroys any existing file first: decision 10 never adopts one.
+     * Always destroys any existing file first and never adopts one.
      * Fails typed rather than guessing if the destroy, the create, or a
      * concurrent enrollment leaves the folder ambiguous.
      */
