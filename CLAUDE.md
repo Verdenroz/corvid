@@ -133,6 +133,8 @@ web tier is not on 443.
   the model endpoint (`corvid-labeler/tests/common`). Test names are sentences stating the
   behaviour.
 - Pin persisted shapes at compile time in the crate that stores them, not in `corvid-store`.
+- Every change to a persisted format ships a migration from the previous version, since an
+  unattended update must never leave a service refusing its state.
 - Bumping the Stalwart image means replacing `deploy/stalwart-schema-v<version>.json` and the
   `PINNED` name in `check-plan.py` with a schema cached from a server running the new version.
 

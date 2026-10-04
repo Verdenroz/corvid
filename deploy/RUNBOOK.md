@@ -260,6 +260,42 @@ so `corvid-config` refuses a `mail_user` containing `@`.
 If the mailbox already exists on the host, this must match the existing account's name exactly,
 or the plan creates a second account beside it rather than adopting the first.
 
+## Updates
+
+A host that installed from a registry image (`install.sh` defaults to
+`ghcr.io/verdenroz/corvid:stable`) updates itself. `corvid-update.timer` runs `update.sh` every
+night at 04:00 with up to an hour of random delay. It pulls the tag in `/opt/corvid/image.ref`
+and does nothing if the image is unchanged. Otherwise it keeps the previous image as
+`localhost/corvid:rollback` and the previous deploy files in `/opt/corvid/deploy.prev`, copies the
+new image's deploy files into `/opt/corvid/deploy`, and runs `bootstrap.sh` then `deploy.sh`,
+which ends in `verify.sh`. If any step fails it puts the old image and files back, deploys them
+again and mails `postmaster@<domain>` through the host's own Stalwart. A release that failed is not
+retried until a newer one is tagged. The log is `journalctl -u corvid-update.service`.
+
+Every run writes `/opt/corvid/update/status.json`. Writing `check` or `apply` to
+`/opt/corvid/update/request` starts a run on demand: `check` only records the latest version, and
+`apply` updates even with `update.auto: false`.
+
+A host running a `--ship-local` image (`localhost/...`) never updates itself.
+
+To turn it off, set `update: {auto: false}` in `config.yaml`; the timer then logs that it is off.
+
+To cut a release, bump `version` in `Cargo.toml`, merge, and push a tag:
+
+    git tag v0.2.0 && git push origin v0.2.0
+
+The `image` workflow publishes `0.2.0` and moves `stable`. A prerelease tag such as `v0.2.0-rc1`
+publishes its own tag and leaves `stable` alone. The GHCR package must be public, or the host
+cannot pull it.
+
+To roll back by hand, on the host:
+
+    podman tag localhost/corvid:rollback "$(cat /opt/corvid/image.ref)"
+    rm -rf /opt/corvid/deploy && mv /opt/corvid/deploy.prev /opt/corvid/deploy
+    /opt/corvid/deploy/bootstrap.sh && /opt/corvid/deploy/deploy.sh
+
+Set `update.auto: false` first, or the next night's run takes the release again.
+
 ## Building the Corvid image
 
 The milter, image proxy and labeler all run `localhost/corvid:latest`, and nothing in the deploy
