@@ -23,6 +23,7 @@ import javax.net.ssl.SSLException
 
 internal const val CORE_CAPABILITY = "urn:ietf:params:jmap:core"
 internal const val MAIL_CAPABILITY = "urn:ietf:params:jmap:mail"
+internal const val SUBMISSION_CAPABILITY = "urn:ietf:params:jmap:submission"
 internal const val FILENODE_CAPABILITY = "urn:ietf:params:jmap:filenode"
 
 /**
@@ -79,7 +80,8 @@ class JmapClient private constructor(
                 parsed.sessionState != session.state -> discoverSession(httpClient, authLatch, baseUrl, bearerToken)
                 else -> session
             }
-        val outcomes = parsed.methodResponses.associate { it.callId to it.toOutcome() }
+        // EmailSubmission/set answers twice under one callId when onSuccessUpdateEmail ran; the first is the submission's.
+        val outcomes = parsed.methodResponses.distinctBy { it.callId }.associate { it.callId to it.toOutcome() }
         val missing = invocations.map { it.callId } - outcomes.keys
         if (missing.isNotEmpty()) {
             throw JmapException(JmapError.Request(type = "incompleteResponse", detail = "no response for $missing"))

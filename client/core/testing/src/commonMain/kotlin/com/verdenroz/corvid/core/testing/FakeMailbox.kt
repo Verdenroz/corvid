@@ -20,7 +20,23 @@ data class FakeEmail(
     val preview: String = "",
     val to: List<String> = emptyList(),
     val cc: List<String> = emptyList(),
+    val bcc: List<String> = emptyList(),
+    val messageId: List<String> = emptyList(),
+    val inReplyTo: List<String> = emptyList(),
+    val references: List<String> = emptyList(),
     val bodyType: String = "text/plain",
     val body: String? = null,
     val bodyTruncated: Boolean = false,
+)
+
+data class FakeIdentity(
+    val id: String,
+    val email: String,
+    val name: String = "",
+)
+
+data class FakeSubmission(
+    val id: String,
+    val identityId: String,
+    val emailId: String,
 )

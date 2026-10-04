@@ -33,6 +33,7 @@ import javax.net.ssl.SSLHandshakeException
 
 private const val CORE_CAPABILITY = "urn:ietf:params:jmap:core"
 private const val MAIL_CAPABILITY = "urn:ietf:params:jmap:mail"
+private const val SUBMISSION_CAPABILITY = "urn:ietf:params:jmap:submission"
 private const val FILENODE_CAPABILITY = "urn:ietf:params:jmap:filenode"
 private const val ACCOUNT_ID = "u1"
 
@@ -76,16 +77,25 @@ class FakeJmapServer {
 
     val mailboxes: MutableList<FakeMailbox> = mutableListOf()
     val emails: MutableList<FakeEmail> = mutableListOf()
+    val identities: MutableList<FakeIdentity> = mutableListOf()
+    val submissions: MutableList<FakeSubmission> = mutableListOf()
     val fileNodes: MutableList<FakeFileNode> = mutableListOf()
     val blobs: MutableMap<String, ByteArray> = mutableMapOf()
     private var nextFileNodeId = 1
     private var nextBlobId = 1
+    private var nextEmailId = 1
+    private var nextSubmissionId = 1
+    private var implicitResponses: List<Pair<String, JsonObject>> = emptyList()
+    private val createdIds = mutableMapOf<String, String>()
 
     /** FileNode ids that fail `destroy` with `notDestroyed`, as a still-referenced node would. */
     val refuseDestroy: MutableSet<String> = mutableSetOf()
 
     /** Fails every FileNode `create` with `notCreated`, as a quota or permission refusal would. */
     var refuseCreate: Boolean = false
+
+    /** Fails every EmailSubmission `create` with `notCreated`, as a rejected sender or recipient would. */
+    var refuseSubmission: Boolean = false
 
     var requestCount: Int = 0
         private set
@@ -166,11 +176,12 @@ class FakeJmapServer {
                 .getValue("methodCalls").jsonArray
                 .map { JmapJson.decodeFromJsonElement<Invocation>(it) }
 
+        createdIds.clear()
         val results = mutableMapOf<String, JsonObject>()
         val failedCallIds = mutableSetOf<String>()
         val responses =
             calls
-                .map { invocation ->
+                .flatMap { invocation ->
                     // A real server never dispatches a call whose #-reference names a call
                     // that itself failed; it fails this one with invalidResultReference too.
                     val (name, body) =
@@ -181,7 +192,13 @@ class FakeJmapServer {
                         }
                     if (name == "error") failedCallIds += invocation.callId
                     results[invocation.callId] = body
-                    Invocation(name, body, invocation.callId)
+                    val implicit =
+                        implicitResponses.map {
+                                (implicitName, implicitBody) ->
+                            Invocation(implicitName, implicitBody, invocation.callId)
+                        }
+                    implicitResponses = emptyList()
+                    listOf(Invocation(name, body, invocation.callId)) + implicit
                 }
                 .filter { it.callId != dropCallId }
 
@@ -211,6 +228,9 @@ class FakeJmapServer {
             "Mailbox/get" -> "Mailbox/get" to mailboxGet(arguments)
             "Email/query" -> emailQuery(arguments)
             "Email/get" -> "Email/get" to emailGet(arguments)
+            "Identity/get" -> "Identity/get" to identityGet(arguments)
+            "Email/set" -> "Email/set" to emailSet(arguments)
+            "EmailSubmission/set" -> "EmailSubmission/set" to submissionSet(arguments)
             "FileNode/query" -> fileNodeQuery(arguments)
             "FileNode/get" -> "FileNode/get" to fileNodeGet(arguments)
             "FileNode/set" -> "FileNode/set" to fileNodeSet(arguments)
@@ -272,6 +292,94 @@ class FakeJmapServer {
             put("state", "s1")
             put("list", JsonArray(found.map { it.toJson() }))
             put("notFound", JsonArray(notFound.map { JsonPrimitive(it) }))
+        }
+    }
+
+    private fun identityGet(arguments: JsonObject): JsonObject {
+        val ids = arguments["ids"]?.jsonArray?.map { it.jsonPrimitive.content }
+        val selected = if (ids == null) identities else ids.mapNotNull { id -> identities.find { it.id == id } }
+        return buildJsonObject {
+            put("accountId", ACCOUNT_ID)
+            put("state", "i1")
+            putJsonArray("list") {
+                selected.forEach { identity ->
+                    addJsonObject {
+                        put("id", identity.id)
+                        put("name", identity.name)
+                        put("email", identity.email)
+                    }
+                }
+            }
+            put("notFound", JsonArray(emptyList()))
+        }
+    }
+
+    private fun emailSet(arguments: JsonObject): JsonObject {
+        val created = mutableMapOf<String, JsonObject>()
+        arguments["create"]?.jsonObject?.forEach { (creationId, spec) ->
+            val id = "sent${nextEmailId++}"
+            emails += spec.jsonObject.toFakeEmail(id)
+            createdIds[creationId] = id
+            created[creationId] =
+                buildJsonObject {
+                    put("id", id)
+                    put("threadId", id)
+                }
+        }
+        return buildJsonObject {
+            put("accountId", ACCOUNT_ID)
+            put("oldState", "s0")
+            put("newState", "s1")
+            if (created.isNotEmpty()) putJsonObject("created") { created.forEach { (k, v) -> put(k, v) } }
+        }
+    }
+
+    private fun submissionSet(arguments: JsonObject): JsonObject {
+        val created = mutableMapOf<String, JsonObject>()
+        val notCreated = mutableMapOf<String, JsonObject>()
+        arguments["create"]?.jsonObject?.forEach { (creationId, spec) ->
+            val specObj = spec.jsonObject
+            val identityId = specObj.getValue("identityId").jsonPrimitive.content
+            val emailRef = specObj.getValue("emailId").jsonPrimitive.content
+            val emailId = if (emailRef.startsWith("#")) createdIds[emailRef.removePrefix("#")] else emailRef
+            val email = emails.find { it.id == emailId }
+            when {
+                refuseSubmission -> notCreated[creationId] = problem("forbiddenToSend", "submission refused")
+                identities.none { it.id == identityId } -> notCreated[creationId] = problem("invalidProperties", "no such identity")
+                email == null -> notCreated[creationId] = problem("invalidProperties", "no such email")
+                else -> {
+                    val id = "sub${nextSubmissionId++}"
+                    submissions += FakeSubmission(id, identityId, email.id)
+                    createdIds[creationId] = id
+                    created[creationId] = buildJsonObject { put("id", id) }
+                }
+            }
+        }
+        val updates = arguments["onSuccessUpdateEmail"]?.jsonObject.orEmpty()
+        val updated = mutableMapOf<String, JsonObject>()
+        for ((ref, patch) in updates) {
+            val submission = submissions.find { it.id == createdIds[ref.removePrefix("#")] } ?: continue
+            emails.replaceAll { if (it.id == submission.emailId) it.patched(patch.jsonObject) else it }
+            updated[submission.emailId] = JsonObject(emptyMap())
+        }
+        if (updated.isNotEmpty()) {
+            implicitResponses =
+                listOf(
+                    "Email/set" to
+                        buildJsonObject {
+                            put("accountId", ACCOUNT_ID)
+                            put("oldState", "s1")
+                            put("newState", "s2")
+                            putJsonObject("updated") { updated.forEach { (k, v) -> put(k, v) } }
+                        },
+                )
+        }
+        return buildJsonObject {
+            put("accountId", ACCOUNT_ID)
+            put("oldState", "sub0")
+            put("newState", "sub1")
+            if (created.isNotEmpty()) putJsonObject("created") { created.forEach { (k, v) -> put(k, v) } }
+            if (notCreated.isNotEmpty()) putJsonObject("notCreated") { notCreated.forEach { (k, v) -> put(k, v) } }
         }
     }
 
@@ -380,7 +488,7 @@ class FakeJmapServer {
     private fun sessionBody(): JsonObject =
         buildJsonObject {
             putJsonObject("capabilities") {
-                for (capability in listOf(CORE_CAPABILITY, MAIL_CAPABILITY, FILENODE_CAPABILITY)) {
+                for (capability in listOf(CORE_CAPABILITY, MAIL_CAPABILITY, SUBMISSION_CAPABILITY, FILENODE_CAPABILITY)) {
                     if (capability != missingCapability) putJsonObject(capability) {}
                 }
             }
@@ -448,6 +556,10 @@ private fun FakeEmail.toJson(): JsonObject =
         }
         putAddressList("to", to)
         putAddressList("cc", cc)
+        putAddressList("bcc", bcc)
+        putIdList("messageId", messageId)
+        putIdList("inReplyTo", inReplyTo)
+        putIdList("references", references)
         put("receivedAt", receivedAt)
         putJsonObject("keywords") { for (keyword in keywords) put(keyword, true) }
         put("preview", preview)
@@ -488,4 +600,46 @@ private fun JsonObjectBuilder.putAddressList(
             }
         }
     }
+}
+
+private fun JsonObject.toFakeEmail(id: String): FakeEmail {
+    fun addresses(key: String) = (get(key) as? JsonArray)?.map { it.jsonObject.getValue("email").jsonPrimitive.content }.orEmpty()
+
+    fun ids(key: String) = (get(key) as? JsonArray)?.map { it.jsonPrimitive.content }.orEmpty()
+
+    val partId = getValue("textBody").jsonArray.first().jsonObject.getValue("partId").jsonPrimitive.content
+    return FakeEmail(
+        id = id,
+        threadId = id,
+        mailboxIds = getValue("mailboxIds").jsonObject.keys,
+        subject = get("subject")?.jsonPrimitive?.contentOrNull,
+        from = addresses("from").firstOrNull(),
+        receivedAt = "2024-01-01T00:00:00Z",
+        keywords = get("keywords")?.jsonObject?.keys.orEmpty(),
+        to = addresses("to"),
+        cc = addresses("cc"),
+        bcc = addresses("bcc"),
+        inReplyTo = ids("inReplyTo"),
+        references = ids("references"),
+        body = getValue("bodyValues").jsonObject.getValue(partId).jsonObject.getValue("value").jsonPrimitive.content,
+    )
+}
+
+private fun FakeEmail.patched(patch: JsonObject): FakeEmail =
+    patch.entries.fold(this) { email, (path, value) ->
+        val property = path.substringBefore("/")
+        val key = path.substringAfter("/")
+        val present = value !is JsonNull
+        when (property) {
+            "mailboxIds" -> email.copy(mailboxIds = if (present) email.mailboxIds + key else email.mailboxIds - key)
+            "keywords" -> email.copy(keywords = if (present) email.keywords + key else email.keywords - key)
+            else -> error("unsupported patch $path")
+        }
+    }
+
+private fun JsonObjectBuilder.putIdList(
+    key: String,
+    ids: List<String>,
+) {
+    if (ids.isEmpty()) put(key, null as String?) else put(key, JsonArray(ids.map { JsonPrimitive(it) }))
 }

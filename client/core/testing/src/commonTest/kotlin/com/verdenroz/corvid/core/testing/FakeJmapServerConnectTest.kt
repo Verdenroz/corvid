@@ -125,6 +125,21 @@ class FakeJmapServerConnectTest {
         }
 
     @Test
+    fun `a session missing submission fails naming the missing capability`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.missingCapability = "urn:ietf:params:jmap:submission"
+            val client = createJmapHttpClient(fake.engine)
+
+            val thrown =
+                assertFailsWith<JmapSessionException> {
+                    JmapClient.connect(client, AuthLatch(), "http://127.0.0.1:9999")
+                }
+
+            assertEquals(true, thrown.message?.contains("submission"))
+        }
+
+    @Test
     fun `a session missing its api url is refused rather than rebased from empty`() =
         runTest {
             val fake = FakeJmapServer()
