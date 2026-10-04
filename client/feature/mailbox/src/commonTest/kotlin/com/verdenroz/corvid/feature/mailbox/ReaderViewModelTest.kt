@@ -1,12 +1,18 @@
 package com.verdenroz.corvid.feature.mailbox
 
+import com.verdenroz.corvid.core.data.Correction
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.jmap.AuthLatch
 import com.verdenroz.corvid.core.jmap.JmapClient
 import com.verdenroz.corvid.core.jmap.createJmapHttpClient
+import com.verdenroz.corvid.core.model.Label
 import com.verdenroz.corvid.core.testing.FakeEmail
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.runViewModelTest
+import com.verdenroz.corvid.core.text.UiText
+import com.verdenroz.corvid.core.text.uiText
+import com.verdenroz.corvid.feature.mailbox.resources.Res
+import com.verdenroz.corvid.feature.mailbox.resources.teach_refused
 import kotlinx.coroutines.flow.first
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -70,5 +76,48 @@ class ReaderViewModelTest {
             val vm = track(ReaderViewModel(repository(fake), "gone"))
 
             vm.state.first { it is ReaderUiState.Gone }
+        }
+
+    private fun guessed() =
+        FakeEmail(
+            "g1",
+            "g1",
+            setOf("inbox"),
+            "s",
+            "ada@x.test",
+            "2024-01-01T00:00:00Z",
+            keywords = setOf("corvid-llm-done", "corvid-llm-label-personal"),
+            body = "b",
+        )
+
+    @Test
+    fun `answering a guess shows the labels the server now holds`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.emails += guessed()
+            val vm = track(ReaderViewModel(repository(fake), "g1"))
+            vm.state.first { it is ReaderUiState.Loaded }
+
+            vm.answer(Correction.Right(Label.Guess("personal")))
+
+            val after = vm.state.first { it is ReaderUiState.Loaded && "personal" in it.email.keywords } as ReaderUiState.Loaded
+            assertEquals(setOf("corvid-llm-done", "personal"), after.email.keywords)
+            assertEquals(false, after.answering)
+        }
+
+    @Test
+    fun `an answer the server refuses keeps the guess and says why`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.emails += guessed()
+            val vm = track(ReaderViewModel(repository(fake), "g1"))
+            vm.state.first { it is ReaderUiState.Loaded }
+            fake.emails.clear()
+
+            vm.answer(Correction.Wrong(Label.Guess("personal")))
+
+            val failed = vm.state.first { it is ReaderUiState.Loaded && it.answerError != null } as ReaderUiState.Loaded
+            assertEquals(uiText(Res.string.teach_refused, UiText.FromServer("no such email")), failed.answerError)
+            assertEquals(setOf("corvid-llm-done", "corvid-llm-label-personal"), failed.email.keywords)
         }
 }

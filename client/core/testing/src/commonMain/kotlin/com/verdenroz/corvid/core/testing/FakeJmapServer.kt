@@ -80,6 +80,9 @@ class FakeJmapServer {
     val emails: MutableList<FakeEmail> = mutableListOf()
     val identities: MutableList<FakeIdentity> = mutableListOf()
     val submissions: MutableList<FakeSubmission> = mutableListOf()
+
+    /** Every Email/set update patch received, in order, as the client sent it. */
+    val emailPatches: MutableList<Pair<String, JsonObject>> = mutableListOf()
     val fileNodes: MutableList<FakeFileNode> = mutableListOf()
     val sieveScripts: MutableList<FakeSieveScript> = mutableListOf()
     val blobs: MutableMap<String, ByteArray> = mutableMapOf()
@@ -337,9 +340,20 @@ class FakeJmapServer {
                     put("threadId", id)
                 }
             }
+        val updated = mutableMapOf<String, JsonObject>()
+        val notUpdated = mutableMapOf<String, JsonObject>()
+        arguments["update"]?.jsonObject?.forEach { (id, patch) ->
+            if (emails.none { it.id == id }) {
+                notUpdated[id] = problem("notFound", "no such email")
+            } else {
+                emails.replaceAll { if (it.id == id) it.patched(patch.jsonObject) else it }
+                emailPatches += id to patch.jsonObject
+                updated[id] = JsonObject(emptyMap())
+            }
+        }
         val destroyed = arguments["destroy"]?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty()
         emails.removeAll { it.id in destroyed }
-        return setResponse("s0", "s1", created = created, destroyed = destroyed)
+        return setResponse("s0", "s1", created = created, updated = updated, destroyed = destroyed, notUpdated = notUpdated)
     }
 
     private fun submissionSet(
@@ -672,7 +686,7 @@ private fun JsonObject.toFakeEmail(id: String): FakeEmail {
 private fun FakeEmail.patched(patch: JsonObject): FakeEmail =
     patch.entries.fold(this) { email, (path, value) ->
         val property = path.substringBefore("/")
-        val key = path.substringAfter("/")
+        val key = path.substringAfter("/").replace("~1", "/").replace("~0", "~")
         val present = value !is JsonNull
         when (property) {
             "mailboxIds" -> email.copy(mailboxIds = if (present) email.mailboxIds + key else email.mailboxIds - key)

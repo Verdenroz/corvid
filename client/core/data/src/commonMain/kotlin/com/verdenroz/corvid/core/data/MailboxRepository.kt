@@ -6,6 +6,7 @@ import com.verdenroz.corvid.core.jmap.MethodOutcome
 import com.verdenroz.corvid.core.jmap.callOne
 import com.verdenroz.corvid.core.jmap.resultOrThrow
 import com.verdenroz.corvid.core.jmap.resultReference
+import com.verdenroz.corvid.core.jmap.setErrorReason
 import com.verdenroz.corvid.core.model.CorvidKeywords
 import com.verdenroz.corvid.core.model.EmailAddress
 import com.verdenroz.corvid.core.model.EmailDetail
@@ -13,6 +14,7 @@ import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.core.model.Identity
 import com.verdenroz.corvid.core.model.Mailbox
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.addJsonObject
@@ -129,6 +131,28 @@ class MailboxRepository(private val jmapClient: JmapClient) {
         return EmailLookup.Found(result.getValue("list").jsonArray.first().jsonObject.toEmailDetail(ownDomain()))
     }
 
+    /**
+     * Patches only the named keywords, so anything else on the message, including the labeler's,
+     * is left as it is. Returns the server's reason when it refuses, null when it took the patch.
+     */
+    suspend fun updateKeywords(
+        id: String,
+        patch: Map<String, Boolean>,
+    ): String? {
+        val arguments =
+            buildJsonObject {
+                putJsonObject("update") {
+                    putJsonObject(id) {
+                        patch.forEach {
+                                (keyword, set) ->
+                            put("keywords/${keyword.pointerEscaped()}", if (set) JsonPrimitive(true) else JsonNull)
+                        }
+                    }
+                }
+            }
+        return jmapClient.callOne("Email/set", arguments).setErrorReason("notUpdated", id)
+    }
+
     /** The account's first identity, fetched once: who the account avatar is, and which senders are its own server. */
     suspend fun identity(): Identity? {
         val known = identity ?: KnownIdentity(fetchIdentity()).also { identity = it }
@@ -220,3 +244,6 @@ private fun JsonObject.toEmailDetail(ownDomain: String?): EmailDetail {
         provenance = provenance(from, ownDomain),
     )
 }
+
+/** RFC 6901: a keyword holding `~` or `/` must not split the patch path. */
+private fun String.pointerEscaped(): String = replace("~", "~0").replace("/", "~1")

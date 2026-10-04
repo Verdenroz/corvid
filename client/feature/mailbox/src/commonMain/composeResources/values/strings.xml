@@ -8,12 +8,11 @@
     <string name="mailbox_no_subject">(no subject)</string>
     <string name="mailbox_gone">This message no longer exists.</string>
     <string name="mailbox_from">From: %1$s</string>
-    <string name="mailbox_to">To: %1$s</string>
-    <string name="mailbox_cc">Cc: %1$s</string>
+    <string name="reader_to">to %1$s</string>
+    <string name="reader_cc">cc %1$s</string>
     <string name="mailbox_truncated">This message was truncated.</string>
     <string name="mailbox_no_sender">Unknown sender</string>
     <string name="mailbox_separator">-</string>
-    <string name="mailbox_unread">Unread</string>
     <string name="source_own_server">Your server</string>
     <string name="source_mailing_list">Mailing list</string>
     <string name="source_newsletter">Newsletter</string>
@@ -22,4 +21,41 @@
     <string name="ledger_empty_starred">Nothing starred.</string>
     <string name="ledger_empty_sent">Nothing sent from here yet.</string>
     <string name="ledger_empty_drafts">No drafts.</string>
+    <string name="custody_sender">Sender</string>
+    <string name="custody_way_in">On the way in</string>
+    <string name="custody_labelled">Labelled</string>
+    <string name="custody_signed_by">Signed by %1$s</string>
+    <string name="custody_signed">Signed</string>
+    <string name="custody_dmarc_passed">DMARC passed</string>
+    <string name="custody_not_authenticated">Not authenticated</string>
+    <string name="custody_claims_signed_by">Claims %1$s; signed by %2$s</string>
+    <string name="custody_claims_unsigned">Claims %1$s; nobody signed it</string>
+    <string name="custody_dmarc_failed">DMARC failed</string>
+    <string name="custody_unsigned">Unsigned</string>
+    <string name="custody_unsigned_detail">Delivered, but nobody vouched for it</string>
+    <plurals name="custody_trackers_removed">
+        <item quantity="one">%1$d tracker removed</item>
+        <item quantity="other">%1$d trackers removed</item>
+    </plurals>
+    <string name="custody_no_trackers">No trackers found</string>
+    <string name="custody_skipped">Not checked for trackers</string>
+    <string name="custody_skipped_detail">Delivered as it arrived</string>
+    <plurals name="custody_images_proxied">
+        <item quantity="one">%1$d image loads through your server</item>
+        <item quantity="other">%1$d images load through your server</item>
+    </plurals>
+    <string name="custody_links_disabled">Links disabled</string>
+    <string name="custody_guess">A guess from the model. Teach it:</string>
+    <string name="custody_by_rule">By your filter</string>
+    <string name="custody_by_labeler">By the labeler</string>
+    <string name="custody_by_you">By you</string>
+    <string name="custody_nothing">Nothing yet</string>
+    <string name="teach_right">Right</string>
+    <string name="teach_wrong">Wrong</string>
+    <string name="teach_change">Change</string>
+    <string name="reader_link_disabled">(link disabled by Corvid)</string>
+    <string name="teach_refused">Not saved: %1$s</string>
+    <string name="teach_change_hint">Label</string>
+    <string name="teach_apply">Apply</string>
+    <string name="reader_address">&lt;%1$s&gt;</string>
 </resources>

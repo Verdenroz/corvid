@@ -43,4 +43,14 @@ class CorvidKeywordsTest {
             assertEquals(null, CorvidKeywords.labelOf(it), it)
         }
     }
+
+    @Test
+    fun `a label the user types becomes their own keyword`() {
+        assertEquals("tax-2026", CorvidKeywords.userKeyword(" Tax 2026 "))
+    }
+
+    @Test
+    fun `a typed label that would read as corvid's or a flag is refused`() {
+        listOf("corvid-ops", "Corvid-Ops", "", "   ", "---").forEach { assertEquals(null, CorvidKeywords.userKeyword(it), it) }
+    }
 }

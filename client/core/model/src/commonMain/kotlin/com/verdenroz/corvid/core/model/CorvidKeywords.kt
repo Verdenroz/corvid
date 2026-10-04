@@ -18,8 +18,16 @@ object CorvidKeywords {
     fun isUserKeyword(keyword: String): Boolean = !keyword.startsWith(NAMESPACE) && !keyword.startsWith('$')
 
     /** JMAP keywords are ASCII with no spaces or `(){]%*"\`, so anything else in a label becomes `-`. */
-    fun ruleKeyword(label: String): String =
-        RULE + label.lowercase().map { if (it in 'a'..'z' || it in '0'..'9' || it in "-_.") it else '-' }.joinToString("")
+    fun ruleKeyword(label: String): String = RULE + sanitised(label)
+
+    /** The user's own keyword for [label]; null when it would read as a flag or as Corvid's. */
+    fun userKeyword(label: String): String? =
+        sanitised(label.trim()).takeIf { it.isNotEmpty() && isUserKeyword(it) && it.any(Char::isLetterOrDigit) }
+
+    private fun sanitised(label: String): String =
+        label.lowercase().map {
+            if (it in 'a'..'z' || it in '0'..'9' || it in "-_.") it else '-'
+        }.joinToString("")
 
     /**
      * Who put a keyword on a message, for showing it as a label. Null for `$` flags and the
