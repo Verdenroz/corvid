@@ -63,9 +63,10 @@ internal fun Facts(
     val facts =
         if (isSource) {
             val writes =
-                counts?.let {
-                        c ->
-                    since?.let { pluralStringResource(Res.plurals.card_messages_since, c.received, c.received, it) }
+                if (counts != null && since != null) {
+                    pluralStringResource(Res.plurals.card_messages_since, counts.received, counts.received, since)
+                } else {
+                    null
                 }
             listOf(authenticity, Fact.Text(Res.string.card_writes, writes), trackers, Fact.Labels(Res.string.card_filed_as, latest?.labels))
         } else {

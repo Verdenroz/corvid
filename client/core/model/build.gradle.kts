@@ -8,7 +8,7 @@ android { namespace = "com.verdenroz.corvid.core.model" }
 kotlin {
     sourceSets {
         commonMain.dependencies {
-            api(libs.kotlinx.serialization.json)
+            api(libs.kotlinx.serialization.core)
         }
     }
 }
