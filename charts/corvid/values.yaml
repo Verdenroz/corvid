@@ -27,7 +27,7 @@ images:
   stalwart: docker.io/stalwartlabs/stalwart:v0.16.21
   unbound: docker.io/klutchell/unbound@sha256:29aee253a86810f6d9738d77f21835c4f8fdf74ee6335b7a9e152790bd2781db
   caddy: docker.io/library/caddy:2.10-alpine
-  pocketId: ghcr.io/pocket-id/pocket-id:v1.6.2
+  pocketId: ghcr.io/pocket-id/pocket-id:v2.17.0
   pullPolicy: IfNotPresent
 
 secrets:
