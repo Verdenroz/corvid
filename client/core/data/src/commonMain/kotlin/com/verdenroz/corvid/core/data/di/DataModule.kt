@@ -4,6 +4,7 @@ import com.verdenroz.corvid.core.common.di.UnlockedScopeMarker
 import com.verdenroz.corvid.core.data.ComposeRepository
 import com.verdenroz.corvid.core.data.FiltersRepository
 import com.verdenroz.corvid.core.data.MailboxRepository
+import com.verdenroz.corvid.core.data.SenderRepository
 import org.koin.dsl.module
 
 val dataModule =
@@ -12,5 +13,6 @@ val dataModule =
             scoped { MailboxRepository(jmapClient = get()) }
             scoped { ComposeRepository(jmapClient = get(), mailboxRepository = get()) }
             scoped { FiltersRepository(jmapClient = get()) }
+            scoped { SenderRepository(jmapClient = get(), mailboxRepository = get()) }
         }
     }

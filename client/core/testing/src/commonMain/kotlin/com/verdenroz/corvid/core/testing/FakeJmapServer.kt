@@ -19,6 +19,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
@@ -60,6 +61,9 @@ class FakeJmapServer {
 
     /** Bumped by a test to simulate a mailbox change invalidating an open query. */
     var queryState: String = "qs1"
+
+    /** Runs before each Email/query is answered, so a test can change the mailbox between pages. */
+    var beforeEmailQuery: () -> Unit = {}
 
     /** An RFC 7807 problem type (e.g. `urn:ietf:params:jmap:error:limit`) to answer every call with. */
     var apiProblem: String? = null
@@ -225,7 +229,7 @@ class FakeJmapServer {
             "Core/echo" -> listOf(name to arguments)
             "Mailbox/get" -> listOf(name to getResponse("s1", mailboxes, arguments, FakeMailbox::id) { it.toJson() })
             "Email/query" -> listOf(emailQuery(arguments))
-            "Email/get" -> listOf(name to getResponse("s1", emails, arguments, FakeEmail::id) { it.toJson() })
+            "Email/get" -> listOf(name to getResponse("s1", emails, arguments, FakeEmail::id) { it.toJson(arguments.requestedHeaders()) })
             "Identity/get" -> listOf(name to getResponse("i1", identities, arguments, FakeIdentity::id) { it.toJson() })
             "Email/set" -> listOf(name to emailSet(arguments, createdIds))
             "EmailSubmission/set" -> submissionSet(arguments, createdIds)
@@ -288,16 +292,16 @@ class FakeJmapServer {
         }
 
     private fun emailQuery(arguments: JsonObject): Pair<String, JsonObject> {
-        val inMailbox = arguments["filter"]?.jsonObject?.get("inMailbox")?.jsonPrimitive?.contentOrNull
+        beforeEmailQuery()
+        val filter = arguments["filter"]?.jsonObject
         val limit = arguments["limit"]?.jsonPrimitive?.intOrNull ?: 50
         val anchor = arguments["anchor"]?.jsonPrimitive?.contentOrNull
         val anchorOffset = arguments["anchorOffset"]?.jsonPrimitive?.intOrNull ?: 0
         val position = arguments["position"]?.jsonPrimitive?.intOrNull ?: 0
+        val ascending = arguments["sort"]?.jsonArray?.firstOrNull()?.jsonObject?.get("isAscending")?.jsonPrimitive?.booleanOrNull ?: false
 
-        val matching =
-            emails
-                .filter { inMailbox == null || inMailbox in it.mailboxIds }
-                .sortedByDescending { it.receivedAt }
+        val filtered = emails.filter { it.matches(filter) }
+        val matching = if (ascending) filtered.sortedBy { it.receivedAt } else filtered.sortedByDescending { it.receivedAt }
 
         val start =
             if (anchor != null) {
@@ -577,8 +581,9 @@ private fun FakeMailbox.toJson(): JsonObject =
         put("unreadEmails", unreadEmails)
     }
 
-private fun FakeEmail.toJson(): JsonObject =
+private fun FakeEmail.toJson(headerProperties: List<String>): JsonObject =
     buildJsonObject {
+        headerProperties.forEach { put(it, headerValue(it)) }
         put("id", id)
         put("threadId", threadId)
         put("subject", subject)

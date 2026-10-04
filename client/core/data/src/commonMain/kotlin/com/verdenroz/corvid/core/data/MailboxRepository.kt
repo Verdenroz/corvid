@@ -28,9 +28,10 @@ import kotlin.time.Instant
 
 private const val PAGE_SIZE = 50
 private const val MAX_BODY_VALUE_BYTES = 262_144
-private val EMAIL_PROPERTIES = listOf("id", "threadId", "subject", "from", "receivedAt", "keywords", "preview")
+private val EMAIL_PROPERTIES = listOf("id", "threadId", "subject", "from", "receivedAt", "keywords", "preview") + PROVENANCE_PROPERTIES
 private val EMAIL_DETAIL_PROPERTIES =
-    listOf("id", "subject", "from", "to", "cc", "replyTo", "messageId", "references", "receivedAt", "textBody", "bodyValues")
+    listOf("id", "subject", "from", "to", "cc", "replyTo", "messageId", "references", "receivedAt", "keywords", "textBody", "bodyValues") +
+        PROVENANCE_PROPERTIES
 
 sealed interface EmailPage {
     data class Found(val emails: List<EmailSummary>, val queryState: String) : EmailPage
@@ -53,6 +54,8 @@ sealed interface EmailLookup {
  * is stateless across pages.
  */
 class MailboxRepository(private val jmapClient: JmapClient) {
+    private var ownDomain: OwnDomain? = null
+
     suspend fun mailboxes(): List<Mailbox> =
         jmapClient.callOne("Mailbox/get", JsonObject(emptyMap())).getValue("list").jsonArray.map { it.jsonObject.toMailbox() }
 
@@ -94,7 +97,8 @@ class MailboxRepository(private val jmapClient: JmapClient) {
         if ((queryOutcome as? MethodOutcome.Failure)?.error?.type == "anchorNotFound") return EmailPage.AnchorNotFound
         val queryResult = queryOutcome.resultOrThrow()
         val getResult = outcomes.getValue("c1").resultOrThrow()
-        val emails = getResult.getValue("list").jsonArray.map { it.jsonObject.toEmailSummary() }
+        val domain = ownDomain()
+        val emails = getResult.getValue("list").jsonArray.map { it.jsonObject.toEmailSummary(domain) }
         return EmailPage.Found(emails, queryResult.getValue("queryState").jsonPrimitive.content)
     }
 
@@ -108,8 +112,18 @@ class MailboxRepository(private val jmapClient: JmapClient) {
             }
         val result = jmapClient.callOne("Email/get", arguments)
         if (result.getValue("notFound").jsonArray.isNotEmpty()) return EmailLookup.NotFound
-        return EmailLookup.Found(result.getValue("list").jsonArray.first().jsonObject.toEmailDetail())
+        return EmailLookup.Found(result.getValue("list").jsonArray.first().jsonObject.toEmailDetail(ownDomain()))
     }
+
+    /** The account's first identity's domain, fetched once; it only names which kind of source a sender is. */
+    private suspend fun ownDomain(): String? {
+        val known = ownDomain ?: OwnDomain(fetchOwnDomain()).also { ownDomain = it }
+        return known.domain
+    }
+
+    private suspend fun fetchOwnDomain(): String? =
+        jmapClient.callOne("Identity/get", JsonObject(emptyMap())).getValue("list").jsonArray.firstOrNull()
+            ?.jsonObject?.get("email")?.jsonPrimitive?.content?.substringAfterLast('@')
 }
 
 internal fun JsonObject.toMailbox() =
@@ -124,18 +138,21 @@ internal fun JsonObject.toMailbox() =
 
 // subject and from are nullable in RFC 8621: reading a null subject as a plain string
 // returns the literal word "null", and reading a null from as an array throws.
-private fun JsonObject.toEmailSummary() =
-    EmailSummary(
+private fun JsonObject.toEmailSummary(ownDomain: String?): EmailSummary {
+    val from = addressList("from").firstOrNull()
+    return EmailSummary(
         id = getValue("id").jsonPrimitive.content,
         threadId = getValue("threadId").jsonPrimitive.content,
         subject = get("subject")?.jsonPrimitive?.contentOrNull.orEmpty(),
-        from = fromAddress(),
+        from = from,
         receivedAt = Instant.parse(getValue("receivedAt").jsonPrimitive.content),
         keywords = getValue("keywords").jsonObject.keys,
         preview = getValue("preview").jsonPrimitive.content,
+        provenance = provenance(from, ownDomain),
     )
+}
 
-private fun JsonObject.fromAddress(): String = addressList("from").firstOrNull()?.toText().orEmpty()
+private class OwnDomain(val domain: String?)
 
 /** email is null for MIME group syntax ("undisclosed-recipients:;"), which carries a name and no address. */
 private fun JsonObject.toEmailAddress(): EmailAddress? {
@@ -143,7 +160,7 @@ private fun JsonObject.toEmailAddress(): EmailAddress? {
     return EmailAddress(name = get("name")?.jsonPrimitive?.contentOrNull, email = email)
 }
 
-private fun JsonObject.addressList(key: String): List<EmailAddress> =
+internal fun JsonObject.addressList(key: String): List<EmailAddress> =
     (get(key) as? JsonArray)?.mapNotNull { it.jsonObject.toEmailAddress() }.orEmpty()
 
 private fun JsonObject.idList(key: String): List<String> = (get(key) as? JsonArray)?.map { it.jsonPrimitive.content }.orEmpty()
@@ -153,7 +170,7 @@ private fun JsonObject.idList(key: String): List<String> = (get(key) as? JsonArr
  * HTML-only message arrives here as one text/html part, flattened rather than
  * shown, since this client has no HTML renderer.
  */
-private fun JsonObject.toEmailDetail(): EmailDetail {
+private fun JsonObject.toEmailDetail(ownDomain: String?): EmailDetail {
     val bodyValues = getValue("bodyValues").jsonObject
     val parts =
         getValue("textBody").jsonArray.map { part ->
@@ -165,10 +182,11 @@ private fun JsonObject.toEmailDetail(): EmailDetail {
             val text = if (type == "text/html") flattenHtml(raw) else raw
             text to value.getValue("isTruncated").jsonPrimitive.boolean
         }
+    val from = addressList("from").firstOrNull()
     return EmailDetail(
         id = getValue("id").jsonPrimitive.content,
         subject = get("subject")?.jsonPrimitive?.contentOrNull.orEmpty(),
-        from = addressList("from").firstOrNull(),
+        from = from,
         to = addressList("to"),
         cc = addressList("cc"),
         replyTo = addressList("replyTo"),
@@ -177,5 +195,7 @@ private fun JsonObject.toEmailDetail(): EmailDetail {
         receivedAt = Instant.parse(getValue("receivedAt").jsonPrimitive.content),
         body = parts.joinToString("\n\n") { it.first },
         bodyTruncated = parts.any { it.second },
+        keywords = getValue("keywords").jsonObject.keys,
+        provenance = provenance(from, ownDomain),
     )
 }

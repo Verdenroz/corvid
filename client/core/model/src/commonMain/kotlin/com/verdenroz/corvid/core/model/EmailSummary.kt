@@ -2,14 +2,14 @@ package com.verdenroz.corvid.core.model
 
 import kotlin.time.Instant
 
-/** A label the labeler or a person set. Corvid's own writes are prefixed `corvid-`
- *  (CLAUDE.md, "keyword provenance"); this model doesn't need to tell those apart, only show them. */
+/** [keywords] mixes the user's own with Corvid's `corvid-` ones; [CorvidKeywords] tells them apart. */
 data class EmailSummary(
     val id: String,
     val threadId: String,
     val subject: String,
-    val from: String,
+    val from: EmailAddress?,
     val receivedAt: Instant,
     val keywords: Set<String>,
     val preview: String,
+    val provenance: Provenance,
 )

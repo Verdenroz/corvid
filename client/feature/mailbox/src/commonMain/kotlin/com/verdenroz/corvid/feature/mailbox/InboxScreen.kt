@@ -69,7 +69,11 @@ private fun EmailRow(
 ) {
     Column(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(16.dp)) {
         Text(email.subject.ifEmpty { stringResource(Res.string.mailbox_no_subject) }, style = MaterialTheme.typography.titleMedium)
-        Text(email.from, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            email.from?.toText().orEmpty(),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         if (email.preview.isNotEmpty()) {
             Text(email.preview, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }

@@ -11,6 +11,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.time.Instant
 
 private const val BASE_URL = "http://127.0.0.1:9999"
@@ -82,7 +83,7 @@ class MailboxRepositoryTest {
             assertEquals(EMAIL_COUNT + 2, all.size)
             assertEquals(all.map { it.id }.toSet().size, all.size)
             assertEquals("", all.first { it.id == "no-subject" }.subject)
-            assertEquals("", all.first { it.id == "no-from" }.from)
+            assertNull(all.first { it.id == "no-from" }.from)
         }
 
     @Test

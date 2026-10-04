@@ -19,4 +19,6 @@ data class EmailDetail(
     val references: List<String>,
     val body: String,
     val bodyTruncated: Boolean,
+    val keywords: Set<String>,
+    val provenance: Provenance,
 )
