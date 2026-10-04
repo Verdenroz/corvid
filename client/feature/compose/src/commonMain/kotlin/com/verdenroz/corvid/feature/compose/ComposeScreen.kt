@@ -24,6 +24,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.ComposeRepository
 import com.verdenroz.corvid.core.model.ComposeIntent
+import com.verdenroz.corvid.core.text.asString
+import com.verdenroz.corvid.feature.compose.resources.Res
+import com.verdenroz.corvid.feature.compose.resources.compose_back
+import com.verdenroz.corvid.feature.compose.resources.compose_bcc
+import com.verdenroz.corvid.feature.compose.resources.compose_cc
+import com.verdenroz.corvid.feature.compose.resources.compose_message
+import com.verdenroz.corvid.feature.compose.resources.compose_send
+import com.verdenroz.corvid.feature.compose.resources.compose_subject
+import com.verdenroz.corvid.feature.compose.resources.compose_to
+import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun ComposeScreen(
@@ -36,15 +46,19 @@ fun ComposeScreen(
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(8.dp)) {
-            Button(onClick = onClose) { Text("Back") }
+            Button(onClick = onClose) { Text(stringResource(Res.string.compose_back)) }
             (state as? ComposeUiState.Editing)?.let { editing ->
-                Button(onClick = viewModel::send, enabled = !editing.sending) { Text("Send") }
+                Button(onClick = viewModel::send, enabled = !editing.sending) { Text(stringResource(Res.string.compose_send)) }
             }
         }
         when (val current = state) {
             is ComposeUiState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             is ComposeUiState.Sent -> LaunchedEffect(Unit) { onClose() }
-            is ComposeUiState.Failed -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(current.message) }
+            is ComposeUiState.Failed ->
+                Box(
+                    Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) { Text(current.message.asString()) }
             is ComposeUiState.Editing -> ComposeFields(current, onEdit = viewModel::edit)
         }
     }
@@ -59,15 +73,15 @@ private fun ComposeFields(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        Field("To", state.form.to) { onEdit { copy(to = it) } }
-        Field("Cc", state.form.cc) { onEdit { copy(cc = it) } }
-        Field("Bcc", state.form.bcc) { onEdit { copy(bcc = it) } }
-        Field("Subject", state.form.subject) { onEdit { copy(subject = it) } }
+        state.error?.let { Text(it.asString(), color = MaterialTheme.colorScheme.error) }
+        Field(stringResource(Res.string.compose_to), state.form.to) { onEdit { copy(to = it) } }
+        Field(stringResource(Res.string.compose_cc), state.form.cc) { onEdit { copy(cc = it) } }
+        Field(stringResource(Res.string.compose_bcc), state.form.bcc) { onEdit { copy(bcc = it) } }
+        Field(stringResource(Res.string.compose_subject), state.form.subject) { onEdit { copy(subject = it) } }
         OutlinedTextField(
             value = state.form.body,
             onValueChange = { onEdit { copy(body = it) } },
-            label = { Text("Message") },
+            label = { Text(stringResource(Res.string.compose_message)) },
             minLines = 10,
             modifier = Modifier.fillMaxWidth(),
         )

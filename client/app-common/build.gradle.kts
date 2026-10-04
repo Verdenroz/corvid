@@ -17,6 +17,8 @@ kotlin {
             implementation(projects.core.domain)
             implementation(projects.core.keyring)
             implementation(projects.core.data)
+            implementation(projects.core.text)
+            implementation(libs.compose.components.resources)
             implementation(projects.feature.signin)
             implementation(projects.feature.mailbox)
             implementation(projects.feature.compose)

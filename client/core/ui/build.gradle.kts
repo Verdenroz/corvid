@@ -9,6 +9,8 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(projects.core.designsystem)
+            api(projects.core.text)
+            implementation(libs.compose.components.resources)
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
             implementation(libs.compose.material3)

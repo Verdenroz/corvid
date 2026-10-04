@@ -4,8 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.core.data.EmailLookup
 import com.verdenroz.corvid.core.data.MailboxRepository
+import com.verdenroz.corvid.core.data.userMessage
 import com.verdenroz.corvid.core.jmap.JmapException
-import com.verdenroz.corvid.core.jmap.userMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch

@@ -2,16 +2,29 @@ package com.verdenroz.corvid.core.data
 
 import com.verdenroz.corvid.core.model.Draft
 import com.verdenroz.corvid.core.model.EmailDetail
+import com.verdenroz.corvid.core.text.UiText
+import com.verdenroz.corvid.core.text.resources.Res
+import com.verdenroz.corvid.core.text.resources.reply_attribution
+import com.verdenroz.corvid.core.text.uiText
 import kotlinx.datetime.TimeZone
-import kotlin.time.Clock
 import kotlin.time.Instant
+
+fun replyAttribution(
+    original: EmailDetail,
+    zone: TimeZone,
+    now: Instant,
+): UiText =
+    uiText(
+        Res.string.reply_attribution,
+        stamp(original.receivedAt, zone, now),
+        UiText.FromServer(original.from?.toText().orEmpty()),
+    )
 
 fun replyDraft(
     original: EmailDetail,
     ownEmail: String,
     all: Boolean,
-    zone: TimeZone = TimeZone.currentSystemDefault(),
-    now: Instant = Clock.System.now(),
+    attribution: String,
 ): Draft {
     val sender = listOfNotNull(original.from)
     val to = original.replyTo.ifEmpty { sender }
@@ -23,24 +36,29 @@ fun replyDraft(
         to = to,
         cc = cc,
         subject = withPrefix("Re", original.subject),
-        body = "\n\nOn ${stamp(original.receivedAt, zone, now)}, ${original.from?.toText().orEmpty()} wrote:\n$quoted",
+        body = "\n\n$attribution\n$quoted",
         inReplyTo = original.messageId,
         references = original.references + original.messageId,
     )
 }
 
-fun forwardDraft(original: EmailDetail): Draft {
+/** [divider] is the resolved "Forwarded message" line; the header names are RFC 5322 field names, not prose. */
+fun forwardDraft(
+    original: EmailDetail,
+    divider: String,
+    date: String,
+): Draft {
     val header =
         listOfNotNull(
             "From: ${original.from?.toText().orEmpty()}",
-            "Date: ${original.receivedAt}",
+            "Date: $date",
             "Subject: ${original.subject}",
             "To: ${original.to.joinToString(", ") { it.toText() }}",
             original.cc.takeIf { it.isNotEmpty() }?.let { "Cc: ${it.joinToString(", ") { address -> address.toText() }}" },
         )
     return Draft(
         subject = withPrefix("Fwd", original.subject),
-        body = "\n\n---------- Forwarded message ----------\n${header.joinToString("\n")}\n\n${original.body}",
+        body = "\n\n$divider\n${header.joinToString("\n")}\n\n${original.body}",
     )
 }
 

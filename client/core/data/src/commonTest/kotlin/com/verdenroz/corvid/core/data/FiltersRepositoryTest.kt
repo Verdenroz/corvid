@@ -14,6 +14,10 @@ import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.FakeMailbox
 import com.verdenroz.corvid.core.testing.FakeSieveScript
 import com.verdenroz.corvid.core.testing.withActiveScript
+import com.verdenroz.corvid.core.text.UiText
+import com.verdenroz.corvid.core.text.resources.Res
+import com.verdenroz.corvid.core.text.resources.no_trash_folder
+import com.verdenroz.corvid.core.text.uiText
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -156,7 +160,7 @@ class FiltersRepositoryTest {
 
             val result = repository(fake).save(listOf(RULE), replaceForeign = false)
 
-            assertEquals("script rejected", assertIs<SaveResult.Rejected>(result).reason)
+            assertEquals(UiText.FromServer("script rejected"), assertIs<SaveResult.Rejected>(result).reason)
         }
 
     @Test
@@ -179,7 +183,7 @@ class FiltersRepositoryTest {
 
             val result = repository(fake).save(listOf(rule), replaceForeign = false)
 
-            assertIs<SaveResult.Rejected>(result)
+            assertEquals(SaveResult.Rejected(uiText(Res.string.no_trash_folder)), result)
             assertTrue(fake.sieveScripts.isEmpty())
         }
 

@@ -2,11 +2,12 @@ package com.verdenroz.corvid.feature.filters
 
 import com.verdenroz.corvid.core.model.FilterRule
 import com.verdenroz.corvid.core.model.MailboxRef
+import com.verdenroz.corvid.core.text.UiText
 
 sealed interface FiltersUiState {
     data object Loading : FiltersUiState
 
-    data class Failed(val message: String) : FiltersUiState
+    data class Failed(val message: UiText) : FiltersUiState
 
     /** [rules] is what the editor holds, saved or not: a failed save leaves it as edited. */
     data class Ready(
@@ -29,5 +30,5 @@ sealed interface SaveStatus {
     /** Waiting for the user to allow replacing the active script. */
     data object Confirming : SaveStatus
 
-    data class Failed(val message: String) : SaveStatus
+    data class Failed(val message: UiText) : SaveStatus
 }

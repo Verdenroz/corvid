@@ -10,6 +10,7 @@ kotlin {
         commonMain.dependencies {
             api(projects.core.model)
             api(libs.kotlinx.datetime)
+            api(projects.core.text)
             implementation(projects.core.common)
             implementation(projects.core.jmap)
             implementation(libs.koin.core)

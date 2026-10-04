@@ -15,6 +15,11 @@ import com.verdenroz.corvid.core.testing.FakeSieveScript
 import com.verdenroz.corvid.core.testing.ViewModelTestScope
 import com.verdenroz.corvid.core.testing.runViewModelTest
 import com.verdenroz.corvid.core.testing.withActiveScript
+import com.verdenroz.corvid.core.text.UiText
+import com.verdenroz.corvid.core.text.uiText
+import com.verdenroz.corvid.feature.filters.resources.Res
+import com.verdenroz.corvid.feature.filters.resources.filters_another_active
+import com.verdenroz.corvid.feature.filters.resources.filters_not_saved
 import kotlinx.coroutines.flow.first
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -78,7 +83,7 @@ class FiltersViewModelTest {
 
             val ready = vm.ready()
             assertEquals(listOf("first"), ready.rules.map { it.name })
-            assertEquals(SaveStatus.Failed("Not saved: script rejected"), ready.save)
+            assertEquals(SaveStatus.Failed(uiText(Res.string.filters_not_saved, UiText.FromServer("script rejected"))), ready.save)
         }
 
     @Test
@@ -113,7 +118,7 @@ class FiltersViewModelTest {
             vm.dismissConfirmation()
 
             val ready = vm.ready()
-            assertEquals(SaveStatus.Failed("Not saved: another script is active"), ready.save)
+            assertEquals(SaveStatus.Failed(uiText(Res.string.filters_not_saved, uiText(Res.string.filters_another_active))), ready.save)
             assertEquals(listOf("first"), ready.rules.map { it.name })
             assertEquals(listOf("vacation" to true), fake.sieveScripts.map { it.name to it.isActive })
         }

@@ -12,6 +12,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.verdenroz.corvid.core.text.UiText
+import com.verdenroz.corvid.core.text.asString
+import com.verdenroz.corvid.core.ui.resources.Res
+import com.verdenroz.corvid.core.ui.resources.unreachable_retry
+import com.verdenroz.corvid.core.ui.resources.unreachable_title
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Shown for a network failure, a damaged key file or an ambiguous device
@@ -20,16 +26,16 @@ import androidx.compose.ui.unit.dp
  */
 @Composable
 fun UnreachablePane(
-    reason: String,
+    reason: UiText,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(modifier = modifier.fillMaxSize()) {
         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text("Unreachable", style = MaterialTheme.typography.titleMedium)
-                Text(reason, style = MaterialTheme.typography.bodyMedium)
-                Button(onClick = onRetry) { Text("Retry") }
+                Text(stringResource(Res.string.unreachable_title), style = MaterialTheme.typography.titleMedium)
+                Text(reason.asString(), style = MaterialTheme.typography.bodyMedium)
+                Button(onClick = onRetry) { Text(stringResource(Res.string.unreachable_retry)) }
             }
         }
     }

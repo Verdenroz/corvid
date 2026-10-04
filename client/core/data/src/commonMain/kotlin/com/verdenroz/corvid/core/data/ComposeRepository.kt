@@ -11,8 +11,14 @@ import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.model.Draft
 import com.verdenroz.corvid.core.model.EmailDetail
 import com.verdenroz.corvid.core.model.Identity
+import com.verdenroz.corvid.core.text.SystemTextResolver
+import com.verdenroz.corvid.core.text.TextResolver
+import com.verdenroz.corvid.core.text.resources.Res
+import com.verdenroz.corvid.core.text.resources.forwarded_message
+import com.verdenroz.corvid.core.text.uiText
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.datetime.TimeZone
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -21,6 +27,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.putJsonArray
+import kotlin.time.Clock
 
 /** Why this account cannot send at all, as opposed to a server refusing one message. */
 sealed interface SendUnavailable : StartResult, SendResult {
@@ -69,6 +76,9 @@ private inline fun <R> Loaded.fold(
 class ComposeRepository(
     private val jmapClient: JmapClient,
     private val mailboxRepository: MailboxRepository,
+    private val textResolver: TextResolver = SystemTextResolver,
+    private val zone: TimeZone = TimeZone.currentSystemDefault(),
+    private val clock: Clock = Clock.System,
 ) {
     private val mutex = Mutex()
     private var ready: Loaded.Ready? = null
@@ -77,14 +87,24 @@ class ComposeRepository(
         load().fold({ it }) { sending ->
             when (intent) {
                 is ComposeIntent.New -> StartResult.Ready(Draft())
-                is ComposeIntent.Reply -> withOriginal(intent.emailId) { replyDraft(it, sending.identity.email, intent.all) }
-                is ComposeIntent.Forward -> withOriginal(intent.emailId, ::forwardDraft)
+                is ComposeIntent.Reply ->
+                    withOriginal(intent.emailId) {
+                        replyDraft(it, sending.identity.email, intent.all, textResolver.resolve(replyAttribution(it, zone, clock.now())))
+                    }
+                is ComposeIntent.Forward ->
+                    withOriginal(intent.emailId) {
+                        forwardDraft(
+                            it,
+                            textResolver.resolve(uiText(Res.string.forwarded_message)),
+                            stamp(it.receivedAt, zone, clock.now()),
+                        )
+                    }
             }
         }
 
     private suspend fun withOriginal(
         emailId: String,
-        draft: (EmailDetail) -> Draft,
+        draft: suspend (EmailDetail) -> Draft,
     ): StartResult =
         when (val lookup = mailboxRepository.getEmail(emailId)) {
             is EmailLookup.Found -> StartResult.Ready(draft(lookup.detail))

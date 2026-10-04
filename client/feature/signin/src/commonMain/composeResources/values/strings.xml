@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="signin_server">Server</string>
+    <string name="signin_issuer">Identity provider</string>
+    <string name="signin_submit">Sign in</string>
+    <string name="signin_in_progress">Signing in…</string>
+    <string name="signin_issuer_not_https">The identity provider must be an https:// address.</string>
+    <string name="signin_failed">Sign-in failed: %1$s</string>
+</resources>

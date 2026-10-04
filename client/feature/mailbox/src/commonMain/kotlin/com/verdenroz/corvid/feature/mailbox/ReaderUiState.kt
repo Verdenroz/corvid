@@ -1,6 +1,7 @@
 package com.verdenroz.corvid.feature.mailbox
 
 import com.verdenroz.corvid.core.model.EmailDetail
+import com.verdenroz.corvid.core.text.UiText
 
 sealed interface ReaderUiState {
     data object Loading : ReaderUiState
@@ -10,5 +11,5 @@ sealed interface ReaderUiState {
     /** Deleted or moved out from under the reader between the inbox list and opening it. */
     data object Gone : ReaderUiState
 
-    data class Failed(val message: String) : ReaderUiState
+    data class Failed(val message: UiText) : ReaderUiState
 }

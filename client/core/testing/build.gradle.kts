@@ -9,6 +9,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(projects.core.jmap)
+            api(projects.core.text)
             api(libs.ktor.client.mock)
             api(libs.kotlinx.coroutines.test)
             api(libs.jetbrains.lifecycle.viewmodel)

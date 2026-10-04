@@ -15,7 +15,7 @@ import androidx.compose.runtime.setValue
 internal fun <T> Picker(
     selected: String,
     options: List<T>,
-    label: (T) -> String,
+    label: @Composable (T) -> String,
     onSelect: (T) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }

@@ -25,6 +25,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.model.EmailSummary
+import com.verdenroz.corvid.core.text.asString
+import com.verdenroz.corvid.feature.mailbox.resources.Res
+import com.verdenroz.corvid.feature.mailbox.resources.mailbox_compose
+import com.verdenroz.corvid.feature.mailbox.resources.mailbox_load_more
+import com.verdenroz.corvid.feature.mailbox.resources.mailbox_no_subject
+import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun InboxScreen(
@@ -37,10 +43,10 @@ fun InboxScreen(
 
     when (val current = state) {
         is InboxUiState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        is InboxUiState.Failed -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(current.message) }
+        is InboxUiState.Failed -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(current.message.asString()) }
         is InboxUiState.Loaded ->
             LazyColumn(modifier = Modifier.fillMaxSize()) {
-                item { Button(onClick = onCompose, modifier = Modifier.padding(8.dp)) { Text("Compose") } }
+                item { Button(onClick = onCompose, modifier = Modifier.padding(8.dp)) { Text(stringResource(Res.string.mailbox_compose)) } }
                 items(current.emails, key = { it.id }) { email ->
                     EmailRow(email, onClick = { onOpenEmail(email.id) })
                     HorizontalDivider()
@@ -48,7 +54,7 @@ fun InboxScreen(
                 if (current.canLoadMore) {
                     item {
                         Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                            Button(onClick = viewModel::loadMore) { Text("Load more") }
+                            Button(onClick = viewModel::loadMore) { Text(stringResource(Res.string.mailbox_load_more)) }
                         }
                     }
                 }
@@ -62,7 +68,7 @@ private fun EmailRow(
     onClick: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(16.dp)) {
-        Text(email.subject.ifEmpty { "(no subject)" }, style = MaterialTheme.typography.titleMedium)
+        Text(email.subject.ifEmpty { stringResource(Res.string.mailbox_no_subject) }, style = MaterialTheme.typography.titleMedium)
         Text(email.from, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (email.preview.isNotEmpty()) {
             Text(email.preview, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

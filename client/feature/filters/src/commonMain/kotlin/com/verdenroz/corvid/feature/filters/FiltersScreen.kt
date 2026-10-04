@@ -26,6 +26,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.FiltersRepository
 import com.verdenroz.corvid.core.model.FilterRule
+import com.verdenroz.corvid.core.text.asString
+import com.verdenroz.corvid.feature.filters.resources.Res
+import com.verdenroz.corvid.feature.filters.resources.filters_add_rule
+import com.verdenroz.corvid.feature.filters.resources.filters_back
+import com.verdenroz.corvid.feature.filters.resources.filters_cancel
+import com.verdenroz.corvid.feature.filters.resources.filters_delete
+import com.verdenroz.corvid.feature.filters.resources.filters_down
+import com.verdenroz.corvid.feature.filters.resources.filters_edit
+import com.verdenroz.corvid.feature.filters.resources.filters_foreign_active
+import com.verdenroz.corvid.feature.filters.resources.filters_intro
+import com.verdenroz.corvid.feature.filters.resources.filters_replace_body
+import com.verdenroz.corvid.feature.filters.resources.filters_replace_confirm
+import com.verdenroz.corvid.feature.filters.resources.filters_replace_title
+import com.verdenroz.corvid.feature.filters.resources.filters_up
+import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun FiltersScreen(
@@ -36,10 +51,10 @@ fun FiltersScreen(
     val state by viewModel.state.collectAsState()
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Button(onClick = onBack, modifier = Modifier.padding(8.dp)) { Text("Back") }
+        Button(onClick = onBack, modifier = Modifier.padding(8.dp)) { Text(stringResource(Res.string.filters_back)) }
         when (val current = state) {
             is FiltersUiState.Loading -> Centered { CircularProgressIndicator() }
-            is FiltersUiState.Failed -> Centered { Text(current.message) }
+            is FiltersUiState.Failed -> Centered { Text(current.message.asString()) }
             is FiltersUiState.Ready -> {
                 val draft = current.editing
                 if (draft == null) {
@@ -89,15 +104,15 @@ private fun RuleList(
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         item {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Filters run on the server as mail arrives, in this order.", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(Res.string.filters_intro), style = MaterialTheme.typography.bodyMedium)
                 state.foreignScript?.let {
                     Text(
-                        "Another Sieve script, \"$it\", is active. Saving asks before replacing it.",
+                        stringResource(Res.string.filters_foreign_active, it),
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
-                (state.save as? SaveStatus.Failed)?.let { Text(it.message, color = MaterialTheme.colorScheme.error) }
-                Button(onClick = onAdd, enabled = state.save !is SaveStatus.Saving) { Text("Add rule") }
+                (state.save as? SaveStatus.Failed)?.let { Text(it.message.asString(), color = MaterialTheme.colorScheme.error) }
+                Button(onClick = onAdd, enabled = state.save !is SaveStatus.Saving) { Text(stringResource(Res.string.filters_add_rule)) }
             }
         }
         itemsIndexed(state.rules) { index, rule ->
@@ -132,10 +147,10 @@ private fun RuleRow(
         }
         Text(rule.summary(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row {
-            TextButton(onClick = onEdit, enabled = enabledControls) { Text("Edit") }
-            TextButton(onClick = onUp, enabled = enabledControls) { Text("Up") }
-            TextButton(onClick = onDown, enabled = enabledControls) { Text("Down") }
-            TextButton(onClick = onDelete, enabled = enabledControls) { Text("Delete") }
+            TextButton(onClick = onEdit, enabled = enabledControls) { Text(stringResource(Res.string.filters_edit)) }
+            TextButton(onClick = onUp, enabled = enabledControls) { Text(stringResource(Res.string.filters_up)) }
+            TextButton(onClick = onDown, enabled = enabledControls) { Text(stringResource(Res.string.filters_down)) }
+            TextButton(onClick = onDelete, enabled = enabledControls) { Text(stringResource(Res.string.filters_delete)) }
         }
     }
 }
@@ -148,9 +163,9 @@ private fun ConfirmReplaceDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Replace the active script?") },
-        text = { Text("\"$scriptName\" is the active Sieve script. Activating Corvid's filters turns it off. It is not deleted.") },
-        confirmButton = { TextButton(onClick = onConfirm) { Text("Activate Corvid filters") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        title = { Text(stringResource(Res.string.filters_replace_title)) },
+        text = { Text(stringResource(Res.string.filters_replace_body, scriptName)) },
+        confirmButton = { TextButton(onClick = onConfirm) { Text(stringResource(Res.string.filters_replace_confirm)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(Res.string.filters_cancel)) } },
     )
 }

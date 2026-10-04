@@ -16,7 +16,3 @@ kotlin {
         }
     }
 }
-
-compose.resources {
-    packageOfResClass = "com.verdenroz.corvid.core.designsystem.resources"
-}

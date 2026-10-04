@@ -1,5 +1,7 @@
 package com.verdenroz.corvid.app
 
+import com.verdenroz.corvid.core.text.UiText
+
 /** What the app-common gate (decision 2) swaps every route for. */
 sealed interface AppLockState {
     data object SignedOut : AppLockState
@@ -12,7 +14,7 @@ sealed interface AppLockState {
 
     /** Covers a network failure, a damaged key file, and an ambiguous folder set: none
      *  of the three wipes anything or reads as Revoked, so they share one pane. */
-    data class Unreachable(val reason: String) : AppLockState
+    data class Unreachable(val reason: UiText) : AppLockState
 
     data object Locked : AppLockState
 

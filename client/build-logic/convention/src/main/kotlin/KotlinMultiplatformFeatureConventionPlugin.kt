@@ -23,6 +23,8 @@ class KotlinMultiplatformFeatureConventionPlugin : Plugin<Project> {
             sourceSets.apply {
                 commonMain.dependencies {
                     implementation(project(":core:model"))
+                    implementation(project(":core:text"))
+                    implementation(lib("compose-components-resources"))
                     implementation(project(":core:domain"))
                     implementation(project(":core:designsystem"))
                     implementation(project(":core:ui"))

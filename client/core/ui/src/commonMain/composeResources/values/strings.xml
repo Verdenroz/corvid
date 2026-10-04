@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="locked_title">Locked</string>
+    <string name="locked_unlock">Unlock</string>
+    <string name="revoked_title">This device's access was revoked</string>
+    <string name="unreachable_title">Unreachable</string>
+    <string name="unreachable_retry">Retry</string>
+</resources>

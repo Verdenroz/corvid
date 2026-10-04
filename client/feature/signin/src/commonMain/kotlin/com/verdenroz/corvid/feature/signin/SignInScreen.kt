@@ -16,6 +16,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.verdenroz.corvid.core.text.asString
+import com.verdenroz.corvid.feature.signin.resources.Res
+import com.verdenroz.corvid.feature.signin.resources.signin_in_progress
+import com.verdenroz.corvid.feature.signin.resources.signin_issuer
+import com.verdenroz.corvid.feature.signin.resources.signin_server
+import com.verdenroz.corvid.feature.signin.resources.signin_submit
+import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.viewmodel.koinViewModel
 
 @Composable
@@ -31,21 +38,21 @@ fun SignInScreen(viewModel: SignInViewModel = koinViewModel()) {
         OutlinedTextField(
             value = server,
             onValueChange = { server = it },
-            label = { Text("Server") },
+            label = { Text(stringResource(Res.string.signin_server)) },
         )
         OutlinedTextField(
             value = issuer,
             onValueChange = { issuer = it },
-            label = { Text("Identity provider") },
+            label = { Text(stringResource(Res.string.signin_issuer)) },
         )
         Button(
             onClick = { viewModel.signIn(server, issuer) },
             enabled = state !is SignInUiState.SigningIn,
         ) {
-            Text(if (state is SignInUiState.SigningIn) "Signing in..." else "Sign in")
+            Text(stringResource(if (state is SignInUiState.SigningIn) Res.string.signin_in_progress else Res.string.signin_submit))
         }
         (state as? SignInUiState.Failed)?.let { failed ->
-            Text(failed.message, color = MaterialTheme.colorScheme.error)
+            Text(failed.message.asString(), color = MaterialTheme.colorScheme.error)
         }
     }
 }

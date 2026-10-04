@@ -28,6 +28,9 @@ import androidx.compose.ui.unit.dp
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
+import com.verdenroz.corvid.appcommon.resources.Res
+import com.verdenroz.corvid.appcommon.resources.app_filters
+import com.verdenroz.corvid.appcommon.resources.app_lock
 import com.verdenroz.corvid.core.data.ComposeRepository
 import com.verdenroz.corvid.core.data.FiltersRepository
 import com.verdenroz.corvid.core.data.MailboxRepository
@@ -41,6 +44,7 @@ import com.verdenroz.corvid.feature.filters.FiltersScreen
 import com.verdenroz.corvid.feature.mailbox.InboxScreen
 import com.verdenroz.corvid.feature.mailbox.ReaderScreen
 import com.verdenroz.corvid.feature.signin.SignInScreen
+import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -111,8 +115,12 @@ private fun UnlockedContent(
             modifier = Modifier.fillMaxWidth().padding(8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
         ) {
-            if (Route.Filters !in backStack) Button(onClick = { backStack += Route.Filters }) { Text("Filters") }
-            Button(onClick = onLock) { Text("Lock") }
+            if (Route.Filters !in backStack) {
+                Button(
+                    onClick = { backStack += Route.Filters },
+                ) { Text(stringResource(Res.string.app_filters)) }
+            }
+            Button(onClick = onLock) { Text(stringResource(Res.string.app_lock)) }
         }
         val pop = { backStack.removeAt(backStack.lastIndex) }
         NavigationBackHandler(

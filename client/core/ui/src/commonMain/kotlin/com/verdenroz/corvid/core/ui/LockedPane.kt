@@ -12,6 +12,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.verdenroz.corvid.core.ui.resources.Res
+import com.verdenroz.corvid.core.ui.resources.locked_title
+import com.verdenroz.corvid.core.ui.resources.locked_unlock
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Shown whenever the device key is not held, which is the app's default
@@ -27,8 +31,8 @@ fun LockedPane(
     Surface(modifier = modifier.fillMaxSize()) {
         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text("Locked", style = MaterialTheme.typography.titleMedium)
-                Button(onClick = onUnlock) { Text("Unlock") }
+                Text(stringResource(Res.string.locked_title), style = MaterialTheme.typography.titleMedium)
+                Button(onClick = onUnlock) { Text(stringResource(Res.string.locked_unlock)) }
             }
         }
     }

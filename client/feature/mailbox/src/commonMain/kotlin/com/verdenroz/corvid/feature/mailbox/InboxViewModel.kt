@@ -4,9 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.core.data.EmailPage
 import com.verdenroz.corvid.core.data.MailboxRepository
+import com.verdenroz.corvid.core.data.userMessage
 import com.verdenroz.corvid.core.jmap.JmapException
-import com.verdenroz.corvid.core.jmap.userMessage
 import com.verdenroz.corvid.core.model.EmailSummary
+import com.verdenroz.corvid.core.text.uiText
+import com.verdenroz.corvid.feature.mailbox.resources.Res
+import com.verdenroz.corvid.feature.mailbox.resources.mailbox_no_inbox
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -39,7 +42,7 @@ class InboxViewModel(private val repository: MailboxRepository) : ViewModel() {
         try {
             val inbox = repository.findMailboxByRole("inbox")
             if (inbox == null) {
-                _state.value = InboxUiState.Failed("this account has no inbox")
+                _state.value = InboxUiState.Failed(uiText(Res.string.mailbox_no_inbox))
                 return
             }
             mailboxId = inbox.id

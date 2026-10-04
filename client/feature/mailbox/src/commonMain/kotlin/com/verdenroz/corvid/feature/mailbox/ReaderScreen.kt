@@ -22,6 +22,19 @@ import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.model.EmailDetail
+import com.verdenroz.corvid.core.text.asString
+import com.verdenroz.corvid.feature.mailbox.resources.Res
+import com.verdenroz.corvid.feature.mailbox.resources.mailbox_back
+import com.verdenroz.corvid.feature.mailbox.resources.mailbox_cc
+import com.verdenroz.corvid.feature.mailbox.resources.mailbox_forward
+import com.verdenroz.corvid.feature.mailbox.resources.mailbox_from
+import com.verdenroz.corvid.feature.mailbox.resources.mailbox_gone
+import com.verdenroz.corvid.feature.mailbox.resources.mailbox_no_subject
+import com.verdenroz.corvid.feature.mailbox.resources.mailbox_reply
+import com.verdenroz.corvid.feature.mailbox.resources.mailbox_reply_all
+import com.verdenroz.corvid.feature.mailbox.resources.mailbox_to
+import com.verdenroz.corvid.feature.mailbox.resources.mailbox_truncated
+import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun ReaderScreen(
@@ -35,18 +48,22 @@ fun ReaderScreen(
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(8.dp)) {
-            Button(onClick = onBack) { Text("Back") }
+            Button(onClick = onBack) { Text(stringResource(Res.string.mailbox_back)) }
             (state as? ReaderUiState.Loaded)?.email?.let { email ->
-                Button(onClick = { onCompose(ComposeIntent.Reply(email.id, all = false)) }) { Text("Reply") }
-                Button(onClick = { onCompose(ComposeIntent.Reply(email.id, all = true)) }) { Text("Reply all") }
-                Button(onClick = { onCompose(ComposeIntent.Forward(email.id)) }) { Text("Forward") }
+                Button(
+                    onClick = { onCompose(ComposeIntent.Reply(email.id, all = false)) },
+                ) { Text(stringResource(Res.string.mailbox_reply)) }
+                Button(
+                    onClick = { onCompose(ComposeIntent.Reply(email.id, all = true)) },
+                ) { Text(stringResource(Res.string.mailbox_reply_all)) }
+                Button(onClick = { onCompose(ComposeIntent.Forward(email.id)) }) { Text(stringResource(Res.string.mailbox_forward)) }
             }
         }
         when (val current = state) {
             is ReaderUiState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            is ReaderUiState.Failed -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(current.message) }
+            is ReaderUiState.Failed -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(current.message.asString()) }
             is ReaderUiState.Gone ->
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("This message no longer exists.") }
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(stringResource(Res.string.mailbox_gone)) }
             is ReaderUiState.Loaded -> ReaderBody(current.email)
         }
     }
@@ -55,13 +72,33 @@ fun ReaderScreen(
 @Composable
 private fun ReaderBody(email: EmailDetail) {
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-        Text(email.subject.ifEmpty { "(no subject)" }, style = MaterialTheme.typography.titleLarge)
-        Text("From: ${email.from?.toText().orEmpty()}", style = MaterialTheme.typography.bodyMedium)
-        if (email.to.isNotEmpty()) Text("To: ${email.to.joinToString { it.toText() }}", style = MaterialTheme.typography.bodyMedium)
-        if (email.cc.isNotEmpty()) Text("Cc: ${email.cc.joinToString { it.toText() }}", style = MaterialTheme.typography.bodyMedium)
+        Text(email.subject.ifEmpty { stringResource(Res.string.mailbox_no_subject) }, style = MaterialTheme.typography.titleLarge)
+        Text(stringResource(Res.string.mailbox_from, email.from?.toText().orEmpty()), style = MaterialTheme.typography.bodyMedium)
+        if (email.to.isNotEmpty()) {
+            Text(
+                stringResource(
+                    Res.string.mailbox_to,
+                    email.to.joinToString {
+                        it.toText()
+                    },
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+        if (email.cc.isNotEmpty()) {
+            Text(
+                stringResource(
+                    Res.string.mailbox_cc,
+                    email.cc.joinToString {
+                        it.toText()
+                    },
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
         if (email.bodyTruncated) {
             Text(
-                "This message was truncated.",
+                stringResource(Res.string.mailbox_truncated),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(top = 8.dp),

@@ -14,6 +14,11 @@ import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.model.ConditionField
 import com.verdenroz.corvid.core.model.ConditionOperator
 import com.verdenroz.corvid.core.model.FilterCondition
+import com.verdenroz.corvid.feature.filters.resources.Res
+import com.verdenroz.corvid.feature.filters.resources.filters_add_condition
+import com.verdenroz.corvid.feature.filters.resources.filters_remove
+import com.verdenroz.corvid.feature.filters.resources.filters_value
+import org.jetbrains.compose.resources.stringResource
 
 @Composable
 internal fun ConditionsSection(
@@ -28,7 +33,7 @@ internal fun ConditionsSection(
             onRemove = { onChange(conditions.removedAt(index)) },
         )
     }
-    TextButton(onClick = { onChange(conditions + FilterCondition.blank()) }) { Text("Add condition") }
+    TextButton(onClick = { onChange(conditions + FilterCondition.blank()) }) { Text(stringResource(Res.string.filters_add_condition)) }
 }
 
 @Composable
@@ -42,12 +47,12 @@ private fun ConditionRow(
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Picker(condition.field.label(), ConditionField.entries, { it.label() }) { onChange(condition.copy(field = it)) }
             Picker(condition.operator.label(), ConditionOperator.entries, { it.label() }) { onChange(condition.copy(operator = it)) }
-            if (canRemove) TextButton(onClick = onRemove) { Text("Remove") }
+            if (canRemove) TextButton(onClick = onRemove) { Text(stringResource(Res.string.filters_remove)) }
         }
         OutlinedTextField(
             value = condition.value,
             onValueChange = { onChange(condition.copy(value = it)) },
-            label = { Text("Value") },
+            label = { Text(stringResource(Res.string.filters_value)) },
             modifier = Modifier.fillMaxWidth(),
         )
     }

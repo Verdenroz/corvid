@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="server_unreachable">Could not reach the server.</string>
+    <string name="no_trash_folder">This account has no Trash folder.</string>
+    <string name="reply_attribution">On %1$s, %2$s wrote:</string>
+    <string name="forwarded_message">---------- Forwarded message ----------</string>
+</resources>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="mailbox_no_inbox">This account has no inbox.</string>
+    <string name="mailbox_compose">Compose</string>
+    <string name="mailbox_load_more">Load more</string>
+    <string name="mailbox_back">Back</string>
+    <string name="mailbox_reply">Reply</string>
+    <string name="mailbox_reply_all">Reply all</string>
+    <string name="mailbox_forward">Forward</string>
+    <string name="mailbox_no_subject">(no subject)</string>
+    <string name="mailbox_gone">This message no longer exists.</string>
+    <string name="mailbox_from">From: %1$s</string>
+    <string name="mailbox_to">To: %1$s</string>
+    <string name="mailbox_cc">Cc: %1$s</string>
+    <string name="mailbox_truncated">This message was truncated.</string>
+</resources>

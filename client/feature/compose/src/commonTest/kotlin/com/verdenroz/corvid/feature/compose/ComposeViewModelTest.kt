@@ -8,15 +8,22 @@ import com.verdenroz.corvid.core.jmap.createJmapHttpClient
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.testing.FakeEmail
 import com.verdenroz.corvid.core.testing.FakeJmapServer
+import com.verdenroz.corvid.core.testing.KeyedTextResolver
 import com.verdenroz.corvid.core.testing.SENDABLE_ACCOUNT_EMAIL
 import com.verdenroz.corvid.core.testing.ViewModelTestScope
 import com.verdenroz.corvid.core.testing.runViewModelTest
 import com.verdenroz.corvid.core.testing.withSendableAccount
+import com.verdenroz.corvid.core.text.UiText
+import com.verdenroz.corvid.core.text.uiText
+import com.verdenroz.corvid.feature.compose.resources.Res
+import com.verdenroz.corvid.feature.compose.resources.compose_add_recipient
+import com.verdenroz.corvid.feature.compose.resources.compose_no_identity
+import com.verdenroz.corvid.feature.compose.resources.compose_not_sent
+import com.verdenroz.corvid.feature.compose.resources.compose_original_gone
 import kotlinx.coroutines.flow.first
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
-import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 private const val BASE_URL = "http://127.0.0.1:9999"
@@ -43,7 +50,7 @@ class ComposeViewModelTest {
         intent: ComposeIntent = ComposeIntent.New,
     ): ComposeViewModel {
         val client = JmapClient.connect(createJmapHttpClient(fake.engine), AuthLatch(), BASE_URL)
-        return track(ComposeViewModel(ComposeRepository(client, MailboxRepository(client)), intent))
+        return track(ComposeViewModel(ComposeRepository(client, MailboxRepository(client), KeyedTextResolver), intent))
     }
 
     private suspend fun ComposeViewModel.editing() = state.first { it is ComposeUiState.Editing } as ComposeUiState.Editing
@@ -59,7 +66,7 @@ class ComposeViewModelTest {
 
             val failed = assertIs<ComposeUiState.Failed>(vm.state.first { it !is ComposeUiState.Loading })
 
-            assertEquals("This account has no sending identity.", failed.message)
+            assertEquals(uiText(Res.string.compose_no_identity), failed.message)
         }
 
     @Test
@@ -87,7 +94,7 @@ class ComposeViewModelTest {
 
             assertEquals("alice@example.test", form.to)
             assertEquals("Re: Lunch", form.subject)
-            assertTrue(form.body.endsWith("wrote:\n> see you at noon"))
+            assertTrue(form.body.endsWith("alice@example.test]\n> see you at noon"))
         }
 
     @Test
@@ -136,7 +143,7 @@ class ComposeViewModelTest {
 
             assertEquals("", form.to)
             assertEquals("Fwd: Lunch", form.subject)
-            assertTrue(form.body.contains("---------- Forwarded message ----------"))
+            assertTrue(form.body.startsWith("\n\nforwarded_message\n"))
         }
 
     @Test
@@ -148,7 +155,7 @@ class ComposeViewModelTest {
 
             val failed = assertIs<ComposeUiState.Failed>(vm.state.first { it !is ComposeUiState.Loading })
 
-            assertEquals("The message you were answering no longer exists.", failed.message)
+            assertEquals(uiText(Res.string.compose_original_gone), failed.message)
         }
 
     @Test
@@ -166,7 +173,7 @@ class ComposeViewModelTest {
             val editing = assertIs<ComposeUiState.Editing>(vm.settled())
             assertEquals(typed, editing.form)
             assertEquals(false, editing.sending)
-            assertNotNull(editing.error)
+            assertEquals(uiText(Res.string.compose_not_sent, UiText.FromServer("submission refused")), editing.error)
             assertTrue(fake.submissions.isEmpty())
         }
 
@@ -180,7 +187,7 @@ class ComposeViewModelTest {
 
             vm.send()
 
-            assertEquals("Add a recipient.", assertIs<ComposeUiState.Editing>(vm.state.value).error)
+            assertEquals(uiText(Res.string.compose_add_recipient), assertIs<ComposeUiState.Editing>(vm.state.value).error)
             assertEquals(requestsBefore, fake.requestCount)
         }
 }

@@ -1,6 +1,11 @@
 package com.verdenroz.corvid.app
 
 import androidx.lifecycle.viewModelScope
+import com.verdenroz.corvid.appcommon.resources.Res
+import com.verdenroz.corvid.appcommon.resources.unreachable_folders_ambiguous
+import com.verdenroz.corvid.appcommon.resources.unreachable_heartbeat
+import com.verdenroz.corvid.appcommon.resources.unreachable_key_damaged
+import com.verdenroz.corvid.appcommon.resources.unreachable_key_unreachable
 import com.verdenroz.corvid.core.auth.AuthState
 import com.verdenroz.corvid.core.auth.TokenSource
 import com.verdenroz.corvid.core.jmap.AuthLatch
@@ -10,6 +15,7 @@ import com.verdenroz.corvid.core.keyring.KeyState
 import com.verdenroz.corvid.core.model.ServerAddress
 import com.verdenroz.corvid.core.testing.FakeFileNode
 import com.verdenroz.corvid.core.testing.FakeJmapServer
+import com.verdenroz.corvid.core.text.uiText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -169,7 +175,7 @@ class AppLockViewModelTest {
             harness.viewModel.submitDeviceName("laptop-1")
             val unreachable = assertIs<AppLockState.Unreachable>(harness.viewModel.state.awaitState { it is AppLockState.Unreachable })
 
-            assertEquals("the device key could not be reached", unreachable.reason)
+            assertEquals(uiText(Res.string.unreachable_key_unreachable), unreachable.reason)
         }
 
     @Test
@@ -186,7 +192,7 @@ class AppLockViewModelTest {
             harness.viewModel.unlock()
             val unreachable = assertIs<AppLockState.Unreachable>(harness.viewModel.state.awaitState { it is AppLockState.Unreachable })
 
-            assertEquals("the device key is damaged", unreachable.reason)
+            assertEquals(uiText(Res.string.unreachable_key_damaged), unreachable.reason)
             assertEquals(1, fake.fileNodes.count { it.name == "laptop-1.key" })
         }
 
@@ -203,7 +209,7 @@ class AppLockViewModelTest {
             harness.viewModel.submitDeviceName("laptop-1")
             val unreachable = assertIs<AppLockState.Unreachable>(harness.viewModel.state.awaitState { it is AppLockState.Unreachable })
 
-            assertEquals("more than one device folder exists", unreachable.reason)
+            assertEquals(uiText(Res.string.unreachable_folders_ambiguous), unreachable.reason)
         }
 
     @Test
@@ -249,7 +255,7 @@ class AppLockViewModelTest {
             advanceTimeBy(61.seconds)
             val unreachable = assertIs<AppLockState.Unreachable>(harness.viewModel.state.awaitState { it is AppLockState.Unreachable })
 
-            assertEquals("the heartbeat failed", unreachable.reason)
+            assertEquals(uiText(Res.string.unreachable_heartbeat), unreachable.reason)
             assertIs<KeyState.Locked>(harness.keyHolder.state.value)
         }
 }
