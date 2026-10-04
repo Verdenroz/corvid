@@ -143,7 +143,8 @@ class SenderRepositoryTest {
             fake.emails += from("oldest", ADA, at = Instant.fromEpochSeconds(0).toString(), headers = results(ADA_PASS))
             repeat(200) { fake.emails += from("m$it", ADA, at = Instant.fromEpochSeconds(10L + it).toString()) }
             repeat(50) {
-                fake.emails += from("l$it", "lada@analytical.test", at = Instant.fromEpochSeconds(1000L + it).toString(), headers = results(ADA_PASS))
+                val at = Instant.fromEpochSeconds(1000L + it).toString()
+                fake.emails += from("l$it", "lada@analytical.test", at = at, headers = results(ADA_PASS))
             }
 
             val window = senders(fake).window(ADA)
