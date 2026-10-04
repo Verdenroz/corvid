@@ -25,6 +25,17 @@ impl Session {
         self.headers.push((name, value));
     }
 
+    /// 1-based positions among same-named headers, last first, so deleting one leaves the
+    /// positions of those still to be deleted unchanged.
+    pub fn header_indexes(&self, name: &str) -> Vec<i32> {
+        let count = self
+            .headers
+            .iter()
+            .filter(|(candidate, _)| candidate.eq_ignore_ascii_case(name))
+            .count();
+        (1..=count as i32).rev().collect()
+    }
+
     pub fn body_chunk(&mut self, chunk: &[u8]) {
         self.body.extend_from_slice(chunk);
     }

@@ -18,7 +18,8 @@ pub fn callbacks(rewriter: Arc<Rewriter>) -> Callbacks<Session> {
         .on_negotiate(|context: &mut NegotiateContext<Session>, _, offered| {
             Box::pin(async move {
                 // Request only the actions used, so a bug here cannot do more to a message.
-                context.requested_actions = Actions::ADD_HEADER | Actions::REPLACE_BODY;
+                context.requested_actions =
+                    Actions::ADD_HEADER | Actions::CHANGE_HEADER | Actions::REPLACE_BODY;
                 // indymilter requests a NO_* skip per unregistered callback; Stalwart offers only
                 // NOHELO and NOEOH, and asking for an option not offered fails negotiation.
                 context.requested_opts &= offered;
@@ -57,38 +58,28 @@ pub fn callbacks(rewriter: Arc<Rewriter>) -> Callbacks<Session> {
                 let Some(session) = context.data.take() else {
                     return Status::Continue;
                 };
-                match session.finish(&rewriter) {
+                let forged = session.header_indexes(MARKER);
+                let marked = match session.finish(&rewriter) {
                     // Marked even when clean, so a missing header means the milter never ran.
-                    Outcome::Unchanged => {
-                        let _ = context
-                            .actions
-                            .add_header(MARKER, header::Marked::Nothing.render())
-                            .await;
-                        Status::Continue
-                    }
-                    Outcome::Skipped => {
-                        let _ = context
-                            .actions
-                            .add_header(MARKER, header::Marked::Skipped.render())
-                            .await;
-                        Status::Continue
-                    }
+                    Outcome::Unchanged => header::Marked::Nothing.render(),
+                    Outcome::Skipped => header::Marked::Skipped.render(),
                     Outcome::Replace { body, report } => {
                         for chunk in body.chunks(CHUNK) {
                             if context.actions.replace_body(chunk).await.is_err() {
                                 return Status::Tempfail;
                             }
                         }
-                        let _ = context
-                            .actions
-                            .add_header(
-                                MARKER,
-                                header::Marked::Rewritten(header::Summary::of(&report)).render(),
-                            )
-                            .await;
-                        Status::Continue
+                        header::Marked::Rewritten(header::Summary::of(&report)).render()
                     }
+                };
+                for index in forged {
+                    let _ = context
+                        .actions
+                        .change_header(MARKER, index, None::<&str>)
+                        .await;
                 }
+                let _ = context.actions.add_header(MARKER, marked).await;
+                Status::Continue
             })
         })
 }
