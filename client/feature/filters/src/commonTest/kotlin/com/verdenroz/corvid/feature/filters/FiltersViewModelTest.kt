@@ -17,10 +17,7 @@ import com.verdenroz.corvid.core.testing.runViewModelTest
 import kotlinx.coroutines.flow.first
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
 
 private const val BASE_URL = "http://127.0.0.1:9999"
 
@@ -45,7 +42,7 @@ private suspend fun ViewModelTestScope.viewModel(fake: FakeJmapServer): FiltersV
     track(FiltersViewModel(repository(fake))).also { it.ready() }
 
 private suspend fun FiltersViewModel.ready(): FiltersUiState.Ready =
-    state.first { it is FiltersUiState.Ready && !it.saving } as FiltersUiState.Ready
+    state.first { it is FiltersUiState.Ready && it.save != SaveStatus.Saving } as FiltersUiState.Ready
 
 class FiltersViewModelTest {
     @Test
@@ -71,8 +68,7 @@ class FiltersViewModelTest {
 
             val ready = vm.ready()
             assertEquals(listOf("first"), ready.rules.map { it.name })
-            assertEquals("the server rejected the filters (script rejected)", ready.error)
-            assertFalse(ready.saving)
+            assertEquals(SaveStatus.Failed("Not saved: script rejected"), ready.save)
         }
 
     @Test
@@ -85,13 +81,13 @@ class FiltersViewModelTest {
             vm.saveRule(null, rule("first"))
 
             val asked = vm.ready()
-            assertTrue(asked.confirming)
+            assertEquals(SaveStatus.Confirming, asked.save)
             assertEquals("vacation", asked.foreignScript)
             assertEquals(listOf("vacation" to true), fake.sieveScripts.map { it.name to it.isActive })
 
             vm.confirmReplace()
 
-            assertFalse(vm.ready().confirming)
+            assertEquals(SaveStatus.Idle, vm.ready().save)
             assertEquals(listOf("vacation" to false, "corvid" to true), fake.sieveScripts.map { it.name to it.isActive })
         }
 
@@ -107,9 +103,8 @@ class FiltersViewModelTest {
             vm.dismissConfirmation()
 
             val ready = vm.ready()
-            assertFalse(ready.confirming)
+            assertEquals(SaveStatus.Failed("Not saved: another script is active"), ready.save)
             assertEquals(listOf("first"), ready.rules.map { it.name })
-            assertNotNull(ready.error)
             assertEquals(listOf("vacation" to true), fake.sieveScripts.map { it.name to it.isActive })
         }
 

@@ -68,7 +68,7 @@ fun FiltersScreen(
                         onCancel = { editing = null },
                     )
                 }
-                if (current.confirming) {
+                if (current.save is SaveStatus.Confirming) {
                     ConfirmReplaceDialog(
                         scriptName = current.foreignScript.orEmpty(),
                         onConfirm = viewModel::confirmReplace,
@@ -104,14 +104,14 @@ private fun RuleList(
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
-                state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                Button(onClick = onAdd, enabled = !state.saving) { Text("Add rule") }
+                (state.save as? SaveStatus.Failed)?.let { Text(it.message, color = MaterialTheme.colorScheme.error) }
+                Button(onClick = onAdd, enabled = state.save !is SaveStatus.Saving) { Text("Add rule") }
             }
         }
         itemsIndexed(state.rules) { index, rule ->
             RuleRow(
                 rule = rule,
-                enabledControls = !state.saving,
+                enabledControls = state.save !is SaveStatus.Saving,
                 onToggle = { onToggle(index) },
                 onEdit = { onEdit(index) },
                 onUp = { onMove(index, -1) },

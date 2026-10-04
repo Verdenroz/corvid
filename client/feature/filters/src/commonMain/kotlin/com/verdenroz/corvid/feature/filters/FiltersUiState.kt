@@ -13,8 +13,17 @@ sealed interface FiltersUiState {
         val rules: List<FilterRule>,
         val folders: List<MailboxRef>,
         val foreignScript: String? = null,
-        val confirming: Boolean = false,
-        val saving: Boolean = false,
-        val error: String? = null,
+        val save: SaveStatus = SaveStatus.Idle,
     ) : FiltersUiState
+}
+
+sealed interface SaveStatus {
+    data object Idle : SaveStatus
+
+    data object Saving : SaveStatus
+
+    /** Waiting for the user to allow replacing the active script. */
+    data object Confirming : SaveStatus
+
+    data class Failed(val message: String) : SaveStatus
 }

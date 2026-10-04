@@ -10,6 +10,7 @@ import com.verdenroz.corvid.core.jmap.userMessage
 import com.verdenroz.corvid.core.model.FilterRule
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class FiltersViewModel(private val repository: FiltersRepository) : ViewModel() {
@@ -37,18 +38,15 @@ class FiltersViewModel(private val repository: FiltersRepository) : ViewModel() 
 
     fun confirmReplace() {
         val ready = _state.value as? FiltersUiState.Ready ?: return
-        if (ready.saving) return
+        if (ready.save is SaveStatus.Saving) return
         persist(ready.rules, replaceForeign = true)
     }
 
-    fun dismissConfirmation() {
-        val ready = _state.value as? FiltersUiState.Ready ?: return
-        _state.value = ready.copy(confirming = false, error = "not saved: another script is active")
-    }
+    fun dismissConfirmation() = fail("another script is active")
 
     private fun edit(change: (List<FilterRule>) -> List<FilterRule>) {
         val ready = _state.value as? FiltersUiState.Ready ?: return
-        if (ready.saving) return
+        if (ready.save is SaveStatus.Saving) return
         persist(change(ready.rules), replaceForeign = false)
     }
 
@@ -68,20 +66,24 @@ class FiltersViewModel(private val repository: FiltersRepository) : ViewModel() 
         rules: List<FilterRule>,
         replaceForeign: Boolean,
     ) {
-        val editing = (_state.value as FiltersUiState.Ready).copy(rules = rules, saving = true, confirming = false, error = null)
-        _state.value = editing
+        update { it.copy(rules = rules, save = SaveStatus.Saving) }
         viewModelScope.launch {
-            _state.value =
-                try {
-                    when (val result = repository.save(rules, replaceForeign)) {
-                        is SaveResult.Saved -> editing.copy(saving = false, foreignScript = null)
-                        is SaveResult.NeedsConfirmation ->
-                            editing.copy(saving = false, foreignScript = result.scriptName, confirming = true)
-                        is SaveResult.Rejected -> editing.copy(saving = false, error = "the server rejected the filters (${result.reason})")
-                    }
-                } catch (e: JmapException) {
-                    editing.copy(saving = false, error = e.userMessage())
+            try {
+                when (val result = repository.save(rules, replaceForeign)) {
+                    is SaveResult.Saved -> update { it.copy(foreignScript = null, save = SaveStatus.Idle) }
+                    is SaveResult.NeedsConfirmation ->
+                        update { it.copy(foreignScript = result.scriptName, save = SaveStatus.Confirming) }
+                    is SaveResult.Rejected -> fail(result.reason)
                 }
+            } catch (e: JmapException) {
+                fail(e.userMessage())
+            }
         }
+    }
+
+    private fun fail(reason: String) = update { it.copy(save = SaveStatus.Failed("Not saved: $reason")) }
+
+    private fun update(change: (FiltersUiState.Ready) -> FiltersUiState.Ready) {
+        _state.update { if (it is FiltersUiState.Ready) change(it) else it }
     }
 }
