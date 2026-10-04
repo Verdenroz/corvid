@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 use std::io;
 use std::path::Path;
 
-use corvid_ingest::{NAMESPACE, open, save, sender_key};
+use corvid_ingest::{is_prior_keyword, open, save, sender_key};
 
 pub use cold_start::{Budget, ColdStart, cold_start};
 pub use jmap::Jmap;
@@ -68,7 +68,7 @@ pub fn poll(path: &Path, mailbox: &impl Mailbox) -> io::Result<Summary> {
         let ours: BTreeSet<String> = message
             .keywords
             .iter()
-            .filter(|keyword| keyword.starts_with(NAMESPACE))
+            .filter(|keyword| is_prior_keyword(keyword))
             .cloned()
             .collect();
         let add: BTreeSet<String> = wanted.difference(&ours).cloned().collect();

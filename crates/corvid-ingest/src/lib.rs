@@ -39,6 +39,19 @@ pub const MODEL_DONE: &str = "corvid-llm-done";
 /// gets longer.
 pub const MODEL_OVERSIZED: &str = "corvid-llm-oversized";
 
+/// Where a client's filters write labels at delivery, inside the labeler's namespace so they are
+/// never read back as the user's.
+pub const RULE_NAMESPACE: &str = "corvid-rule-";
+
+/// Whether the prior wrote this keyword, which is the only kind the poll may add or remove.
+///
+/// Model and rule keywords share the prefix but belong to other writers.
+pub fn is_prior_keyword(keyword: &str) -> bool {
+    keyword.starts_with(NAMESPACE)
+        && !keyword.starts_with(MODEL_NAMESPACE)
+        && !keyword.starts_with(RULE_NAMESPACE)
+}
+
 /// The keywords to write for a model's verdict, which always include the marker.
 ///
 /// Returning the marker from the same call makes "always marked" hold at every call site.
@@ -146,6 +159,7 @@ impl Ingest {
             .applied
             .iter()
             .map(|label| format!("{NAMESPACE}{label}"))
+            .filter(|keyword| is_prior_keyword(keyword))
             .collect()
     }
 

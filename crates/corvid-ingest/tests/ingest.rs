@@ -70,6 +70,17 @@ fn writes_its_labels_inside_its_own_namespace() {
 }
 
 #[test]
+fn never_writes_a_label_that_lands_in_a_reserved_namespace() {
+    let mut ingest = Ingest::default();
+    teach(&mut ingest, &acme(), &["llm-x", "rule-x", "receipts"], 12);
+
+    assert_eq!(
+        ingest.label("m1", &acme(), 12.0),
+        keywords(&["corvid-receipts"])
+    );
+}
+
+#[test]
 fn writes_nothing_for_an_unknown_sender() {
     let mut ingest = Ingest::default();
     teach(&mut ingest, &acme(), &["receipts"], 12);
