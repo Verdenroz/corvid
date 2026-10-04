@@ -1,16 +1,13 @@
 package com.verdenroz.corvid.app
 
+import com.verdenroz.corvid.core.common.di.UnlockedScopeMarker
 import org.koin.core.Koin
 import org.koin.core.scope.Scope
 
-/** The Koin scope qualifier decision 10 requires: closing it drops every scoped
- *  repository and mail UI state, so nothing survives past a lock. */
-class UnlockedScopeMarker
-
 /**
  * Owns the one live [UnlockedScopeMarker] scope. The caller declares whatever
- * the newly opened scope should hold (a [com.verdenroz.corvid.core.jmap.JmapClient]
- * today, scoped repositories from slices 7/8 later); [close] is idempotent
+ * the newly opened scope should hold (the [com.verdenroz.corvid.core.jmap.JmapClient]
+ * the scoped repositories are built from); [close] is idempotent
  * since both drop triggers and sign-out call it.
  */
 class UnlockedScopeHolder(private val koin: Koin) {

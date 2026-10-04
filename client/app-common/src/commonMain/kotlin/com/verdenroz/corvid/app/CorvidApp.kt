@@ -47,12 +47,7 @@ fun CorvidApp(viewModel: AppLockViewModel = koinViewModel()) {
                 } else {
                     ConnectingPane()
                 }
-            is AppLockState.Unlocked ->
-                UnlockedContent(
-                    repository = current.mailboxRepository,
-                    composeRepository = current.composeRepository,
-                    onLock = viewModel::lock,
-                )
+            is AppLockState.Unlocked -> UnlockedContent(onLock = viewModel::lock)
             is AppLockState.Unreachable -> UnreachablePane(reason = current.reason, onRetry = viewModel::retry)
             is AppLockState.Locked -> LockedPane(onUnlock = viewModel::unlock)
             is AppLockState.Revoked -> RevokedPane()
@@ -73,11 +68,14 @@ private fun ConnectingPane() {
 /** Every pointer event here resets decision 11's idle timer. */
 @Composable
 private fun UnlockedContent(
-    repository: MailboxRepository,
-    composeRepository: ComposeRepository,
     onLock: () -> Unit,
     idleTimeout: IdleTimeoutController = koinInject(),
+    scopeHolder: UnlockedScopeHolder = koinInject(),
 ) {
+    val scope = scopeHolder.open()
+    val repository = remember(scope) { scope.get<MailboxRepository>() }
+    val composeRepository = remember(scope) { scope.get<ComposeRepository>() }
+
     DisposableEffect(Unit) {
         idleTimeout.recordActivity()
         onDispose { idleTimeout.stop() }
