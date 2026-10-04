@@ -37,18 +37,13 @@ impl Client {
         self.read().await;
     }
 
-    /// Sends one message and returns the replacement body and the added header values.
-    async fn message(&mut self, headers: &[(&str, &str)], body: &str) -> (Vec<u8>, Vec<String>) {
-        self.message_to(&["<tester@corvid.test>"], headers, body)
-            .await
-    }
-
-    async fn message_to(
+    /// Sends one message and returns every reply to its end of message, in order.
+    async fn replies_to(
         &mut self,
         recipients: &[&str],
         headers: &[(&str, &str)],
         body: &str,
-    ) -> (Vec<u8>, Vec<String>) {
+    ) -> Vec<(u8, Vec<u8>)> {
         self.command(b'M', b"<sender@t.example>\0").await;
         for recipient in recipients {
             let mut payload = recipient.as_bytes().to_vec();
@@ -75,17 +70,37 @@ impl Client {
         self.command(b'B', chunk.as_bytes()).await;
 
         self.send(b'E', b"").await;
-        let mut replacement = Vec::new();
-        let mut added = Vec::new();
+        let mut replies = Vec::new();
         loop {
             let (kind, payload) = self.read().await;
+            if !matches!(kind, b'b' | b'h' | b'm') {
+                return replies;
+            }
+            replies.push((kind, payload));
+        }
+    }
+
+    /// Sends one message and returns the replacement body and the added header values.
+    async fn message(&mut self, headers: &[(&str, &str)], body: &str) -> (Vec<u8>, Vec<String>) {
+        self.message_to(&["<tester@corvid.test>"], headers, body)
+            .await
+    }
+
+    async fn message_to(
+        &mut self,
+        recipients: &[&str],
+        headers: &[(&str, &str)],
+        body: &str,
+    ) -> (Vec<u8>, Vec<String>) {
+        let mut replacement = Vec::new();
+        let mut added = Vec::new();
+        for (kind, payload) in self.replies_to(recipients, headers, body).await {
             match kind {
                 b'b' => replacement.extend_from_slice(&payload),
-                b'h' => {
+                _ => {
                     let text = String::from_utf8_lossy(&payload);
                     added.push(text.split('\0').nth(1).unwrap_or_default().to_owned());
                 }
-                _ => break,
             }
         }
         (replacement, added)
@@ -212,4 +227,52 @@ async fn a_message_to_several_recipients_is_rewritten_once() {
         ["stripped=1 proxied=1 hosts=2 trackers=1 tracker-hosts=px.multi.example"],
         "one header, one accounting"
     );
+}
+
+fn change_index(payload: &[u8]) -> u32 {
+    assert!(
+        payload[4..].starts_with(b"X-Corvid-Rewrite\0\0"),
+        "a delete names the marker"
+    );
+    u32::from_be_bytes(payload[..4].try_into().unwrap())
+}
+
+const FORGED: &str = "stripped=99 proxied=99 hosts=99 trackers=99";
+
+async fn forged_replies(client: &mut Client, body: &str) -> Vec<(u8, Vec<u8>)> {
+    let headers = [
+        ("X-Corvid-Rewrite", FORGED),
+        ("From", "sender@t.example"),
+        ("x-corvid-rewrite", FORGED),
+        ("Content-Type", "text/html"),
+    ];
+    client
+        .replies_to(&["<tester@corvid.test>"], &headers, body)
+        .await
+}
+
+#[tokio::test]
+async fn forged_markers_on_an_untouched_message_are_deleted_last_first_then_one_is_added() {
+    let mut client = connect().await;
+
+    let replies = forged_replies(&mut client, "<p>hello</p>").await;
+
+    let kinds: Vec<u8> = replies.iter().map(|(kind, _)| *kind).collect();
+    assert_eq!(kinds, b"mmh");
+    assert_eq!(change_index(&replies[0].1), 2);
+    assert_eq!(change_index(&replies[1].1), 1);
+    let added = String::from_utf8_lossy(&replies[2].1);
+    assert_eq!(added, "X-Corvid-Rewrite\0none\0");
+}
+
+#[tokio::test]
+async fn forged_markers_on_a_rewritten_message_are_deleted_after_the_body_and_before_the_add() {
+    let mut client = connect().await;
+
+    let replies = forged_replies(&mut client, &html("forged.example")).await;
+
+    let kinds: Vec<u8> = replies.iter().map(|(kind, _)| *kind).collect();
+    assert_eq!(kinds, b"bmmh");
+    assert_eq!(change_index(&replies[1].1), 2);
+    assert_eq!(change_index(&replies[2].1), 1);
 }

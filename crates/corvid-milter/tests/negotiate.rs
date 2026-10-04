@@ -13,6 +13,7 @@ const MTA_ACTIONS: u32 = 0xff;
 const MTA_OPTS: u32 = 0x42;
 
 const ADD_HEADER: u32 = 0x01;
+const CHANGE_HEADER: u32 = 0x10;
 const REPLACE_BODY: u32 = 0x02;
 
 async fn negotiate(actions: u32, opts: u32) -> (u32, u32, u32) {
@@ -61,7 +62,7 @@ async fn negotiates_with_what_stalwart_offers() {
     assert_eq!(version, 6);
     assert_eq!(
         actions,
-        ADD_HEADER | REPLACE_BODY,
+        ADD_HEADER | CHANGE_HEADER | REPLACE_BODY,
         "only the actions the daemon uses"
     );
     assert_eq!(
@@ -79,7 +80,7 @@ const MIN_OPTS: u32 = 0xf;
 async fn negotiates_with_an_mta_that_offers_no_protocol_options() {
     let (_, actions, opts) = negotiate(MTA_ACTIONS, 0).await;
 
-    assert_eq!(actions, ADD_HEADER | REPLACE_BODY);
+    assert_eq!(actions, ADD_HEADER | CHANGE_HEADER | REPLACE_BODY);
     assert_eq!(
         opts & !MIN_OPTS,
         0,
