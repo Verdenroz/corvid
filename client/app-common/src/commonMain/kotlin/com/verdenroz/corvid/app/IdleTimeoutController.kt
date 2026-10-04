@@ -15,16 +15,18 @@ import kotlin.time.Instant
 private val IDLE_TIMEOUT = 5.minutes
 
 /**
- * Drops the key after 5 idle minutes. [recordActivity] restarts the timer
+ * Drops the key after [timeout] idle. [recordActivity] restarts the timer
  * from zero; the root composable calls it on every pointer event it sees.
  * [locksAt] is when the key drops if nothing else happens, null while stopped.
  */
 class IdleTimeoutController(
     private val scope: CoroutineScope,
     private val onIdle: () -> Unit,
-    val timeout: Duration = IDLE_TIMEOUT,
+    timeout: Duration = IDLE_TIMEOUT,
     private val clock: Clock = Clock.System,
 ) {
+    var timeout: Duration = timeout
+        private set
     private var job: Job? = null
     private var lastActivity: Instant? = null
     private val _locksAt = MutableStateFlow<Instant?>(null)
@@ -43,6 +45,16 @@ class IdleTimeoutController(
                 _locksAt.value = null
                 onIdle()
             }
+    }
+
+    /** A running timer restarts under the new value; a stopped one just keeps it for the next start. */
+    fun setTimeout(value: Duration) {
+        if (value == timeout) return
+        timeout = value
+        if (job?.isActive == true) {
+            lastActivity = null
+            recordActivity()
+        }
     }
 
     fun stop() {

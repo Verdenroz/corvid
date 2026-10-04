@@ -17,6 +17,7 @@ kotlin {
             implementation(projects.core.auth)
             implementation(projects.core.domain)
             implementation(projects.core.keyring)
+            implementation(projects.core.prefs)
             implementation(projects.core.data)
             implementation(projects.core.text)
             implementation(libs.compose.components.resources)

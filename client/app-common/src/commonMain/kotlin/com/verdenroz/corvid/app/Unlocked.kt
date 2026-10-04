@@ -61,6 +61,7 @@ import com.verdenroz.corvid.core.data.SenderRepository
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.model.ComposeIntent
+import com.verdenroz.corvid.core.prefs.DevicePreferences
 import com.verdenroz.corvid.core.ui.LocalBackGuard
 import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.core.ui.WIDE_LAYOUT
@@ -85,6 +86,7 @@ internal fun UnlockedContent(
     host: String,
     onLock: () -> Unit,
     idleTimeout: IdleTimeoutController = koinInject(),
+    preferences: DevicePreferences = koinInject(),
     scopeHolder: UnlockedScopeHolder = koinInject(),
 ) {
     val scope = scopeHolder.current()
@@ -95,6 +97,8 @@ internal fun UnlockedContent(
     val searches = remember(repository) { Searches(repository) }
     DisposableEffect(searches) { onDispose { searches.clear() } }
 
+    val autoLock = preferences.settings.collectAsState().value.autoLock.timeout
+    LaunchedEffect(autoLock) { idleTimeout.setTimeout(autoLock) }
     DisposableEffect(Unit) {
         idleTimeout.recordActivity()
         onDispose { idleTimeout.stop() }
@@ -126,7 +130,7 @@ internal fun UnlockedContent(
     val searchInput = SearchInput(typed, { typed = it }, { navigator.search(typed) }, searchFocus)
 
     val shellState by shell.state.collectAsState()
-    val key = remember(host, onLock) { KeyState(host, idleTimeout.locksAt, idleTimeout.timeout, onLock) }
+    val key = remember(host, autoLock, onLock) { KeyState(host, idleTimeout.locksAt, autoLock, onLock) }
     BoxWithConstraints(
         Modifier.fillMaxSize().pointerInput(Unit) {
             awaitPointerEventScope {

@@ -21,6 +21,7 @@ ktor = "3.5.2"
 kalinjulOidc = "0.18.3"
 tink = "1.23.0"
 jsoup = "1.23.2"
+datastore = "1.2.1"
 ktlint = "1.5.0"
 ktlintGradle = "12.1.2"
 
@@ -55,6 +56,7 @@ ktor-server-content-negotiation = { group = "io.ktor", name = "ktor-server-conte
 kalinjul-oidc-core = { group = "io.github.kalinjul.kotlin.multiplatform", name = "oidc-core", version.ref = "kalinjulOidc" }
 kalinjul-oidc-appsupport = { group = "io.github.kalinjul.kotlin.multiplatform", name = "oidc-appsupport", version.ref = "kalinjulOidc" }
 kalinjul-oidc-preferences = { group = "io.github.kalinjul.kotlin.multiplatform", name = "oidc-preferences", version.ref = "kalinjulOidc" }
+androidx-datastore-preferences-core = { group = "androidx.datastore", name = "datastore-preferences-core", version.ref = "datastore" }
 tink-android = { group = "com.google.crypto.tink", name = "tink-android", version.ref = "tink" }
 tink = { group = "com.google.crypto.tink", name = "tink", version.ref = "tink" }
 jsoup = { group = "org.jsoup", name = "jsoup", version.ref = "jsoup" }

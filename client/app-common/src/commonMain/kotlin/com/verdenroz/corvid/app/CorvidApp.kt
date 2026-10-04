@@ -1,5 +1,6 @@
 package com.verdenroz.corvid.app
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,6 +12,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import com.verdenroz.corvid.core.data.clockTime
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.prefs.DevicePreferences
+import com.verdenroz.corvid.core.prefs.ThemeChoice
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.ConnectingPane
 import com.verdenroz.corvid.core.ui.LockedPane
@@ -18,15 +21,26 @@ import com.verdenroz.corvid.core.ui.RevokedPane
 import com.verdenroz.corvid.core.ui.UnreachablePane
 import com.verdenroz.corvid.feature.signin.SignInScreen
 import kotlinx.datetime.TimeZone
+import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 import kotlin.time.Instant
 
 /** The lock gate: swaps every route for a pane per [AppLockState]. */
 @Composable
-fun CorvidApp(viewModel: AppLockViewModel = koinViewModel()) {
+fun CorvidApp(
+    viewModel: AppLockViewModel = koinViewModel(),
+    preferences: DevicePreferences = koinInject(),
+) {
     val state by viewModel.state.collectAsState()
+    val settings by preferences.settings.collectAsState()
+    val dark =
+        when (settings.theme) {
+            ThemeChoice.System -> isSystemInDarkTheme()
+            ThemeChoice.Light -> false
+            ThemeChoice.Dark -> true
+        }
 
-    CorvidTheme {
+    CorvidTheme(darkTheme = dark) {
         Box(modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             when (val current = state) {
                 is AppLockState.SignedOut -> SignInScreen()

@@ -6,6 +6,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.milliseconds
@@ -91,6 +92,33 @@ class IdleTimeoutControllerTest {
             controller.recordActivity()
 
             assertEquals(Instant.parse("2026-10-04T09:08:00Z"), controller.locksAt.value)
+        }
+
+    @Test
+    fun `a shorter timeout set mid-run fires on the new schedule`() =
+        runTest {
+            var idleCount = 0
+            val controller = IdleTimeoutController(backgroundScope, onIdle = { idleCount++ }, timeout = 5.minutes, clock = virtualClock())
+
+            controller.recordActivity()
+            advanceTimeBy(30.seconds)
+            controller.setTimeout(1.minutes)
+            advanceTimeBy(1.minutes + 1.seconds)
+
+            assertEquals(1, idleCount)
+        }
+
+    @Test
+    fun `a timeout set while stopped applies from the next start`() =
+        runTest {
+            val controller = IdleTimeoutController(backgroundScope, onIdle = {}, timeout = 5.minutes)
+
+            controller.setTimeout(15.minutes)
+            assertNull(controller.locksAt.value)
+            controller.recordActivity()
+
+            assertEquals(15.minutes, controller.timeout)
+            assertNotNull(controller.locksAt.value)
         }
 
     @Test
