@@ -62,6 +62,7 @@ echo "[2/6] directories and secrets"
 install -d -o "$STALWART_UID" -g "$STALWART_UID" -m 750 "$CORVID_DIR/stalwart" "$CORVID_DIR/data"
 install -d -m 700 "$CORVID_DIR/secrets"
 install -m 644 "$HERE/unbound.conf" "$CORVID_DIR/unbound.conf"
+install -m 644 "$HERE/Caddyfile" "$CORVID_DIR/Caddyfile"
 # The pod's uid writes update requests and reads status.json here; nothing else is its to touch.
 install -d -o "$STALWART_UID" -g "$STALWART_UID" -m 750 "$CORVID_DIR/update"
 ok "directories"
