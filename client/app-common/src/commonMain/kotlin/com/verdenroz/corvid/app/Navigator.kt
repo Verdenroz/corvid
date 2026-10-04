@@ -36,6 +36,16 @@ internal class Navigator(
         stack[stack.lastIndex] = route
     }
 
+    /** Searching from a search updates it in place; from anywhere else a non-blank query opens one. */
+    fun search(query: String) {
+        val text = query.trim()
+        val top = route
+        when {
+            top is Route.Search -> if (top.query != text) replace(Route.Search(text))
+            text.isNotEmpty() -> push(Route.Search(text))
+        }
+    }
+
     fun selectTab(tab: HomeTab) {
         stack[0] = Route.Home(tab)
     }

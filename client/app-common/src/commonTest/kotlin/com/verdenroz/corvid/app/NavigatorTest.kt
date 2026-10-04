@@ -64,4 +64,27 @@ class NavigatorTest {
         assertEquals(2, nav.depth)
         assertEquals(listOf<Any>(searchKey), holder.removed)
     }
+
+    @Test
+    fun `searching from a home tab opens a search and a blank query opens nothing`() {
+        val nav = navigator(RecordingHolder())
+
+        nav.search("  ")
+        assertEquals(1, nav.depth)
+        nav.search(" invoice ")
+
+        assertEquals(Route.Search("invoice"), nav.route)
+        assertEquals(2, nav.depth)
+    }
+
+    @Test
+    fun `searching again from a search replaces it, so one back leaves search`() {
+        val nav = navigator(RecordingHolder(), Route.Search("inv"))
+
+        nav.search("invoice")
+        nav.search("invoice")
+
+        assertEquals(Route.Search("invoice"), nav.route)
+        assertEquals(2, nav.depth)
+    }
 }

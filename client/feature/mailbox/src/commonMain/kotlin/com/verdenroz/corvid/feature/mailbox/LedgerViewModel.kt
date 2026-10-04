@@ -65,9 +65,14 @@ class LedgerViewModel(
         }
     }
 
-    private suspend fun filterOf(source: LedgerSource): MailFilter? {
-        if (source is LedgerSource.Search) return MailFilter.Search(source.query)
-        val role = (source as LedgerSource.Tab).tab.role ?: return MailFilter.Starred
+    private suspend fun filterOf(source: LedgerSource): MailFilter? =
+        when (source) {
+            is LedgerSource.Search -> MailFilter.Search(source.query)
+            is LedgerSource.Tab -> tabFilter(source.tab)
+        }
+
+    private suspend fun tabFilter(tab: LedgerTab): MailFilter? {
+        val role = tab.role ?: return MailFilter.Starred
         val id = repository.mailboxId(role)
         if (id == null) _state.value = LedgerUiState.Failed(uiText(Res.string.mailbox_no_mailbox, role))
         return id?.let(MailFilter::InMailbox)
