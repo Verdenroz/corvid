@@ -11,6 +11,6 @@ val dataModule =
         scope<UnlockedScopeMarker> {
             scoped { MailboxRepository(jmapClient = get()) }
             scoped { ComposeRepository(jmapClient = get()) }
-            scoped { FiltersRepository(jmapClient = get(), mailboxRepository = get()) }
+            scoped { FiltersRepository(jmapClient = get()) }
         }
     }

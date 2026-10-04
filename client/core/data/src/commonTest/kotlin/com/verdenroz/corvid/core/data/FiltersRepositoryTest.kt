@@ -34,7 +34,7 @@ private val RULE =
 
 private suspend fun repository(fake: FakeJmapServer): FiltersRepository {
     val client = JmapClient.connect(createJmapHttpClient(fake.engine), AuthLatch(), BASE_URL)
-    return FiltersRepository(client, MailboxRepository(client))
+    return FiltersRepository(client)
 }
 
 private fun FakeJmapServer.scriptText(name: String): String =
@@ -46,7 +46,21 @@ class FiltersRepositoryTest {
         runTest {
             val loaded = repository(FakeJmapServer()).load()
 
-            assertEquals(FilterSet(emptyList(), null), loaded)
+            assertEquals(FilterSet(emptyList(), null, emptyList()), loaded)
+        }
+
+    @Test
+    fun `scripts and folders load in a single request`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "m1", name = "Work")
+            val repository = repository(fake)
+            val before = fake.requestCount
+
+            val loaded = repository.load()
+
+            assertEquals(1, fake.requestCount - before)
+            assertEquals(listOf(MailboxRef("m1", listOf("Work"))), loaded.folders)
         }
 
     @Test
@@ -182,7 +196,7 @@ class FiltersRepositoryTest {
                     MailboxRef("m2", listOf("Finance", "Receipts")),
                     MailboxRef("m3", listOf("Receipts")),
                 ),
-                repository(fake).folders(),
+                repository(fake).load().folders,
             )
         }
 

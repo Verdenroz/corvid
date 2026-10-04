@@ -10,8 +10,6 @@ import com.verdenroz.corvid.core.model.EmailAddress
 import com.verdenroz.corvid.core.model.EmailDetail
 import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.core.model.Mailbox
-import com.verdenroz.corvid.core.model.MailboxRef
-import com.verdenroz.corvid.core.model.refs
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -57,8 +55,6 @@ sealed interface EmailLookup {
 class MailboxRepository(private val jmapClient: JmapClient) {
     suspend fun mailboxes(): List<Mailbox> =
         jmapClient.callOne("Mailbox/get", JsonObject(emptyMap())).getValue("list").jsonArray.map { it.jsonObject.toMailbox() }
-
-    suspend fun folders(): List<MailboxRef> = mailboxes().refs()
 
     suspend fun findMailboxByRole(role: String): Mailbox? = mailboxes().firstOrNull { it.role == role }
 
@@ -116,7 +112,7 @@ class MailboxRepository(private val jmapClient: JmapClient) {
     }
 }
 
-private fun JsonObject.toMailbox() =
+internal fun JsonObject.toMailbox() =
     Mailbox(
         id = getValue("id").jsonPrimitive.content,
         name = getValue("name").jsonPrimitive.content,

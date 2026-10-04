@@ -1,7 +1,6 @@
 package com.verdenroz.corvid.feature.filters
 
 import com.verdenroz.corvid.core.data.FiltersRepository
-import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.jmap.AuthLatch
 import com.verdenroz.corvid.core.jmap.JmapClient
 import com.verdenroz.corvid.core.jmap.createJmapHttpClient
@@ -39,7 +38,7 @@ private fun rule(
 
 private suspend fun repository(fake: FakeJmapServer): FiltersRepository {
     val client = JmapClient.connect(createJmapHttpClient(fake.engine), AuthLatch(), BASE_URL)
-    return FiltersRepository(client, MailboxRepository(client))
+    return FiltersRepository(client)
 }
 
 private suspend fun ViewModelTestScope.viewModel(fake: FakeJmapServer): FiltersViewModel =

@@ -4,7 +4,11 @@ import com.verdenroz.corvid.core.jmap.JmapClient
 import com.verdenroz.corvid.core.model.FilterRule
 import com.verdenroz.corvid.core.model.MailboxRef
 
-data class FilterSet(val rules: List<FilterRule>, val foreignActiveScript: String?)
+data class FilterSet(
+    val rules: List<FilterRule>,
+    val foreignActiveScript: String?,
+    val folders: List<MailboxRef>,
+)
 
 sealed interface SaveResult {
     data object Saved : SaveResult
@@ -16,15 +20,10 @@ sealed interface SaveResult {
     data class Rejected(val reason: String) : SaveResult
 }
 
-class FiltersRepository(
-    jmapClient: JmapClient,
-    private val mailboxRepository: MailboxRepository,
-) {
-    private val store = SieveScriptStore(jmapClient, mailboxRepository)
+class FiltersRepository(jmapClient: JmapClient) {
+    private val store = SieveScriptStore(jmapClient)
 
-    suspend fun load(): FilterSet = store.load().let { FilterSet(it.script.rules, it.foreignActiveScript) }
-
-    suspend fun folders(): List<MailboxRef> = mailboxRepository.folders()
+    suspend fun load(): FilterSet = store.load().let { FilterSet(it.script.rules, it.foreignActiveScript, it.folders) }
 
     suspend fun save(
         rules: List<FilterRule>,

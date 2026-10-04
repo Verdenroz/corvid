@@ -59,7 +59,7 @@ class FiltersViewModel(private val repository: FiltersRepository) : ViewModel() 
         _state.value =
             try {
                 val set = repository.load()
-                FiltersUiState.Ready(set.rules, repository.folders(), foreignScript = set.foreignActiveScript)
+                FiltersUiState.Ready(set.rules, set.folders, foreignScript = set.foreignActiveScript)
             } catch (e: FiltersFormatException) {
                 FiltersUiState.Failed(e.message.orEmpty())
             } catch (e: JmapException) {
