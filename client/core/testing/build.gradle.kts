@@ -1,5 +1,6 @@
 plugins {
     id("corvid.kmp.library")
+    id("corvid.compose.multiplatform")
     alias(libs.plugins.kotlin.serialization)
 }
 
@@ -15,6 +16,11 @@ kotlin {
             api(libs.jetbrains.lifecycle.viewmodel)
             implementation(libs.ktor.client.core)
             implementation(libs.kotlinx.serialization.json)
+        }
+        desktopMain.dependencies {
+            api(libs.compose.components.resources)
+            implementation(libs.compose.ui.test)
+            implementation(org.jetbrains.compose.ComposePlugin.DesktopDependencies.currentOs)
         }
     }
 }
