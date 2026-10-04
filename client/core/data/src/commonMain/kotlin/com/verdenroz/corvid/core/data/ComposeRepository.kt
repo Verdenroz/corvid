@@ -5,6 +5,9 @@ import com.verdenroz.corvid.core.jmap.JmapClient
 import com.verdenroz.corvid.core.jmap.JmapError
 import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.jmap.MethodOutcome
+import com.verdenroz.corvid.core.jmap.callOne
+import com.verdenroz.corvid.core.jmap.reason
+import com.verdenroz.corvid.core.jmap.setErrorReason
 import com.verdenroz.corvid.core.model.Draft
 import com.verdenroz.corvid.core.model.Identity
 import kotlinx.serialization.json.JsonArray
@@ -42,9 +45,8 @@ class ComposeRepository(
     private val mailboxes: MailboxRepository,
 ) {
     suspend fun identity(): Identity {
-        val outcome = jmapClient.call(listOf(Invocation("Identity/get", JsonObject(emptyMap()), "c0"))).getValue("c0")
         val first =
-            outcome.resultOrThrow().getValue("list").jsonArray.firstOrNull()?.jsonObject
+            jmapClient.callOne("Identity/get", JsonObject(emptyMap())).getValue("list").jsonArray.firstOrNull()?.jsonObject
                 ?: throw JmapException(JmapError.Request(type = "noIdentity", detail = "This account has no sending identity."))
         return Identity(
             id = first.getValue("id").jsonPrimitive.content,
@@ -73,7 +75,7 @@ class ComposeRepository(
 
     private suspend fun destroyDraft(emailId: String) {
         val arguments = buildJsonObject { putJsonArray("destroy") { add(JsonPrimitive(emailId)) } }
-        jmapClient.call(listOf(Invocation("Email/set", arguments, "c0"))).getValue("c0").resultOrThrow()
+        jmapClient.callOne("Email/set", arguments)
     }
 
     private suspend fun mailboxId(role: String): String =
@@ -151,17 +153,12 @@ private fun formatAddress(identity: Identity) = formatAddress(identity.name.ifEm
 private fun Map<String, MethodOutcome>.rejection(): String? {
     val email = getValue("c0")
     val submission = getValue("c1")
-    if (email is MethodOutcome.Failure) return email.error.let { it.description ?: it.type }
-    (email as MethodOutcome.Success).result.refusal("draft")?.let { return it }
-    if (submission is MethodOutcome.Failure) return submission.error.let { it.description ?: it.type }
-    return (submission as MethodOutcome.Success).result.refusal("submission")
+    if (email is MethodOutcome.Failure) return email.error.reason
+    (email as MethodOutcome.Success).result.setErrorReason("notCreated", "draft")?.let { return it }
+    if (submission is MethodOutcome.Failure) return submission.error.reason
+    return (submission as MethodOutcome.Success).result.setErrorReason("notCreated", "submission")
 }
 
 private fun Map<String, MethodOutcome>.createdDraftId(): String? =
     (getValue("c0") as? MethodOutcome.Success)?.result?.get("created")?.jsonObject?.get("draft")?.jsonObject
         ?.get("id")?.jsonPrimitive?.content
-
-private fun JsonObject.refusal(creationId: String): String? {
-    val problem = get("notCreated")?.jsonObject?.get(creationId)?.jsonObject ?: return null
-    return problem["description"]?.jsonPrimitive?.contentOrNull ?: problem.getValue("type").jsonPrimitive.content
-}

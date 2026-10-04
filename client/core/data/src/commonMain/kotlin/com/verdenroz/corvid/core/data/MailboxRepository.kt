@@ -2,8 +2,9 @@ package com.verdenroz.corvid.core.data
 
 import com.verdenroz.corvid.core.jmap.Invocation
 import com.verdenroz.corvid.core.jmap.JmapClient
-import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.jmap.MethodOutcome
+import com.verdenroz.corvid.core.jmap.callOne
+import com.verdenroz.corvid.core.jmap.resultOrThrow
 import com.verdenroz.corvid.core.jmap.resultReference
 import com.verdenroz.corvid.core.model.EmailDetail
 import com.verdenroz.corvid.core.model.EmailSummary
@@ -52,7 +53,7 @@ sealed interface EmailLookup {
  */
 class MailboxRepository(private val jmapClient: JmapClient) {
     suspend fun findMailboxByRole(role: String): Mailbox? {
-        val result = call("Mailbox/get", JsonObject(emptyMap()))
+        val result = jmapClient.callOne("Mailbox/get", JsonObject(emptyMap()))
         return result.getValue("list").jsonArray
             .map { it.jsonObject.toMailbox() }
             .firstOrNull { it.role == role }
@@ -106,22 +107,11 @@ class MailboxRepository(private val jmapClient: JmapClient) {
                 put("fetchTextBodyValues", true)
                 put("maxBodyValueBytes", MAX_BODY_VALUE_BYTES)
             }
-        val result = call("Email/get", arguments)
+        val result = jmapClient.callOne("Email/get", arguments)
         if (result.getValue("notFound").jsonArray.isNotEmpty()) return EmailLookup.NotFound
         return EmailLookup.Found(result.getValue("list").jsonArray.first().jsonObject.toEmailDetail())
     }
-
-    private suspend fun call(
-        method: String,
-        arguments: JsonObject,
-    ): JsonObject = jmapClient.call(listOf(Invocation(method, arguments, "c0"))).getValue("c0").resultOrThrow()
 }
-
-internal fun MethodOutcome.resultOrThrow(): JsonObject =
-    when (this) {
-        is MethodOutcome.Success -> result
-        is MethodOutcome.Failure -> throw JmapException(error)
-    }
 
 private fun JsonObject.toMailbox() =
     Mailbox(
