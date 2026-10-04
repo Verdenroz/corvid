@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.core.data.EmailPage
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.jmap.JmapException
+import com.verdenroz.corvid.core.jmap.userMessage
 import com.verdenroz.corvid.core.model.EmailSummary
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -44,7 +45,7 @@ class InboxViewModel(private val repository: MailboxRepository) : ViewModel() {
             mailboxId = inbox.id
             loadPage(anchor = null)
         } catch (e: JmapException) {
-            _state.value = InboxUiState.Failed("could not reach the server")
+            _state.value = InboxUiState.Failed(e.userMessage())
         }
     }
 
@@ -65,7 +66,7 @@ class InboxViewModel(private val repository: MailboxRepository) : ViewModel() {
                 }
             }
         } catch (e: JmapException) {
-            _state.value = InboxUiState.Failed("could not reach the server")
+            _state.value = InboxUiState.Failed(e.userMessage())
         }
     }
 

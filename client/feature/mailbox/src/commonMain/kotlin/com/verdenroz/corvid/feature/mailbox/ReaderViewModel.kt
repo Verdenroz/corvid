@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.core.data.EmailLookup
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.jmap.JmapException
+import com.verdenroz.corvid.core.jmap.userMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -24,7 +25,7 @@ class ReaderViewModel(
                     is EmailLookup.Found -> _state.value = ReaderUiState.Loaded(lookup.detail)
                 }
             } catch (e: JmapException) {
-                _state.value = ReaderUiState.Failed("could not reach the server")
+                _state.value = ReaderUiState.Failed(e.userMessage())
             }
         }
     }

@@ -10,6 +10,8 @@ kotlin {
         commonMain.dependencies {
             api(projects.core.jmap)
             api(libs.ktor.client.mock)
+            api(libs.kotlinx.coroutines.test)
+            api(libs.jetbrains.lifecycle.viewmodel)
             implementation(libs.ktor.client.core)
             implementation(libs.kotlinx.serialization.json)
         }

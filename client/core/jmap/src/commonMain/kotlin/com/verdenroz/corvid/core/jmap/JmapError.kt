@@ -33,5 +33,7 @@ sealed interface JmapError {
 
 class JmapException(val error: JmapError) : Exception()
 
+fun JmapException.userMessage(): String = "could not reach the server"
+
 /** The session response itself is unusable: not an outcome [JmapError] models, since no retry fixes it. */
 class JmapSessionException(message: String) : Exception(message)

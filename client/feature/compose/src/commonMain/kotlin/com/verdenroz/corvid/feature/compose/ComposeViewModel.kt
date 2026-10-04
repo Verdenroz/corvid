@@ -7,6 +7,7 @@ import com.verdenroz.corvid.core.data.SendResult
 import com.verdenroz.corvid.core.data.SendUnavailable
 import com.verdenroz.corvid.core.data.StartResult
 import com.verdenroz.corvid.core.jmap.JmapException
+import com.verdenroz.corvid.core.jmap.userMessage
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.model.Draft
 import com.verdenroz.corvid.core.model.parseAddresses
@@ -30,7 +31,7 @@ class ComposeViewModel(
                         is SendUnavailable -> ComposeUiState.Failed(start.message())
                     }
             } catch (e: JmapException) {
-                _state.value = ComposeUiState.Failed("could not reach the server")
+                _state.value = ComposeUiState.Failed(e.userMessage())
             }
         }
     }
@@ -57,7 +58,7 @@ class ComposeViewModel(
                     is SendUnavailable -> fail(result.message())
                 }
             } catch (e: JmapException) {
-                fail("could not reach the server")
+                fail(e.userMessage())
             }
         }
     }

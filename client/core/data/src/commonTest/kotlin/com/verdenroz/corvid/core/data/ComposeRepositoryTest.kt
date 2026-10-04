@@ -8,9 +8,10 @@ import com.verdenroz.corvid.core.model.Draft
 import com.verdenroz.corvid.core.model.EmailAddress
 import com.verdenroz.corvid.core.model.EmailDetail
 import com.verdenroz.corvid.core.testing.FakeEmail
-import com.verdenroz.corvid.core.testing.FakeIdentity
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.FakeMailbox
+import com.verdenroz.corvid.core.testing.SENDABLE_ACCOUNT_EMAIL
+import com.verdenroz.corvid.core.testing.withSendableAccount
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -18,14 +19,11 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 private const val BASE_URL = "http://127.0.0.1:9999"
-private const val OWN = "verde@example.test"
+private const val OWN = SENDABLE_ACCOUNT_EMAIL
 
 private fun server(): FakeJmapServer {
-    val fake = FakeJmapServer()
+    val fake = FakeJmapServer().withSendableAccount()
     fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
-    fake.mailboxes += FakeMailbox(id = "drafts", name = "Drafts", role = "drafts")
-    fake.mailboxes += FakeMailbox(id = "sent", name = "Sent", role = "sent")
-    fake.identities += FakeIdentity(id = "i1", email = OWN, name = "Verde")
     fake.emails +=
         FakeEmail(
             id = "orig",

@@ -1,6 +1,5 @@
 package com.verdenroz.corvid.feature.mailbox
 
-import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.jmap.AuthLatch
 import com.verdenroz.corvid.core.jmap.JmapClient
@@ -8,18 +7,8 @@ import com.verdenroz.corvid.core.jmap.createJmapHttpClient
 import com.verdenroz.corvid.core.testing.FakeEmail
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.FakeMailbox
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.cancel
+import com.verdenroz.corvid.core.testing.runViewModelTest
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.job
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.resetMain
-import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.setMain
-import kotlin.test.AfterTest
-import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -28,25 +17,7 @@ import kotlin.time.Instant
 private const val BASE_URL = "http://127.0.0.1:9999"
 private const val EMAIL_COUNT = 60
 
-@OptIn(ExperimentalCoroutinesApi::class)
 class InboxViewModelTest {
-    // Same reasoning as AppLockViewModelTest: viewModelScope resolves to
-    // Dispatchers.Main, structurally unrelated to runTest's own scheduler.
-    private val testDispatcher = UnconfinedTestDispatcher()
-    private var viewModel: InboxViewModel? = null
-
-    @BeforeTest
-    fun setMain() = Dispatchers.setMain(testDispatcher)
-
-    @AfterTest
-    fun resetMain() {
-        viewModel?.viewModelScope?.let { scope ->
-            scope.cancel()
-            runBlocking { scope.coroutineContext.job.join() }
-        }
-        Dispatchers.resetMain()
-    }
-
     private suspend fun repository(fake: FakeJmapServer): MailboxRepository {
         val client = JmapClient.connect(createJmapHttpClient(fake.engine), AuthLatch(), BASE_URL)
         return MailboxRepository(client)
@@ -54,7 +25,7 @@ class InboxViewModelTest {
 
     @Test
     fun `a message moved out of the Inbox mid-scroll restarts the list`() =
-        runTest(testDispatcher) {
+        runViewModelTest {
             val fake = FakeJmapServer()
             fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
             repeat(EMAIL_COUNT) { i ->
@@ -68,7 +39,7 @@ class InboxViewModelTest {
                         receivedAt = Instant.fromEpochSeconds((EMAIL_COUNT - i).toLong()).toString(),
                     )
             }
-            val vm = InboxViewModel(repository(fake)).also { viewModel = it }
+            val vm = track(InboxViewModel(repository(fake)))
 
             val firstPage = vm.state.first { it is InboxUiState.Loaded } as InboxUiState.Loaded
             assertEquals(50, firstPage.emails.size)
