@@ -254,7 +254,7 @@ cloudflare() {
   local token="$1"; shift
   { if [[ -n "$token" ]]; then printf '%s\n' "$token"; else on_host 'cat /opt/corvid/secrets/cloudflare.token'; echo; fi
     printf '%s' "${CLOUDFLARE_STDIN:-}"; } |
-    on_host "python3 -c 'import base64; exec(base64.b64decode(\"$CLOUDFLARE_PY\"))' $*"
+    on_host "python3 -c 'import base64; exec(base64.b64decode(\"$CLOUDFLARE_PY\"))' $(printf '%q ' "$@")"
 }
 CLOUDFLARE_PY="$(base64 < "$HERE/deploy/cloudflare.py" | tr -d '\n')"
 # Prints "ZONE ZONE_ID DOMAIN_ID": the editable zone holding the hostname, and the mail domain's
