@@ -7,7 +7,6 @@ import com.verdenroz.corvid.core.model.ComposeIntent
 
 /** A screen on the unlocked back stack; the last entry is the one showing. */
 sealed interface Route {
-    /** The tabbed home: one of the ledgers, or a view that is not built yet. */
     data class Home(val tab: HomeTab) : Route
 
     data class Reader(val emailId: String) : Route

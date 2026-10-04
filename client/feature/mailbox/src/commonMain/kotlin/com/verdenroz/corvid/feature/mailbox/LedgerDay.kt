@@ -13,7 +13,6 @@ data class LedgerDay(
     val emails: List<EmailSummary>,
 )
 
-/** Groups a newest-first list into calendar days in [zone], keeping the list's own order. */
 fun ledgerDays(
     emails: List<EmailSummary>,
     zone: TimeZone,

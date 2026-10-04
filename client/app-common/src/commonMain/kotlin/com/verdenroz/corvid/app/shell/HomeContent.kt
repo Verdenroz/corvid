@@ -27,7 +27,6 @@ import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.feature.mailbox.LedgerScreen
 import org.jetbrains.compose.resources.stringResource
 
-/** A ledger for the mail tabs, a plain statement for the views not built yet, and Write floating over both. */
 @Composable
 internal fun HomeContent(
     tab: HomeTab,

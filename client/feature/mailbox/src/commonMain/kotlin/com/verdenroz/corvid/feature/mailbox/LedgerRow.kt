@@ -40,7 +40,6 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
 
-/** [wide] lays the row out in columns; narrow stacks the sender over the subject, as on a phone. */
 @Composable
 internal fun LedgerRow(
     email: EmailSummary,

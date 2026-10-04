@@ -13,7 +13,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 
-/** How much of the idle window is left before the key drops, drawn clockwise from the top in the feather's sheen. */
 @Composable
 fun KeyRing(
     fraction: Float,

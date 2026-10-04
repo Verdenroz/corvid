@@ -46,7 +46,6 @@ internal fun rememberRemaining(locksAt: Instant?): Duration? {
     return remaining
 }
 
-/** The pill in the wide top bar: ring, host, and when the key drops. Tapping it locks now. */
 @Composable
 internal fun KeyPill(
     host: String,
@@ -71,7 +70,6 @@ internal fun KeyPill(
     }
 }
 
-/** The narrow layout's ring alone, as an icon button that locks. */
 @Composable
 internal fun KeyRingButton(
     remaining: Duration,

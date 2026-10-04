@@ -49,7 +49,7 @@ internal fun Wordmark() {
     }
 }
 
-/** Wordmark, a search field that is drawn but not wired yet, the key pill and the account. */
+/** The search field is drawn but not wired yet. */
 @Composable
 internal fun WideTopBar(
     key: KeyState,
@@ -72,7 +72,6 @@ internal fun WideTopBar(
     }
 }
 
-/** The phone header: wordmark, search, the ring as a lock button, then the key's status on its own line. */
 @Composable
 internal fun NarrowTopBar(key: KeyState) {
     val colors = CorvidTheme.colors

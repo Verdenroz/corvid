@@ -77,7 +77,6 @@ fun clockTime(
     minute: Int,
 ): UiText = uiText(Res.string.clock_time, hour.twoDigits(), minute.twoDigits())
 
-/** The ledger's sticky header for [day]: a [title] in the display face and a quieter [detail]. */
 data class DayHeading(
     val title: UiText,
     val detail: UiText,
