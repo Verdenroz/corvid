@@ -28,43 +28,20 @@ import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
-import com.verdenroz.corvid.core.model.CorvidKeywords
 import com.verdenroz.corvid.core.model.EmailDetail
 import com.verdenroz.corvid.core.model.Label
-import com.verdenroz.corvid.core.model.Rewrite
 import com.verdenroz.corvid.core.model.Seal
+import com.verdenroz.corvid.core.model.labels
+import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.provenance.LabelChip
 import com.verdenroz.corvid.feature.mailbox.resources.Res
-import com.verdenroz.corvid.feature.mailbox.resources.custody_by_labeler
-import com.verdenroz.corvid.feature.mailbox.resources.custody_by_rule
-import com.verdenroz.corvid.feature.mailbox.resources.custody_by_you
-import com.verdenroz.corvid.feature.mailbox.resources.custody_claims_signed_by
-import com.verdenroz.corvid.feature.mailbox.resources.custody_claims_unsigned
-import com.verdenroz.corvid.feature.mailbox.resources.custody_dmarc_failed
-import com.verdenroz.corvid.feature.mailbox.resources.custody_dmarc_passed
-import com.verdenroz.corvid.feature.mailbox.resources.custody_guess
-import com.verdenroz.corvid.feature.mailbox.resources.custody_images_proxied
 import com.verdenroz.corvid.feature.mailbox.resources.custody_labelled
-import com.verdenroz.corvid.feature.mailbox.resources.custody_links_disabled
-import com.verdenroz.corvid.feature.mailbox.resources.custody_no_trackers
-import com.verdenroz.corvid.feature.mailbox.resources.custody_not_authenticated
 import com.verdenroz.corvid.feature.mailbox.resources.custody_nothing
 import com.verdenroz.corvid.feature.mailbox.resources.custody_sender
-import com.verdenroz.corvid.feature.mailbox.resources.custody_signed
-import com.verdenroz.corvid.feature.mailbox.resources.custody_signed_by
-import com.verdenroz.corvid.feature.mailbox.resources.custody_skipped
-import com.verdenroz.corvid.feature.mailbox.resources.custody_skipped_detail
-import com.verdenroz.corvid.feature.mailbox.resources.custody_trackers_removed
-import com.verdenroz.corvid.feature.mailbox.resources.custody_unsigned
-import com.verdenroz.corvid.feature.mailbox.resources.custody_unsigned_detail
 import com.verdenroz.corvid.feature.mailbox.resources.custody_way_in
-import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
-/**
- * Who sent it, what happened on the way in and who labelled it, side by side when [wide]. A
- * message the milter never saw has no middle cell: a missing header is not a clean message.
- */
+/** Who sent it, what happened on the way in and who labelled it, side by side when [wide]. */
 @Composable
 internal fun Custody(
     email: EmailDetail,
@@ -72,134 +49,66 @@ internal fun Custody(
     teach: @Composable (Label.Guess) -> Unit,
 ) {
     val colors = CorvidTheme.colors
-    val bad = email.provenance.suspect
-    val edge = if (bad) SolidColor(colors.danger) else CorvidTheme.sheen
-    val cells =
-        buildList<@Composable (Modifier) -> Unit> {
-            add { SenderCell(email.provenance.seal, it.then(if (bad) Modifier.background(colors.dangerSoft) else Modifier)) }
-            email.provenance.rewrite?.let { rewrite -> add { WayInCell(rewrite, bad, it) } }
-            add { LabelledCell(email.keywords.mapNotNull(CorvidKeywords::labelOf), teach, it) }
-        }
+    val edge = if (email.provenance.suspect) SolidColor(colors.danger) else CorvidTheme.sheen
+    val cells = custodyCells(email.provenance, email.labels)
     val frame = Modifier.fillMaxWidth().clip(CorvidShape.medium).border(1.dp, edge, CorvidShape.medium)
     if (wide) {
         Row(frame.height(IntrinsicSize.Min)) {
             cells.forEachIndexed { index, cell ->
                 if (index > 0) VerticalDivider(color = colors.line)
-                cell(Modifier.weight(1f).fillMaxHeight())
+                CustodyCellView(cell, teach, Modifier.weight(1f).fillMaxHeight())
             }
         }
     } else {
         Column(frame) {
             cells.forEachIndexed { index, cell ->
                 if (index > 0) HorizontalDivider(color = colors.line)
-                cell(Modifier.fillMaxWidth())
+                CustodyCellView(cell, teach, Modifier.fillMaxWidth())
             }
         }
     }
 }
 
 @Composable
-private fun SenderCell(
-    seal: Seal,
+private fun CustodyCellView(
+    cell: CustodyCell,
+    teach: @Composable (Label.Guess) -> Unit,
     modifier: Modifier,
 ) {
-    when (seal) {
-        is Seal.Signed ->
+    when (cell) {
+        is CustodyCell.Sender ->
             Cell(
-                CorvidIcons.Seal,
+                if (cell.danger) CorvidIcons.Alert else CorvidIcons.Seal,
                 stringResource(Res.string.custody_sender),
-                seal.signer?.let { stringResource(Res.string.custody_signed_by, it) } ?: stringResource(Res.string.custody_signed),
-                stringResource(Res.string.custody_dmarc_passed),
-                modifier,
+                cell.value.asString(),
+                cell.detail.asString(),
+                if (cell.danger) modifier.background(CorvidTheme.colors.dangerSoft) else modifier,
+                cell.danger,
             )
-        is Seal.Failed -> {
-            val claimed = seal.claimed
-            val signedBy = seal.signedBy
-            val detail =
-                when {
-                    claimed != null && signedBy != null -> stringResource(Res.string.custody_claims_signed_by, claimed, signedBy)
-                    claimed != null -> stringResource(Res.string.custody_claims_unsigned, claimed)
-                    else -> stringResource(Res.string.custody_dmarc_failed)
-                }
-            Cell(
-                CorvidIcons.Alert,
-                stringResource(Res.string.custody_sender),
-                stringResource(Res.string.custody_not_authenticated),
-                detail,
-                modifier,
-                CorvidTheme.colors.onDangerSoft,
-            )
-        }
-        is Seal.Unsigned ->
-            Cell(
-                CorvidIcons.Seal,
-                stringResource(Res.string.custody_sender),
-                stringResource(Res.string.custody_unsigned),
-                stringResource(Res.string.custody_unsigned_detail),
-                modifier,
-            )
-    }
-}
-
-@Composable
-private fun WayInCell(
-    rewrite: Rewrite,
-    bad: Boolean,
-    modifier: Modifier,
-) {
-    val title = stringResource(Res.string.custody_way_in)
-    val links = stringResource(Res.string.custody_links_disabled).takeIf { bad }
-    when (rewrite) {
-        is Rewrite.Clean -> Cell(CorvidIcons.Eye, title, stringResource(Res.string.custody_no_trackers), links, modifier)
-        is Rewrite.Skipped ->
-            Cell(
-                CorvidIcons.Eye,
-                title,
-                stringResource(Res.string.custody_skipped),
-                links ?: stringResource(Res.string.custody_skipped_detail),
-                modifier,
-            )
-        is Rewrite.Stripped -> {
-            val value =
-                if (rewrite.stripped > 0) {
-                    pluralStringResource(Res.plurals.custody_trackers_removed, rewrite.stripped, rewrite.stripped)
-                } else {
-                    stringResource(Res.string.custody_no_trackers)
-                }
-            val proxied = rewrite.proxied.takeIf { it > 0 }?.let { pluralStringResource(Res.plurals.custody_images_proxied, it, it) }
-            Cell(CorvidIcons.Eye, title, value, links ?: proxied, modifier)
-        }
+        is CustodyCell.WayIn ->
+            Cell(CorvidIcons.Eye, stringResource(Res.string.custody_way_in), cell.value.asString(), cell.detail?.asString(), modifier)
+        is CustodyCell.Labelled -> LabelledCell(cell, teach, modifier)
     }
 }
 
 @Composable
 private fun LabelledCell(
-    labels: List<Label>,
+    cell: CustodyCell.Labelled,
     teach: @Composable (Label.Guess) -> Unit,
     modifier: Modifier,
 ) {
     val colors = CorvidTheme.colors
-    val guess = labels.filterIsInstance<Label.Guess>().firstOrNull()
-    val attribution =
-        when {
-            guess != null -> stringResource(Res.string.custody_guess)
-            labels.isEmpty() -> null
-            labels.all { it is Label.Rule } -> stringResource(Res.string.custody_by_rule)
-            labels.all { it is Label.Labeler } -> stringResource(Res.string.custody_by_labeler)
-            labels.all { it is Label.Yours } -> stringResource(Res.string.custody_by_you)
-            else -> null
-        }
     Column(modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Key(CorvidIcons.Tag, stringResource(Res.string.custody_labelled), colors.inkFaint)
-        if (labels.isEmpty()) {
+        if (cell.labels.isEmpty()) {
             Value(stringResource(Res.string.custody_nothing), colors.ink)
         } else {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                labels.sortedBy { it.name }.forEach { LabelChip(it) }
+                cell.labels.forEach { LabelChip(it) }
             }
         }
-        attribution?.let { Text(it, style = CorvidTheme.type.meta, color = colors.inkMuted) }
-        guess?.let { teach(it) }
+        cell.attribution?.let { Text(it.asString(), style = CorvidTheme.type.meta, color = colors.inkMuted) }
+        cell.guess?.let { teach(it) }
     }
 }
 
@@ -210,13 +119,14 @@ private fun Cell(
     value: String,
     detail: String?,
     modifier: Modifier,
-    tint: Color = CorvidTheme.colors.ink,
+    danger: Boolean = false,
 ) {
     val colors = CorvidTheme.colors
+    val ink = if (danger) colors.onDangerSoft else colors.ink
     Column(modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Key(icon, title, if (tint == colors.ink) colors.inkFaint else tint)
-        Value(value, tint)
-        detail?.let { Text(it, style = CorvidTheme.type.meta, color = if (tint == colors.ink) colors.inkMuted else tint) }
+        Key(icon, title, if (danger) ink else colors.inkFaint)
+        Value(value, ink)
+        detail?.let { Text(it, style = CorvidTheme.type.meta, color = if (danger) ink else colors.inkMuted) }
     }
 }
 

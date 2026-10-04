@@ -43,10 +43,10 @@ import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.designsystem.component.PrimaryButton
 import com.verdenroz.corvid.core.model.ComposeIntent
-import com.verdenroz.corvid.core.model.CorvidKeywords
 import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.core.model.Seal
 import com.verdenroz.corvid.core.model.SenderKind
+import com.verdenroz.corvid.core.model.labels
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.provenance.LabelChip
 import com.verdenroz.corvid.core.ui.provenance.SenderAvatar
@@ -237,7 +237,7 @@ private fun FactCell(
     val colors = CorvidTheme.colors
     Column(modifier.padding(horizontal = CorvidSpacing.gutter(wide), vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(stringResource(fact.key).uppercase(), style = CorvidTheme.type.label, color = colors.inkFaint)
-        val labels = fact.labels?.keywords?.mapNotNull(CorvidKeywords::labelOf)
+        val labels = fact.labels?.labels
         when {
             labels != null && labels.isNotEmpty() ->
                 FlowRow(

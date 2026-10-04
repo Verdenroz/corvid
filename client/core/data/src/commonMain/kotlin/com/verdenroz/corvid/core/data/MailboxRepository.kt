@@ -74,7 +74,8 @@ sealed interface EmailLookup {
  * is stateless across pages.
  */
 class MailboxRepository(private val jmapClient: JmapClient) {
-    private val mutex = Mutex()
+    private val identityLock = Mutex()
+    private val rolesLock = Mutex()
     private var identity: KnownIdentity? = null
     private var roleIds: Map<String, String>? = null
     private val _keywordPatches = MutableSharedFlow<KeywordPatch>(extraBufferCapacity = 16)
@@ -90,7 +91,7 @@ class MailboxRepository(private val jmapClient: JmapClient) {
 
     /** The id of the mailbox with [role], fetched once: roles do not move while the app is open. */
     suspend fun mailboxId(role: String): String? =
-        mutex.withLock {
+        rolesLock.withLock {
             val ids = roleIds ?: mailboxes().mapNotNull { box -> box.role?.let { it to box.id } }.toMap().also { roleIds = it }
             ids[role]
         }
@@ -191,7 +192,7 @@ class MailboxRepository(private val jmapClient: JmapClient) {
 
     /** The account's first identity, fetched once: who the account avatar is, and which senders are its own server. */
     suspend fun identity(): Identity? =
-        mutex.withLock {
+        identityLock.withLock {
             (identity ?: KnownIdentity(fetchIdentity()).also { identity = it }).identity
         }
 

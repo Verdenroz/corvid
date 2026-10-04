@@ -45,6 +45,13 @@ class CorvidKeywordsTest {
     }
 
     @Test
+    fun `a message's labels drop the bookkeeping and read in name order`() {
+        val keywords = setOf("\$seen", "corvid-llm-done", "receipts", "corvid-llm-label-bills", "corvid-rule-ops")
+
+        assertEquals(listOf(Label.Guess("bills"), Label.Rule("ops"), Label.Yours("receipts")), labelsOf(keywords))
+    }
+
+    @Test
     fun `a label the user types becomes their own keyword`() {
         assertEquals("tax-2026", CorvidKeywords.userKeyword(" Tax 2026 "))
     }

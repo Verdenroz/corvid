@@ -44,6 +44,13 @@ object CorvidKeywords {
         }
 }
 
+/** The labels among [keywords] in name order; flags and Corvid's bookkeeping are not labels. */
+fun labelsOf(keywords: Set<String>): List<Label> = keywords.mapNotNull(CorvidKeywords::labelOf).sortedBy { it.name }
+
+val EmailSummary.labels: List<Label> get() = labelsOf(keywords)
+
+val EmailDetail.labels: List<Label> get() = labelsOf(keywords)
+
 /** A label and who set it: the user, the labeler's per-sender prior, the model, or a filter. */
 sealed interface Label {
     val name: String

@@ -23,6 +23,7 @@ import com.verdenroz.corvid.appcommon.resources.Res
 import com.verdenroz.corvid.appcommon.resources.key_countdown
 import com.verdenroz.corvid.appcommon.resources.key_lock_now
 import com.verdenroz.corvid.appcommon.resources.key_status
+import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.ui.provenance.KeyRing
@@ -78,7 +79,9 @@ internal fun KeyRingButton(key: KeyState) {
 @Composable
 internal fun KeyStatusLine(key: KeyState) {
     val remaining = key.remaining() ?: return
-    Row(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)) { KeyStatus(key.host, remaining) }
+    Row(Modifier.padding(start = CorvidSpacing.gutter(false), end = CorvidSpacing.gutter(false), bottom = 8.dp)) {
+        KeyStatus(key.host, remaining)
+    }
 }
 
 @Composable

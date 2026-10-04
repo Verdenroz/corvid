@@ -28,6 +28,7 @@ import com.verdenroz.corvid.core.model.CorvidKeywords
 import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.core.model.Rewrite
 import com.verdenroz.corvid.core.model.SenderKind
+import com.verdenroz.corvid.core.model.labels
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.provenance.LabelChip
 import com.verdenroz.corvid.core.ui.provenance.SenderAvatar
@@ -160,7 +161,7 @@ private fun Summary(
     val subject = email.subject.ifEmpty { stringResource(Res.string.mailbox_no_subject) }
     val separator = stringResource(Res.string.mailbox_separator)
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = modifier) {
-        email.keywords.mapNotNull(CorvidKeywords::labelOf).sortedBy { it.name }.forEach { LabelChip(it) }
+        email.labels.forEach { LabelChip(it) }
         Text(
             buildAnnotatedString {
                 withStyle(
