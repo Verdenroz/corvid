@@ -9,4 +9,6 @@ sealed interface Route {
     data class Reader(val emailId: String) : Route
 
     data class Compose(val intent: ComposeIntent) : Route
+
+    data object Filters : Route
 }
