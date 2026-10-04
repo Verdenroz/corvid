@@ -1,13 +1,17 @@
 package com.verdenroz.corvid.app
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -19,6 +23,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
@@ -68,7 +73,7 @@ internal fun UnlockedContent(
     LaunchedEffect(route) { if (route is Route.Home) shell.refresh() }
     NavigationBackHandler(
         state = rememberNavigationEventState(NavigationEventInfo.None),
-        isBackEnabled = backStack.size > 1 || route != Route.Home(HomeTab.Inbox),
+        isBackEnabled = shellHandlesBack(route, backStack.size),
         onBackCompleted = { backStack.back() },
     )
 
@@ -88,18 +93,37 @@ internal fun UnlockedContent(
         val wide = maxWidth >= WIDE_LEDGER
         Column(Modifier.fillMaxSize()) {
             if (wide) WideTopBar(key, shellState.identity)
-            // Wide, a card is a sheet over the screen it was opened from rather than a page of its own.
-            val page = if (wide && route is Route.Sender && backStack.size > 1) backStack[backStack.lastIndex - 1] else route
+            // Wide, a card is a sheet and compose a panel over the screen they were opened from.
+            val floats = wide && (route is Route.Sender || route is Route.Compose) && backStack.size > 1
+            val page = if (floats) backStack[backStack.lastIndex - 1] else route
             Box(Modifier.weight(1f)) {
                 Page(page, wide, key, shellState, scope, repository, backStack)
-                if (page != route && route is Route.Sender) {
-                    Box(
-                        Modifier.fillMaxSize().background(
-                            CorvidTheme.colors.scrim,
-                        ).clickable(interactionSource = null, indication = null) { backStack.back() },
-                    )
-                    Box(Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(540.dp).shadow(16.dp)) {
-                        Card(route, wide = true, scope, repository, backStack)
+                when {
+                    !floats -> Unit
+                    route is Route.Sender -> {
+                        Box(
+                            Modifier.fillMaxSize().background(
+                                CorvidTheme.colors.scrim,
+                            ).clickable(interactionSource = null, indication = null) { backStack.back() },
+                        )
+                        Box(Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(540.dp).shadow(16.dp)) {
+                            Card(route, wide = true, scope, repository, backStack)
+                        }
+                    }
+                    route is Route.Compose -> {
+                        val shape = RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp)
+                        Box(
+                            Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(end = 24.dp)
+                                .width(540.dp)
+                                .height(470.dp)
+                                .shadow(16.dp, shape)
+                                .border(1.dp, CorvidTheme.colors.line, shape)
+                                .clip(shape),
+                        ) {
+                            Page(route, wide, key, shellState, scope, repository, backStack)
+                        }
                     }
                 }
             }
@@ -178,3 +202,12 @@ private fun Card(
 private fun SnapshotStateList<Route>.back() {
     if (size > 1) removeAt(lastIndex) else this[0] = Route.Home(HomeTab.Inbox)
 }
+
+/**
+ * Whether back belongs to the shell. Compose guards its own back so unsent text is not dropped,
+ * and two enabled handlers do not resolve in the same order on every platform, so the shell steps aside.
+ */
+internal fun shellHandlesBack(
+    route: Route,
+    depth: Int,
+): Boolean = route !is Route.Compose && (depth > 1 || route != Route.Home(HomeTab.Inbox))

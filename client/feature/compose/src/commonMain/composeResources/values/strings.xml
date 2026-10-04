@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="compose_back">Back</string>
     <string name="compose_send">Send</string>
     <string name="compose_to">To</string>
     <string name="compose_cc">Cc</string>
@@ -13,4 +12,11 @@
     <string name="compose_original_gone">The message you were answering no longer exists.</string>
     <string name="compose_add_recipient">Add a recipient.</string>
     <string name="compose_not_sent">Not sent: %1$s</string>
+    <string name="compose_close">Close</string>
+    <string name="compose_title_new">New message</string>
+    <string name="compose_title_reply">Reply</string>
+    <string name="compose_title_forward">Forward</string>
+    <string name="compose_discard_question">Discard this message?</string>
+    <string name="compose_discard">Discard</string>
+    <string name="compose_keep_editing">Keep editing</string>
 </resources>

@@ -5,19 +5,22 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.verdenroz.corvid.core.data.clockTime
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.text.asString
+import com.verdenroz.corvid.core.ui.ConnectingPane
 import com.verdenroz.corvid.core.ui.LockedPane
 import com.verdenroz.corvid.core.ui.RevokedPane
 import com.verdenroz.corvid.core.ui.UnreachablePane
 import com.verdenroz.corvid.feature.signin.SignInScreen
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 import org.koin.compose.viewmodel.koinViewModel
+import kotlin.time.Instant
 
 /** The lock gate: swaps every route for a pane per [AppLockState]. */
 @Composable
@@ -36,7 +39,10 @@ fun CorvidApp(viewModel: AppLockViewModel = koinViewModel()) {
                     }
                 is AppLockState.Unlocked -> UnlockedContent(host = viewModel.serverHost.orEmpty(), onLock = viewModel::lock)
                 is AppLockState.Unreachable -> UnreachablePane(reason = current.reason, onRetry = viewModel::retry)
-                is AppLockState.Locked -> LockedPane(onUnlock = viewModel::unlock)
+                is AppLockState.Locked -> {
+                    val facts = viewModel.lockFacts
+                    LockedPane(facts.server, facts.device, facts.lockedAt?.let { droppedAt(it) }, onUnlock = viewModel::unlock)
+                }
                 is AppLockState.Revoked -> RevokedPane()
                 is AppLockState.NeedsEnrollment -> EnrollmentPrompt(deviceName = current.deviceName, onConfirm = viewModel::confirmEnroll)
             }
@@ -45,10 +51,7 @@ fun CorvidApp(viewModel: AppLockViewModel = koinViewModel()) {
 }
 
 @Composable
-private fun ConnectingPane() {
-    Surface(modifier = Modifier.fillMaxSize()) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-            CircularProgressIndicator()
-        }
-    }
+private fun droppedAt(at: Instant): String {
+    val local = at.toLocalDateTime(TimeZone.currentSystemDefault())
+    return clockTime(local.hour, local.minute).asString()
 }

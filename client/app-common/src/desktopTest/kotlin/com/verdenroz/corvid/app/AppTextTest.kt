@@ -12,6 +12,6 @@ class AppTextTest {
     @Test
     fun `the enrollment prompt names the device in quotes`() =
         runTest {
-            assertEquals("No key on the server for \"laptop-1\" yet.", uiText(Res.string.enroll_title, "laptop-1").resolve())
+            assertEquals("No key for \"laptop-1\"", uiText(Res.string.enroll_title, "laptop-1").resolve())
         }
 }

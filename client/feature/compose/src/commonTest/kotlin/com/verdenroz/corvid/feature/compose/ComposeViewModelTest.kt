@@ -190,4 +190,49 @@ class ComposeViewModelTest {
             assertEquals(uiText(Res.string.compose_add_recipient), assertIs<ComposeUiState.Editing>(vm.state.value).error)
             assertEquals(requestsBefore, fake.requestCount)
         }
+
+    @Test
+    fun `back on an untouched form closes straight away`() =
+        runViewModelTest {
+            val vm = viewModel(server())
+            vm.editing()
+
+            assertEquals(true, vm.requestClose())
+        }
+
+    @Test
+    fun `back on an edited form asks first, and a second back discards`() =
+        runViewModelTest {
+            val vm = viewModel(server())
+            vm.editing()
+            vm.edit { copy(body = "half a thought") }
+
+            assertEquals(false, vm.requestClose())
+            assertEquals(true, vm.editing().confirmingDiscard)
+            assertEquals(true, vm.requestClose())
+        }
+
+    @Test
+    fun `keep editing dismisses the question and leaves the text`() =
+        runViewModelTest {
+            val vm = viewModel(server())
+            vm.editing()
+            vm.edit { copy(body = "half a thought") }
+            vm.requestClose()
+
+            vm.keepEditing()
+
+            assertEquals(false, vm.editing().confirmingDiscard)
+            assertEquals("half a thought", vm.editing().form.body)
+            assertEquals(false, vm.requestClose())
+        }
+
+    @Test
+    fun `a reply untouched since it opened closes without asking`() =
+        runViewModelTest {
+            val vm = viewModel(server(), ComposeIntent.Reply("orig", all = false))
+            vm.editing()
+
+            assertEquals(true, vm.requestClose())
+        }
 }

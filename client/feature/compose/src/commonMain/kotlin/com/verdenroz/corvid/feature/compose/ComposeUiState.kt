@@ -17,12 +17,16 @@ sealed interface ComposeUiState {
 
     data class Failed(val message: UiText) : ComposeUiState
 
-    /** [seed] keeps what the form does not show, such as reply threading. [error] is why the last send did not go out. */
+    /**
+     * [seed] keeps what the form does not show, such as reply threading. [error] is why the last
+     * send did not go out. [confirmingDiscard] while a back press waits on Discard or Keep editing.
+     */
     data class Editing(
         val seed: Draft,
         val form: ComposeForm,
         val sending: Boolean = false,
         val error: UiText? = null,
+        val confirmingDiscard: Boolean = false,
     ) : ComposeUiState
 
     data object Sent : ComposeUiState

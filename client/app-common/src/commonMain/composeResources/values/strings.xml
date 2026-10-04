@@ -9,9 +9,10 @@
     <string name="unreachable_enroll_refused">The server would not store a key for this device.</string>
     <string name="unreachable_heartbeat">The server stopped answering.</string>
     <string name="device_name_title">Name this device</string>
+    <string name="device_name_detail">The name labels this device's key on the server, so you can tell keys apart and revoke one.</string>
     <string name="device_name_hint">lowercase letters, digits, hyphens</string>
     <string name="device_name_continue">Continue</string>
-    <string name="enroll_title">No key on the server for "%1$s" yet.</string>
+    <string name="enroll_title">No key for "%1$s"</string>
     <string name="enroll_detail">It may be this device's first sign-in, or its access was revoked.</string>
     <string name="enroll_confirm">Enroll "%1$s"</string>
     <string name="app_name">Corvid</string>

@@ -48,4 +48,6 @@
     <string name="summary_and">and</string>
     <string name="summary_or">or</string>
     <string name="summary_rule">%1$s: %2$s</string>
+    <string name="filters_title">Filters</string>
+    <string name="filters_empty">No rules yet. A rule can file, label, star or mark mail read as it arrives, before any device sees it.</string>
 </resources>

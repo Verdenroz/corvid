@@ -15,11 +15,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
@@ -45,6 +43,7 @@ import com.verdenroz.corvid.core.data.monthYear
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.PillButton
+import com.verdenroz.corvid.core.designsystem.component.PrimaryButton
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.model.CorvidKeywords
 import com.verdenroz.corvid.core.model.EmailSummary
@@ -283,25 +282,14 @@ private fun Actions(
         } else if (!writeIsPrimary(latest?.provenance?.seal)) {
             PillButton(stringResource(Res.string.card_write), CorvidIcons.Pencil, { actions.compose(ComposeIntent.To(address)) })
         } else {
-            WriteButton { actions.compose(ComposeIntent.To(address)) }
+            PrimaryButton(
+                stringResource(Res.string.card_write),
+                onClick = { actions.compose(ComposeIntent.To(address)) },
+                icon = CorvidIcons.Pencil,
+            )
         }
     }
     HorizontalDivider(color = CorvidTheme.colors.line)
-}
-
-@Composable
-private fun WriteButton(onClick: () -> Unit) {
-    val colors = CorvidTheme.colors
-    Surface(onClick = onClick, shape = RoundedCornerShape(50), color = colors.accent, contentColor = colors.onAccent) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.height(38.dp).padding(horizontal = 20.dp),
-        ) {
-            Icon(CorvidIcons.Pencil, contentDescription = null)
-            Text(stringResource(Res.string.card_write), style = CorvidTheme.type.action)
-        }
-    }
 }
 
 @Composable

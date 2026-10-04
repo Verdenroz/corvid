@@ -1,18 +1,13 @@
 package com.verdenroz.corvid.core.ui
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import com.verdenroz.corvid.core.designsystem.component.PrimaryButton
 import com.verdenroz.corvid.core.ui.resources.Res
+import com.verdenroz.corvid.core.ui.resources.locked_detail
+import com.verdenroz.corvid.core.ui.resources.locked_device
+import com.verdenroz.corvid.core.ui.resources.locked_device_dropped
+import com.verdenroz.corvid.core.ui.resources.locked_server
 import com.verdenroz.corvid.core.ui.resources.locked_title
 import com.verdenroz.corvid.core.ui.resources.locked_unlock
 import org.jetbrains.compose.resources.stringResource
@@ -22,18 +17,27 @@ import org.jetbrains.compose.resources.stringResource
  * state: nothing else renders until KeyHolder reaches Unlocked. [onUnlock]
  * re-fetches the key rather than asking for a passphrase: M1 holds no local
  * secret, so unlocking is re-proving this device still has server access.
+ * Each fact is shown only when known.
  */
 @Composable
 fun LockedPane(
+    server: String?,
+    device: String?,
+    droppedAt: String?,
     onUnlock: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(modifier = modifier.fillMaxSize()) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text(stringResource(Res.string.locked_title), style = MaterialTheme.typography.titleMedium)
-                Button(onClick = onUnlock) { Text(stringResource(Res.string.locked_unlock)) }
-            }
-        }
+    val facts =
+        listOfNotNull(
+            server?.let { StateFact(stringResource(Res.string.locked_server), it) },
+            device?.let { name ->
+                StateFact(
+                    stringResource(Res.string.locked_device),
+                    droppedAt?.let { stringResource(Res.string.locked_device_dropped, name, it) } ?: name,
+                )
+            },
+        )
+    StatePane(stringResource(Res.string.locked_title), modifier, detail = stringResource(Res.string.locked_detail), facts = facts) {
+        PrimaryButton(stringResource(Res.string.locked_unlock), onUnlock)
     }
 }

@@ -51,6 +51,22 @@ class ComposeViewModel(
         _state.value = current.copy(form = current.form.change())
     }
 
+    /**
+     * Whether the screen may close now. Unsent text is not kept anywhere, so the first back on an
+     * edited form asks instead, and a second back means discard.
+     */
+    fun requestClose(): Boolean {
+        val current = _state.value as? ComposeUiState.Editing ?: return true
+        if (current.confirmingDiscard || current.form == current.seed.toForm()) return true
+        _state.value = current.copy(confirmingDiscard = true)
+        return false
+    }
+
+    fun keepEditing() {
+        val current = _state.value as? ComposeUiState.Editing ?: return
+        _state.value = current.copy(confirmingDiscard = false)
+    }
+
     fun send() {
         val current = _state.value as? ComposeUiState.Editing ?: return
         if (current.sending) return

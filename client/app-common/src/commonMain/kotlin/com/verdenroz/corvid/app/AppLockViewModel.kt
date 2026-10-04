@@ -33,7 +33,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
+import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 
 private val HEARTBEAT_INTERVAL = 60.seconds
 
@@ -74,6 +76,12 @@ class AppLockViewModel(
     /** The signed-in server's short name, for the key pill. */
     val serverHost: String?
         get() = (tokenSource.state.value as? AuthState.SignedIn)?.server?.baseUrl?.let(::shortHost)
+
+    /** What the locked screen can say for certain: whichever of these this session knows. */
+    val lockFacts: LockFacts
+        get() = LockFacts((tokenSource.state.value as? AuthState.SignedIn)?.server?.baseUrl?.let(::host), deviceName, lockedAt)
+
+    private var lockedAt: Instant? = null
 
     fun submitDeviceName(name: String) {
         deviceName = name
@@ -195,7 +203,10 @@ class AppLockViewModel(
                 heartbeatJob?.cancel()
                 heartbeatJob = null
                 unlockedScopeHolder.close()
-                if (_state.value is AppLockState.Unlocked) _state.value = AppLockState.Locked
+                if (_state.value is AppLockState.Unlocked) {
+                    lockedAt = Clock.System.now()
+                    _state.value = AppLockState.Locked
+                }
             }
         }
     }
@@ -224,3 +235,9 @@ class AppLockViewModel(
         keyHolder.drop()
     }
 }
+
+data class LockFacts(
+    val server: String?,
+    val device: String?,
+    val lockedAt: Instant?,
+)

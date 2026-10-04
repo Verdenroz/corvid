@@ -1,18 +1,12 @@
 package com.verdenroz.corvid.app
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.appcommon.resources.Res
 import com.verdenroz.corvid.appcommon.resources.enroll_confirm
 import com.verdenroz.corvid.appcommon.resources.enroll_detail
 import com.verdenroz.corvid.appcommon.resources.enroll_title
+import com.verdenroz.corvid.core.designsystem.component.PrimaryButton
+import com.verdenroz.corvid.core.ui.StatePane
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -26,14 +20,7 @@ fun EnrollmentPrompt(
     deviceName: String,
     onConfirm: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text(stringResource(Res.string.enroll_title, deviceName))
-        Text(stringResource(Res.string.enroll_detail))
-        Button(onClick = onConfirm) {
-            Text(stringResource(Res.string.enroll_confirm, deviceName))
-        }
+    StatePane(stringResource(Res.string.enroll_title, deviceName), detail = stringResource(Res.string.enroll_detail)) {
+        PrimaryButton(stringResource(Res.string.enroll_confirm, deviceName), onClick = onConfirm)
     }
 }
