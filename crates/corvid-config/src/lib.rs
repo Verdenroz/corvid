@@ -20,6 +20,9 @@ pub const DEFAULT_PATH: &str = "/etc/corvid/config.yaml";
 /// `EX_CONFIG`, the exit status for missing or malformed configuration.
 pub const EX_CONFIG: u8 = 78;
 
+/// `EX_TEMPFAIL`, the exit status for a dependency not up yet, which systemd retries.
+pub const EX_TEMPFAIL: u8 = 75;
+
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {

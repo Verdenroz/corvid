@@ -101,7 +101,8 @@ confirm itself without anyone noticing.
 
 **A corrupt or foreign-schema state file is a refusal, not a fresh start.** The labeler exits 1
 and systemd is told not to restart it (`RestartPreventExitStatus=1`). Missing configuration exits
-78, and a missing image or masked pod exits 69.
+78, and a missing image or masked pod exits 69. A mail server not listening yet exits 75, which
+systemd retries; a refused login stays 1, since retrying it would trip Stalwart's auto-ban.
 
 Stalwart is configured declaratively. `deploy/stalwart.plan.ndjson` is a list of
 upsert/update/reconcile operations on Stalwart's JMAP config objects, with `${VAR}` filled by

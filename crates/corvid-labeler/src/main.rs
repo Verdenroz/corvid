@@ -2,7 +2,7 @@ use std::process::ExitCode;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
-use corvid_config::{Config, or_exit, secret, section};
+use corvid_config::{Config, EX_TEMPFAIL, or_exit, secret, section};
 use corvid_labeler::{Budget, Jmap, Model, cold_start, poll};
 
 fn main() -> ExitCode {
@@ -33,6 +33,10 @@ fn main() -> ExitCode {
 
     let mailbox = match Jmap::connect(&url, &labeler.jmap_user, &password) {
         Ok(mailbox) => mailbox,
+        Err(error) if corvid_jmap::unreachable(&error) => {
+            tracing::error!(%error, "the mail server is not up yet");
+            return ExitCode::from(EX_TEMPFAIL);
+        }
         Err(error) => {
             tracing::error!(%error, "cannot reach the mail server");
             return ExitCode::FAILURE;
