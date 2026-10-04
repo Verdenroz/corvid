@@ -6,6 +6,7 @@ import com.verdenroz.corvid.core.jmap.MethodOutcome
 import com.verdenroz.corvid.core.jmap.callOne
 import com.verdenroz.corvid.core.jmap.resultOrThrow
 import com.verdenroz.corvid.core.jmap.resultReference
+import com.verdenroz.corvid.core.model.CorvidKeywords
 import com.verdenroz.corvid.core.model.EmailAddress
 import com.verdenroz.corvid.core.model.EmailDetail
 import com.verdenroz.corvid.core.model.EmailSummary
@@ -78,7 +79,7 @@ class MailboxRepository(private val jmapClient: JmapClient) {
                 putJsonObject("filter") {
                     when (filter) {
                         is MailFilter.InMailbox -> put("inMailbox", filter.mailboxId)
-                        is MailFilter.Starred -> put("hasKeyword", "\$flagged")
+                        is MailFilter.Starred -> put("hasKeyword", CorvidKeywords.FLAGGED)
                     }
                 }
                 putJsonArray("sort") {

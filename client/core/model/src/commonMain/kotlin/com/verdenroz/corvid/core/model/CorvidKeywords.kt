@@ -10,6 +10,9 @@ object CorvidKeywords {
     const val RULE = "corvid-rule-"
     const val MODEL_LABEL = "corvid-llm-label-"
     const val MODEL = "corvid-llm-"
+    const val SEEN = "\$seen"
+    const val FLAGGED = "\$flagged"
+    const val DRAFT = "\$draft"
 
     /** True for a keyword the user set, the only kind that trains the per-sender prior. */
     fun isUserKeyword(keyword: String): Boolean = !keyword.startsWith(NAMESPACE) && !keyword.startsWith('$')

@@ -169,4 +169,4 @@ private fun Summary(
     }
 }
 
-internal val EmailSummary.isUnread: Boolean get() = "\$seen" !in keywords
+internal val EmailSummary.isUnread: Boolean get() = CorvidKeywords.SEEN !in keywords

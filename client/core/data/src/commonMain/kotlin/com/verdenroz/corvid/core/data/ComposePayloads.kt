@@ -1,5 +1,6 @@
 package com.verdenroz.corvid.core.data
 
+import com.verdenroz.corvid.core.model.CorvidKeywords
 import com.verdenroz.corvid.core.model.Draft
 import com.verdenroz.corvid.core.model.EmailAddress
 import com.verdenroz.corvid.core.model.Identity
@@ -25,7 +26,7 @@ internal fun createEmail(
         putJsonObject("create") {
             putJsonObject("draft") {
                 putJsonObject("mailboxIds") { put(draftsId, true) }
-                putJsonObject("keywords") { put("\$draft", true) }
+                putJsonObject("keywords") { put(CorvidKeywords.DRAFT, true) }
                 putAddresses("from", listOf(EmailAddress(identity.name.ifEmpty { null }, identity.email)))
                 putAddresses("to", draft.to)
                 putAddresses("cc", draft.cc)
@@ -60,8 +61,8 @@ internal fun submit(
             putJsonObject("#submission") {
                 put("mailboxIds/$draftsId", JsonNull)
                 put("mailboxIds/$sentId", true)
-                put("keywords/\$draft", JsonNull)
-                put("keywords/\$seen", true)
+                put("keywords/${CorvidKeywords.DRAFT}", JsonNull)
+                put("keywords/${CorvidKeywords.SEEN}", true)
             }
         }
     }
