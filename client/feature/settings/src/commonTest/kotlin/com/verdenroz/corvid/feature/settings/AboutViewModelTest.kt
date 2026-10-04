@@ -20,15 +20,21 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 
 private val CURRENT = FakeUpdate(running = "0.2.0", latest = "0.2.0", checkedAt = "2026-10-04T09:00:00Z")
 private val AVAILABLE = CURRENT.copy(latest = "0.2.1")
 private val BUSY = AVAILABLE.copy(busy = true)
 
-private suspend fun ViewModelTestScope.viewModel(fake: FakeJmapServer): AboutViewModel =
-    track(AboutViewModel(UpdateRepository(fake.client()), pollEvery = 3.seconds)).also {
+private suspend fun ViewModelTestScope.viewModel(
+    fake: FakeJmapServer,
+    ceiling: Duration = 20.minutes,
+): AboutViewModel =
+    track(AboutViewModel(UpdateRepository(fake.client()), pollEvery = 3.seconds, ceiling = ceiling)).also {
         it.await {
                 state ->
             state !is AboutState.Loading
@@ -165,6 +171,39 @@ class AboutViewModelTest {
             viewModel.apply()
 
             assertEquals(emptyList(), fake.updateActions)
+        }
+
+    @Test
+    fun `a not-busy report from before the request is not taken as the answer`() =
+        runViewModelTest {
+            val fake =
+                FakeJmapServer().apply {
+                    update = AVAILABLE
+                    updateAfterReads += listOf(AVAILABLE, AVAILABLE.copy(checkedAt = "2026-10-04T10:00:00Z"))
+                }
+            val viewModel = viewModel(fake)
+
+            viewModel.check()
+            val settled = assertIs<AboutState.Ready>(viewModel.await { it.idle() })
+
+            assertEquals(Instant.parse("2026-10-04T10:00:00Z"), settled.report.checkedAt)
+        }
+
+    @Test
+    fun `polling stops at the ceiling and lets the user ask again`() =
+        runViewModelTest {
+            val fake = FakeJmapServer().apply { update = AVAILABLE }
+            val viewModel = viewModel(fake, ceiling = 9.seconds)
+
+            viewModel.check()
+            fake.update = BUSY
+            val given = assertIs<AboutState.Ready>(viewModel.await { it is AboutState.Ready && it.abandoned })
+
+            assertNull(given.activity)
+            assertNotNull(given.failure)
+            assertEquals(false, given.working)
+            viewModel.check()
+            assertEquals(UpdateActivity.Checking, viewModel.ready().activity)
         }
 
     @Test

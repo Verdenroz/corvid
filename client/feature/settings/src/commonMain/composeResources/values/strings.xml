@@ -37,6 +37,7 @@
     <string name="settings_about_checking">Checking for a new release.</string>
     <string name="settings_about_updating">Updating. The server will be unreachable for a moment while it restarts.</string>
     <string name="settings_about_busy">The server is busy with an update or a check.</string>
+    <string name="settings_about_unfinished">The server has not finished. Check again later.</string>
     <string name="settings_about_unsupported">This server does not report its version</string>
     <string name="settings_result_current">Up to date</string>
     <string name="settings_result_updated">Updated</string>

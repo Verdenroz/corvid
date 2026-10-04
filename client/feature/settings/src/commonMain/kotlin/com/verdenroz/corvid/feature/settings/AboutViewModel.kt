@@ -8,12 +8,16 @@ import com.verdenroz.corvid.core.jmap.JmapError
 import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.model.UpdateReport
 import com.verdenroz.corvid.core.text.UiText
+import com.verdenroz.corvid.core.text.uiText
+import com.verdenroz.corvid.feature.settings.resources.Res
+import com.verdenroz.corvid.feature.settings.resources.settings_about_unfinished
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 /** What this device asked the server to do, while the server is still doing it. */
@@ -27,19 +31,24 @@ sealed interface AboutState {
 
     data class Failed(val message: UiText) : AboutState
 
-    /** [failure] is the last request that did not go through; [report] stays what the server last said. */
+    /**
+     * [failure] is the last request that did not go through; [report] stays what the server last said.
+     * [abandoned] means polling hit its ceiling while the server still said busy.
+     */
     data class Ready(
         val report: UpdateReport,
         val activity: UpdateActivity? = null,
         val failure: UiText? = null,
+        val abandoned: Boolean = false,
     ) : AboutState {
-        val working: Boolean get() = activity != null || report.busy
+        val working: Boolean get() = activity != null || (report.busy && !abandoned)
     }
 }
 
 class AboutViewModel(
     private val repository: UpdateRepository,
     private val pollEvery: Duration = POLL_EVERY,
+    private val ceiling: Duration = CEILING,
 ) : ViewModel() {
     private val _state = MutableStateFlow<AboutState>(AboutState.Loading)
     val state: StateFlow<AboutState> = _state
@@ -75,40 +84,46 @@ class AboutViewModel(
     ) {
         val ready = _state.value as? AboutState.Ready ?: return
         if (ready.working) return
-        _state.value = ready.copy(activity = activity, failure = null)
-        poll(send)
+        _state.value = ready.copy(activity = activity, failure = null, abandoned = false)
+        poll(send, since = ready.report)
     }
 
-    private fun poll(send: suspend () -> Unit = {}) {
+    /** The server turns busy a moment after accepting a request, so a not-busy report still carrying [since]'s `checkedAt` is the old one. */
+    private fun poll(
+        send: suspend () -> Unit = {},
+        since: UpdateReport? = null,
+    ) {
         polling?.cancel()
         polling =
             viewModelScope.launch {
                 try {
                     send()
-                    settle()
+                    settle(since)
                 } catch (e: JmapException) {
                     update { it.copy(activity = null, failure = e.userMessage()) }
                 }
             }
     }
 
-    private suspend fun settle() {
-        while (true) {
+    private suspend fun settle(since: UpdateReport?) {
+        repeat((ceiling / pollEvery).toInt()) {
             delay(pollEvery)
             val report =
                 try {
                     repository.status()
                 } catch (e: JmapException) {
                     // The server restarts itself to finish an update, so these two are the expected gap.
-                    if (e.error is JmapError.Unreachable || e.error is JmapError.Server) continue else throw e
+                    if (e.error is JmapError.Unreachable || e.error is JmapError.Server) return@repeat else throw e
                 }
             if (report == null) {
                 _state.value = AboutState.Unsupported
                 return
             }
-            update { it.copy(report = report, activity = it.activity.takeIf { report.busy }) }
-            if (!report.busy) return
+            val settled = !report.busy && (since == null || report.checkedAt != since.checkedAt)
+            update { it.copy(report = report, activity = it.activity.takeUnless { settled }) }
+            if (settled) return
         }
+        update { it.copy(activity = null, abandoned = true, failure = uiText(Res.string.settings_about_unfinished)) }
     }
 
     private fun update(change: (AboutState.Ready) -> AboutState.Ready) {
@@ -117,3 +132,4 @@ class AboutViewModel(
 }
 
 private val POLL_EVERY = 3.seconds
+private val CEILING = 20.minutes
