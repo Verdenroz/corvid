@@ -32,6 +32,8 @@ pub struct Config {
     pub imgproxy: Option<Imgproxy>,
     pub mirror: Option<Mirror>,
     pub sentinel: Option<Sentinel>,
+    #[serde(default)]
+    pub update: Update,
 }
 
 /// The deployment itself, read by the deploy scripts through `corvid-config shell`.
@@ -384,6 +386,20 @@ pub struct Sentinel {
     pub state: PathBuf,
 }
 
+/// Whether the host follows its image tag on its own, read by `corvid-update` through `shell`.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Update {
+    #[serde(default = "yes")]
+    pub auto: bool,
+}
+
+impl Default for Update {
+    fn default() -> Self {
+        Self { auto: yes() }
+    }
+}
+
 /// A whole-number percentage, 0 to 100.
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 #[serde(try_from = "u8")]
@@ -464,7 +480,7 @@ impl Config {
         Ok(format!(
             "MAIL_DOMAIN={}\nMAIL_HOSTNAME={}\nMAIL_USER={}\nACME_CONTACT={}\nWEB_PORT={}\nHOST_ZONE={}\n\
              IDP_HOSTNAME={}\nPUBLISH_MTA_STS={}\nPUBLISH_TLSA={}\nMTA_STS_MODE={}\nMTA_STS_ID={}\n\
-             CLIENT_SOURCES={}\n",
+             CLIENT_SOURCES={}\nUPDATE_AUTO={}\n",
             server.domain.0,
             server.hostname.0,
             server.mail_user.0,
@@ -479,7 +495,8 @@ impl Config {
             server.host_zone.is_none(),
             server.mta_sts_mode.as_str(),
             server.mta_sts_id(),
-            server.client_access.sources()
+            server.client_access.sources(),
+            self.update.auto
         ))
     }
 
@@ -534,6 +551,9 @@ fn milter_bind() -> String {
 fn imgproxy_bind() -> String {
     "127.0.0.1:8081".to_owned()
 }
+fn yes() -> bool {
+    true
+}
 fn sentinel_bind() -> String {
     "127.0.0.1:11333".to_owned()
 }
@@ -560,6 +580,7 @@ mod tests {
         assert!(config.imgproxy.is_some());
         assert!(config.mirror.is_some());
         assert!(config.sentinel.is_some());
+        assert!(config.update.auto);
     }
 
     #[test]
@@ -654,9 +675,19 @@ mod server_tests {
                 "MAIL_DOMAIN=example.com\nMAIL_HOSTNAME=mail.example.com\nMAIL_USER=alice\n\
                  ACME_CONTACT=you@elsewhere.example\nWEB_PORT=4443\nHOST_ZONE=\n\
                  IDP_HOSTNAME=idp.example.com\nPUBLISH_MTA_STS=false\nPUBLISH_TLSA=true\n\
-                 MTA_STS_MODE=testing\nMTA_STS_ID={id}\nCLIENT_SOURCES=any\n"
+                 MTA_STS_MODE=testing\nMTA_STS_ID={id}\nCLIENT_SOURCES=any\nUPDATE_AUTO=true\n"
             )
         );
+    }
+
+    #[test]
+    fn updates_are_automatic_until_the_config_turns_them_off() {
+        let off = Config::parse(&(SERVER.to_owned() + "update:\n  auto: false\n"))
+            .unwrap()
+            .shell()
+            .unwrap();
+        assert!(off.lines().any(|l| l == "UPDATE_AUTO=false"));
+        assert!(Config::parse("update:\n  automatic: no\n").is_err());
     }
 
     #[test]
