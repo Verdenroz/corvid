@@ -1,13 +1,5 @@
 package com.verdenroz.corvid.feature.compose
 
-sealed interface ComposeMode {
-    data object New : ComposeMode
-
-    data class Reply(val emailId: String, val all: Boolean) : ComposeMode
-
-    data class Forward(val emailId: String) : ComposeMode
-}
-
 /** Recipients are the raw comma-separated text of each field. */
 data class ComposeForm(
     val to: String,
@@ -19,9 +11,6 @@ data class ComposeForm(
 
 sealed interface ComposeUiState {
     data object Loading : ComposeUiState
-
-    /** The message being replied to or forwarded was deleted or moved. */
-    data object Gone : ComposeUiState
 
     data class Failed(val message: String) : ComposeUiState
 

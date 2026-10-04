@@ -3,15 +3,12 @@ package com.verdenroz.corvid.feature.compose
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.core.data.ComposeRepository
-import com.verdenroz.corvid.core.data.EmailLookup
-import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.data.SendResult
-import com.verdenroz.corvid.core.data.forwardDraft
-import com.verdenroz.corvid.core.data.replyDraft
-import com.verdenroz.corvid.core.jmap.JmapError
+import com.verdenroz.corvid.core.data.SendUnavailable
+import com.verdenroz.corvid.core.data.StartResult
 import com.verdenroz.corvid.core.jmap.JmapException
+import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.model.Draft
-import com.verdenroz.corvid.core.model.Identity
 import com.verdenroz.corvid.core.model.parseAddresses
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,26 +16,21 @@ import kotlinx.coroutines.launch
 
 class ComposeViewModel(
     private val composeRepository: ComposeRepository,
-    private val mailboxRepository: MailboxRepository,
-    private val mode: ComposeMode,
+    private val intent: ComposeIntent,
 ) : ViewModel() {
     private val _state = MutableStateFlow<ComposeUiState>(ComposeUiState.Loading)
     val state: StateFlow<ComposeUiState> = _state
-    private lateinit var identity: Identity
 
     init {
         viewModelScope.launch {
             try {
-                identity = composeRepository.identity()
-                val draft = initialDraft()
                 _state.value =
-                    if (draft == null) {
-                        ComposeUiState.Gone
-                    } else {
-                        ComposeUiState.Editing(draft.toForm(), draft.inReplyTo, draft.references)
+                    when (val start = composeRepository.start(intent)) {
+                        is StartResult.Ready -> ComposeUiState.Editing(start.draft.toForm(), start.draft.inReplyTo, start.draft.references)
+                        is SendUnavailable -> ComposeUiState.Failed(start.message())
                     }
             } catch (e: JmapException) {
-                _state.value = ComposeUiState.Failed((e.error as? JmapError.Request)?.detail ?: "could not reach the server")
+                _state.value = ComposeUiState.Failed("could not reach the server")
             }
         }
     }
@@ -59,9 +51,10 @@ class ComposeViewModel(
         _state.value = current.copy(sending = true, error = null)
         viewModelScope.launch {
             try {
-                when (val result = composeRepository.send(identity, draft)) {
+                when (val result = composeRepository.send(draft)) {
                     is SendResult.Sent -> _state.value = ComposeUiState.Sent
                     is SendResult.Rejected -> fail(result.reason)
+                    is SendUnavailable -> fail(result.message())
                 }
             } catch (e: JmapException) {
                 fail("could not reach the server")
@@ -73,16 +66,13 @@ class ComposeViewModel(
         val current = _state.value as ComposeUiState.Editing
         _state.value = current.copy(sending = false, error = "Not sent: $reason")
     }
-
-    private suspend fun initialDraft(): Draft? =
-        when (mode) {
-            is ComposeMode.New -> Draft()
-            is ComposeMode.Reply -> original(mode.emailId)?.let { replyDraft(it, identity.email, mode.all) }
-            is ComposeMode.Forward -> original(mode.emailId)?.let(::forwardDraft)
-        }
-
-    private suspend fun original(emailId: String) = (mailboxRepository.getEmail(emailId) as? EmailLookup.Found)?.detail
 }
+
+private fun SendUnavailable.message() =
+    when (this) {
+        is SendUnavailable.NoIdentity -> "This account has no sending identity."
+        is SendUnavailable.NoMailbox -> "This account has no $role mailbox."
+    }
 
 private fun Draft.toForm() =
     ComposeForm(

@@ -2,31 +2,35 @@ package com.verdenroz.corvid.core.data
 
 import com.verdenroz.corvid.core.jmap.Invocation
 import com.verdenroz.corvid.core.jmap.JmapClient
-import com.verdenroz.corvid.core.jmap.JmapError
-import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.jmap.MethodOutcome
 import com.verdenroz.corvid.core.jmap.callOne
 import com.verdenroz.corvid.core.jmap.reason
+import com.verdenroz.corvid.core.jmap.resultOrThrow
 import com.verdenroz.corvid.core.jmap.setErrorReason
+import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.model.Draft
-import com.verdenroz.corvid.core.model.EmailAddress
 import com.verdenroz.corvid.core.model.Identity
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonNull
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
-import kotlinx.serialization.json.putJsonObject
 
-private const val BODY_PART_ID = "body"
+/** Why this account cannot send at all, as opposed to a server refusing one message. */
+sealed interface SendUnavailable : StartResult, SendResult {
+    data object NoIdentity : SendUnavailable
+
+    data class NoMailbox(val role: String) : SendUnavailable
+}
+
+sealed interface StartResult {
+    data class Ready(val draft: Draft) : StartResult
+}
 
 sealed interface SendResult {
     data object Sent : SendResult
@@ -35,38 +39,50 @@ sealed interface SendResult {
     data class Rejected(val reason: String) : SendResult
 }
 
+private sealed interface Loaded {
+    data class Ready(val identity: Identity, val draftsId: String, val sentId: String) : Loaded
+
+    data class Unavailable(val reason: SendUnavailable) : Loaded
+}
+
 /**
- * One request carries the Email/set that files the draft and the
- * EmailSubmission/set that sends it, so a message is never submitted
- * without having been created. A refusal comes back as [SendResult.Rejected]
- * rather than a thrown error: the caller keeps the text and shows why.
+ * The identity and the Drafts and Sent mailboxes are fetched once, in one
+ * request, and kept for as long as the repository lives. One request then
+ * carries the Email/set that files the draft and the EmailSubmission/set that
+ * sends it, so a message is never submitted without having been created. A
+ * refusal comes back as [SendResult.Rejected] rather than a thrown error: the
+ * caller keeps the text and shows why.
  */
-class ComposeRepository(
-    private val jmapClient: JmapClient,
-    private val mailboxes: MailboxRepository,
-) {
-    suspend fun identity(): Identity {
-        val first =
-            jmapClient.callOne("Identity/get", JsonObject(emptyMap())).getValue("list").jsonArray.firstOrNull()?.jsonObject
-                ?: throw JmapException(JmapError.Request(type = "noIdentity", detail = "This account has no sending identity."))
-        return Identity(
-            id = first.getValue("id").jsonPrimitive.content,
-            name = first["name"]?.jsonPrimitive?.contentOrNull.orEmpty(),
-            email = first.getValue("email").jsonPrimitive.content,
-        )
+class ComposeRepository(private val jmapClient: JmapClient) {
+    private val mutex = Mutex()
+    private var ready: Loaded.Ready? = null
+
+    suspend fun start(intent: ComposeIntent): StartResult {
+        val sending =
+            when (val loaded = load()) {
+                is Loaded.Unavailable -> return loaded.reason
+                is Loaded.Ready -> loaded
+            }
+        val draft =
+            when (intent) {
+                is ComposeIntent.New -> Draft()
+                is ComposeIntent.Reply -> replyDraft(intent.original, sending.identity.email, intent.all)
+                is ComposeIntent.Forward -> forwardDraft(intent.original)
+            }
+        return StartResult.Ready(draft)
     }
 
-    suspend fun send(
-        identity: Identity,
-        draft: Draft,
-    ): SendResult {
-        val draftsId = mailboxId("drafts")
-        val sentId = mailboxId("sent")
+    suspend fun send(draft: Draft): SendResult {
+        val sending =
+            when (val loaded = load()) {
+                is Loaded.Unavailable -> return loaded.reason
+                is Loaded.Ready -> loaded
+            }
         val outcomes =
             jmapClient.call(
                 listOf(
-                    Invocation("Email/set", createEmail(identity, draft, draftsId), "c0"),
-                    Invocation("EmailSubmission/set", submit(identity, draftsId, sentId), "c1"),
+                    Invocation("Email/set", createEmail(sending.identity, draft, sending.draftsId), "c0"),
+                    Invocation("EmailSubmission/set", submit(sending.identity, sending.draftsId, sending.sentId), "c1"),
                 ),
             )
         val reason = outcomes.rejection() ?: return SendResult.Sent
@@ -74,79 +90,47 @@ class ComposeRepository(
         return SendResult.Rejected(reason)
     }
 
+    private suspend fun load(): Loaded =
+        mutex.withLock {
+            ready ?: fetch().also { if (it is Loaded.Ready) ready = it }
+        }
+
+    private suspend fun fetch(): Loaded {
+        val outcomes =
+            jmapClient.call(
+                listOf(
+                    Invocation("Identity/get", JsonObject(emptyMap()), "c0"),
+                    Invocation(
+                        "Mailbox/get",
+                        buildJsonObject { putJsonArray("properties") { listOf("id", "role").forEach { add(JsonPrimitive(it)) } } },
+                        "c1",
+                    ),
+                ),
+            )
+        val identity =
+            outcomes.getValue("c0").resultOrThrow().getValue("list").jsonArray.firstOrNull()?.jsonObject?.toIdentity()
+                ?: return Loaded.Unavailable(SendUnavailable.NoIdentity)
+        val roles =
+            outcomes.getValue("c1").resultOrThrow().getValue("list").jsonArray
+                .map { it.jsonObject }
+                .associate { it["role"]?.jsonPrimitive?.contentOrNull to it.getValue("id").jsonPrimitive.content }
+        val draftsId = roles["drafts"] ?: return Loaded.Unavailable(SendUnavailable.NoMailbox("drafts"))
+        val sentId = roles["sent"] ?: return Loaded.Unavailable(SendUnavailable.NoMailbox("sent"))
+        return Loaded.Ready(identity, draftsId, sentId)
+    }
+
     private suspend fun destroyDraft(emailId: String) {
         val arguments = buildJsonObject { putJsonArray("destroy") { add(JsonPrimitive(emailId)) } }
         jmapClient.callOne("Email/set", arguments)
     }
-
-    private suspend fun mailboxId(role: String): String =
-        mailboxes.findMailboxByRole(role)?.id
-            ?: throw JmapException(JmapError.Request(type = "missingMailbox", detail = role))
 }
 
-private fun createEmail(
-    identity: Identity,
-    draft: Draft,
-    draftsId: String,
-): JsonObject =
-    buildJsonObject {
-        putJsonObject("create") {
-            putJsonObject("draft") {
-                putJsonObject("mailboxIds") { put(draftsId, true) }
-                putJsonObject("keywords") { put("\$draft", true) }
-                putAddresses("from", listOf(EmailAddress(identity.name.ifEmpty { null }, identity.email)))
-                putAddresses("to", draft.to)
-                putAddresses("cc", draft.cc)
-                putAddresses("bcc", draft.bcc)
-                put("subject", draft.subject)
-                if (draft.inReplyTo.isNotEmpty()) put("inReplyTo", JsonArray(draft.inReplyTo.map(::JsonPrimitive)))
-                if (draft.references.isNotEmpty()) put("references", JsonArray(draft.references.map(::JsonPrimitive)))
-                putJsonArray("textBody") {
-                    addJsonObject {
-                        put("partId", BODY_PART_ID)
-                        put("type", "text/plain")
-                    }
-                }
-                putJsonObject("bodyValues") { putJsonObject(BODY_PART_ID) { put("value", draft.body) } }
-            }
-        }
-    }
-
-private fun submit(
-    identity: Identity,
-    draftsId: String,
-    sentId: String,
-): JsonObject =
-    buildJsonObject {
-        putJsonObject("create") {
-            putJsonObject("submission") {
-                put("identityId", identity.id)
-                put("emailId", "#draft")
-            }
-        }
-        putJsonObject("onSuccessUpdateEmail") {
-            putJsonObject("#submission") {
-                put("mailboxIds/$draftsId", JsonNull)
-                put("mailboxIds/$sentId", true)
-                put("keywords/\$draft", JsonNull)
-            }
-        }
-    }
-
-private fun JsonObjectBuilder.putAddresses(
-    key: String,
-    addresses: List<EmailAddress>,
-) {
-    if (addresses.isEmpty()) return
-    putJsonArray(key) {
-        addresses.forEach { address ->
-            addJsonObject {
-                address.name?.let { put("name", it) }
-                put("email", address.email)
-            }
-        }
-    }
-}
+private fun JsonObject.toIdentity() =
+    Identity(
+        id = getValue("id").jsonPrimitive.content,
+        name = get("name")?.jsonPrimitive?.contentOrNull.orEmpty(),
+        email = getValue("email").jsonPrimitive.content,
+    )
 
 private fun Map<String, MethodOutcome>.rejection(): String? {
     val email = getValue("c0")

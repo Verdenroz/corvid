@@ -23,16 +23,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.ComposeRepository
-import com.verdenroz.corvid.core.data.MailboxRepository
+import com.verdenroz.corvid.core.model.ComposeIntent
 
 @Composable
 fun ComposeScreen(
     composeRepository: ComposeRepository,
-    mailboxRepository: MailboxRepository,
-    mode: ComposeMode,
+    intent: ComposeIntent,
     onClose: () -> Unit,
 ) {
-    val viewModel = remember(composeRepository, mailboxRepository, mode) { ComposeViewModel(composeRepository, mailboxRepository, mode) }
+    val viewModel = remember(composeRepository, intent) { ComposeViewModel(composeRepository, intent) }
     val state by viewModel.state.collectAsState()
 
     LaunchedEffect(state) { if (state is ComposeUiState.Sent) onClose() }
@@ -48,8 +47,6 @@ fun ComposeScreen(
             is ComposeUiState.Loading, is ComposeUiState.Sent ->
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             is ComposeUiState.Failed -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(current.message) }
-            is ComposeUiState.Gone ->
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("This message no longer exists.") }
             is ComposeUiState.Editing -> ComposeForm(current, onEdit = viewModel::edit)
         }
     }

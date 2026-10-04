@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.MailboxRepository
+import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.model.EmailDetail
 
 @Composable
@@ -27,9 +28,7 @@ fun ReaderScreen(
     repository: MailboxRepository,
     emailId: String,
     onBack: () -> Unit,
-    onReply: () -> Unit,
-    onReplyAll: () -> Unit,
-    onForward: () -> Unit,
+    onCompose: (ComposeIntent) -> Unit,
 ) {
     val viewModel = remember(repository, emailId) { ReaderViewModel(repository, emailId) }
     val state by viewModel.state.collectAsState()
@@ -37,10 +36,10 @@ fun ReaderScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(8.dp)) {
             Button(onClick = onBack) { Text("Back") }
-            if (state is ReaderUiState.Loaded) {
-                Button(onClick = onReply) { Text("Reply") }
-                Button(onClick = onReplyAll) { Text("Reply all") }
-                Button(onClick = onForward) { Text("Forward") }
+            (state as? ReaderUiState.Loaded)?.email?.let { email ->
+                Button(onClick = { onCompose(ComposeIntent.Reply(email, all = false)) }) { Text("Reply") }
+                Button(onClick = { onCompose(ComposeIntent.Reply(email, all = true)) }) { Text("Reply all") }
+                Button(onClick = { onCompose(ComposeIntent.Forward(email)) }) { Text("Forward") }
             }
         }
         when (val current = state) {

@@ -2,11 +2,12 @@ package com.verdenroz.corvid.feature.compose
 
 import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.core.data.ComposeRepository
-import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.jmap.AuthLatch
 import com.verdenroz.corvid.core.jmap.JmapClient
 import com.verdenroz.corvid.core.jmap.createJmapHttpClient
-import com.verdenroz.corvid.core.testing.FakeEmail
+import com.verdenroz.corvid.core.model.ComposeIntent
+import com.verdenroz.corvid.core.model.EmailAddress
+import com.verdenroz.corvid.core.model.EmailDetail
 import com.verdenroz.corvid.core.testing.FakeIdentity
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.FakeMailbox
@@ -27,9 +28,25 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.time.Instant
 
 private const val BASE_URL = "http://127.0.0.1:9999"
 private const val OWN = "verde@example.test"
+
+private val ORIGINAL =
+    EmailDetail(
+        id = "orig",
+        subject = "Lunch",
+        from = EmailAddress(null, "alice@example.test"),
+        to = listOf(EmailAddress(null, OWN), EmailAddress(null, "bob@example.test")),
+        cc = emptyList(),
+        replyTo = emptyList(),
+        receivedAt = Instant.parse("2024-03-01T12:00:00Z"),
+        messageId = listOf("m1@example.test"),
+        references = emptyList(),
+        body = "see you at noon",
+        bodyTruncated = false,
+    )
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ComposeViewModelTest {
@@ -51,32 +68,18 @@ class ComposeViewModelTest {
 
     private fun server(): FakeJmapServer {
         val fake = FakeJmapServer()
-        fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
         fake.mailboxes += FakeMailbox(id = "drafts", name = "Drafts", role = "drafts")
         fake.mailboxes += FakeMailbox(id = "sent", name = "Sent", role = "sent")
         fake.identities += FakeIdentity(id = "i1", email = OWN)
-        fake.emails +=
-            FakeEmail(
-                id = "orig",
-                threadId = "t1",
-                mailboxIds = setOf("inbox"),
-                subject = "Lunch",
-                from = "alice@example.test",
-                receivedAt = "2024-03-01T12:00:00Z",
-                to = listOf(OWN, "bob@example.test"),
-                body = "see you at noon",
-                messageId = listOf("m1@example.test"),
-            )
         return fake
     }
 
     private suspend fun viewModel(
         fake: FakeJmapServer,
-        mode: ComposeMode,
+        intent: ComposeIntent = ComposeIntent.New,
     ): ComposeViewModel {
         val client = JmapClient.connect(createJmapHttpClient(fake.engine), AuthLatch(), BASE_URL)
-        val mailboxes = MailboxRepository(client)
-        return ComposeViewModel(ComposeRepository(client, mailboxes), mailboxes, mode).also { viewModel = it }
+        return ComposeViewModel(ComposeRepository(client), intent).also { viewModel = it }
     }
 
     private suspend fun ComposeViewModel.editing() = state.first { it is ComposeUiState.Editing } as ComposeUiState.Editing
@@ -88,7 +91,7 @@ class ComposeViewModelTest {
         runTest(testDispatcher) {
             val fake = server()
             fake.identities.clear()
-            val vm = viewModel(fake, ComposeMode.New)
+            val vm = viewModel(fake)
 
             val failed = assertIs<ComposeUiState.Failed>(vm.state.first { it !is ComposeUiState.Loading })
 
@@ -99,7 +102,7 @@ class ComposeViewModelTest {
     fun `sending a new message files it under sent and submits it`() =
         runTest(testDispatcher) {
             val fake = server()
-            val vm = viewModel(fake, ComposeMode.New)
+            val vm = viewModel(fake)
             vm.edit(vm.editing().form.copy(to = "dan@example.test, eve@example.test", subject = "Hi", body = "hello"))
 
             vm.send()
@@ -113,7 +116,7 @@ class ComposeViewModelTest {
     @Test
     fun `a reply opens prefilled with the sender, subject and quoted body`() =
         runTest(testDispatcher) {
-            val vm = viewModel(server(), ComposeMode.Reply("orig", all = false))
+            val vm = viewModel(server(), ComposeIntent.Reply(ORIGINAL, all = false))
 
             val form = vm.editing().form
 
@@ -126,7 +129,7 @@ class ComposeViewModelTest {
     fun `a sent reply carries the original's message id as in-reply-to and references`() =
         runTest(testDispatcher) {
             val fake = server()
-            val vm = viewModel(fake, ComposeMode.Reply("orig", all = false))
+            val vm = viewModel(fake, ComposeIntent.Reply(ORIGINAL, all = false))
             vm.editing()
 
             vm.send()
@@ -141,8 +144,8 @@ class ComposeViewModelTest {
     fun `replying to a sender whose name contains a comma sends to one address`() =
         runTest(testDispatcher) {
             val fake = server()
-            fake.emails.replaceAll { it.copy(from = "jane@example.test", fromName = "Doe, Jane") }
-            val vm = viewModel(fake, ComposeMode.Reply("orig", all = false))
+            val original = ORIGINAL.copy(from = EmailAddress("Doe, Jane", "jane@example.test"))
+            val vm = viewModel(fake, ComposeIntent.Reply(original, all = false))
             assertEquals("\"Doe, Jane\" <jane@example.test>", vm.editing().form.to)
 
             vm.send()
@@ -155,7 +158,7 @@ class ComposeViewModelTest {
     @Test
     fun `reply all leaves the account's own address out of cc`() =
         runTest(testDispatcher) {
-            val vm = viewModel(server(), ComposeMode.Reply("orig", all = true))
+            val vm = viewModel(server(), ComposeIntent.Reply(ORIGINAL, all = true))
 
             assertEquals("bob@example.test", vm.editing().form.cc)
         }
@@ -163,7 +166,7 @@ class ComposeViewModelTest {
     @Test
     fun `a forward opens with no recipient and the original below a header block`() =
         runTest(testDispatcher) {
-            val vm = viewModel(server(), ComposeMode.Forward("orig"))
+            val vm = viewModel(server(), ComposeIntent.Forward(ORIGINAL))
 
             val form = vm.editing().form
 
@@ -173,19 +176,11 @@ class ComposeViewModelTest {
         }
 
     @Test
-    fun `replying to a message that is gone reaches a distinct state`() =
-        runTest(testDispatcher) {
-            val vm = viewModel(server(), ComposeMode.Reply("missing", all = false))
-
-            assertEquals(ComposeUiState.Gone, vm.state.first { it !is ComposeUiState.Loading })
-        }
-
-    @Test
     fun `a failed submission keeps the text and shows an error`() =
         runTest(testDispatcher) {
             val fake = server()
             fake.refuseSubmission = true
-            val vm = viewModel(fake, ComposeMode.New)
+            val vm = viewModel(fake)
             val typed = vm.editing().form.copy(to = "dan@example.test", subject = "Hi", body = "hello")
             vm.edit(typed)
 
@@ -202,7 +197,7 @@ class ComposeViewModelTest {
     fun `sending with no recipient asks for one without calling the server`() =
         runTest(testDispatcher) {
             val fake = server()
-            val vm = viewModel(fake, ComposeMode.New)
+            val vm = viewModel(fake)
             vm.editing()
             val requestsBefore = fake.requestCount
 

@@ -23,10 +23,10 @@ import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.ComposeRepository
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.ui.LockedPane
 import com.verdenroz.corvid.core.ui.RevokedPane
 import com.verdenroz.corvid.core.ui.UnreachablePane
-import com.verdenroz.corvid.feature.compose.ComposeMode
 import com.verdenroz.corvid.feature.compose.ComposeScreen
 import com.verdenroz.corvid.feature.mailbox.InboxScreen
 import com.verdenroz.corvid.feature.mailbox.ReaderScreen
@@ -99,20 +99,23 @@ private fun UnlockedContent(
             Button(onClick = onLock) { Text("Lock") }
         }
         var openEmailId by remember { mutableStateOf<String?>(null) }
-        var composeMode by remember { mutableStateOf<ComposeMode?>(null) }
+        var composeIntent by remember { mutableStateOf<ComposeIntent?>(null) }
         val emailId = openEmailId
-        val mode = composeMode
+        val intent = composeIntent
         when {
-            mode != null -> ComposeScreen(composeRepository, repository, mode, onClose = { composeMode = null })
-            emailId == null -> InboxScreen(repository, onOpenEmail = { openEmailId = it }, onCompose = { composeMode = ComposeMode.New })
+            intent != null -> ComposeScreen(composeRepository, intent, onClose = { composeIntent = null })
+            emailId == null ->
+                InboxScreen(
+                    repository,
+                    onOpenEmail = { openEmailId = it },
+                    onCompose = { composeIntent = ComposeIntent.New },
+                )
             else ->
                 ReaderScreen(
                     repository,
                     emailId,
                     onBack = { openEmailId = null },
-                    onReply = { composeMode = ComposeMode.Reply(emailId, all = false) },
-                    onReplyAll = { composeMode = ComposeMode.Reply(emailId, all = true) },
-                    onForward = { composeMode = ComposeMode.Forward(emailId) },
+                    onCompose = { composeIntent = it },
                 )
         }
     }

@@ -2,13 +2,11 @@ package com.verdenroz.corvid.core.data
 
 import com.verdenroz.corvid.core.jmap.AuthLatch
 import com.verdenroz.corvid.core.jmap.JmapClient
-import com.verdenroz.corvid.core.jmap.JmapError
-import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.jmap.createJmapHttpClient
+import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.model.Draft
 import com.verdenroz.corvid.core.model.EmailAddress
 import com.verdenroz.corvid.core.model.EmailDetail
-import com.verdenroz.corvid.core.model.Identity
 import com.verdenroz.corvid.core.testing.FakeEmail
 import com.verdenroz.corvid.core.testing.FakeIdentity
 import com.verdenroz.corvid.core.testing.FakeJmapServer
@@ -16,7 +14,6 @@ import com.verdenroz.corvid.core.testing.FakeMailbox
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -48,19 +45,33 @@ private fun server(): FakeJmapServer {
 
 private suspend fun repositories(fake: FakeJmapServer): Pair<MailboxRepository, ComposeRepository> {
     val client = JmapClient.connect(createJmapHttpClient(fake.engine), AuthLatch(), BASE_URL)
-    val mailboxes = MailboxRepository(client)
-    return mailboxes to ComposeRepository(client, mailboxes)
+    return MailboxRepository(client) to ComposeRepository(client)
 }
 
 private suspend fun MailboxRepository.original(): EmailDetail = assertIs<EmailLookup.Found>(getEmail("orig")).detail
 
 class ComposeRepositoryTest {
     @Test
-    fun `the identity to send as comes from the server`() =
+    fun `a new message starts as an empty draft`() =
         runTest {
             val (_, compose) = repositories(server())
 
-            assertEquals(Identity(id = "i1", name = "Verde", email = OWN), compose.identity())
+            assertEquals(StartResult.Ready(Draft()), compose.start(ComposeIntent.New))
+        }
+
+    @Test
+    fun `the identity and mailboxes are fetched once for the whole session`() =
+        runTest {
+            val fake = server()
+            val (_, compose) = repositories(fake)
+            val draft = Draft(to = listOf(EmailAddress(null, "dan@example.test")), body = "hello")
+            compose.start(ComposeIntent.New)
+            val afterStart = fake.requestCount
+
+            compose.send(draft)
+            compose.send(draft)
+
+            assertEquals(afterStart + 2, fake.requestCount)
         }
 
     @Test
@@ -69,11 +80,7 @@ class ComposeRepositoryTest {
             val fake = server()
             val (_, compose) = repositories(fake)
 
-            val result =
-                compose.send(
-                    compose.identity(),
-                    Draft(to = listOf(EmailAddress(null, "dan@example.test")), subject = "Hi", body = "hello"),
-                )
+            val result = compose.send(Draft(to = listOf(EmailAddress(null, "dan@example.test")), subject = "Hi", body = "hello"))
 
             assertEquals(SendResult.Sent, result)
             val submission = fake.submissions.single()
@@ -92,8 +99,8 @@ class ComposeRepositoryTest {
             val fake = server()
             val (mailboxes, compose) = repositories(fake)
 
-            val draft = replyDraft(mailboxes.original(), OWN, all = false)
-            compose.send(compose.identity(), draft)
+            val draft = assertIs<StartResult.Ready>(compose.start(ComposeIntent.Reply(mailboxes.original(), all = false))).draft
+            compose.send(draft)
 
             val email = fake.emails.single { it.id == fake.submissions.single().emailId }
             assertEquals(listOf("m1@example.test"), email.inReplyTo)
@@ -165,15 +172,28 @@ class ComposeRepositoryTest {
         }
 
     @Test
-    fun `an account with no identity fails naming it rather than crashing`() =
+    fun `an account with no identity cannot start or send`() =
         runTest {
             val fake = server()
             fake.identities.clear()
             val (_, compose) = repositories(fake)
 
-            val thrown = assertFailsWith<JmapException> { compose.identity() }
+            assertEquals(SendUnavailable.NoIdentity, compose.start(ComposeIntent.New))
+            assertEquals(SendUnavailable.NoIdentity, compose.send(Draft()))
+        }
 
-            assertEquals("noIdentity", assertIs<JmapError.Request>(thrown.error).type)
+    @Test
+    fun `an account with no sent mailbox cannot send and is not cached as ready`() =
+        runTest {
+            val fake = server()
+            val sent = fake.mailboxes.single { it.role == "sent" }
+            fake.mailboxes -= sent
+            val (_, compose) = repositories(fake)
+
+            assertEquals(SendUnavailable.NoMailbox("sent"), compose.send(Draft()))
+
+            fake.mailboxes += sent
+            assertEquals(SendResult.Sent, compose.send(Draft(to = listOf(EmailAddress(null, "dan@example.test")))))
         }
 
     @Test
@@ -183,7 +203,7 @@ class ComposeRepositoryTest {
             fake.refuseSubmission = true
             val (_, compose) = repositories(fake)
 
-            val result = compose.send(compose.identity(), Draft(to = listOf(EmailAddress(null, "dan@example.test")), body = "hello"))
+            val result = compose.send(Draft(to = listOf(EmailAddress(null, "dan@example.test")), body = "hello"))
 
             assertEquals(SendResult.Rejected("submission refused"), result)
             assertTrue(fake.submissions.isEmpty())

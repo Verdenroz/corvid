@@ -176,8 +176,7 @@ class AppLockViewModel(
                 }
                 reconnectPolicy.reset()
                 unlockedScopeHolder.open().declare(client)
-                val mailboxes = MailboxRepository(client)
-                _state.value = AppLockState.Unlocked(mailboxes, ComposeRepository(client, mailboxes))
+                _state.value = AppLockState.Unlocked(MailboxRepository(client), ComposeRepository(client))
                 heartbeatJob = viewModelScope.launch { heartbeatLoop() }
             }
             is KeyState.Locked -> {
