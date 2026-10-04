@@ -1,7 +1,7 @@
 use std::io;
 use std::process::ExitCode;
 
-use corvid_config::{or_exit, secret, section};
+use corvid_config::{EX_TEMPFAIL, or_exit, secret, section};
 use corvid_sentinel::{Config, Jmap, open, router};
 use tokio::net::TcpListener;
 use tokio::signal;
@@ -43,6 +43,10 @@ async fn main() -> ExitCode {
             .expect("connecting to the mail server panicked");
     let jmap = match connected {
         Ok(jmap) => jmap,
+        Err(error) if corvid_jmap::unreachable(&error) => {
+            tracing::error!(%error, "the mail server is not up yet");
+            return ExitCode::from(EX_TEMPFAIL);
+        }
         Err(error) => {
             tracing::error!(%error, "cannot reach the mail server");
             return ExitCode::FAILURE;

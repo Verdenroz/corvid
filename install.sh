@@ -254,7 +254,7 @@ cloudflare() {
   local token="$1"; shift
   { if [[ -n "$token" ]]; then printf '%s\n' "$token"; else on_host 'cat /opt/corvid/secrets/cloudflare.token'; echo; fi
     printf '%s' "${CLOUDFLARE_STDIN:-}"; } |
-    on_host "python3 -c 'import base64; exec(base64.b64decode(\"$CLOUDFLARE_PY\"))' $*"
+    on_host "python3 -c 'import base64; exec(base64.b64decode(\"$CLOUDFLARE_PY\"))' $(printf '%q ' "$@")"
 }
 CLOUDFLARE_PY="$(base64 < "$HERE/deploy/cloudflare.py" | tr -d '\n')"
 # Prints "ZONE ZONE_ID DOMAIN_ID": the editable zone holding the hostname, and the mail domain's
@@ -581,7 +581,8 @@ step "waiting for certificates (Let's Encrypt, up to 10 minutes)"
 on_host 'set -a; . /opt/corvid/corvid.env; set +a; for _ in $(seq 1 60); do n=$(stalwart-cli query Certificate 2>/dev/null | awk "NR>1" | wc -l); [ "$n" -gt 0 ] && { echo "  $n certificate(s) issued"; exit 0; }; sleep 10; done; echo "  none yet; Stalwart keeps retrying, and the checks below report it"'
 
 step "verifying"
-on_host "cd /opt/corvid/deploy && bash verify.sh '$domain' '$hostname'" || true
+verified=0
+on_host "cd /opt/corvid/deploy && bash verify.sh '$domain' '$hostname'" || verified=$?
 
 step "checking the ports from this machine"
 # Only an outside connection finds a cloud firewall, and a bare TCP connect proves nothing
@@ -608,6 +609,7 @@ elif (( ${#closed[@]} )); then
 else
   ok "465, 587, 993 and $web_port answer from here"
 fi
+(( verified == 0 )) || die "installed, but verification failed; fix the FAIL lines above and rerun"
 
 cat <<EOF
 

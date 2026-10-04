@@ -39,7 +39,7 @@ impl Client {
             .send()
             .and_then(|response| response.error_for_status())
             .and_then(|response| response.json())
-            .map_err(io::Error::other)?;
+            .map_err(transport)?;
 
         Ok(Self {
             http,
@@ -159,6 +159,26 @@ pub fn ids(value: &Value) -> Vec<String> {
         .as_array()
         .map(|list| list.iter().filter_map(text).collect())
         .unwrap_or_default()
+}
+
+/// Whether `error` means the server could not be reached at all, as opposed to answering with
+/// a refusal. Only the first is worth retrying: Stalwart bans an address for repeated bad logins.
+pub fn unreachable(error: &io::Error) -> bool {
+    matches!(
+        error.kind(),
+        io::ErrorKind::ConnectionRefused | io::ErrorKind::TimedOut
+    )
+}
+
+fn transport(error: reqwest::Error) -> io::Error {
+    let kind = if error.is_connect() {
+        io::ErrorKind::ConnectionRefused
+    } else if error.is_timeout() {
+        io::ErrorKind::TimedOut
+    } else {
+        io::ErrorKind::Other
+    };
+    io::Error::new(kind, error)
 }
 
 pub fn missing(what: &str) -> io::Error {

@@ -20,6 +20,9 @@ pub const DEFAULT_PATH: &str = "/etc/corvid/config.yaml";
 /// `EX_CONFIG`, the exit status for missing or malformed configuration.
 pub const EX_CONFIG: u8 = 78;
 
+/// `EX_TEMPFAIL`, the exit status for a dependency not up yet, which systemd retries.
+pub const EX_TEMPFAIL: u8 = 75;
+
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
@@ -907,6 +910,32 @@ mod server_tests {
             include_str!("../../../charts/corvid/files/Caddyfile"),
             include_str!("../../../deploy/Caddyfile")
         );
+    }
+
+    #[test]
+    fn every_binary_a_unit_runs_is_copied_into_the_image() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let image = std::fs::read_to_string(root.join("deploy/Containerfile")).unwrap();
+        let mut units: Vec<std::path::PathBuf> = std::fs::read_dir(root.join("deploy"))
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .filter(|p| p.extension().is_some_and(|x| x == "container"))
+            .collect();
+        units.push(root.join("charts/corvid/templates/deployment.yaml"));
+
+        for unit in units {
+            let text = std::fs::read_to_string(&unit).unwrap();
+            for (i, _) in text.match_indices("/usr/local/bin/") {
+                let rest = &text[i..];
+                let binary = &rest[..rest.find([' ', ',', ']', '\n']).unwrap()];
+                let name = binary.rsplit('/').next().unwrap();
+                assert!(
+                    image.contains(&format!("/release/{name} /usr/local/bin/")),
+                    "{} runs {binary}, which deploy/Containerfile does not copy",
+                    unit.display()
+                );
+            }
+        }
     }
 
     #[test]

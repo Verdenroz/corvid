@@ -129,5 +129,12 @@ status=0
 ( mta_sts_preflight token "$domain" "$hostname" "$zone" 4443 ) || status=$?
 check "it stops" '[[ $status -ne 0 ]]'
 
+echo "== a first install off 443 with mta-sts clear passes under set -e"
+declare -a stale_mta_sts=()
+status=0
+# shellcheck disable=SC2034  # read inside the eval'd check
+( set -e; mta_sts_preflight token fresh.example.org "$hostname" "$zone" 4443 ) || status=$?
+check "it returns 0" '[[ $status -eq 0 ]]'
+
 [[ $fail -eq 0 ]] || echo "--- last output"
 exit "$fail"
