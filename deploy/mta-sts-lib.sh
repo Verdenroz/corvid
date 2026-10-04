@@ -82,7 +82,9 @@ mta_sts_preflight() {
   for kind in A AAAA; do
     record="$(cloudflare "$token" records "$domain_zone_id" "mta-sts.$domain" "$kind")" ||
       die "could not read mta-sts.$domain ($kind): $record"
-    [[ -n "$record" ]] && die "mta-sts.$domain already has a $kind record; remove it before installing off 443"
+    if [[ -n "$record" ]]; then
+      die "mta-sts.$domain already has a $kind record; remove it before installing off 443"
+    fi
   done
 }
 
