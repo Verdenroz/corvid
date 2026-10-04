@@ -11,6 +11,13 @@ enum class LedgerTab(val role: String?) {
     Drafts("drafts"),
 }
 
+/** What a ledger lists: a home tab, or the messages matching a search. */
+sealed interface LedgerSource {
+    data class Tab(val tab: LedgerTab) : LedgerSource
+
+    data class Search(val query: String) : LedgerSource
+}
+
 sealed interface LedgerUiState {
     data object Loading : LedgerUiState
 

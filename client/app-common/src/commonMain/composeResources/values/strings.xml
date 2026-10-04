@@ -16,9 +16,9 @@
     <string name="enroll_detail">It may be this device's first sign-in, or its access was revoked.</string>
     <string name="enroll_confirm">Enroll "%1$s"</string>
     <string name="app_name">Corvid</string>
-    <string name="search_placeholder">Search mail, people and sources</string>
+    <string name="search_placeholder">Search mail</string>
     <string name="search_shortcut">Ctrl K</string>
-    <string name="search_unavailable">Search isn't available yet</string>
+    <string name="search_back">Leave search</string>
     <string name="key_status">· key held · locks in %1$s</string>
     <string name="key_countdown">%1$s:%2$s</string>
     <string name="key_lock_now">Lock now</string>

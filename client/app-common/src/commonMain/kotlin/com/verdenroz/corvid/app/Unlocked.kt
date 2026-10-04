@@ -3,6 +3,7 @@ package com.verdenroz.corvid.app
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -21,14 +22,26 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.navigationevent.NavigationEventInfo
@@ -37,6 +50,8 @@ import androidx.navigationevent.compose.rememberNavigationEventState
 import com.verdenroz.corvid.app.shell.HomeContent
 import com.verdenroz.corvid.app.shell.KeyState
 import com.verdenroz.corvid.app.shell.NarrowTopBar
+import com.verdenroz.corvid.app.shell.SearchInput
+import com.verdenroz.corvid.app.shell.SearchTopBar
 import com.verdenroz.corvid.app.shell.TabsBar
 import com.verdenroz.corvid.app.shell.WideTopBar
 import com.verdenroz.corvid.core.data.ComposeRepository
@@ -52,10 +67,17 @@ import com.verdenroz.corvid.core.ui.WIDE_LAYOUT
 import com.verdenroz.corvid.feature.compose.ComposeScreen
 import com.verdenroz.corvid.feature.filters.FiltersScreen
 import com.verdenroz.corvid.feature.mailbox.ReaderScreen
+import com.verdenroz.corvid.feature.mailbox.SearchScreen
 import com.verdenroz.corvid.feature.mailbox.SenderCard
 import com.verdenroz.corvid.feature.mailbox.SenderCardActions
+import kotlinx.coroutines.delay
 import org.koin.compose.koinInject
 import org.koin.core.scope.Scope
+import kotlin.time.Duration.Companion.milliseconds
+
+private val SEARCH_DEBOUNCE = 350.milliseconds
+
+private fun KeyEvent.isSearchShortcut() = type == KeyEventType.KeyDown && key == Key.K && (isCtrlPressed || isMetaPressed)
 
 /** Every pointer event here resets the idle timer. */
 @Composable
@@ -70,6 +92,8 @@ internal fun UnlockedContent(
     val shell = remember(scope) { ShellViewModel(repository) }
     val ledgers = remember(repository) { Ledgers(repository) }
     DisposableEffect(ledgers) { onDispose { ledgers.clear() } }
+    val searches = remember(repository) { Searches(repository) }
+    DisposableEffect(searches) { onDispose { searches.clear() } }
 
     DisposableEffect(Unit) {
         idleTimeout.recordActivity()
@@ -80,6 +104,8 @@ internal fun UnlockedContent(
     val saved = rememberSaveableStateHolder()
     val navigator = remember(backStack, saved) { Navigator(backStack, saved) }
     val route = navigator.route
+    val entryKeys = (0 until navigator.depth).map(navigator::entryKey).toSet()
+    LaunchedEffect(entryKeys) { searches.retainOnly(entryKeys) }
     val home = route is Route.Home
     LaunchedEffect(home) { if (home) shell.refresh() }
     NavigationBackHandler(
@@ -87,6 +113,17 @@ internal fun UnlockedContent(
         isBackEnabled = shellHandlesBack(route, navigator.depth),
         onBackCompleted = navigator::handleBack,
     )
+
+    val searching = backStack.any { it is Route.Search }
+    var typed by rememberSaveable { mutableStateOf("") }
+    LaunchedEffect(searching) { if (!searching) typed = "" }
+    LaunchedEffect(typed) {
+        delay(SEARCH_DEBOUNCE)
+        navigator.search(typed)
+    }
+    val searchFocus = remember { FocusRequester() }
+    val shellFocus = remember { FocusRequester() }
+    val searchInput = SearchInput(typed, { typed = it }, { navigator.search(typed) }, searchFocus)
 
     val shellState by shell.state.collectAsState()
     val key = remember(host, onLock) { KeyState(host, idleTimeout.locksAt, idleTimeout.timeout, onLock) }
@@ -102,8 +139,14 @@ internal fun UnlockedContent(
     ) {
         val wide = maxWidth >= WIDE_LAYOUT
         CompositionLocalProvider(LocalWideLayout provides wide) {
-            Column(Modifier.fillMaxSize()) {
-                if (wide) WideTopBar(key, shellState.identity)
+            LaunchedEffect(Unit) { shellFocus.requestFocus() }
+            Column(
+                Modifier.fillMaxSize().focusRequester(shellFocus).focusable().onPreviewKeyEvent { event ->
+                    (wide && event.isSearchShortcut()).also { if (it) searchFocus.requestFocus() }
+                },
+            ) {
+                if (wide) WideTopBar(key, shellState.identity, searchInput)
+                if (!wide && route is Route.Search) SearchTopBar(searchInput, navigator::handleBack)
                 val top = navigator.depth - 1
                 val floats = wide && top > 0 && (route is Route.Sender || route is Route.Compose)
                 Box(Modifier.weight(1f)) {
@@ -117,7 +160,7 @@ internal fun UnlockedContent(
                             Box(if (floating) floating(entry, CorvidTheme.colors.line) else Modifier.fillMaxSize()) {
                                 CompositionLocalProvider(LocalBackGuard provides navigator.guard(index)) {
                                     saved.SaveableStateProvider(entryKey) {
-                                        Page(entry, navigator, scope) { Home(it, key, shellState, navigator, ledgers) }
+                                        Page(entry, navigator, scope, searches, entryKey) { Home(it, key, shellState, navigator, ledgers) }
                                     }
                                 }
                             }
@@ -167,7 +210,7 @@ private fun Home(
 ) {
     val wide = LocalWideLayout.current
     Column {
-        if (!wide) NarrowTopBar(key)
+        if (!wide) NarrowTopBar(key, onSearch = { navigator.push(Route.Search("")) })
         TabsBar(
             current = route.tab,
             inboxUnread = shellState.inboxUnread,
@@ -190,6 +233,8 @@ private fun Page(
     route: Route,
     navigator: Navigator,
     scope: Scope,
+    searches: Searches,
+    entryKey: String,
     home: @Composable (Route.Home) -> Unit,
 ) {
     when (route) {
@@ -200,6 +245,13 @@ private fun Page(
                 route.emailId,
                 onBack = navigator::back,
                 onCompose = { navigator.push(Route.Compose(it)) },
+                onOpenSender = { navigator.push(Route.Sender(it)) },
+            )
+        is Route.Search ->
+            SearchScreen(
+                viewModel = if (route.query.isBlank()) null else searches.of(entryKey, route.query),
+                query = route.query,
+                onOpenEmail = { navigator.push(Route.Reader(it)) },
                 onOpenSender = { navigator.push(Route.Sender(it)) },
             )
         is Route.Compose -> ComposeScreen(remember(scope) { scope.get<ComposeRepository>() }, route.intent, onClose = navigator::back)

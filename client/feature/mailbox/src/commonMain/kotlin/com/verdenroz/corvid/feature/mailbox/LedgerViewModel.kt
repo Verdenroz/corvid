@@ -26,8 +26,10 @@ private const val PAGE_SIZE = 50
  */
 class LedgerViewModel(
     private val repository: MailboxRepository,
-    private val tab: LedgerTab,
+    private val source: LedgerSource,
 ) : ViewModel() {
+    constructor(repository: MailboxRepository, tab: LedgerTab) : this(repository, LedgerSource.Tab(tab))
+
     private val _state = MutableStateFlow<LedgerUiState>(LedgerUiState.Loading)
     val state: StateFlow<LedgerUiState> = _state
 
@@ -56,22 +58,24 @@ class LedgerViewModel(
 
     private suspend fun start() {
         try {
-            val role = tab.role
-            filter =
-                if (role == null) {
-                    MailFilter.Starred
-                } else {
-                    val id = repository.mailboxId(role)
-                    if (id == null) {
-                        _state.value = LedgerUiState.Failed(uiText(Res.string.mailbox_no_mailbox, role))
-                        return
-                    }
-                    MailFilter.InMailbox(id)
-                }
+            filter = filterOf(source) ?: return
             loadPage(anchor = null)
         } catch (e: JmapException) {
             _state.value = LedgerUiState.Failed(e.userMessage())
         }
+    }
+
+    private suspend fun filterOf(source: LedgerSource): MailFilter? =
+        when (source) {
+            is LedgerSource.Search -> MailFilter.Search(source.query)
+            is LedgerSource.Tab -> tabFilter(source.tab)
+        }
+
+    private suspend fun tabFilter(tab: LedgerTab): MailFilter? {
+        val role = tab.role ?: return MailFilter.Starred
+        val id = repository.mailboxId(role)
+        if (id == null) _state.value = LedgerUiState.Failed(uiText(Res.string.mailbox_no_mailbox, role))
+        return id?.let(MailFilter::InMailbox)
     }
 
     private suspend fun loadPage(anchor: String?) {

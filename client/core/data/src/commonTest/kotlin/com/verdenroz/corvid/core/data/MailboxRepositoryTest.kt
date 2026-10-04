@@ -37,6 +37,35 @@ class MailboxRepositoryTest {
         }
 
     @Test
+    fun `a text search finds messages in any mailbox, newest first`() =
+        runTest {
+            val fake = FakeJmapServer()
+
+            fun email(
+                id: String,
+                mailbox: String,
+                subject: String,
+                seconds: Long,
+                preview: String = "",
+            ) = FakeEmail(
+                id = id,
+                threadId = id,
+                mailboxIds = setOf(mailbox),
+                subject = subject,
+                from = "sender@example.test",
+                receivedAt = Instant.fromEpochSeconds(seconds).toString(),
+                preview = preview,
+            )
+            fake.emails += email("old", "inbox", "Your INVOICE", seconds = 1)
+            fake.emails += email("other", "inbox", "Lunch", seconds = 2)
+            fake.emails += email("archived", "archive", "Re: lunch", seconds = 3, preview = "the invoice is attached")
+
+            val page = assertIs<EmailPage.Found>(repository(fake).page(MailFilter.Search("invoice"), null))
+
+            assertEquals(listOf("archived", "old"), page.emails.map { it.id })
+        }
+
+    @Test
     fun `a mailbox larger than three pages is listed without gaps or repeats`() =
         runTest {
             val fake = FakeJmapServer()

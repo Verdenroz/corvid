@@ -1,7 +1,7 @@
 package com.verdenroz.corvid.app.shell
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,22 +12,19 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.appcommon.resources.Res
 import com.verdenroz.corvid.appcommon.resources.app_name
 import com.verdenroz.corvid.appcommon.resources.search_placeholder
-import com.verdenroz.corvid.appcommon.resources.search_shortcut
-import com.verdenroz.corvid.appcommon.resources.search_unavailable
-import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.CorvidMark
@@ -58,6 +55,7 @@ internal fun Wordmark() {
 internal fun WideTopBar(
     key: KeyState,
     identity: Identity?,
+    search: SearchInput,
 ) {
     val colors = CorvidTheme.colors
     Column(Modifier.background(colors.surface)) {
@@ -67,7 +65,7 @@ internal fun WideTopBar(
             modifier = Modifier.fillMaxWidth().height(60.dp).padding(start = 18.dp, end = 16.dp),
         ) {
             Box(Modifier.widthIn(min = 190.dp)) { Wordmark() }
-            SearchField(Modifier.weight(1f, fill = false).widthIn(max = 520.dp))
+            SearchField(search, shortcutHint = true, modifier = Modifier.weight(1f, fill = false).widthIn(max = 520.dp))
             Spacer(Modifier.weight(0.01f))
             KeyPill(key)
             identity?.let { AccountAvatar(it) }
@@ -77,7 +75,10 @@ internal fun WideTopBar(
 }
 
 @Composable
-internal fun NarrowTopBar(key: KeyState) {
+internal fun NarrowTopBar(
+    key: KeyState,
+    onSearch: () -> Unit,
+) {
     val colors = CorvidTheme.colors
     Column(Modifier.background(colors.surface)) {
         Row(
@@ -86,45 +87,19 @@ internal fun NarrowTopBar(key: KeyState) {
         ) {
             Wordmark()
             Spacer(Modifier.weight(1f))
-            Box(Modifier.size(40.dp).unavailable(stringResource(Res.string.search_unavailable)), contentAlignment = Alignment.Center) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier =
+                    Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .clickable(onClickLabel = stringResource(Res.string.search_placeholder), role = Role.Button, onClick = onSearch),
+            ) {
                 Icon(CorvidIcons.Search, contentDescription = null, tint = colors.inkMuted)
             }
             KeyRingButton(key)
         }
         KeyStatusLine(key)
-    }
-}
-
-private fun Modifier.unavailable(description: String): Modifier =
-    clearAndSetSemantics {
-        contentDescription = description
-        disabled()
-    }
-
-@Composable
-private fun SearchField(modifier: Modifier) {
-    val colors = CorvidTheme.colors
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        modifier =
-            modifier.unavailable(stringResource(Res.string.search_unavailable)).fillMaxWidth().height(
-                40.dp,
-            ).background(colors.hover, CorvidShape.medium).padding(start = 12.dp, end = 8.dp),
-    ) {
-        Icon(CorvidIcons.Search, contentDescription = null, tint = colors.inkMuted, modifier = Modifier.size(20.dp))
-        Text(
-            stringResource(Res.string.search_placeholder),
-            style = CorvidTheme.type.name,
-            color = colors.inkMuted,
-            modifier = Modifier.weight(1f),
-        )
-        Text(
-            stringResource(Res.string.search_shortcut),
-            style = CorvidTheme.type.chip,
-            color = colors.inkMuted,
-            modifier = Modifier.border(1.dp, colors.line, CorvidShape.small).padding(horizontal = 6.dp, vertical = 1.dp),
-        )
     }
 }
 

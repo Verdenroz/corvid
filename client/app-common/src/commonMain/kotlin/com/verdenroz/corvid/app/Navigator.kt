@@ -30,6 +30,22 @@ internal class Navigator(
         stack += route
     }
 
+    /** Swaps the top screen for [route], forgetting what the old one saved. */
+    fun replace(route: Route) {
+        forget(entryKey(stack.lastIndex))
+        stack[stack.lastIndex] = route
+    }
+
+    /** Searching from a search updates it in place; from anywhere else a non-blank query opens one. */
+    fun search(query: String) {
+        val text = query.trim()
+        val top = route
+        when {
+            top is Route.Search -> if (top.query != text) replace(Route.Search(text))
+            text.isNotEmpty() -> push(Route.Search(text))
+        }
+    }
+
     fun selectTab(tab: HomeTab) {
         stack[0] = Route.Home(tab)
     }
@@ -37,12 +53,15 @@ internal class Navigator(
     /** Pops a pushed screen; from a home tab other than Inbox, returns to Inbox. */
     fun back() {
         if (stack.size > 1) {
-            val popped = entryKey(stack.lastIndex)
-            saved.removeState(popped)
-            guards -= popped
+            forget(entryKey(stack.lastIndex))
             stack.removeAt(stack.lastIndex)
         } else {
             selectTab(HomeTab.Inbox)
         }
+    }
+
+    private fun forget(key: String) {
+        saved.removeState(key)
+        guards -= key
     }
 }
