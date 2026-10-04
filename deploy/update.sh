@@ -27,10 +27,21 @@ registry_ref() {
 
 image_id() { podman image inspect -f '{{.Id}}' "$1"; }
 
+label_of() { podman image inspect -f "{{index .Labels \"org.opencontainers.image.$2\"}}" "$1"; }
+
+# A moving tag such as main carries one version label on every build, so the revision tells
+# builds apart.
 version_of() {
-  local version
-  version="$(podman image inspect -f '{{index .Labels "org.opencontainers.image.version"}}' "$1")"
-  echo "${version:-$(image_id "$1" | cut -c1-12)}"
+  local version revision
+  version="$(label_of "$1" version)"
+  if [[ -z "$version" ]]; then
+    image_id "$1" | cut -c1-12
+  elif [[ "$version" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+    echo "$version"
+  else
+    revision="$(label_of "$1" revision)"
+    echo "$version${revision:+-${revision:0:7}}"
+  fi
 }
 
 # The temp file lives outside update/, which the pod's uid can write, so a planted symlink

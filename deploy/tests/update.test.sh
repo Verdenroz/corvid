@@ -17,7 +17,11 @@ resolve() { if [[ -e "$(tagfile "$1")" ]]; then cat "$(tagfile "$1")"; else echo
 case "$1 $2" in
   "image inspect")
     id="$(resolve "${@: -1}")"
-    if [[ "${*:3}" == *Labels* ]]; then cat "$WORK/ids/${id}.version" 2>/dev/null; else echo "$id"; fi
+    case "${*:3}" in
+      *image.revision*) cat "$WORK/ids/${id}.revision" 2>/dev/null ;;
+      *Labels*) cat "$WORK/ids/${id}.version" 2>/dev/null ;;
+      *) echo "$id" ;;
+    esac
     exit 0 ;;
 esac
 case "$1" in
@@ -199,6 +203,20 @@ echo "== an image without a version label reports its digest"
 fresh; echo new > "$work/registry-id"; rm "$work/ids/new.version"
 run check
 check "latest falls back to the image id" '[[ "$(field latest)" == new ]]'
+echo 1.1.0 > "$work/ids/new.version"
+
+echo "== a release label is reported as is"
+fresh; echo new > "$work/registry-id"; echo v1.1.0-rc1 > "$work/ids/new.version"; echo 0123456789abcdef > "$work/ids/new.revision"
+run check
+check "latest ignores the revision" '[[ "$(field latest)" == v1.1.0-rc1 ]]'
+
+echo "== a channel label carries the revision"
+echo main > "$work/ids/new.version"
+run check
+check "latest is the label and the first 7 of the revision" '[[ "$(field latest)" == main-0123456 ]]'
+rm "$work/ids/new.revision"
+run check
+check "a channel label without a revision stays as is" '[[ "$(field latest)" == main ]]'
 echo 1.1.0 > "$work/ids/new.version"
 
 exit $fail
