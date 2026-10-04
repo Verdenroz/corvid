@@ -26,7 +26,7 @@ class ComposeViewModel(
             try {
                 _state.value =
                     when (val start = composeRepository.start(intent)) {
-                        is StartResult.Ready -> ComposeUiState.Editing(start.draft.toForm(), start.draft.inReplyTo, start.draft.references)
+                        is StartResult.Ready -> ComposeUiState.Editing(seed = start.draft, form = start.draft.toForm())
                         is SendUnavailable -> ComposeUiState.Failed(start.message())
                     }
             } catch (e: JmapException) {
@@ -35,15 +35,15 @@ class ComposeViewModel(
         }
     }
 
-    fun edit(form: ComposeForm) {
+    fun edit(change: ComposeForm.() -> ComposeForm) {
         val current = _state.value as? ComposeUiState.Editing ?: return
-        _state.value = current.copy(form = form)
+        _state.value = current.copy(form = current.form.change())
     }
 
     fun send() {
         val current = _state.value as? ComposeUiState.Editing ?: return
         if (current.sending) return
-        val draft = current.form.toDraft(current.inReplyTo, current.references)
+        val draft = current.form.applyTo(current.seed)
         if (draft.to.isEmpty()) {
             _state.value = current.copy(error = "Add a recipient.")
             return
@@ -83,15 +83,11 @@ private fun Draft.toForm() =
         body = body,
     )
 
-private fun ComposeForm.toDraft(
-    inReplyTo: List<String>,
-    references: List<String>,
-) = Draft(
-    to = parseAddresses(to),
-    cc = parseAddresses(cc),
-    bcc = parseAddresses(bcc),
-    subject = subject,
-    body = body,
-    inReplyTo = inReplyTo,
-    references = references,
-)
+private fun ComposeForm.applyTo(seed: Draft) =
+    seed.copy(
+        to = parseAddresses(to),
+        cc = parseAddresses(cc),
+        bcc = parseAddresses(bcc),
+        subject = subject,
+        body = body,
+    )

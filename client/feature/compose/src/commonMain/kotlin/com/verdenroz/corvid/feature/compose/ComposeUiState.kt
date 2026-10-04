@@ -1,5 +1,7 @@
 package com.verdenroz.corvid.feature.compose
 
+import com.verdenroz.corvid.core.model.Draft
+
 /** Recipients are the raw comma-separated text of each field. */
 data class ComposeForm(
     val to: String,
@@ -14,11 +16,10 @@ sealed interface ComposeUiState {
 
     data class Failed(val message: String) : ComposeUiState
 
-    /** [error] is why the last send did not go out; [form] is untouched by it. */
+    /** [seed] keeps what the form does not show, such as reply threading. [error] is why the last send did not go out. */
     data class Editing(
+        val seed: Draft,
         val form: ComposeForm,
-        val inReplyTo: List<String> = emptyList(),
-        val references: List<String> = emptyList(),
         val sending: Boolean = false,
         val error: String? = null,
     ) : ComposeUiState

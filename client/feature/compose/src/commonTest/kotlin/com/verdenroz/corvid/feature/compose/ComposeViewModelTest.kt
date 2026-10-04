@@ -103,7 +103,8 @@ class ComposeViewModelTest {
         runTest(testDispatcher) {
             val fake = server()
             val vm = viewModel(fake)
-            vm.edit(vm.editing().form.copy(to = "dan@example.test, eve@example.test", subject = "Hi", body = "hello"))
+            vm.editing()
+            vm.edit { copy(to = "dan@example.test, eve@example.test", subject = "Hi", body = "hello") }
 
             vm.send()
 
@@ -181,8 +182,9 @@ class ComposeViewModelTest {
             val fake = server()
             fake.refuseSubmission = true
             val vm = viewModel(fake)
-            val typed = vm.editing().form.copy(to = "dan@example.test", subject = "Hi", body = "hello")
-            vm.edit(typed)
+            vm.editing()
+            vm.edit { copy(to = "dan@example.test", subject = "Hi", body = "hello") }
+            val typed = vm.editing().form
 
             vm.send()
 

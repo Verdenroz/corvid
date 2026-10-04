@@ -34,8 +34,6 @@ fun ComposeScreen(
     val viewModel = remember(composeRepository, intent) { ComposeViewModel(composeRepository, intent) }
     val state by viewModel.state.collectAsState()
 
-    LaunchedEffect(state) { if (state is ComposeUiState.Sent) onClose() }
-
     Column(modifier = Modifier.fillMaxSize()) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(8.dp)) {
             Button(onClick = onClose) { Text("Back") }
@@ -44,32 +42,31 @@ fun ComposeScreen(
             }
         }
         when (val current = state) {
-            is ComposeUiState.Loading, is ComposeUiState.Sent ->
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            is ComposeUiState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            is ComposeUiState.Sent -> LaunchedEffect(Unit) { onClose() }
             is ComposeUiState.Failed -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(current.message) }
-            is ComposeUiState.Editing -> ComposeForm(current, onEdit = viewModel::edit)
+            is ComposeUiState.Editing -> ComposeFields(current, onEdit = viewModel::edit)
         }
     }
 }
 
 @Composable
-private fun ComposeForm(
+private fun ComposeFields(
     state: ComposeUiState.Editing,
-    onEdit: (ComposeForm) -> Unit,
+    onEdit: (ComposeForm.() -> ComposeForm) -> Unit,
 ) {
-    val form = state.form
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        Field("To", form.to) { onEdit(form.copy(to = it)) }
-        Field("Cc", form.cc) { onEdit(form.copy(cc = it)) }
-        Field("Bcc", form.bcc) { onEdit(form.copy(bcc = it)) }
-        Field("Subject", form.subject) { onEdit(form.copy(subject = it)) }
+        Field("To", state.form.to) { onEdit { copy(to = it) } }
+        Field("Cc", state.form.cc) { onEdit { copy(cc = it) } }
+        Field("Bcc", state.form.bcc) { onEdit { copy(bcc = it) } }
+        Field("Subject", state.form.subject) { onEdit { copy(subject = it) } }
         OutlinedTextField(
-            value = form.body,
-            onValueChange = { onEdit(form.copy(body = it)) },
+            value = state.form.body,
+            onValueChange = { onEdit { copy(body = it) } },
             label = { Text("Message") },
             minLines = 10,
             modifier = Modifier.fillMaxWidth(),
