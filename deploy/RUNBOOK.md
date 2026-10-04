@@ -268,9 +268,10 @@ night at 04:00 with up to an hour of random delay. It pulls the tag in `/opt/cor
 and does nothing if the image is unchanged. Otherwise it keeps the previous image as
 `localhost/corvid:rollback` and the previous deploy files in `/opt/corvid/deploy.prev`, copies the
 new image's deploy files into `/opt/corvid/deploy`, and runs `bootstrap.sh` then `deploy.sh`,
-which ends in `verify.sh`. If any step fails it puts the old image and files back, deploys them
-again and mails `postmaster@<domain>` through the host's own Stalwart. A release that failed is not
-retried until a newer one is tagged. The log is `journalctl -u corvid-update.service`.
+which ends in `verify.sh`. If any step fails it puts the old image and files back and deploys them
+again. A release that failed is not retried until a newer one is tagged. It sends no mail: the
+outcome is in `status.json`, which the Corvid app surfaces, and the log is
+`journalctl -u corvid-update.service`.
 
 Every run writes `/opt/corvid/update/status.json`. Writing `check` or `apply` to
 `/opt/corvid/update/request` starts a run on demand: `check` only records the latest version, and
