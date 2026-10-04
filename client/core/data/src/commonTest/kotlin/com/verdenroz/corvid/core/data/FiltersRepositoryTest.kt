@@ -13,6 +13,7 @@ import com.verdenroz.corvid.core.model.MatchMode
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.FakeMailbox
 import com.verdenroz.corvid.core.testing.FakeSieveScript
+import com.verdenroz.corvid.core.testing.withActiveScript
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -102,7 +103,7 @@ class FiltersRepositoryTest {
     fun `an active foreign script is reported on load`() =
         runTest {
             val fake = FakeJmapServer()
-            fake.sieveScripts += FakeSieveScript(id = "old", name = "vacation", blobId = "b0", isActive = true)
+            fake.withActiveScript()
 
             assertEquals("vacation", repository(fake).load().foreignActiveScript)
         }
@@ -111,7 +112,7 @@ class FiltersRepositoryTest {
     fun `a save over an active foreign script asks for confirmation and writes nothing`() =
         runTest {
             val fake = FakeJmapServer()
-            fake.sieveScripts += FakeSieveScript(id = "old", name = "vacation", blobId = "b0", isActive = true)
+            fake.withActiveScript()
 
             val result = repository(fake).save(listOf(RULE), replaceForeign = false)
 
@@ -124,7 +125,7 @@ class FiltersRepositoryTest {
     fun `a confirmed save activates corvid and keeps the foreign script`() =
         runTest {
             val fake = FakeJmapServer()
-            fake.sieveScripts += FakeSieveScript(id = "old", name = "vacation", blobId = "b0", isActive = true)
+            fake.withActiveScript()
 
             val result = repository(fake).save(listOf(RULE), replaceForeign = true)
 

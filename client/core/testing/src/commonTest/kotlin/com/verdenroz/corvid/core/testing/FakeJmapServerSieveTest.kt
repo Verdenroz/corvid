@@ -1,9 +1,8 @@
 package com.verdenroz.corvid.core.testing
 
 import com.verdenroz.corvid.core.jmap.AuthLatch
-import com.verdenroz.corvid.core.jmap.Invocation
 import com.verdenroz.corvid.core.jmap.JmapClient
-import com.verdenroz.corvid.core.jmap.MethodOutcome
+import com.verdenroz.corvid.core.jmap.callOne
 import com.verdenroz.corvid.core.jmap.createJmapHttpClient
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
@@ -15,7 +14,6 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertIs
 
 private const val BASE_URL = "http://127.0.0.1:9999"
 
@@ -24,7 +22,7 @@ class FakeJmapServerSieveTest {
     fun `a created script is activated by onSuccessActivateScript and stores its blob`() =
         runTest {
             val fake = FakeJmapServer()
-            fake.sieveScripts += FakeSieveScript(id = "old", name = "other", blobId = "b0", isActive = true)
+            fake.withActiveScript()
             val client = connect(fake)
             val blobId = client.uploadBlob("keep;".encodeToByteArray(), "application/sieve")
 
@@ -72,7 +70,7 @@ class FakeJmapServerSieveTest {
         runTest {
             val fake = FakeJmapServer()
             fake.invalidSieve = true
-            fake.sieveScripts += FakeSieveScript(id = "old", name = "other", blobId = "b0", isActive = true)
+            fake.withActiveScript()
             val client = connect(fake)
 
             client.sieveSet(createScript("c1", "b1"), activate = "#c1")
@@ -87,9 +85,7 @@ class FakeJmapServerSieveTest {
             fake.sieveScripts += FakeSieveScript(id = "s0", name = "mine", blobId = "b0", isActive = true)
             val client = connect(fake)
 
-            val outcome = client.call(listOf(Invocation("SieveScript/get", buildJsonObject {}, "c0"))).getValue("c0")
-
-            val script = assertIs<MethodOutcome.Success>(outcome).result.getValue("list").jsonArray.single().jsonObject
+            val script = client.callOne("SieveScript/get", buildJsonObject {}).getValue("list").jsonArray.single().jsonObject
             assertEquals("mine", script.getValue("name").jsonPrimitive.content)
             assertEquals("b0", script.getValue("blobId").jsonPrimitive.content)
             assertEquals("true", script.getValue("isActive").jsonPrimitive.content)
@@ -118,8 +114,7 @@ private suspend fun JmapClient.sieveSet(
             arguments.forEach { (key, value) -> put(key, value) }
             activate?.let { put("onSuccessActivateScript", it) }
         }
-    val outcome = call(listOf(Invocation("SieveScript/set", withActivation, "c0"))).getValue("c0")
-    return assertIs<MethodOutcome.Success>(outcome).result
+    return callOne("SieveScript/set", withActivation)
 }
 
 private suspend fun connect(fake: FakeJmapServer): JmapClient = JmapClient.connect(createJmapHttpClient(fake.engine), AuthLatch(), BASE_URL)

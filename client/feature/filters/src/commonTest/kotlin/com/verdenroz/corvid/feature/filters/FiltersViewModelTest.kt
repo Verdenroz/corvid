@@ -14,6 +14,7 @@ import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.FakeSieveScript
 import com.verdenroz.corvid.core.testing.ViewModelTestScope
 import com.verdenroz.corvid.core.testing.runViewModelTest
+import com.verdenroz.corvid.core.testing.withActiveScript
 import kotlinx.coroutines.flow.first
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -75,7 +76,7 @@ class FiltersViewModelTest {
     fun `an active foreign script is kept until the user confirms replacing it`() =
         runViewModelTest {
             val fake = FakeJmapServer()
-            fake.sieveScripts += FakeSieveScript(id = "old", name = "vacation", blobId = "b0", isActive = true)
+            fake.withActiveScript()
             val vm = viewModel(fake)
 
             vm.saveRule(null, rule("first"))
@@ -95,7 +96,7 @@ class FiltersViewModelTest {
     fun `declining the replacement leaves the foreign script active and the rules in the editor`() =
         runViewModelTest {
             val fake = FakeJmapServer()
-            fake.sieveScripts += FakeSieveScript(id = "old", name = "vacation", blobId = "b0", isActive = true)
+            fake.withActiveScript()
             val vm = viewModel(fake)
             vm.saveRule(null, rule("first"))
             vm.ready()
