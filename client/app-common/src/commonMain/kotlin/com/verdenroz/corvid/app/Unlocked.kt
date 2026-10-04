@@ -151,7 +151,14 @@ internal fun UnlockedContent(
                     (wide && event.isSearchShortcut()).also { if (it) searchFocus.requestFocus() }
                 },
             ) {
-                if (wide) WideTopBar(key, shellState.identity, searchInput)
+                if (wide) {
+                    WideTopBar(
+                        key,
+                        shellState.identity,
+                        searchInput,
+                        onOpenSettings = { if (route != Route.Settings) navigator.push(Route.Settings) },
+                    )
+                }
                 if (!wide && route is Route.Search) SearchTopBar(searchInput, navigator::handleBack)
                 val top = navigator.depth - 1
                 val floats = wide && top > 0 && (route is Route.Sender || route is Route.Compose)
@@ -230,7 +237,7 @@ private fun Home(
 ) {
     val wide = LocalWideLayout.current
     Column {
-        if (!wide) NarrowTopBar(key, onSearch = { navigator.push(Route.Search("")) })
+        if (!wide) NarrowTopBar(key, onSearch = { navigator.push(Route.Search("")) }, onOpenSettings = { navigator.push(Route.Settings) })
         TabsBar(
             current = route.tab,
             inboxUnread = shellState.inboxUnread,

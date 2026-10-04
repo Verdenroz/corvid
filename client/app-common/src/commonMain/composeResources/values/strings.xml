@@ -19,6 +19,7 @@
     <string name="search_placeholder">Search mail</string>
     <string name="search_shortcut">Ctrl K</string>
     <string name="search_back">Leave search</string>
+    <string name="settings_open">Settings</string>
     <string name="key_status">· key held · locks in %1$s</string>
     <string name="key_countdown">%1$s:%2$s</string>
     <string name="key_lock_now">Lock now</string>
