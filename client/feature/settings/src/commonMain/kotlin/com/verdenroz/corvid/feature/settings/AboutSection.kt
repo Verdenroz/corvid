@@ -89,7 +89,7 @@ private fun ServerRows(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.padding(vertical = 14.dp),
             ) {
-                PillButton(stringResource(Res.string.settings_about_check), null, viewModel::check)
+                PillButton(stringResource(Res.string.settings_about_check), null, viewModel::check, height = 38.dp)
                 if (report.updateAvailable) PrimaryButton(stringResource(Res.string.settings_about_update_now), viewModel::apply)
             }
     }

@@ -71,7 +71,7 @@ internal fun WideTopBar(
             SearchField(search, shortcutHint = true, modifier = Modifier.weight(1f, fill = false).widthIn(max = 520.dp))
             Spacer(Modifier.weight(0.01f))
             KeyPill(key)
-            identity?.let { AccountAvatar(it, onOpenSettings) }
+            AccountAvatar(identity, onOpenSettings)
         }
         HorizontalDivider(color = colors.line)
     }
@@ -112,7 +112,7 @@ internal fun NarrowTopBar(
 
 @Composable
 private fun AccountAvatar(
-    identity: Identity,
+    identity: Identity?,
     onClick: () -> Unit,
 ) {
     Box(
@@ -120,6 +120,12 @@ private fun AccountAvatar(
             CircleShape,
         ).clickable(onClickLabel = stringResource(Res.string.settings_open), role = Role.Button, onClick = onClick),
     ) {
-        SenderAvatar(name = identity.name.ifBlank { identity.email }, isSource = false, seal = null, size = 32.dp)
+        if (identity == null) {
+            Box(Modifier.size(32.dp).background(CorvidTheme.colors.hover, CircleShape), contentAlignment = Alignment.Center) {
+                Icon(CorvidIcons.Person, contentDescription = null, tint = CorvidTheme.colors.inkMuted, modifier = Modifier.size(18.dp))
+            }
+        } else {
+            SenderAvatar(name = identity.name.ifBlank { identity.email }, isSource = false, seal = null, size = 32.dp)
+        }
     }
 }

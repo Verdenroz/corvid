@@ -27,8 +27,8 @@ import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
+import com.verdenroz.corvid.core.ui.LocalWideLayout
 
-/** A label-style heading over rows that each end in a hairline. */
 @Composable
 internal fun SettingsSection(
     title: String,
@@ -51,12 +51,17 @@ internal fun FactRow(
     label: String,
     value: String,
 ) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp),
-    ) {
-        Text(label, style = CorvidTheme.type.name, color = CorvidTheme.colors.inkMuted, modifier = Modifier.width(132.dp))
-        Text(value, style = CorvidTheme.type.name, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+    val muted = CorvidTheme.colors.inkMuted
+    if (LocalWideLayout.current) {
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp)) {
+            Text(label, style = CorvidTheme.type.name, color = muted, modifier = Modifier.width(132.dp))
+            Text(value, style = CorvidTheme.type.name, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        }
+    } else {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+            Text(label, style = CorvidTheme.type.meta, color = muted)
+            Text(value, style = CorvidTheme.type.name, fontWeight = FontWeight.SemiBold)
+        }
     }
     HorizontalDivider(color = CorvidTheme.colors.line)
 }
@@ -106,7 +111,6 @@ private fun ChoicePill(
     }
 }
 
-/** A row that opens another screen. */
 @Composable
 internal fun LinkRow(
     title: String,
