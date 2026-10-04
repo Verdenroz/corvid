@@ -8,11 +8,11 @@ import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.data.SendResult
 import com.verdenroz.corvid.core.data.forwardDraft
 import com.verdenroz.corvid.core.data.replyDraft
-import com.verdenroz.corvid.core.data.splitAddresses
 import com.verdenroz.corvid.core.jmap.JmapError
 import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.model.Draft
 import com.verdenroz.corvid.core.model.Identity
+import com.verdenroz.corvid.core.model.parseAddresses
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -86,9 +86,9 @@ class ComposeViewModel(
 
 private fun Draft.toForm() =
     ComposeForm(
-        to = to.joinToString(", "),
-        cc = cc.joinToString(", "),
-        bcc = bcc.joinToString(", "),
+        to = to.joinToString(", ") { it.toText() },
+        cc = cc.joinToString(", ") { it.toText() },
+        bcc = bcc.joinToString(", ") { it.toText() },
         subject = subject,
         body = body,
     )
@@ -97,9 +97,9 @@ private fun ComposeForm.toDraft(
     inReplyTo: List<String>,
     references: List<String>,
 ) = Draft(
-    to = splitAddresses(to),
-    cc = splitAddresses(cc),
-    bcc = splitAddresses(bcc),
+    to = parseAddresses(to),
+    cc = parseAddresses(cc),
+    bcc = parseAddresses(bcc),
     subject = subject,
     body = body,
     inReplyTo = inReplyTo,

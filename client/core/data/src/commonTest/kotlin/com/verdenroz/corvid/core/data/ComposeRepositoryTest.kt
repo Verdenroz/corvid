@@ -6,6 +6,7 @@ import com.verdenroz.corvid.core.jmap.JmapError
 import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.jmap.createJmapHttpClient
 import com.verdenroz.corvid.core.model.Draft
+import com.verdenroz.corvid.core.model.EmailAddress
 import com.verdenroz.corvid.core.model.EmailDetail
 import com.verdenroz.corvid.core.model.Identity
 import com.verdenroz.corvid.core.testing.FakeEmail
@@ -37,7 +38,7 @@ private fun server(): FakeJmapServer {
             from = "alice@example.test",
             receivedAt = "2024-03-01T12:00:00Z",
             to = listOf(OWN, "bob@example.test"),
-            cc = listOf("carol@example.test", "Verde <$OWN>"),
+            cc = listOf("carol@example.test", OWN),
             body = "see you at noon\n\nbring cash",
             messageId = listOf("m1@example.test"),
             references = listOf("m0@example.test"),
@@ -68,7 +69,11 @@ class ComposeRepositoryTest {
             val fake = server()
             val (_, compose) = repositories(fake)
 
-            val result = compose.send(compose.identity(), Draft(to = listOf("dan@example.test"), subject = "Hi", body = "hello"))
+            val result =
+                compose.send(
+                    compose.identity(),
+                    Draft(to = listOf(EmailAddress(null, "dan@example.test")), subject = "Hi", body = "hello"),
+                )
 
             assertEquals(SendResult.Sent, result)
             val submission = fake.submissions.single()
@@ -108,8 +113,8 @@ class ComposeRepositoryTest {
 
             val draft = replyDraft(mailboxes.original(), OWN, all = true)
 
-            assertEquals(listOf("alice@example.test"), draft.to)
-            assertEquals(listOf("bob@example.test", "carol@example.test"), draft.cc)
+            assertEquals(listOf(EmailAddress(null, "alice@example.test")), draft.to)
+            assertEquals(listOf("bob@example.test", "carol@example.test"), draft.cc.map { it.email })
         }
 
     @Test
@@ -138,7 +143,7 @@ class ComposeRepositoryTest {
                     "Date: 2024-03-01T12:00:00Z\n" +
                     "Subject: Lunch\n" +
                     "To: $OWN, bob@example.test\n" +
-                    "Cc: carol@example.test, Verde <$OWN>\n\n" +
+                    "Cc: carol@example.test, $OWN\n\n" +
                     "see you at noon\n\nbring cash",
                 draft.body,
             )
@@ -154,9 +159,9 @@ class ComposeRepositoryTest {
             val reply = replyDraft(mailboxes.original(), OWN, all = false)
             val replyAll = replyDraft(mailboxes.original(), OWN, all = true)
 
-            assertEquals(listOf("list@example.test"), reply.to)
-            assertEquals(listOf("list@example.test"), replyAll.to)
-            assertEquals(listOf("bob@example.test", "carol@example.test", "alice@example.test"), replyAll.cc)
+            assertEquals(listOf("list@example.test"), reply.to.map { it.email })
+            assertEquals(listOf("list@example.test"), replyAll.to.map { it.email })
+            assertEquals(listOf("bob@example.test", "carol@example.test", "alice@example.test"), replyAll.cc.map { it.email })
         }
 
     @Test
@@ -178,7 +183,7 @@ class ComposeRepositoryTest {
             fake.refuseSubmission = true
             val (_, compose) = repositories(fake)
 
-            val result = compose.send(compose.identity(), Draft(to = listOf("dan@example.test"), body = "hello"))
+            val result = compose.send(compose.identity(), Draft(to = listOf(EmailAddress(null, "dan@example.test")), body = "hello"))
 
             assertEquals(SendResult.Rejected("submission refused"), result)
             assertTrue(fake.submissions.isEmpty())

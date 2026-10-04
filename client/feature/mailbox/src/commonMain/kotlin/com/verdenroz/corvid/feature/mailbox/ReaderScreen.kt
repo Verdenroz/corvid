@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.MailboxRepository
+import com.verdenroz.corvid.core.model.EmailDetail
 
 @Composable
 fun ReaderScreen(
@@ -47,19 +48,19 @@ fun ReaderScreen(
             is ReaderUiState.Failed -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(current.message) }
             is ReaderUiState.Gone ->
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("This message no longer exists.") }
-            is ReaderUiState.Loaded -> ReaderBody(current)
+            is ReaderUiState.Loaded -> ReaderBody(current.email)
         }
     }
 }
 
 @Composable
-private fun ReaderBody(state: ReaderUiState.Loaded) {
+private fun ReaderBody(email: EmailDetail) {
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-        Text(state.subject.ifEmpty { "(no subject)" }, style = MaterialTheme.typography.titleLarge)
-        Text("From: ${state.from}", style = MaterialTheme.typography.bodyMedium)
-        if (state.to.isNotEmpty()) Text("To: ${state.to.joinToString()}", style = MaterialTheme.typography.bodyMedium)
-        if (state.cc.isNotEmpty()) Text("Cc: ${state.cc.joinToString()}", style = MaterialTheme.typography.bodyMedium)
-        if (state.bodyTruncated) {
+        Text(email.subject.ifEmpty { "(no subject)" }, style = MaterialTheme.typography.titleLarge)
+        Text("From: ${email.from?.toText().orEmpty()}", style = MaterialTheme.typography.bodyMedium)
+        if (email.to.isNotEmpty()) Text("To: ${email.to.joinToString { it.toText() }}", style = MaterialTheme.typography.bodyMedium)
+        if (email.cc.isNotEmpty()) Text("Cc: ${email.cc.joinToString { it.toText() }}", style = MaterialTheme.typography.bodyMedium)
+        if (email.bodyTruncated) {
             Text(
                 "This message was truncated.",
                 style = MaterialTheme.typography.bodySmall,
@@ -67,6 +68,6 @@ private fun ReaderBody(state: ReaderUiState.Loaded) {
                 modifier = Modifier.padding(top = 8.dp),
             )
         }
-        Text(state.body, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 16.dp))
+        Text(email.body, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 16.dp))
     }
 }

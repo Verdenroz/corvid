@@ -67,7 +67,7 @@ class ReaderViewModelTest {
 
             val loaded = vm.state.first { it is ReaderUiState.Loaded } as ReaderUiState.Loaded
 
-            assertEquals("hello world", loaded.body)
+            assertEquals("hello world", loaded.email.body)
         }
 
     @Test
@@ -89,7 +89,7 @@ class ReaderViewModelTest {
 
             val loaded = vm.state.first { it is ReaderUiState.Loaded } as ReaderUiState.Loaded
 
-            assertEquals(true, loaded.bodyTruncated)
+            assertEquals(true, loaded.email.bodyTruncated)
         }
 
     @Test

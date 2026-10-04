@@ -116,8 +116,8 @@ class MailboxRepositoryTest {
             val detail = assertIs<EmailLookup.Found>(repository(fake).getEmail("e1")).detail
 
             assertEquals("plain text body", detail.body)
-            assertEquals(listOf("b@example.test"), detail.to)
-            assertEquals(listOf("c@example.test"), detail.cc)
+            assertEquals(listOf("b@example.test"), detail.to.map { it.email })
+            assertEquals(listOf("c@example.test"), detail.cc.map { it.email })
             assertEquals(false, detail.bodyTruncated)
         }
 

@@ -8,16 +8,17 @@ fun replyDraft(
     ownEmail: String,
     all: Boolean,
 ): Draft {
-    val to = original.replyTo.ifEmpty { listOf(original.from) }
-    val skipped = (to + ownEmail).map { emailOf(it).lowercase() }
-    val others = original.to + original.cc + original.from
-    val cc = if (all) others.filterNot { emailOf(it).lowercase() in skipped }.distinct() else emptyList()
+    val sender = listOfNotNull(original.from)
+    val to = original.replyTo.ifEmpty { sender }
+    val skipped = (to.map { it.email } + ownEmail).map { it.lowercase() }
+    val others = original.to + original.cc + sender
+    val cc = if (all) others.filterNot { it.email.lowercase() in skipped }.distinctBy { it.email.lowercase() } else emptyList()
     val quoted = original.body.lines().joinToString("\n") { if (it.isEmpty()) ">" else "> $it" }
     return Draft(
         to = to,
         cc = cc,
         subject = withPrefix("Re", original.subject),
-        body = "\n\nOn ${original.receivedAt}, ${original.from} wrote:\n$quoted",
+        body = "\n\nOn ${original.receivedAt}, ${original.from?.toText().orEmpty()} wrote:\n$quoted",
         inReplyTo = original.messageId,
         references = original.references + original.messageId,
     )
@@ -26,11 +27,11 @@ fun replyDraft(
 fun forwardDraft(original: EmailDetail): Draft {
     val header =
         listOfNotNull(
-            "From: ${original.from}",
+            "From: ${original.from?.toText().orEmpty()}",
             "Date: ${original.receivedAt}",
             "Subject: ${original.subject}",
-            "To: ${original.to.joinToString(", ")}",
-            original.cc.takeIf { it.isNotEmpty() }?.let { "Cc: ${it.joinToString(", ")}" },
+            "To: ${original.to.joinToString(", ") { it.toText() }}",
+            original.cc.takeIf { it.isNotEmpty() }?.let { "Cc: ${it.joinToString(", ") { address -> address.toText() }}" },
         )
     return Draft(
         subject = withPrefix("Fwd", original.subject),

@@ -9,6 +9,7 @@ import com.verdenroz.corvid.core.jmap.callOne
 import com.verdenroz.corvid.core.jmap.reason
 import com.verdenroz.corvid.core.jmap.setErrorReason
 import com.verdenroz.corvid.core.model.Draft
+import com.verdenroz.corvid.core.model.EmailAddress
 import com.verdenroz.corvid.core.model.Identity
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
@@ -93,7 +94,7 @@ private fun createEmail(
             putJsonObject("draft") {
                 putJsonObject("mailboxIds") { put(draftsId, true) }
                 putJsonObject("keywords") { put("\$draft", true) }
-                putAddresses("from", listOf(formatAddress(identity)))
+                putAddresses("from", listOf(EmailAddress(identity.name.ifEmpty { null }, identity.email)))
                 putAddresses("to", draft.to)
                 putAddresses("cc", draft.cc)
                 putAddresses("bcc", draft.bcc)
@@ -134,21 +135,18 @@ private fun submit(
 
 private fun JsonObjectBuilder.putAddresses(
     key: String,
-    addresses: List<String>,
+    addresses: List<EmailAddress>,
 ) {
     if (addresses.isEmpty()) return
     putJsonArray(key) {
         addresses.forEach { address ->
             addJsonObject {
-                val name = nameOf(address)
-                if (name.isNotEmpty()) put("name", name)
-                put("email", emailOf(address))
+                address.name?.let { put("name", it) }
+                put("email", address.email)
             }
         }
     }
 }
-
-private fun formatAddress(identity: Identity) = formatAddress(identity.name.ifEmpty { null }, identity.email)
 
 private fun Map<String, MethodOutcome>.rejection(): String? {
     val email = getValue("c0")

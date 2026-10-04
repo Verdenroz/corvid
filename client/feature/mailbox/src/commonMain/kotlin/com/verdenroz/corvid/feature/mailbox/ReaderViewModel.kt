@@ -21,18 +21,7 @@ class ReaderViewModel(
             try {
                 when (val lookup = repository.getEmail(emailId)) {
                     is EmailLookup.NotFound -> _state.value = ReaderUiState.Gone
-                    is EmailLookup.Found -> {
-                        val email = lookup.detail
-                        _state.value =
-                            ReaderUiState.Loaded(
-                                subject = email.subject,
-                                from = email.from,
-                                to = email.to,
-                                cc = email.cc,
-                                body = email.body,
-                                bodyTruncated = email.bodyTruncated,
-                            )
-                    }
+                    is EmailLookup.Found -> _state.value = ReaderUiState.Loaded(lookup.detail)
                 }
             } catch (e: JmapException) {
                 _state.value = ReaderUiState.Failed("could not reach the server")

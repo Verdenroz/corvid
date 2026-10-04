@@ -6,6 +6,7 @@ import com.verdenroz.corvid.core.jmap.MethodOutcome
 import com.verdenroz.corvid.core.jmap.callOne
 import com.verdenroz.corvid.core.jmap.resultOrThrow
 import com.verdenroz.corvid.core.jmap.resultReference
+import com.verdenroz.corvid.core.model.EmailAddress
 import com.verdenroz.corvid.core.model.EmailDetail
 import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.core.model.Mailbox
@@ -136,18 +137,16 @@ private fun JsonObject.toEmailSummary() =
         preview = getValue("preview").jsonPrimitive.content,
     )
 
-private fun JsonObject.fromAddress(): String =
-    (get("from") as? JsonArray)?.mapNotNull { it.jsonObject.formatAddress() }?.firstOrNull().orEmpty()
+private fun JsonObject.fromAddress(): String = addressList("from").firstOrNull()?.toText().orEmpty()
 
 /** email is null for MIME group syntax ("undisclosed-recipients:;"), which carries a name and no address. */
-private fun JsonObject.formatAddress(): String? {
+private fun JsonObject.toEmailAddress(): EmailAddress? {
     val email = get("email")?.jsonPrimitive?.contentOrNull ?: return null
-    val name = get("name")?.jsonPrimitive?.contentOrNull
-    return formatAddress(name, email)
+    return EmailAddress(name = get("name")?.jsonPrimitive?.contentOrNull, email = email)
 }
 
-private fun JsonObject.addressList(key: String): List<String> =
-    (get(key) as? JsonArray)?.mapNotNull { it.jsonObject.formatAddress() }.orEmpty()
+private fun JsonObject.addressList(key: String): List<EmailAddress> =
+    (get(key) as? JsonArray)?.mapNotNull { it.jsonObject.toEmailAddress() }.orEmpty()
 
 private fun JsonObject.idList(key: String): List<String> = (get(key) as? JsonArray)?.map { it.jsonPrimitive.content }.orEmpty()
 
@@ -171,7 +170,7 @@ private fun JsonObject.toEmailDetail(): EmailDetail {
     return EmailDetail(
         id = getValue("id").jsonPrimitive.content,
         subject = get("subject")?.jsonPrimitive?.contentOrNull.orEmpty(),
-        from = fromAddress(),
+        from = addressList("from").firstOrNull(),
         to = addressList("to"),
         cc = addressList("cc"),
         replyTo = addressList("replyTo"),
