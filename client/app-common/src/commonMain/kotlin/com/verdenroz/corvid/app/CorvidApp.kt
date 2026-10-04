@@ -20,11 +20,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import com.verdenroz.corvid.core.data.ComposeRepository
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.ui.LockedPane
 import com.verdenroz.corvid.core.ui.RevokedPane
 import com.verdenroz.corvid.core.ui.UnreachablePane
+import com.verdenroz.corvid.feature.compose.ComposeMode
+import com.verdenroz.corvid.feature.compose.ComposeScreen
 import com.verdenroz.corvid.feature.mailbox.InboxScreen
 import com.verdenroz.corvid.feature.mailbox.ReaderScreen
 import com.verdenroz.corvid.feature.signin.SignInScreen
@@ -45,7 +48,12 @@ fun CorvidApp(viewModel: AppLockViewModel = koinViewModel()) {
                 } else {
                     ConnectingPane()
                 }
-            is AppLockState.Unlocked -> UnlockedContent(repository = current.mailboxRepository, onLock = viewModel::lock)
+            is AppLockState.Unlocked ->
+                UnlockedContent(
+                    repository = current.mailboxRepository,
+                    composeRepository = current.composeRepository,
+                    onLock = viewModel::lock,
+                )
             is AppLockState.Unreachable -> UnreachablePane(reason = current.reason, onRetry = viewModel::retry)
             is AppLockState.Locked -> LockedPane(onUnlock = viewModel::unlock)
             is AppLockState.Revoked -> RevokedPane()
@@ -67,6 +75,7 @@ private fun ConnectingPane() {
 @Composable
 private fun UnlockedContent(
     repository: MailboxRepository,
+    composeRepository: ComposeRepository,
     onLock: () -> Unit,
     idleTimeout: IdleTimeoutController = koinInject(),
 ) {
@@ -90,11 +99,21 @@ private fun UnlockedContent(
             Button(onClick = onLock) { Text("Lock") }
         }
         var openEmailId by remember { mutableStateOf<String?>(null) }
+        var composeMode by remember { mutableStateOf<ComposeMode?>(null) }
         val emailId = openEmailId
-        if (emailId == null) {
-            InboxScreen(repository, onOpenEmail = { openEmailId = it })
-        } else {
-            ReaderScreen(repository, emailId, onBack = { openEmailId = null })
+        val mode = composeMode
+        when {
+            mode != null -> ComposeScreen(composeRepository, repository, mode, onClose = { composeMode = null })
+            emailId == null -> InboxScreen(repository, onOpenEmail = { openEmailId = it }, onCompose = { composeMode = ComposeMode.New })
+            else ->
+                ReaderScreen(
+                    repository,
+                    emailId,
+                    onBack = { openEmailId = null },
+                    onReply = { composeMode = ComposeMode.Reply(emailId, all = false) },
+                    onReplyAll = { composeMode = ComposeMode.Reply(emailId, all = true) },
+                    onForward = { composeMode = ComposeMode.Forward(emailId) },
+                )
         }
     }
 }

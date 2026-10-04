@@ -1,7 +1,9 @@
 package com.verdenroz.corvid.feature.mailbox
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -24,12 +26,22 @@ fun ReaderScreen(
     repository: MailboxRepository,
     emailId: String,
     onBack: () -> Unit,
+    onReply: () -> Unit,
+    onReplyAll: () -> Unit,
+    onForward: () -> Unit,
 ) {
     val viewModel = remember(repository, emailId) { ReaderViewModel(repository, emailId) }
     val state by viewModel.state.collectAsState()
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Button(onClick = onBack, modifier = Modifier.padding(8.dp)) { Text("Back") }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(8.dp)) {
+            Button(onClick = onBack) { Text("Back") }
+            if (state is ReaderUiState.Loaded) {
+                Button(onClick = onReply) { Text("Reply") }
+                Button(onClick = onReplyAll) { Text("Reply all") }
+                Button(onClick = onForward) { Text("Forward") }
+            }
+        }
         when (val current = state) {
             is ReaderUiState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             is ReaderUiState.Failed -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(current.message) }

@@ -30,6 +30,7 @@ import com.verdenroz.corvid.core.model.EmailSummary
 fun InboxScreen(
     repository: MailboxRepository,
     onOpenEmail: (String) -> Unit,
+    onCompose: () -> Unit,
 ) {
     val viewModel = remember(repository) { InboxViewModel(repository) }
     val state by viewModel.state.collectAsState()
@@ -39,6 +40,7 @@ fun InboxScreen(
         is InboxUiState.Failed -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(current.message) }
         is InboxUiState.Loaded ->
             LazyColumn(modifier = Modifier.fillMaxSize()) {
+                item { Button(onClick = onCompose, modifier = Modifier.padding(8.dp)) { Text("Compose") } }
                 items(current.emails, key = { it.id }) { email ->
                     EmailRow(email, onClick = { onOpenEmail(email.id) })
                     HorizontalDivider()
