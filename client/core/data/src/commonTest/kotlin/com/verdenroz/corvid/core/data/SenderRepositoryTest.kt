@@ -11,6 +11,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.time.Instant
 
 private const val ADA = "ada@analytical.test"
@@ -49,7 +51,7 @@ class SenderRepositoryTest {
             fake.emails += from("lookalike", "lada@analytical.test")
             fake.emails += from("suffixed", "ada@analytical.test.evil")
 
-            assertEquals(2, senders(fake).counts(ADA).received)
+            assertEquals(2, assertNotNull(senders(fake).counts(ADA)).received)
         }
 
     @Test
@@ -60,7 +62,7 @@ class SenderRepositoryTest {
             fake.emails += from("first", ADA, at = "2025-03-02T10:00:00Z")
             fake.emails += from("later", ADA, at = "2026-01-01T00:00:00Z")
 
-            assertEquals(Instant.parse("2025-03-02T10:00:00Z"), senders(fake).counts(ADA).firstSeen)
+            assertEquals(Instant.parse("2025-03-02T10:00:00Z"), assertNotNull(senders(fake).counts(ADA)).firstSeen)
         }
 
     @Test
@@ -70,7 +72,7 @@ class SenderRepositoryTest {
             fake.emails += from("ok", ADA, headers = results(ADA_PASS))
             fake.emails += from("forged", ADA, headers = results("mx; dmarc=none", ADA_PASS))
 
-            val window = senders(fake).window(ADA)
+            val window = assertNotNull(senders(fake).window(ADA))
 
             assertEquals(1, window.signed)
             assertEquals(2, window.size)
@@ -85,7 +87,7 @@ class SenderRepositoryTest {
             fake.emails += from("forged", ADA, headers = rewrite("stripped=9 proxied=0 hosts=0 trackers=9", "none"))
             fake.emails += from("unmarked", ADA)
 
-            val window = senders(fake).window(ADA)
+            val window = assertNotNull(senders(fake).window(ADA))
 
             assertEquals(4, window.trackersStripped)
             assertEquals(2, window.marked)
@@ -101,7 +103,7 @@ class SenderRepositoryTest {
             fake.emails += sent("lookalike", to = listOf("lada@analytical.test"))
             fake.emails += FakeEmail("inbox", "inbox", setOf("inbox"), "s", "bob@b.test", "2024-01-05T00:00:00Z", to = listOf(ADA))
 
-            assertEquals(3, senders(fake).counts(ADA).sent)
+            assertEquals(3, assertNotNull(senders(fake).counts(ADA)).sent)
         }
 
     @Test
@@ -110,7 +112,7 @@ class SenderRepositoryTest {
             val fake = FakeJmapServer().withSendableAccount()
             repeat(1200) { fake.emails += from("m$it", ADA, at = Instant.fromEpochSeconds(it.toLong()).toString()) }
 
-            val counts = senders(fake).counts(ADA)
+            val counts = assertNotNull(senders(fake).counts(ADA))
 
             assertEquals(1200, counts.received)
             assertEquals(Instant.fromEpochSeconds(0), counts.firstSeen)
@@ -130,7 +132,7 @@ class SenderRepositoryTest {
                 }
             }
 
-            val counts = senders(fake).counts(ADA)
+            val counts = assertNotNull(senders(fake).counts(ADA))
 
             assertEquals(701, counts.received)
             assertEquals(Instant.fromEpochSeconds(-1), counts.firstSeen)
@@ -147,7 +149,7 @@ class SenderRepositoryTest {
                 fake.emails += from("l$it", "lada@analytical.test", at = at, headers = results(ADA_PASS))
             }
 
-            val window = senders(fake).window(ADA)
+            val window = assertNotNull(senders(fake).window(ADA))
 
             assertEquals(SENDER_WINDOW, window.size)
             assertEquals(0, window.signed)
@@ -183,5 +185,20 @@ class SenderRepositoryTest {
             senders(fake).window(ADA)
 
             assertEquals(1, queries)
+        }
+
+    @Test
+    fun `a mailbox that changes on every page gives up after three recounts and shows no number`() =
+        runTest {
+            val fake = FakeJmapServer().withSendableAccount()
+            repeat(1200) { fake.emails += from("m$it", ADA, at = Instant.fromEpochSeconds(it.toLong()).toString()) }
+            var queries = 0
+            fake.beforeEmailQuery = {
+                queries++
+                fake.queryState = "qs$queries"
+            }
+
+            assertNull(senders(fake).counts(ADA))
+            assertEquals(8, queries)
         }
 }
