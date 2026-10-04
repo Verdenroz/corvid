@@ -2,7 +2,6 @@ package com.verdenroz.corvid.feature.compose
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -33,23 +32,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.navigationevent.NavigationEventInfo
-import androidx.navigationevent.compose.NavigationBackHandler
-import androidx.navigationevent.compose.rememberNavigationEventState
 import com.verdenroz.corvid.core.data.ComposeRepository
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
-import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.designsystem.component.PrimaryButton
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.text.asString
+import com.verdenroz.corvid.core.ui.DiscardQuestion
+import com.verdenroz.corvid.core.ui.GuardBack
 import com.verdenroz.corvid.feature.compose.resources.Res
 import com.verdenroz.corvid.feature.compose.resources.compose_bcc
 import com.verdenroz.corvid.feature.compose.resources.compose_cc
 import com.verdenroz.corvid.feature.compose.resources.compose_close
-import com.verdenroz.corvid.feature.compose.resources.compose_discard
 import com.verdenroz.corvid.feature.compose.resources.compose_discard_question
-import com.verdenroz.corvid.feature.compose.resources.compose_keep_editing
 import com.verdenroz.corvid.feature.compose.resources.compose_message
 import com.verdenroz.corvid.feature.compose.resources.compose_send
 import com.verdenroz.corvid.feature.compose.resources.compose_show_copies
@@ -71,7 +66,7 @@ fun ComposeScreen(
     val state by viewModel.state.collectAsState()
     (state as? ComposeUiState.Editing)?.form?.let { if (it != savedForm) SideEffect { savedForm = it } }
     val close = { if (viewModel.requestClose()) onClose() }
-    NavigationBackHandler(state = rememberNavigationEventState(NavigationEventInfo.None), isBackEnabled = true, onBackCompleted = close)
+    GuardBack { !viewModel.requestClose() }
 
     Column(Modifier.fillMaxSize().background(CorvidTheme.colors.surface)) {
         val editing = state as? ComposeUiState.Editing
@@ -81,7 +76,13 @@ fun ComposeScreen(
             is ComposeUiState.Sent -> LaunchedEffect(Unit) { onClose() }
             is ComposeUiState.Failed -> Quiet(current.message.asString())
             is ComposeUiState.Editing -> {
-                if (current.confirmingDiscard) DiscardQuestion(onDiscard = onClose, onKeep = viewModel::keepEditing)
+                if (current.confirmingDiscard) {
+                    DiscardQuestion(
+                        stringResource(Res.string.compose_discard_question),
+                        onDiscard = onClose,
+                        onKeep = viewModel::keepEditing,
+                    )
+                }
                 Fields(current, onEdit = viewModel::edit)
             }
         }
@@ -113,28 +114,6 @@ private fun Bar(
         PrimaryButton(stringResource(Res.string.compose_send), onClick = onSend, icon = CorvidIcons.Send, enabled = !sending)
     }
     HorizontalDivider(color = CorvidTheme.colors.line)
-}
-
-@Composable
-private fun DiscardQuestion(
-    onDiscard: () -> Unit,
-    onKeep: () -> Unit,
-) {
-    val colors = CorvidTheme.colors
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.fillMaxWidth().background(colors.dangerSoft).padding(horizontal = 16.dp, vertical = 8.dp),
-    ) {
-        Text(
-            stringResource(Res.string.compose_discard_question),
-            style = CorvidTheme.type.metaStrong,
-            color = colors.onDangerSoft,
-            modifier = Modifier.weight(1f),
-        )
-        PillButton(stringResource(Res.string.compose_discard), null, onDiscard, height = 30.dp)
-        PillButton(stringResource(Res.string.compose_keep_editing), null, onKeep, height = 30.dp)
-    }
 }
 
 @Composable

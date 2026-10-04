@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -13,18 +14,21 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.navigationevent.NavigationEventInfo
@@ -42,6 +46,7 @@ import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.data.SenderRepository
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.model.ComposeIntent
+import com.verdenroz.corvid.core.ui.LocalBackGuard
 import com.verdenroz.corvid.feature.compose.ComposeScreen
 import com.verdenroz.corvid.feature.filters.FiltersScreen
 import com.verdenroz.corvid.feature.mailbox.ReaderScreen
@@ -62,6 +67,8 @@ internal fun UnlockedContent(
     val scope = scopeHolder.current()
     val repository = remember(scope) { scope.get<MailboxRepository>() }
     val shell = remember(scope) { ShellViewModel(repository) }
+    val ledgers = remember(repository) { Ledgers(repository) }
+    DisposableEffect(ledgers) { onDispose { ledgers.clear() } }
 
     DisposableEffect(Unit) {
         idleTimeout.recordActivity()
@@ -69,12 +76,14 @@ internal fun UnlockedContent(
     }
 
     val backStack = rememberSaveable(saver = RouteStackSaver) { mutableStateListOf<Route>(Route.Home(HomeTab.Inbox)) }
-    val route = backStack.last()
+    val saved = rememberSaveableStateHolder()
+    val navigator = remember(backStack, saved) { Navigator(backStack, saved) }
+    val route = navigator.route
     LaunchedEffect(route) { if (route is Route.Home) shell.refresh() }
     NavigationBackHandler(
         state = rememberNavigationEventState(NavigationEventInfo.None),
-        isBackEnabled = shellHandlesBack(route, backStack.size),
-        onBackCompleted = { backStack.back() },
+        isBackEnabled = shellHandlesBack(route, navigator.depth),
+        onBackCompleted = navigator::handleBack,
     )
 
     val shellState by shell.state.collectAsState()
@@ -93,36 +102,20 @@ internal fun UnlockedContent(
         val wide = maxWidth >= WIDE_LEDGER
         Column(Modifier.fillMaxSize()) {
             if (wide) WideTopBar(key, shellState.identity)
-            // Wide, a card is a sheet and compose a panel over the screen they were opened from.
-            val floats = wide && (route is Route.Sender || route is Route.Compose) && backStack.size > 1
-            val page = if (floats) backStack[backStack.lastIndex - 1] else route
+            val top = navigator.depth - 1
+            val floats = wide && top > 0 && (route is Route.Sender || route is Route.Compose)
             Box(Modifier.weight(1f)) {
-                Page(page, wide, key, shellState, scope, repository, backStack)
-                when {
-                    !floats -> Unit
-                    route is Route.Sender -> {
-                        Box(
-                            Modifier.fillMaxSize().background(
-                                CorvidTheme.colors.scrim,
-                            ).clickable(interactionSource = null, indication = null) { backStack.back() },
-                        )
-                        Box(Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(540.dp).shadow(16.dp)) {
-                            Card(route, wide = true, scope, repository, backStack)
-                        }
-                    }
-                    route is Route.Compose -> {
-                        val shape = RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp)
-                        Box(
-                            Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(end = 24.dp)
-                                .width(540.dp)
-                                .height(470.dp)
-                                .shadow(16.dp, shape)
-                                .border(1.dp, CorvidTheme.colors.line, shape)
-                                .clip(shape),
-                        ) {
-                            Page(route, wide, key, shellState, scope, repository, backStack)
+                // One keyed call site for every visible entry, so crossing the breakpoint moves a screen rather than rebuilding it.
+                (if (floats) listOf(top - 1, top) else listOf(top)).forEach { index ->
+                    val entryKey = navigator.entryKey(index)
+                    key(entryKey) {
+                        val entry = navigator[index]
+                        val floating = floats && index == top
+                        if (floating && entry is Route.Sender) Scrim(navigator::back)
+                        Box(if (floating) floating(entry, CorvidTheme.colors.line) else Modifier.fillMaxSize()) {
+                            CompositionLocalProvider(LocalBackGuard provides navigator.guard(index)) {
+                                saved.SaveableStateProvider(entryKey) { Page(entry, wide, key, shellState, scope, navigator, ledgers) }
+                            }
                         }
                     }
                 }
@@ -132,16 +125,44 @@ internal fun UnlockedContent(
 }
 
 @Composable
+private fun Scrim(onDismiss: () -> Unit) {
+    Box(
+        Modifier.fillMaxSize().background(
+            CorvidTheme.colors.scrim,
+        ).clickable(interactionSource = null, indication = null, onClick = onDismiss),
+    )
+}
+
+/** Wide, a card is a sheet and compose a panel over the screen they were opened from. */
+private fun BoxScope.floating(
+    route: Route,
+    line: Color,
+): Modifier =
+    if (route is Route.Sender) {
+        Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(540.dp).shadow(16.dp)
+    } else {
+        val shape = RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp)
+        Modifier
+            .align(Alignment.BottomEnd)
+            .padding(end = 24.dp)
+            .width(540.dp)
+            .height(470.dp)
+            .shadow(16.dp, shape)
+            .border(1.dp, line, shape)
+            .clip(shape)
+    }
+
+@Composable
 private fun Page(
     route: Route,
     wide: Boolean,
     key: KeyState,
     shellState: ShellState,
     scope: Scope,
-    repository: MailboxRepository,
-    backStack: SnapshotStateList<Route>,
+    navigator: Navigator,
+    ledgers: Ledgers,
 ) {
-    val openSender: (String) -> Unit = { backStack += Route.Sender(it) }
+    val openSender: (String) -> Unit = { navigator.push(Route.Sender(it)) }
     when (route) {
         is Route.Home ->
             Column {
@@ -150,64 +171,46 @@ private fun Page(
                     current = route.tab,
                     inboxUnread = shellState.inboxUnread,
                     wide = wide,
-                    onSelect = { backStack[0] = Route.Home(it) },
-                    onFilters = { backStack += Route.Filters },
+                    onSelect = navigator::selectTab,
+                    onFilters = { navigator.push(Route.Filters) },
                 )
                 HomeContent(
                     tab = route.tab,
-                    repository = repository,
-                    onOpenEmail = { backStack += Route.Reader(it) },
+                    ledgers = ledgers,
+                    onOpenEmail = { navigator.push(Route.Reader(it)) },
                     onOpenSender = openSender,
-                    onWrite = { backStack += Route.Compose(ComposeIntent.New) },
+                    onWrite = { navigator.push(Route.Compose(ComposeIntent.New)) },
                 )
             }
         is Route.Reader ->
             ReaderScreen(
-                repository,
+                remember(scope) { scope.get<MailboxRepository>() },
                 route.emailId,
-                onBack = { backStack.back() },
-                onCompose = { backStack += Route.Compose(it) },
+                onBack = navigator::back,
+                onCompose = { navigator.push(Route.Compose(it)) },
                 onOpenSender = openSender,
             )
-        is Route.Compose -> ComposeScreen(remember(scope) { scope.get<ComposeRepository>() }, route.intent, onClose = { backStack.back() })
-        is Route.Filters -> FiltersScreen(remember(scope) { scope.get<FiltersRepository>() }, onBack = { backStack.back() })
-        is Route.Sender -> Card(route, wide, scope, repository, backStack)
+        is Route.Compose -> ComposeScreen(remember(scope) { scope.get<ComposeRepository>() }, route.intent, onClose = navigator::back)
+        is Route.Filters -> FiltersScreen(remember(scope) { scope.get<FiltersRepository>() }, onBack = navigator::back)
+        is Route.Sender ->
+            SenderCard(
+                mailbox = remember(scope) { scope.get<MailboxRepository>() },
+                senders = remember(scope) { scope.get<SenderRepository>() },
+                address = route.address,
+                wide = wide,
+                actions =
+                    SenderCardActions(
+                        close = navigator::back,
+                        openEmail = { navigator.push(Route.Reader(it)) },
+                        compose = { navigator.push(Route.Compose(it)) },
+                        makeFilter = { navigator.push(Route.Filters) },
+                    ),
+            )
     }
 }
 
-@Composable
-private fun Card(
-    route: Route.Sender,
-    wide: Boolean,
-    scope: Scope,
-    repository: MailboxRepository,
-    backStack: SnapshotStateList<Route>,
-) {
-    SenderCard(
-        mailbox = repository,
-        senders = remember(scope) { scope.get<SenderRepository>() },
-        address = route.address,
-        wide = wide,
-        actions =
-            SenderCardActions(
-                close = { backStack.back() },
-                openEmail = { backStack += Route.Reader(it) },
-                compose = { backStack += Route.Compose(it) },
-                makeFilter = { backStack += Route.Filters },
-            ),
-    )
-}
-
-/** Pops a pushed screen; from a home tab other than Inbox, returns to Inbox. */
-private fun SnapshotStateList<Route>.back() {
-    if (size > 1) removeAt(lastIndex) else this[0] = Route.Home(HomeTab.Inbox)
-}
-
-/**
- * Whether back belongs to the shell. Compose guards its own back so unsent text is not dropped,
- * and two enabled handlers do not resolve in the same order on every platform, so the shell steps aside.
- */
+/** Whether back belongs to the shell at all; on the Inbox with nothing pushed it leaves the app. */
 internal fun shellHandlesBack(
     route: Route,
     depth: Int,
-): Boolean = route !is Route.Compose && (depth > 1 || route != Route.Home(HomeTab.Inbox))
+): Boolean = depth > 1 || route != Route.Home(HomeTab.Inbox)

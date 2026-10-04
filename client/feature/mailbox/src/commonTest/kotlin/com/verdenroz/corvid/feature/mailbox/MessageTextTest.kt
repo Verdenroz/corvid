@@ -8,7 +8,7 @@ import kotlin.test.assertEquals
 private fun text(
     body: String,
     disabled: Boolean,
-) = messageText(body, disabled, Color.Blue, Color.Gray, "(disabled)")
+) = messageText(body, disabled, Color.Blue, Color.Gray, "(disabled)") {}
 
 class MessageTextTest {
     @Test

@@ -27,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -42,6 +43,7 @@ import com.verdenroz.corvid.core.model.Seal
 import com.verdenroz.corvid.core.model.SenderKind
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.provenance.SenderAvatar
+import com.verdenroz.corvid.core.ui.provenance.openUntrusted
 import com.verdenroz.corvid.core.ui.provenance.sealDescription
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_back
@@ -116,6 +118,7 @@ private fun Reader(
     teach: @Composable (Label.Guess) -> Unit,
 ) {
     val colors = CorvidTheme.colors
+    val uriHandler = LocalUriHandler.current
     val padding =
         if (wide) {
             Modifier.padding(
@@ -132,7 +135,7 @@ private fun Reader(
             Text(
                 email.subject.ifEmpty { stringResource(Res.string.mailbox_no_subject) },
                 style = if (wide) CorvidTheme.type.headline else CorvidTheme.type.title,
-                color = if (email.provenance.seal is Seal.Failed) colors.danger else colors.ink,
+                color = if (email.provenance.suspect) colors.danger else colors.ink,
             )
             Spacer(Modifier.height(16.dp))
             SenderLine(email, onOpenSender)
@@ -150,10 +153,11 @@ private fun Reader(
                 Text(
                     messageText(
                         email.body,
-                        disabled = email.provenance.seal is Seal.Failed,
+                        disabled = email.provenance.suspect,
                         linkColor = colors.accent,
                         deadColor = colors.inkFaint,
                         disabledNote = stringResource(Res.string.reader_link_disabled),
+                        onOpen = { uriHandler.openUntrusted(it, email.provenance) },
                     ),
                     style = CorvidTheme.type.body,
                     color = colors.ink,
@@ -206,11 +210,11 @@ private fun SenderLine(
                     is Seal.Failed -> Icon(CorvidIcons.Alert, sealDescription(seal), tint = colors.danger, modifier = Modifier.size(15.dp))
                     is Seal.Unsigned -> Unit
                 }
-                email.from?.email?.takeIf { email.from?.name != null || seal is Seal.Failed }?.let {
+                email.from?.email?.takeIf { email.from?.name != null || email.provenance.suspect }?.let {
                     Text(
-                        senderAddress(it, seal).asString(),
+                        senderAddress(it, email.provenance.suspect).asString(),
                         style = CorvidTheme.type.meta,
-                        color = if (seal is Seal.Failed) colors.danger else colors.inkMuted,
+                        color = if (email.provenance.suspect) colors.danger else colors.inkMuted,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )

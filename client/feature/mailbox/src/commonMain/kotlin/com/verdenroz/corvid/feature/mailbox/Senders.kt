@@ -2,7 +2,6 @@ package com.verdenroz.corvid.feature.mailbox
 
 import androidx.compose.runtime.Composable
 import com.verdenroz.corvid.core.model.EmailAddress
-import com.verdenroz.corvid.core.model.Seal
 import com.verdenroz.corvid.core.model.SenderKind
 import com.verdenroz.corvid.core.model.SourceKind
 import com.verdenroz.corvid.core.text.UiText
@@ -36,8 +35,8 @@ internal fun SenderKind.sourceLabel(): String? =
         )
     }
 
-/** A failed seal qualifies the address it failed to vouch for, so the header does not repeat the claim at face value. */
+/** A suspect sender's address is qualified, so the header does not repeat the claim at face value. */
 internal fun senderAddress(
     address: String,
-    seal: Seal,
-): UiText = uiText(if (seal is Seal.Failed) Res.string.reader_address_unverified else Res.string.reader_address, address)
+    suspect: Boolean,
+): UiText = uiText(if (suspect) Res.string.reader_address_unverified else Res.string.reader_address, address)

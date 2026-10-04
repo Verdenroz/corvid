@@ -1,8 +1,12 @@
 package com.verdenroz.corvid.feature.mailbox
 
 import com.verdenroz.corvid.core.data.SENDER_WINDOW
+import com.verdenroz.corvid.core.model.ComposeIntent
+import com.verdenroz.corvid.core.model.Provenance
 import com.verdenroz.corvid.core.model.Seal
+import com.verdenroz.corvid.core.model.SenderKind
 import com.verdenroz.corvid.core.model.SenderWindow
+import com.verdenroz.corvid.core.model.SourceKind
 import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.uiText
 import com.verdenroz.corvid.feature.mailbox.resources.Res
@@ -64,9 +68,27 @@ class CardFactsTest {
     }
 
     @Test
-    fun `a failed seal leaves the card with no filled primary action`() {
-        assertEquals(false, writeIsPrimary(Seal.Failed("paypal.test", null)))
-        assertEquals(true, writeIsPrimary(Seal.Signed("x.test")))
-        assertEquals(true, writeIsPrimary(Seal.Unsigned))
+    fun `a suspect source offers no unsubscribe at all`() {
+        assertNull(unsubscribe(provenance(Seal.Failed("paypal.test", null), "https://paypal.test/u", "mailto:u@paypal.test")))
+    }
+
+    @Test
+    fun `an unsubscribe on a script or file scheme is never offered`() {
+        assertNull(unsubscribe(provenance(Seal.Unsigned, "javascript:alert(1)", "file:///etc/passwd", "JavaScript:x")))
+    }
+
+    @Test
+    fun `a mailto unsubscribe composes and a web one opens`() {
+        assertEquals(
+            Unsubscribe.Mail(ComposeIntent.To("u@x.test", "stop")),
+            unsubscribe(provenance(Seal.Signed("x.test"), "https://x.test/u", "mailto:u@x.test?subject=stop")),
+        )
+        assertEquals(Unsubscribe.Open("https://x.test/u"), unsubscribe(provenance(Seal.Unsigned, "javascript:x", "https://x.test/u")))
+        assertEquals(Unsubscribe.Open("http://x.test/u"), unsubscribe(provenance(Seal.Unsigned, "http://x.test/u")))
     }
 }
+
+private fun provenance(
+    seal: Seal,
+    vararg unsubscribe: String,
+) = Provenance(seal, rewrite = null, sender = SenderKind.Source(SourceKind.Newsletter), unsubscribe = unsubscribe.toList())

@@ -27,7 +27,6 @@ import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.model.CorvidKeywords
 import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.core.model.Rewrite
-import com.verdenroz.corvid.core.model.Seal
 import com.verdenroz.corvid.core.model.SenderKind
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.provenance.LabelChip
@@ -50,7 +49,7 @@ internal fun LedgerRow(
 ) {
     val colors = CorvidTheme.colors
     val openSender = email.from?.email?.let { { onOpenSender(it) } }
-    val suspect = email.provenance.seal is Seal.Failed
+    val suspect = email.provenance.suspect
     Column(Modifier.fillMaxWidth().background(if (suspect) colors.dangerTint else colors.surface).clickable(onClick = onClick)) {
         if (wide) WideRow(email, zone, openSender) else NarrowRow(email, zone, openSender)
         HorizontalDivider(color = colors.line)
@@ -157,7 +156,7 @@ private fun Summary(
     modifier: Modifier,
 ) {
     val colors = CorvidTheme.colors
-    val subjectColor = if (email.provenance.seal is Seal.Failed) colors.danger else colors.ink
+    val subjectColor = if (email.provenance.suspect) colors.danger else colors.ink
     val subject = email.subject.ifEmpty { stringResource(Res.string.mailbox_no_subject) }
     val separator = stringResource(Res.string.mailbox_separator)
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = modifier) {

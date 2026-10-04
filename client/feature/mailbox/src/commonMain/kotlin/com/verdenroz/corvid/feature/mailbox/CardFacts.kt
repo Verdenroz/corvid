@@ -1,6 +1,9 @@
 package com.verdenroz.corvid.feature.mailbox
 
 import com.verdenroz.corvid.core.data.SENDER_WINDOW
+import com.verdenroz.corvid.core.data.mailtoIntent
+import com.verdenroz.corvid.core.model.ComposeIntent
+import com.verdenroz.corvid.core.model.Provenance
 import com.verdenroz.corvid.core.model.Seal
 import com.verdenroz.corvid.core.model.SenderWindow
 import com.verdenroz.corvid.core.text.UiText
@@ -72,11 +75,21 @@ internal fun trackersFact(
     }
 }
 
+internal sealed interface Unsubscribe {
+    data class Mail(val intent: ComposeIntent.To) : Unsubscribe
+
+    data class Open(val url: String) : Unsubscribe
+}
+
+/** A mailto offer composes and any other offer opens; a suspect source offers nothing. */
+internal fun unsubscribe(provenance: Provenance): Unsubscribe? {
+    val offered = provenance.unsubscribe.filter(provenance::canOpen)
+    return offered.firstNotNullOfOrNull(::mailtoIntent)?.let(Unsubscribe::Mail) ?: offered.firstOrNull()?.let(Unsubscribe::Open)
+}
+
 /** A sender whose seal failed gets a warning instead of a filled Write, so the card does not nudge a reply to a spoofer. */
 internal fun failedWarning(seal: Seal?): UiText? =
     (seal as? Seal.Failed)?.let {
             failed ->
         failed.claimed?.let { uiText(Res.string.card_failed_claims, it) } ?: uiText(Res.string.card_failed)
     }
-
-internal fun writeIsPrimary(seal: Seal?): Boolean = seal !is Seal.Failed

@@ -11,7 +11,10 @@ import com.verdenroz.corvid.core.testing.runViewModelTest
 import com.verdenroz.corvid.core.text.uiText
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_no_mailbox
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -61,6 +64,46 @@ class LedgerViewModelTest {
             // e50 only enters the top 50 once e10's removal shifts everything after it up:
             // seeing it here proves this is a fresh fetch, not page one plus a stale appendix.
             assertTrue(restarted.emails.any { it.id == "e50" })
+        }
+
+    @Test
+    fun `scrolling past the end twice while a page loads fetches that page once`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
+            repeat(2 * EMAIL_COUNT) { i ->
+                val receivedAt = Instant.fromEpochSeconds((1000 - i).toLong()).toString()
+                fake.emails += FakeEmail("e$i", "e$i", setOf("inbox"), "subject $i", "s$i@x.test", receivedAt)
+            }
+            var queries = 0
+            fake.beforeEmailQuery = { queries++ }
+            val vm = track(LedgerViewModel(repository(fake), LedgerTab.Inbox))
+            vm.state.first { it is LedgerUiState.Loaded }
+
+            vm.loadMore()
+            vm.loadMore()
+            val second = vm.state.first { it is LedgerUiState.Loaded && it.emails.size > 50 } as LedgerUiState.Loaded
+            withContext(Dispatchers.Default) { delay(300) }
+
+            assertEquals(2, queries)
+            assertEquals(second.emails.map { it.id }.distinct(), (vm.state.value as LedgerUiState.Loaded).emails.map { it.id })
+        }
+
+    @Test
+    fun `a keyword written elsewhere in the app shows on the row already listed`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
+            val guessed = setOf("corvid-llm-label-bills")
+            fake.emails += FakeEmail("m1", "m1", setOf("inbox"), "s", "a@x.test", "2024-01-02T00:00:00Z", keywords = guessed)
+            val repository = repository(fake)
+            val vm = track(LedgerViewModel(repository, LedgerTab.Inbox))
+            vm.state.first { it is LedgerUiState.Loaded }
+
+            repository.updateKeywords("m1", mapOf("bills" to true, "corvid-llm-label-bills" to false))
+
+            val patched = vm.state.first { (it as? LedgerUiState.Loaded)?.emails?.single()?.keywords == setOf("bills") }
+            assertEquals(1, (patched as LedgerUiState.Loaded).emails.size)
         }
 
     @Test

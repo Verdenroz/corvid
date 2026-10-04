@@ -36,13 +36,27 @@ class FiltersViewModel(
 
     fun changeDraft(rule: FilterRule) = update { it.copy(editing = it.editing?.copy(rule = rule)) }
 
-    fun cancelEdit() = update { it.copy(editing = null) }
+    fun cancelEdit() = update { it.copy(editing = null, confirmingDiscard = false) }
+
+    /**
+     * Back while the editor is open: an untouched draft closes, a changed one asks first, and a
+     * second back discards it. False when no editor is open, so back leaves the screen.
+     */
+    fun back(): Boolean {
+        val ready = _state.value as? FiltersUiState.Ready ?: return false
+        val draft = ready.editing ?: return false
+        val untouched = draft.rule == (draft.index?.let { ready.rules.getOrNull(it) } ?: FilterRule.blank())
+        if (ready.confirmingDiscard || untouched) cancelEdit() else update { it.copy(confirmingDiscard = true) }
+        return true
+    }
+
+    fun keepEditing() = update { it.copy(confirmingDiscard = false) }
 
     fun saveDraft() {
         val ready = _state.value as? FiltersUiState.Ready ?: return
         val draft = ready.editing ?: return
         if (ready.save is SaveStatus.Saving) return
-        update { it.copy(editing = null) }
+        update { it.copy(editing = null, confirmingDiscard = false) }
         persist(
             if (draft.index == null) ready.rules + draft.rule else ready.rules.replaced(draft.index, draft.rule),
             replaceForeign = false,

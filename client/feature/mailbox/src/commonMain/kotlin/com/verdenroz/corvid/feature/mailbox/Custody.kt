@@ -74,7 +74,7 @@ internal fun Custody(
     teach: @Composable (Label.Guess) -> Unit,
 ) {
     val colors = CorvidTheme.colors
-    val bad = email.provenance.seal is Seal.Failed
+    val bad = email.provenance.suspect
     val edge =
         if (bad) {
             Brush.linearGradient(

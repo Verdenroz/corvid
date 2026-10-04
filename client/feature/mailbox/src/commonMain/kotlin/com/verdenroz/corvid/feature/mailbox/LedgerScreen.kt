@@ -25,7 +25,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.feature.mailbox.resources.Res
@@ -45,13 +44,12 @@ private const val LOAD_AHEAD = 8
 
 @Composable
 fun LedgerScreen(
-    repository: MailboxRepository,
+    viewModel: LedgerViewModel,
     tab: LedgerTab,
     onOpenEmail: (String) -> Unit,
     onOpenSender: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val viewModel = remember(repository, tab) { LedgerViewModel(repository, tab) }
     val state by viewModel.state.collectAsState()
 
     Box(modifier.fillMaxSize()) {

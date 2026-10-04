@@ -38,7 +38,6 @@ import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.data.SenderRepository
 import com.verdenroz.corvid.core.data.clockTime
 import com.verdenroz.corvid.core.data.dayHeading
-import com.verdenroz.corvid.core.data.mailtoIntent
 import com.verdenroz.corvid.core.data.monthYear
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
@@ -52,6 +51,7 @@ import com.verdenroz.corvid.core.model.SenderKind
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.provenance.LabelChip
 import com.verdenroz.corvid.core.ui.provenance.SenderAvatar
+import com.verdenroz.corvid.core.ui.provenance.openUntrusted
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.card_authenticity
 import com.verdenroz.corvid.feature.mailbox.resources.card_between
@@ -171,9 +171,9 @@ private fun Header(
                 maxLines = 2,
             )
             Text(
-                seal?.let { senderAddress(address, it).asString() } ?: address,
+                latest?.let { senderAddress(address, it.provenance.suspect).asString() } ?: address,
                 style = CorvidTheme.type.meta,
-                color = if (seal is Seal.Failed) colors.danger else colors.inkMuted,
+                color = if (latest?.provenance?.suspect == true) colors.danger else colors.inkMuted,
             )
         }
     }
@@ -265,21 +265,24 @@ private fun Actions(
     actions: SenderCardActions,
 ) {
     val uri = LocalUriHandler.current
-    val unsubscribe = latest?.provenance?.unsubscribe.orEmpty()
+    val provenance = latest?.provenance
+    val unsubscribe = provenance?.let(::unsubscribe)
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.padding(horizontal = if (wide) 26.dp else 18.dp, vertical = 14.dp),
     ) {
         if (isSource) {
-            if (unsubscribe.isNotEmpty()) {
+            if (provenance != null && unsubscribe != null) {
                 PillButton(stringResource(Res.string.card_unsubscribe), CorvidIcons.Unsubscribe, {
-                    val mail = unsubscribe.firstNotNullOfOrNull(::mailtoIntent)
-                    if (mail != null) actions.compose(mail) else uri.openUri(unsubscribe.first())
+                    when (unsubscribe) {
+                        is Unsubscribe.Mail -> actions.compose(unsubscribe.intent)
+                        is Unsubscribe.Open -> uri.openUntrusted(unsubscribe.url, provenance)
+                    }
                 })
             }
             PillButton(stringResource(Res.string.card_make_filter), CorvidIcons.Filter, actions.makeFilter)
-        } else if (!writeIsPrimary(latest?.provenance?.seal)) {
+        } else if (latest?.provenance?.suspect == true) {
             PillButton(stringResource(Res.string.card_write), CorvidIcons.Pencil, { actions.compose(ComposeIntent.To(address)) })
         } else {
             PrimaryButton(

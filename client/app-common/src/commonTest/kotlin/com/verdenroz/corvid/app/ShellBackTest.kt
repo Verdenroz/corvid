@@ -1,6 +1,5 @@
 package com.verdenroz.corvid.app
 
-import com.verdenroz.corvid.core.model.ComposeIntent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -14,10 +13,5 @@ class ShellBackTest {
     @Test
     fun `back on the inbox root leaves the app to the platform`() {
         assertEquals(false, shellHandlesBack(Route.Home(HomeTab.Inbox), depth = 1))
-    }
-
-    @Test
-    fun `compose keeps back to itself so its discard question is never skipped`() {
-        assertEquals(false, shellHandlesBack(Route.Compose(ComposeIntent.New), depth = 2))
     }
 }

@@ -22,6 +22,7 @@ internal fun messageText(
     linkColor: Color,
     deadColor: Color,
     disabledNote: String,
+    onOpen: (String) -> Unit,
 ): AnnotatedString =
     buildAnnotatedString {
         var from = 0
@@ -36,7 +37,7 @@ internal fun messageText(
                     LinkAnnotation.Url(
                         match.value,
                         TextLinkStyles(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)),
-                    ),
+                    ) { onOpen(match.value) },
                 ) {
                     append(match.value)
                 }

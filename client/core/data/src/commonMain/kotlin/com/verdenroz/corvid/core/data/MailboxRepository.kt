@@ -13,6 +13,8 @@ import com.verdenroz.corvid.core.model.EmailDetail
 import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.core.model.Identity
 import com.verdenroz.corvid.core.model.Mailbox
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -53,6 +55,11 @@ sealed interface EmailPage {
     data object AnchorNotFound : EmailPage
 }
 
+/** Keywords set (true) or cleared (false) on one message, as the server accepted them. */
+data class KeywordPatch(val emailId: String, val patch: Map<String, Boolean>) {
+    fun applyTo(keywords: Set<String>): Set<String> = keywords + patch.filterValues { it }.keys - patch.filterValues { !it }.keys
+}
+
 sealed interface EmailLookup {
     data class Found(val detail: EmailDetail) : EmailLookup
 
@@ -69,6 +76,10 @@ sealed interface EmailLookup {
  */
 class MailboxRepository(private val jmapClient: JmapClient) {
     private var identity: KnownIdentity? = null
+    private val _keywordPatches = MutableSharedFlow<KeywordPatch>(extraBufferCapacity = 16)
+
+    /** Every patch [updateKeywords] got through, so a list already on screen can apply it without refetching. */
+    val keywordPatches: SharedFlow<KeywordPatch> = _keywordPatches
 
     suspend fun mailboxes(): List<Mailbox> =
         jmapClient.callOne("Mailbox/get", JsonObject(emptyMap())).getValue("list").jsonArray.map { it.jsonObject.toMailbox() }
@@ -154,7 +165,9 @@ class MailboxRepository(private val jmapClient: JmapClient) {
                     }
                 }
             }
-        return jmapClient.callOne("Email/set", arguments).setErrorReason("notUpdated", id)
+        val refused = jmapClient.callOne("Email/set", arguments).setErrorReason("notUpdated", id)
+        if (refused == null) _keywordPatches.emit(KeywordPatch(id, patch))
+        return refused
     }
 
     /** The account's first identity, fetched once: who the account avatar is, and which senders are its own server. */

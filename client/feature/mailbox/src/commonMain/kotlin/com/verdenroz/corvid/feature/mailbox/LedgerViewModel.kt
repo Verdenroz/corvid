@@ -3,6 +3,7 @@ package com.verdenroz.corvid.feature.mailbox
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.core.data.EmailPage
+import com.verdenroz.corvid.core.data.KeywordPatch
 import com.verdenroz.corvid.core.data.MailFilter
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.data.userMessage
@@ -11,6 +12,7 @@ import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.core.text.uiText
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_no_mailbox
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -32,14 +34,24 @@ class LedgerViewModel(
     private var filter: MailFilter? = null
     private var queryState: String? = null
     private var emails: List<EmailSummary> = emptyList()
+    private var paging: Job? = null
 
     init {
         viewModelScope.launch { start() }
+        viewModelScope.launch { repository.keywordPatches.collect(::apply) }
     }
 
     fun loadMore() {
+        if (paging?.isActive == true) return
         val anchor = emails.lastOrNull()?.id ?: return
-        viewModelScope.launch { loadPage(anchor) }
+        paging = viewModelScope.launch { loadPage(anchor) }
+    }
+
+    private fun apply(patch: KeywordPatch) {
+        val loaded = _state.value as? LedgerUiState.Loaded ?: return
+        if (emails.none { it.id == patch.emailId }) return
+        emails = emails.map { if (it.id == patch.emailId) it.copy(keywords = patch.applyTo(it.keywords)) else it }
+        _state.value = loaded.copy(emails = emails)
     }
 
     private suspend fun start() {

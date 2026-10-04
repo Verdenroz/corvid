@@ -24,8 +24,10 @@ import com.verdenroz.corvid.feature.filters.resources.filters_not_saved
 import kotlinx.coroutines.flow.first
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 private const val BASE_URL = "http://127.0.0.1:9999"
 
@@ -150,6 +152,56 @@ class FiltersViewModelTest {
 
             vm.cancelEdit()
             assertEquals(null, vm.ready().editing)
+        }
+
+    @Test
+    fun `back on a changed rule asks first, and a second back discards it`() =
+        runViewModelTest {
+            val vm = viewModel(FakeJmapServer())
+            vm.startEdit(null)
+            vm.changeDraft(rule("half done"))
+
+            assertTrue(vm.back())
+            assertEquals(true, vm.ready().confirmingDiscard)
+            assertEquals(rule("half done"), vm.ready().editing?.rule)
+
+            assertTrue(vm.back())
+            assertEquals(null, vm.ready().editing)
+            assertEquals(false, vm.ready().confirmingDiscard)
+        }
+
+    @Test
+    fun `keep editing after back leaves the changed rule open`() =
+        runViewModelTest {
+            val vm = viewModel(FakeJmapServer())
+            vm.startEdit(null)
+            vm.changeDraft(rule("half done"))
+            vm.back()
+
+            vm.keepEditing()
+
+            assertEquals(false, vm.ready().confirmingDiscard)
+            assertEquals(rule("half done"), vm.ready().editing?.rule)
+        }
+
+    @Test
+    fun `back on an untouched rule closes the editor without asking`() =
+        runViewModelTest {
+            val vm = viewModel(FakeJmapServer())
+            vm.save(null, rule("a"))
+            vm.ready()
+            vm.startEdit(0)
+
+            assertTrue(vm.back())
+
+            assertEquals(null, vm.ready().editing)
+            assertEquals(false, vm.ready().confirmingDiscard)
+        }
+
+    @Test
+    fun `back with no rule open leaves the screen to the shell`() =
+        runViewModelTest {
+            assertFalse(viewModel(FakeJmapServer()).back())
         }
 
     @Test

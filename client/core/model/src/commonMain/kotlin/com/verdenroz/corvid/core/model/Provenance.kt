@@ -44,4 +44,12 @@ data class Provenance(
     val rewrite: Rewrite?,
     val sender: SenderKind,
     val unsubscribe: List<String>,
-)
+) {
+    /** DMARC failed, so the From line is a claim nobody vouched for. */
+    val suspect: Boolean get() = seal is Seal.Failed
+
+    /** Whether a link this message carries may be opened: never from a suspect message, and only on web or mail schemes. */
+    fun canOpen(url: String): Boolean = !suspect && url.substringBefore(':').lowercase() in OPENABLE_SCHEMES
+}
+
+private val OPENABLE_SCHEMES = setOf("http", "https", "mailto")

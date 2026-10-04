@@ -16,12 +16,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.app.HomeTab
+import com.verdenroz.corvid.app.Ledgers
 import com.verdenroz.corvid.appcommon.resources.Res
 import com.verdenroz.corvid.appcommon.resources.placeholder_labels
 import com.verdenroz.corvid.appcommon.resources.placeholder_people
 import com.verdenroz.corvid.appcommon.resources.placeholder_sources
 import com.verdenroz.corvid.appcommon.resources.write
-import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.feature.mailbox.LedgerScreen
@@ -30,7 +30,7 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 internal fun HomeContent(
     tab: HomeTab,
-    repository: MailboxRepository,
+    ledgers: Ledgers,
     onOpenEmail: (String) -> Unit,
     onOpenSender: (String) -> Unit,
     onWrite: () -> Unit,
@@ -40,7 +40,7 @@ internal fun HomeContent(
         if (ledger == null) {
             NotBuilt(tab)
         } else {
-            LedgerScreen(repository, ledger, onOpenEmail, onOpenSender)
+            LedgerScreen(ledgers.of(ledger), ledger, onOpenEmail, onOpenSender)
         }
         WriteButton(onWrite, Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 22.dp))
     }

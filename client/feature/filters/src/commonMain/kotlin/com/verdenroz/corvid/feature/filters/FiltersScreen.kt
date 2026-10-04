@@ -36,11 +36,14 @@ import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.designsystem.component.PrimaryButton
 import com.verdenroz.corvid.core.model.FilterRule
 import com.verdenroz.corvid.core.text.asString
+import com.verdenroz.corvid.core.ui.DiscardQuestion
+import com.verdenroz.corvid.core.ui.GuardBack
 import com.verdenroz.corvid.feature.filters.resources.Res
 import com.verdenroz.corvid.feature.filters.resources.filters_add_rule
 import com.verdenroz.corvid.feature.filters.resources.filters_back
 import com.verdenroz.corvid.feature.filters.resources.filters_cancel
 import com.verdenroz.corvid.feature.filters.resources.filters_delete
+import com.verdenroz.corvid.feature.filters.resources.filters_discard_question
 import com.verdenroz.corvid.feature.filters.resources.filters_down
 import com.verdenroz.corvid.feature.filters.resources.filters_edit
 import com.verdenroz.corvid.feature.filters.resources.filters_empty
@@ -62,11 +65,12 @@ fun FiltersScreen(
     val viewModel = remember(repository) { FiltersViewModel(repository, savedDraft) }
     val state by viewModel.state.collectAsState()
     (state as? FiltersUiState.Ready)?.let { ready -> if (ready.editing != savedDraft) SideEffect { savedDraft = ready.editing } }
+    GuardBack(viewModel::back)
 
     Column(modifier = Modifier.fillMaxSize().background(CorvidTheme.colors.surface)) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 4.dp, top = 4.dp, end = 16.dp)) {
             IconButton(
-                onClick = onBack,
+                onClick = { if (!viewModel.back()) onBack() },
             ) { Icon(CorvidIcons.Back, stringResource(Res.string.filters_back), tint = CorvidTheme.colors.inkMuted) }
             Text(stringResource(Res.string.filters_title), style = CorvidTheme.type.headline)
         }
@@ -95,6 +99,9 @@ fun FiltersScreen(
                         onDelete = viewModel::delete,
                     )
                 } else {
+                    if (current.confirmingDiscard) {
+                        DiscardQuestion(stringResource(Res.string.filters_discard_question), viewModel::cancelEdit, viewModel::keepEditing)
+                    }
                     RuleEditor(
                         rule = draft.rule,
                         folders = current.folders,

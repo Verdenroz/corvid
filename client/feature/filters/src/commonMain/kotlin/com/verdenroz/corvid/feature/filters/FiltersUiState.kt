@@ -18,6 +18,7 @@ sealed interface FiltersUiState {
         val folders: List<MailboxRef>,
         val foreignScript: String? = null,
         val editing: RuleDraft? = null,
+        val confirmingDiscard: Boolean = false,
         val save: SaveStatus = SaveStatus.Idle,
     ) : FiltersUiState
 }
