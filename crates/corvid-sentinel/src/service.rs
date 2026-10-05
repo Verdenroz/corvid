@@ -1,56 +1,26 @@
-use std::io;
-
 use crate::decide::decide;
 use crate::notice;
 use crate::state::Seen;
 use crate::webhook::AuthEvent;
 
-pub trait Notifier {
-    fn account_email(&self) -> &str;
-    fn send(&self, message: &[u8]) -> io::Result<()>;
-}
-
-/// Decides one webhook batch and delivers it if anything is alertable.
+/// Decides one webhook batch and returns the state with a notice appended for each alert.
 ///
-/// Returns the state a successful delivery leaves. `seen` itself is never touched, so a caller
-/// that gets an `Err` and does not commit the result will decide the same batch identically on
-/// retry rather than have it read as already handled.
-pub fn handle(events: &[AuthEvent], seen: &Seen, notifier: &impl Notifier) -> io::Result<Seen> {
-    let (alerts, next) = decide(events, seen);
-    if alerts.is_empty() {
-        return Ok(next);
+/// `seen` itself is never touched, so a caller that does not commit the result will decide the
+/// same batch identically on retry rather than have it read as already handled.
+pub fn handle(events: &[AuthEvent], seen: &Seen) -> Seen {
+    let (alerts, mut next) = decide(events, seen);
+    for alert in &alerts {
+        let (kind, title, detail) = notice::render(alert);
+        next.push_notice(kind, alert.at.clone(), title.to_owned(), detail);
     }
-    notifier.send(&notice::render(&alerts, notifier.account_email()))?;
-    Ok(next)
+    next
 }
 
 #[cfg(test)]
 mod tests {
-    use std::cell::{Cell, RefCell};
-
     use super::*;
-    use crate::state::{CredentialKind, Identity};
+    use crate::state::{CredentialKind, Identity, NoticeKind};
     use crate::webhook::Kind;
-
-    #[derive(Default)]
-    struct FakeMailbox {
-        sent: RefCell<Vec<Vec<u8>>>,
-        refuse: Cell<bool>,
-    }
-
-    impl Notifier for FakeMailbox {
-        fn account_email(&self) -> &str {
-            "alice@corvid.test"
-        }
-
-        fn send(&self, message: &[u8]) -> io::Result<()> {
-            if self.refuse.get() {
-                return Err(io::Error::other("the mail server refused"));
-            }
-            self.sent.borrow_mut().push(message.to_owned());
-            Ok(())
-        }
-    }
 
     fn event() -> AuthEvent {
         AuthEvent {
@@ -63,65 +33,56 @@ mod tests {
         }
     }
 
-    #[test]
-    fn a_new_sign_in_is_delivered_and_the_identity_is_committed() {
-        let mailbox = FakeMailbox::default();
-        let seen = Seen::default();
-
-        let next = handle(&[event()], &seen, &mailbox).unwrap();
-
-        assert_eq!(mailbox.sent.borrow().len(), 1);
-        assert!(next.identities.contains(&Identity {
+    fn known() -> Identity {
+        Identity {
             account: "alice@corvid.test".to_owned(),
             kind: CredentialKind::Primary,
             listener: "imaps".to_owned(),
             remote_ip: "203.0.113.9".to_owned(),
-        }));
+        }
     }
 
     #[test]
-    fn nothing_alertable_sends_no_mail() {
-        let mailbox = FakeMailbox::default();
+    fn a_new_sign_in_becomes_a_notice_and_the_identity_is_committed() {
+        let next = handle(&[event()], &Seen::default());
+
+        assert_eq!(next.notices.len(), 1);
+        assert_eq!(next.notices[0].kind, NoticeKind::SignIn);
+        assert_eq!(next.notices[0].at, "2026-09-27T02:08:58Z");
+        assert!(next.identities.contains(&known()));
+    }
+
+    #[test]
+    fn nothing_alertable_adds_no_notice() {
         let mut seen = Seen::default();
-        seen.identities.insert(Identity {
-            account: "alice@corvid.test".to_owned(),
-            kind: CredentialKind::Primary,
-            listener: "imaps".to_owned(),
-            remote_ip: "203.0.113.9".to_owned(),
-        });
+        seen.identities.insert(known());
 
-        handle(&[event()], &seen, &mailbox).unwrap();
+        let next = handle(&[event()], &seen);
 
-        assert_eq!(mailbox.sent.borrow().len(), 0);
+        assert!(next.notices.is_empty());
     }
 
     #[test]
-    fn a_failed_delivery_leaves_the_identity_uncommitted() {
-        let mailbox = FakeMailbox::default();
-        mailbox.refuse.set(true);
+    fn handling_a_batch_leaves_the_input_state_alone() {
         let seen = Seen::default();
 
-        let error = handle(&[event()], &seen, &mailbox).unwrap_err();
+        handle(&[event()], &seen);
 
-        assert_eq!(error.kind(), io::ErrorKind::Other);
-        assert!(seen.identities.is_empty(), "seen itself is never mutated");
+        assert!(seen.identities.is_empty());
+        assert!(seen.notices.is_empty());
     }
 
     #[test]
-    fn a_batch_that_failed_to_deliver_replays_identically_on_retry() {
-        let mailbox = FakeMailbox::default();
-        mailbox.refuse.set(true);
-        let seen = Seen::default();
+    fn ids_keep_counting_across_batches() {
+        let first = handle(&[event()], &Seen::default());
+        let mut other = event();
+        other.remote_ip = Some("203.0.113.10".to_owned());
 
-        handle(&[event()], &seen, &mailbox).unwrap_err();
-        mailbox.refuse.set(false);
-        let next = handle(&[event()], &seen, &mailbox).unwrap();
+        let second = handle(&[other], &first);
 
         assert_eq!(
-            mailbox.sent.borrow().len(),
-            1,
-            "the retry is what got delivered"
+            second.notices.iter().map(|n| n.id).collect::<Vec<_>>(),
+            [1, 2]
         );
-        assert_eq!(next.identities.len(), 1);
     }
 }

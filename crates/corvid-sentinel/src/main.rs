@@ -1,13 +1,15 @@
 use std::io;
 use std::process::ExitCode;
+use std::time::Duration;
 
-use corvid_config::{EX_TEMPFAIL, or_exit, secret, section};
-use corvid_sentinel::{Config, Jmap, open, router};
+use corvid_config::{or_exit, secret, section};
+use corvid_sentinel::{Config, open, router};
 use tokio::net::TcpListener;
 use tokio::signal;
 
 /// Where the host's update directory is mounted; absent where no host updater exists.
 const UPDATE_DIR: &str = "/var/lib/corvid-update";
+const UPDATE_POLL: Duration = Duration::from_secs(60);
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -21,7 +23,6 @@ async fn main() -> ExitCode {
     let config = or_exit(corvid_config::Config::load());
     let settings = or_exit(section(config.sentinel, "sentinel"));
     let hmac_secret = or_exit(secret("CORVID_SENTINEL_SECRET"));
-    let password = or_exit(secret("CORVID_JMAP_PASSWORD"));
 
     let seen = match open(&settings.state) {
         Ok(seen) => seen,
@@ -36,33 +37,13 @@ async fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    // `Jmap::connect` builds a blocking reqwest client, which spins up its own runtime; doing
-    // that on a tokio worker thread panics when it is later dropped.
-    let jmap_url = settings.jmap_url.clone();
-    let jmap_user = settings.jmap_user.clone();
-    let connected =
-        tokio::task::spawn_blocking(move || Jmap::connect(&jmap_url, &jmap_user, &password))
-            .await
-            .expect("connecting to the mail server panicked");
-    let jmap = match connected {
-        Ok(jmap) => jmap,
-        Err(error) if corvid_jmap::unreachable(&error) => {
-            tracing::error!(%error, "the mail server is not up yet");
-            return ExitCode::from(EX_TEMPFAIL);
-        }
-        Err(error) => {
-            tracing::error!(%error, "cannot reach the mail server");
-            return ExitCode::FAILURE;
-        }
-    };
-
     let bind = settings.bind.clone();
     let app = router(Config {
         secret: hmac_secret.into_bytes(),
         state_path: settings.state,
         seen,
-        notifier: jmap,
         update_dir: UPDATE_DIR.into(),
+        update_poll: UPDATE_POLL,
     });
 
     let listener = TcpListener::bind(&bind).await.expect("cannot bind");

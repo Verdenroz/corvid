@@ -25,6 +25,31 @@ pub fn open<T: DeserializeOwned + Default>(path: &Path, schema: u32) -> io::Resu
     Ok(load(path, schema)?.unwrap_or_default())
 }
 
+/// Like `open`, but a file written by schema `previous` is read as `Old` and converted instead of
+/// refused. Any other mismatch, or a corrupt file, still fails with the current schema's error.
+///
+/// The converted state is written back by the caller's next `save`, which is when the file moves
+/// to the new schema.
+pub fn open_migrating<T, Old>(
+    path: &Path,
+    schema: u32,
+    previous: u32,
+    migrate: impl FnOnce(Old) -> T,
+) -> io::Result<T>
+where
+    T: DeserializeOwned + Default,
+    Old: DeserializeOwned,
+{
+    match load(path, schema) {
+        Ok(state) => Ok(state.unwrap_or_default()),
+        Err(error) if error.kind() == io::ErrorKind::InvalidData => match load(path, previous) {
+            Ok(Some(old)) => Ok(migrate(old)),
+            _ => Err(error),
+        },
+        Err(error) => Err(error),
+    }
+}
+
 /// Reads saved state, rejecting a file that does not match its own checksum or was written by
 /// a different schema.
 ///
@@ -161,6 +186,73 @@ mod tests {
             load::<Held>(&path, 3).is_err(),
             "and a newer reader an older file"
         );
+    }
+
+    #[derive(Default, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
+    struct Grown {
+        count: u64,
+        label: String,
+    }
+
+    fn grow(old: Held) -> Grown {
+        Grown {
+            count: old.count,
+            label: "migrated".into(),
+        }
+    }
+
+    #[test]
+    fn the_previous_schema_is_migrated_not_refused() {
+        let (_dir, path) = scratch();
+        save(
+            &path,
+            1,
+            &Held {
+                cursor: None,
+                count: 7,
+            },
+        )
+        .unwrap();
+
+        let grown: Grown = open_migrating(&path, 2, 1, grow).unwrap();
+
+        assert_eq!(
+            grown,
+            Grown {
+                count: 7,
+                label: "migrated".into()
+            }
+        );
+    }
+
+    #[test]
+    fn the_current_schema_loads_without_migrating() {
+        let (_dir, path) = scratch();
+        let kept = Grown {
+            count: 2,
+            label: "kept".into(),
+        };
+        save(&path, 2, &kept).unwrap();
+
+        assert_eq!(open_migrating(&path, 2, 1, grow).unwrap(), kept);
+    }
+
+    #[test]
+    fn a_schema_two_behind_is_still_refused() {
+        let (_dir, path) = scratch();
+        save(&path, 1, &Held::default()).unwrap();
+
+        assert!(open_migrating::<Grown, Held>(&path, 3, 2, grow).is_err());
+    }
+
+    #[test]
+    fn a_corrupt_file_is_not_migrated() {
+        let (_dir, path) = scratch();
+        save(&path, 1, &Held::default()).unwrap();
+        let whole = fs::read_to_string(&path).unwrap();
+        fs::write(&path, &whole[..whole.len() - 5]).unwrap();
+
+        assert!(open_migrating::<Grown, Held>(&path, 2, 1, grow).is_err());
     }
 
     #[test]
