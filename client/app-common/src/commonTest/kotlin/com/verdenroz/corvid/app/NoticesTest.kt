@@ -9,6 +9,7 @@ import com.verdenroz.corvid.core.testing.FakeNotice
 import com.verdenroz.corvid.core.testing.InMemoryPreferencesStore
 import com.verdenroz.corvid.core.testing.KeyedTextResolver
 import com.verdenroz.corvid.core.testing.client
+import com.verdenroz.corvid.core.testing.serveNotices
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -68,7 +69,7 @@ class NoticesTest {
     @Test
     fun `several unseen notices become one banner on the newest, with a count`() =
         runTest {
-            val rig = rig(FakeJmapServer().apply { notices = listOf(FakeNotice(1), FakeNotice(2), BAN) })
+            val rig = rig(FakeJmapServer().apply { notices.serveNotices(listOf(FakeNotice(1), FakeNotice(2), BAN)) })
 
             until { rig.notices.banner.value != null }
 
@@ -81,7 +82,7 @@ class NoticesTest {
     @Test
     fun `the banner for several reads as the newest title and how many more`() =
         runTest {
-            val rig = rig(FakeJmapServer().apply { notices = listOf(FakeNotice(1), BAN) })
+            val rig = rig(FakeJmapServer().apply { notices.serveNotices(listOf(FakeNotice(1), BAN)) })
 
             until { rig.notices.banner.value != null }
 
@@ -91,7 +92,7 @@ class NoticesTest {
     @Test
     fun `one notification is posted for a batch, carrying the server's own words and nothing from mail`() =
         runTest {
-            val rig = rig(FakeJmapServer().apply { notices = listOf(BAN) })
+            val rig = rig(FakeJmapServer().apply { notices.serveNotices(listOf(BAN)) })
 
             until { rig.posted.isNotEmpty() }
 
@@ -101,7 +102,7 @@ class NoticesTest {
     @Test
     fun `a batch of several posts one notification titled with the count`() =
         runTest {
-            val rig = rig(FakeJmapServer().apply { notices = listOf(FakeNotice(1), FakeNotice(2), BAN) })
+            val rig = rig(FakeJmapServer().apply { notices.serveNotices(listOf(FakeNotice(1), FakeNotice(2), BAN)) })
 
             until { rig.posted.isNotEmpty() }
 
@@ -111,34 +112,34 @@ class NoticesTest {
     @Test
     fun `the newest id shown is remembered and the next poll asks only after it`() =
         runTest {
-            val rig = rig(FakeJmapServer().apply { notices = listOf(FakeNotice(1), BAN) })
+            val rig = rig(FakeJmapServer().apply { notices.serveNotices(listOf(FakeNotice(1), BAN)) })
             until { rig.notices.banner.value != null }
 
             advanceTimeBy(61.seconds)
-            until { rig.fake.noticeReads.size >= 2 }
+            until { rig.fake.notices.reads.size >= 2 }
 
             assertEquals(3, rig.preferences.settings.value.noticesSeen)
-            assertEquals(listOf<String?>("0", "3"), rig.fake.noticeReads.take(2))
+            assertEquals(listOf("after=0", "after=3"), rig.fake.notices.reads.take(2))
         }
 
     @Test
     fun `a device that has seen up to an id is told only of newer notices`() =
         runTest {
-            val rig = rig(FakeJmapServer().apply { notices = listOf(FakeNotice(1), FakeNotice(2), BAN) }, seen = 2)
+            val rig = rig(FakeJmapServer().apply { notices.serveNotices(listOf(FakeNotice(1), FakeNotice(2), BAN)) }, seen = 2)
 
             until { rig.notices.banner.value != null }
 
             assertEquals(1, rig.notices.banner.value?.count)
-            assertEquals("2", rig.fake.noticeReads.first())
+            assertEquals("after=2", rig.fake.notices.reads.first())
         }
 
     @Test
     fun `a notice that arrives while the banner is up adds to its count and notifies again`() =
         runTest {
-            val rig = rig(FakeJmapServer().apply { notices = listOf(FakeNotice(1)) })
+            val rig = rig(FakeJmapServer().apply { notices.serveNotices(listOf(FakeNotice(1))) })
             until { rig.notices.banner.value != null }
 
-            rig.fake.notices = listOf(FakeNotice(1), BAN)
+            rig.fake.notices.serveNotices(listOf(FakeNotice(1), BAN))
             advanceTimeBy(61.seconds)
             until { rig.notices.banner.value?.count == 2 }
 
@@ -149,12 +150,12 @@ class NoticesTest {
     @Test
     fun `a dismissed banner stays gone and nothing is posted again`() =
         runTest {
-            val rig = rig(FakeJmapServer().apply { notices = listOf(BAN) })
+            val rig = rig(FakeJmapServer().apply { notices.serveNotices(listOf(BAN)) })
             until { rig.notices.banner.value != null }
 
             rig.notices.dismiss()
             advanceTimeBy(61.seconds)
-            until { rig.fake.noticeReads.size >= 2 }
+            until { rig.fake.notices.reads.size >= 2 }
 
             assertNull(rig.notices.banner.value)
             assertEquals(1, rig.posted.size)
@@ -168,7 +169,7 @@ class NoticesTest {
             advanceTimeBy(61.seconds)
             until { rig.fake.requestCount > 2 }
 
-            rig.fake.notices = listOf(BAN)
+            rig.fake.notices.serveNotices(listOf(BAN))
             advanceTimeBy(61.seconds)
             until { rig.notices.banner.value != null }
 
@@ -178,13 +179,13 @@ class NoticesTest {
     @Test
     fun `a failing server is ignored and the next poll recovers`() =
         runTest {
-            val fake = FakeJmapServer().apply { notices = listOf(BAN) }
-            fake.noticesBroken = true
+            val fake = FakeJmapServer().apply { notices.serveNotices(listOf(BAN)) }
+            fake.notices.broken = true
             val rig = rig(fake)
             until { rig.fake.requestCount > 1 }
             assertNull(rig.notices.banner.value)
 
-            fake.noticesBroken = false
+            fake.notices.broken = false
             advanceTimeBy(61.seconds)
             until { rig.notices.banner.value != null }
 
@@ -194,47 +195,47 @@ class NoticesTest {
     @Test
     fun `returning to the foreground polls at once`() =
         runTest {
-            val rig = rig(FakeJmapServer().apply { notices = emptyList() }, pollEvery = Duration.INFINITE)
-            until { rig.fake.noticeReads.size == 1 && rig.fake.requestCount > 1 }
+            val rig = rig(FakeJmapServer().apply { notices.serveNotices(emptyList()) }, pollEvery = Duration.INFINITE)
+            until { rig.fake.notices.reads.size == 1 && rig.fake.requestCount > 1 }
 
-            rig.fake.notices = listOf(BAN)
+            rig.fake.notices.serveNotices(listOf(BAN))
             rig.foreground.send(Unit)
             until { rig.notices.banner.value != null }
 
-            assertEquals(listOf<String?>("0", "0"), rig.fake.noticeReads)
+            assertEquals(listOf("after=0", "after=0"), rig.fake.notices.reads)
         }
 
     @Test
     fun `returning to the foreground during a poll still triggers another right after it`() =
         runTest {
             val gate = CompletableDeferred<Unit>()
-            val fake = FakeJmapServer().apply { notices = emptyList() }
-            fake.noticesGate = gate
+            val fake = FakeJmapServer().apply { notices.serveNotices(emptyList()) }
+            fake.notices.gate = gate
             val rig = rig(fake, pollEvery = Duration.INFINITE)
-            until { fake.noticeArrivals == 1 }
+            until { fake.notices.arrivals == 1 }
 
-            fake.notices = listOf(BAN)
+            fake.notices.serveNotices(listOf(BAN))
             rig.foreground.send(Unit)
             gate.complete(Unit)
             until { rig.notices.banner.value != null }
 
-            assertEquals(listOf<String?>("0", "0"), fake.noticeReads)
+            assertEquals(listOf("after=0", "after=0"), fake.notices.reads)
         }
 
     @Test
     fun `several returns during a poll make one more poll, not several`() =
         runTest {
             val gate = CompletableDeferred<Unit>()
-            val fake = FakeJmapServer().apply { notices = listOf(BAN) }
-            fake.noticesGate = gate
+            val fake = FakeJmapServer().apply { notices.serveNotices(listOf(BAN)) }
+            fake.notices.gate = gate
             val rig = rig(fake, pollEvery = Duration.INFINITE)
-            until { fake.noticeArrivals == 1 }
+            until { fake.notices.arrivals == 1 }
 
             repeat(3) { rig.foreground.send(Unit) }
             gate.complete(Unit)
-            until { fake.noticeArrivals == 2 }
+            until { fake.notices.arrivals == 2 }
             withContext(Dispatchers.Default) { delay(200) }
 
-            assertEquals(2, fake.noticeArrivals)
+            assertEquals(2, fake.notices.arrivals)
         }
 }

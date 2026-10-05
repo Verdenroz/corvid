@@ -8,8 +8,10 @@ import com.verdenroz.corvid.core.model.UpdateResult
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.FakeUpdate
 import com.verdenroz.corvid.core.testing.ViewModelTestScope
+import com.verdenroz.corvid.core.testing.actions
 import com.verdenroz.corvid.core.testing.client
 import com.verdenroz.corvid.core.testing.runViewModelTest
+import com.verdenroz.corvid.core.testing.serveUpdates
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -51,7 +53,7 @@ class AboutViewModelTest {
     @Test
     fun `an available update is reported with its versions`() =
         runViewModelTest {
-            val ready = viewModel(FakeJmapServer().apply { update = AVAILABLE }).ready()
+            val ready = viewModel(FakeJmapServer().apply { update.serveUpdates(AVAILABLE) }).ready()
 
             assertEquals(listOf("0.2.0", "0.2.1", true), listOf(ready.report.running, ready.report.latest, ready.report.updateAvailable))
             assertEquals(false, ready.working)
@@ -68,8 +70,8 @@ class AboutViewModelTest {
         runViewModelTest {
             val fake =
                 FakeJmapServer().apply {
-                    update = CURRENT
-                    updateBroken = true
+                    update.serveUpdates(CURRENT)
+                    update.broken = true
                 }
 
             assertEquals(AboutState.Failed(JmapException(JmapError.Server(500)).userMessage()), viewModel(fake).state.value)
@@ -78,10 +80,9 @@ class AboutViewModelTest {
     @Test
     fun `a check posts check, shows checking while the server is busy and settles on the new result`() =
         runViewModelTest {
-            val fake = FakeJmapServer().apply { update = CURRENT }
+            val fake = FakeJmapServer().apply { update.serveUpdates(CURRENT) }
             val viewModel = viewModel(fake)
-            fake.update = BUSY
-            fake.updateAfterReads += AVAILABLE.copy(checkedAt = "2026-10-04T10:00:00Z")
+            fake.update.serveUpdates(BUSY, AVAILABLE.copy(checkedAt = "2026-10-04T10:00:00Z"))
 
             viewModel.check()
             assertEquals(UpdateActivity.Checking, viewModel.ready().activity)
@@ -90,7 +91,7 @@ class AboutViewModelTest {
             assertEquals(UpdateActivity.Checking, assertIs<AboutState.Ready>(busy).activity)
 
             val settled = assertIs<AboutState.Ready>(viewModel.await { it.idle() })
-            assertEquals(listOf("check"), fake.updateActions)
+            assertEquals(listOf("check"), fake.update.actions)
             assertNull(settled.activity)
             assertEquals("0.2.1", settled.report.latest)
         }
@@ -98,17 +99,17 @@ class AboutViewModelTest {
     @Test
     fun `an update rides out the restart and shows the final result and detail`() =
         runViewModelTest {
-            val fake = FakeJmapServer().apply { update = AVAILABLE }
+            val fake = FakeJmapServer().apply { update.serveUpdates(AVAILABLE) }
             val viewModel = viewModel(fake)
 
             viewModel.apply()
             assertEquals(UpdateActivity.Updating, viewModel.ready().activity)
-            fake.updateReadsDropped = 2
-            fake.update = FakeUpdate(running = "0.2.1", latest = "0.2.1", result = "updated", detail = "0.2.0 to 0.2.1")
+            fake.update.dropped = 2
+            fake.update.serveUpdates(FakeUpdate(running = "0.2.1", latest = "0.2.1", result = "updated", detail = "0.2.0 to 0.2.1"))
 
             val settled = assertIs<AboutState.Ready>(viewModel.await { it.idle() })
-            assertEquals(listOf("apply"), fake.updateActions)
-            assertEquals(0, fake.updateReadsDropped)
+            assertEquals(listOf("apply"), fake.update.actions)
+            assertEquals(0, fake.update.dropped)
             assertNull(settled.failure)
             assertEquals(
                 Triple("0.2.1", UpdateResult.Updated, "0.2.0 to 0.2.1"),
@@ -119,11 +120,11 @@ class AboutViewModelTest {
     @Test
     fun `a rolled back update ends with the server's reason`() =
         runViewModelTest {
-            val fake = FakeJmapServer().apply { update = AVAILABLE }
+            val fake = FakeJmapServer().apply { update.serveUpdates(AVAILABLE) }
             val viewModel = viewModel(fake)
 
             viewModel.apply()
-            fake.update = FakeUpdate(running = "0.2.0", latest = "0.2.1", result = "rolledBack", detail = "health check failed")
+            fake.update.serveUpdates(FakeUpdate(running = "0.2.0", latest = "0.2.1", result = "rolledBack", detail = "health check failed"))
 
             val settled = assertIs<AboutState.Ready>(viewModel.await { it.idle() })
             assertEquals(UpdateResult.RolledBack, settled.report.result)
@@ -133,11 +134,7 @@ class AboutViewModelTest {
     @Test
     fun `opening while the server is already busy polls until it settles`() =
         runViewModelTest {
-            val fake =
-                FakeJmapServer().apply {
-                    update = BUSY
-                    updateAfterReads += CURRENT
-                }
+            val fake = FakeJmapServer().apply { update.serveUpdates(BUSY, CURRENT) }
             val viewModel = viewModel(fake)
 
             assertTrue(viewModel.ready().working)
@@ -149,11 +146,11 @@ class AboutViewModelTest {
     @Test
     fun `a report the client cannot read ends the wait with a failure and keeps the last report`() =
         runViewModelTest {
-            val fake = FakeJmapServer().apply { update = AVAILABLE }
+            val fake = FakeJmapServer().apply { update.serveUpdates(AVAILABLE) }
             val viewModel = viewModel(fake)
 
             viewModel.check()
-            fake.update = AVAILABLE.copy(result = "exploded")
+            fake.update.serveUpdates(AVAILABLE.copy(result = "exploded"))
 
             val ready = assertIs<AboutState.Ready>(viewModel.await { it is AboutState.Ready && it.failure != null })
             assertNull(ready.activity)
@@ -164,13 +161,13 @@ class AboutViewModelTest {
     @Test
     fun `a request is ignored while the server is busy`() =
         runViewModelTest {
-            val fake = FakeJmapServer().apply { update = BUSY }
+            val fake = FakeJmapServer().apply { update.serveUpdates(BUSY) }
             val viewModel = viewModel(fake)
 
             viewModel.check()
             viewModel.apply()
 
-            assertEquals(emptyList(), fake.updateActions)
+            assertEquals(emptyList(), fake.update.actions)
         }
 
     @Test
@@ -178,8 +175,7 @@ class AboutViewModelTest {
         runViewModelTest {
             val fake =
                 FakeJmapServer().apply {
-                    update = AVAILABLE
-                    updateAfterReads += listOf(AVAILABLE, AVAILABLE.copy(checkedAt = "2026-10-04T10:00:00Z"))
+                    update.serveUpdates(AVAILABLE, AVAILABLE, AVAILABLE.copy(checkedAt = "2026-10-04T10:00:00Z"))
                 }
             val viewModel = viewModel(fake)
 
@@ -192,11 +188,11 @@ class AboutViewModelTest {
     @Test
     fun `polling stops at the ceiling and lets the user ask again`() =
         runViewModelTest {
-            val fake = FakeJmapServer().apply { update = AVAILABLE }
+            val fake = FakeJmapServer().apply { update.serveUpdates(AVAILABLE) }
             val viewModel = viewModel(fake, ceiling = 9.seconds)
 
             viewModel.check()
-            fake.update = BUSY
+            fake.update.serveUpdates(BUSY)
             val given = assertIs<AboutState.Ready>(viewModel.await { it is AboutState.Ready && it.abandoned })
 
             assertNull(given.activity)
@@ -209,7 +205,7 @@ class AboutViewModelTest {
     @Test
     fun `stopping ends polling`() =
         runViewModelTest {
-            val fake = FakeJmapServer().apply { update = BUSY }
+            val fake = FakeJmapServer().apply { update.serveUpdates(BUSY) }
             val viewModel = viewModel(fake)
             val before = fake.requestCount
 

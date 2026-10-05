@@ -1,9 +1,6 @@
 package com.verdenroz.corvid.core.data
 
 import com.verdenroz.corvid.core.jmap.JmapClient
-import com.verdenroz.corvid.core.jmap.JmapError
-import com.verdenroz.corvid.core.jmap.JmapException
-import com.verdenroz.corvid.core.jmap.JmapJson
 import com.verdenroz.corvid.core.model.UpdateReport
 import com.verdenroz.corvid.core.model.UpdateResult
 import kotlinx.serialization.Serializable
@@ -28,13 +25,8 @@ private class WireReport(
 class UpdateRepository(private val jmapClient: JmapClient) {
     /** Null when the server does not offer the endpoint, as an older one does not. */
     suspend fun status(): UpdateReport? {
-        val reply = jmapClient.webGet(UPDATE_PATH)
-        val body = reply.body ?: return null
-        return try {
-            JmapJson.decodeFromJsonElement(WireReport.serializer(), body).toReport()
-        } catch (e: IllegalArgumentException) {
-            throw JmapException(JmapError.Request(type = "unrecognisedUpdateReport", detail = e.message))
-        }
+        val body = jmapClient.webGet(UPDATE_PATH) ?: return null
+        return body.decodeWeb(WireReport.serializer(), "UpdateReport") { it.toReport() }
     }
 
     suspend fun check() = post("check")

@@ -6,7 +6,9 @@ import com.verdenroz.corvid.core.model.UpdateReport
 import com.verdenroz.corvid.core.model.UpdateResult
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.FakeUpdate
+import com.verdenroz.corvid.core.testing.actions
 import com.verdenroz.corvid.core.testing.client
+import com.verdenroz.corvid.core.testing.serveUpdates
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -27,7 +29,7 @@ class UpdateRepositoryTest {
         runTest {
             val fake =
                 FakeJmapServer().apply {
-                    update =
+                    update.serveUpdates(
                         FakeUpdate(
                             running = "0.2.0",
                             latest = "0.2.1",
@@ -36,7 +38,8 @@ class UpdateRepositoryTest {
                             detail = "health check failed",
                             auto = false,
                             busy = true,
-                        )
+                        ),
+                    )
                 }
 
             assertEquals(
@@ -56,7 +59,7 @@ class UpdateRepositoryTest {
     @Test
     fun `null latest, checked time and detail stay null`() =
         runTest {
-            val report = repository(FakeJmapServer().apply { update = FakeUpdate() }).status()
+            val report = repository(FakeJmapServer().apply { update.serveUpdates(FakeUpdate()) }).status()
 
             assertEquals(Triple(null, null, null), Triple(report?.latest, report?.checkedAt, report?.detail))
             assertFalse(report?.updateAvailable ?: true)
@@ -65,8 +68,8 @@ class UpdateRepositoryTest {
     @Test
     fun `an update is available only when latest differs from running`() =
         runTest {
-            val newer = repository(FakeJmapServer().apply { update = FakeUpdate(running = "0.2.0", latest = "0.2.1") }).status()
-            val same = repository(FakeJmapServer().apply { update = FakeUpdate(running = "0.2.1", latest = "0.2.1") }).status()
+            val newer = repository(FakeJmapServer().apply { update.serveUpdates(FakeUpdate(running = "0.2.0", latest = "0.2.1")) }).status()
+            val same = repository(FakeJmapServer().apply { update.serveUpdates(FakeUpdate(running = "0.2.1", latest = "0.2.1")) }).status()
 
             assertEquals(listOf(true, false), listOf(newer?.updateAvailable, same?.updateAvailable))
         }
@@ -80,7 +83,7 @@ class UpdateRepositoryTest {
     @Test
     fun `a result the client has never seen is refused loudly`() =
         runTest {
-            val fake = FakeJmapServer().apply { update = FakeUpdate(result = "exploded") }
+            val fake = FakeJmapServer().apply { update.serveUpdates(FakeUpdate(result = "exploded")) }
 
             val failure = assertFailsWith<JmapException> { repository(fake).status() }
 
@@ -92,8 +95,8 @@ class UpdateRepositoryTest {
         runTest {
             val fake =
                 FakeJmapServer().apply {
-                    update = FakeUpdate()
-                    updateBroken = true
+                    update.serveUpdates(FakeUpdate())
+                    update.broken = true
                 }
 
             assertEquals(JmapError.Server(500), assertFailsWith<JmapException> { repository(fake).status() }.error)
@@ -102,22 +105,22 @@ class UpdateRepositoryTest {
     @Test
     fun `check and apply post their action`() =
         runTest {
-            val fake = FakeJmapServer().apply { update = FakeUpdate() }
+            val fake = FakeJmapServer().apply { update.serveUpdates(FakeUpdate()) }
             val repository = repository(fake)
 
             repository.check()
             repository.apply()
 
-            assertEquals(listOf("check", "apply"), fake.updateActions)
+            assertEquals(listOf("check", "apply"), fake.update.actions)
         }
 
     @Test
     fun `requests carry the same bearer token the JMAP calls use`() =
         runTest {
-            val fake = FakeJmapServer().apply { update = FakeUpdate() }
+            val fake = FakeJmapServer().apply { update.serveUpdates(FakeUpdate()) }
 
             repository(fake, token = "tok").status()
 
-            assertEquals("Bearer tok", fake.updateAuthorization)
+            assertEquals("Bearer tok", fake.update.authorization)
         }
 }
