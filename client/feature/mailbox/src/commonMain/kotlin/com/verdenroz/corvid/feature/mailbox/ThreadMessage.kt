@@ -58,20 +58,22 @@ internal fun ThreadMessage(
     threaded: Boolean,
     wide: Boolean,
     teach: TeachState,
-    onToggle: () -> Unit,
-    onAnswer: (Correction) -> Unit,
+    onToggle: (String) -> Unit,
+    onAnswer: (String, Correction) -> Unit,
     onCompose: (ComposeIntent) -> Unit,
     onOpenSender: (String) -> Unit,
 ) {
     val colors = CorvidTheme.colors
+    val toggle = remember(email.id, onToggle) { { onToggle(email.id) } }
+    val answer = remember(email.id, onAnswer) { { correction: Correction -> onAnswer(email.id, correction) } }
     val tint = if (email.provenance.suspect) Modifier.background(colors.dangerTint) else Modifier
     val gutter = CorvidSpacing.readingGutter(wide)
     Column(Modifier.fillMaxWidth().then(tint)) {
         Column(Modifier.padding(horizontal = gutter).widthIn(max = 860.dp)) {
             if (expanded) {
-                ExpandedMessage(email, repository, newest, threaded, wide, teach, onToggle, onAnswer, onCompose, onOpenSender)
+                ExpandedMessage(email, repository, newest, threaded, wide, teach, toggle, answer, onCompose, onOpenSender)
             } else {
-                CollapsedMessage(email, onToggle)
+                CollapsedMessage(email, toggle)
             }
         }
         if (threaded) HorizontalDivider(color = colors.line)

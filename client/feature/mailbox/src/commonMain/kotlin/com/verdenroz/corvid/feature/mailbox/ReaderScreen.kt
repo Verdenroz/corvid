@@ -42,6 +42,8 @@ fun ReaderScreen(
 ) {
     val viewModel = remember(repository, emailId) { ReaderViewModel(repository, emailId) }
     val state by viewModel.state.collectAsState()
+    val onToggle = remember(viewModel) { viewModel::toggle }
+    val onAnswer = remember(viewModel) { viewModel::answer }
 
     val wide = LocalWideLayout.current
     Box(Modifier.fillMaxSize()) {
@@ -56,8 +58,8 @@ fun ReaderScreen(
                         current,
                         repository,
                         wide,
-                        viewModel::toggle,
-                        viewModel::answer,
+                        onToggle,
+                        onAnswer,
                         onCompose,
                         onOpenSender,
                     )
@@ -111,8 +113,8 @@ private fun ThreadColumn(
                 threaded = threaded,
                 wide = wide,
                 teach = state.teach[email.id] ?: TeachState(),
-                onToggle = { onToggle(email.id) },
-                onAnswer = { onAnswer(email.id, it) },
+                onToggle = onToggle,
+                onAnswer = onAnswer,
                 onCompose = onCompose,
                 onOpenSender = onOpenSender,
             )
