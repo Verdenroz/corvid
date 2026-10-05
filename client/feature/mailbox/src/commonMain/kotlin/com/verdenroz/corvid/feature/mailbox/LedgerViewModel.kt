@@ -8,7 +8,7 @@ import com.verdenroz.corvid.core.data.MailFilter
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.data.userMessage
 import com.verdenroz.corvid.core.jmap.JmapException
-import com.verdenroz.corvid.core.model.EmailSummary
+import com.verdenroz.corvid.core.model.Conversation
 import com.verdenroz.corvid.core.text.uiText
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_no_mailbox
@@ -35,7 +35,7 @@ class LedgerViewModel(
 
     private var filter: MailFilter? = null
     private var queryState: String? = null
-    private var emails: List<EmailSummary> = emptyList()
+    private var conversations: List<Conversation> = emptyList()
     private var paging: Job? = null
 
     init {
@@ -45,7 +45,7 @@ class LedgerViewModel(
 
     fun loadMore() {
         if (paging?.isActive == true) return
-        val anchor = emails.lastOrNull()?.id ?: return
+        val anchor = conversations.lastOrNull()?.latest?.id ?: return
         paging = viewModelScope.launch { loadPage(anchor) }
     }
 
@@ -55,9 +55,9 @@ class LedgerViewModel(
 
     private fun apply(patch: KeywordPatch) {
         val loaded = _state.value as? LedgerUiState.Loaded ?: return
-        if (emails.none { it.id == patch.emailId }) return
-        emails = emails.map { if (it.id == patch.emailId) it.copy(keywords = patch.applyTo(it.keywords)) else it }
-        _state.value = loaded.copy(emails = emails)
+        if (conversations.none { patch.emailId in it.emailIds }) return
+        conversations = conversations.map(patch::applyTo)
+        _state.value = loaded.copy(conversations = conversations)
     }
 
     private suspend fun start() {
@@ -79,7 +79,7 @@ class LedgerViewModel(
         val role = tab.role ?: return MailFilter.Starred
         val id = repository.mailboxId(role)
         if (id == null) _state.value = LedgerUiState.Failed(uiText(Res.string.mailbox_no_mailbox, role))
-        return id?.let(MailFilter::InMailbox)
+        return id?.let { MailFilter.InMailbox(it, threaded = tab != LedgerTab.Drafts) }
     }
 
     private suspend fun loadPage(anchor: String?) {
@@ -93,10 +93,9 @@ class LedgerViewModel(
                         restartFromTop()
                         return
                     }
-                    val latest = page.conversations.map { it.latest }
-                    emails = if (anchor == null) latest else emails + latest
+                    conversations = if (anchor == null) page.conversations else conversations + page.conversations
                     queryState = page.queryState
-                    _state.value = LedgerUiState.Loaded(emails, canLoadMore = latest.size == PAGE_SIZE)
+                    _state.value = LedgerUiState.Loaded(conversations, canLoadMore = page.conversations.size == PAGE_SIZE)
                 }
             }
         } catch (e: JmapException) {
@@ -105,7 +104,7 @@ class LedgerViewModel(
     }
 
     private suspend fun restartFromTop() {
-        emails = emptyList()
+        conversations = emptyList()
         queryState = null
         loadPage(anchor = null)
     }

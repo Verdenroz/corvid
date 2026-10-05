@@ -46,11 +46,16 @@ private val EMAIL_DETAIL_PROPERTIES =
 
 /** What a list shows: one mailbox, every starred message wherever it is filed, or every message matching a text search. */
 sealed interface MailFilter {
-    data class InMailbox(val mailboxId: String) : MailFilter
+    /** Whether a list shows one row per thread; a search, and a mailbox of drafts opened one by one, do not. */
+    val threaded: Boolean get() = true
+
+    data class InMailbox(val mailboxId: String, override val threaded: Boolean = true) : MailFilter
 
     data object Starred : MailFilter
 
-    data class Search(val text: String) : MailFilter
+    data class Search(val text: String) : MailFilter {
+        override val threaded: Boolean get() = false
+    }
 }
 
 sealed interface EmailPage {
@@ -129,12 +134,12 @@ class MailboxRepository(private val jmapClient: JmapClient) {
             ids[role]
         }
 
-    /** Every filter lists conversations, newest first, except a search, whose hits are single messages. */
+    /** Lists conversations, newest first, unless the filter is not [MailFilter.threaded]; then each row is one message. */
     suspend fun page(
         filter: MailFilter,
         anchor: String?,
     ): EmailPage {
-        val grouped = filter !is MailFilter.Search
+        val grouped = filter.threaded
         val queryArguments =
             buildJsonObject {
                 putJsonObject("filter") {

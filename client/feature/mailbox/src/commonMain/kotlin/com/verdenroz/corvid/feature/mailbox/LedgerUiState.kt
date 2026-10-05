@@ -1,6 +1,6 @@
 package com.verdenroz.corvid.feature.mailbox
 
-import com.verdenroz.corvid.core.model.EmailSummary
+import com.verdenroz.corvid.core.model.Conversation
 import com.verdenroz.corvid.core.text.UiText
 
 /** The lists a ledger tab can show; the first three are mailboxes found by role. */
@@ -21,7 +21,7 @@ sealed interface LedgerSource {
 sealed interface LedgerUiState {
     data object Loading : LedgerUiState
 
-    data class Loaded(val emails: List<EmailSummary>, val canLoadMore: Boolean) : LedgerUiState
+    data class Loaded(val conversations: List<Conversation>, val canLoadMore: Boolean) : LedgerUiState
 
     data class Failed(val message: UiText) : LedgerUiState
 }

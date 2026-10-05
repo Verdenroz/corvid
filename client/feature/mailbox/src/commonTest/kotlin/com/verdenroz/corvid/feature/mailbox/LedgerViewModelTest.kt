@@ -45,8 +45,8 @@ class LedgerViewModelTest {
             val vm = track(LedgerViewModel(repository(fake), LedgerTab.Inbox))
 
             val firstPage = vm.state.first { it is LedgerUiState.Loaded } as LedgerUiState.Loaded
-            assertEquals(50, firstPage.emails.size)
-            assertEquals("e49", firstPage.emails.last().id)
+            assertEquals(50, firstPage.conversations.size)
+            assertEquals("e49", firstPage.conversations.last().latest.id)
 
             // e10 leaves the mailbox mid-scroll; a real server would bump queryState
             // for exactly this reason.
@@ -55,12 +55,12 @@ class LedgerViewModelTest {
             vm.loadMore()
 
             val restarted =
-                vm.state.first { it is LedgerUiState.Loaded && it.emails.none { email -> email.id == "e10" } } as LedgerUiState.Loaded
-            assertEquals(50, restarted.emails.size)
-            assertEquals("e0", restarted.emails.first().id)
+                vm.state.first { it is LedgerUiState.Loaded && it.conversations.none { c -> c.latest.id == "e10" } } as LedgerUiState.Loaded
+            assertEquals(50, restarted.conversations.size)
+            assertEquals("e0", restarted.conversations.first().latest.id)
             // e50 only enters the top 50 once e10's removal shifts everything after it up:
             // seeing it here proves this is a fresh fetch, not page one plus a stale appendix.
-            assertTrue(restarted.emails.any { it.id == "e50" })
+            assertTrue(restarted.conversations.any { it.latest.id == "e50" })
         }
 
     @Test
@@ -79,11 +79,12 @@ class LedgerViewModelTest {
 
             vm.loadMore()
             vm.loadMore()
-            val second = vm.state.first { it is LedgerUiState.Loaded && it.emails.size > 50 } as LedgerUiState.Loaded
+            val second = vm.state.first { it is LedgerUiState.Loaded && it.conversations.size > 50 } as LedgerUiState.Loaded
             withContext(Dispatchers.Default) { delay(300) }
 
             assertEquals(2, queries)
-            assertEquals(second.emails.map { it.id }.distinct(), (vm.state.value as LedgerUiState.Loaded).emails.map { it.id })
+            val listed = (vm.state.value as LedgerUiState.Loaded).conversations.map { it.latest.id }
+            assertEquals(second.conversations.map { it.latest.id }.distinct(), listed)
         }
 
     @Test
@@ -99,8 +100,8 @@ class LedgerViewModelTest {
 
             repository.updateKeywords("m1", mapOf("bills" to true, "corvid-llm-label-bills" to false))
 
-            val patched = vm.state.first { (it as? LedgerUiState.Loaded)?.emails?.single()?.keywords == setOf("bills") }
-            assertEquals(1, (patched as LedgerUiState.Loaded).emails.size)
+            val patched = vm.state.first { (it as? LedgerUiState.Loaded)?.conversations?.single()?.latest?.keywords == setOf("bills") }
+            assertEquals(1, (patched as LedgerUiState.Loaded).conversations.size)
         }
 
     @Test
@@ -116,7 +117,7 @@ class LedgerViewModelTest {
 
             val loaded = vm.state.first { it is LedgerUiState.Loaded } as LedgerUiState.Loaded
 
-            assertEquals(listOf("in", "out"), loaded.emails.map { it.id })
+            assertEquals(listOf("in", "out"), loaded.conversations.map { it.latest.id })
         }
 
     @Test
@@ -140,7 +141,7 @@ class LedgerViewModelTest {
 
             val loaded = vm.state.first { it is LedgerUiState.Loaded } as LedgerUiState.Loaded
 
-            assertEquals(listOf("b", "a"), loaded.emails.map { it.id })
+            assertEquals(listOf("b", "a"), loaded.conversations.map { it.latest.id })
         }
 
     @Test
@@ -152,7 +153,7 @@ class LedgerViewModelTest {
 
             val loaded = vm.state.first { it is LedgerUiState.Loaded } as LedgerUiState.Loaded
 
-            assertTrue(loaded.emails.isEmpty())
+            assertTrue(loaded.conversations.isEmpty())
         }
 
     @Test
@@ -185,7 +186,55 @@ class LedgerViewModelTest {
                 )
             vm.refresh()
 
-            val loaded = vm.state.first { it is LedgerUiState.Loaded && it.emails.isNotEmpty() } as LedgerUiState.Loaded
-            assertEquals(listOf("d1"), loaded.emails.map { it.id })
+            val loaded = vm.state.first { it is LedgerUiState.Loaded && it.conversations.isNotEmpty() } as LedgerUiState.Loaded
+            assertEquals(listOf("d1"), loaded.conversations.map { it.latest.id })
+        }
+
+    @Test
+    fun `drafts of one thread are listed one by one, each opening in compose`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "drafts", name = "Drafts", role = "drafts")
+            fake.emails += FakeEmail("d1", "t", setOf("drafts"), "s", "me@x.test", "2024-01-01T00:00:00Z")
+            fake.emails += FakeEmail("d2", "t", setOf("drafts"), "s", "me@x.test", "2024-01-02T00:00:00Z")
+            val vm = track(LedgerViewModel(repository(fake), LedgerTab.Drafts))
+
+            val loaded = vm.state.first { it is LedgerUiState.Loaded } as LedgerUiState.Loaded
+
+            assertEquals(listOf("d2", "d1"), loaded.conversations.map { it.latest.id })
+            assertEquals(listOf(1, 1), loaded.conversations.map { it.messageCount })
+        }
+
+    @Test
+    fun `a thread is one row with its message count and unread state`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
+            fake.emails += FakeEmail("a1", "a", setOf("inbox"), "s", "a@x.test", "2024-01-01T00:00:00Z")
+            fake.emails += FakeEmail("a2", "a", setOf("inbox"), "s", "a@x.test", "2024-01-02T00:00:00Z", keywords = setOf("\$seen"))
+            fake.emails += FakeEmail("b", "b", setOf("inbox"), "s", "b@x.test", "2024-01-03T00:00:00Z", keywords = setOf("\$seen"))
+            val vm = track(LedgerViewModel(repository(fake), LedgerTab.Inbox))
+
+            val loaded = vm.state.first { it is LedgerUiState.Loaded } as LedgerUiState.Loaded
+
+            assertEquals(listOf("b", "a2"), loaded.conversations.map { it.latest.id })
+            assertEquals(listOf(1, 2), loaded.conversations.map { it.messageCount })
+            assertEquals(listOf(false, true), loaded.conversations.map { it.unread })
+        }
+
+    @Test
+    fun `reading an older message of a thread clears the row's unread state`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
+            fake.emails += FakeEmail("a1", "a", setOf("inbox"), "s", "a@x.test", "2024-01-01T00:00:00Z")
+            fake.emails += FakeEmail("a2", "a", setOf("inbox"), "s", "a@x.test", "2024-01-02T00:00:00Z", keywords = setOf("\$seen"))
+            val repository = repository(fake)
+            val vm = track(LedgerViewModel(repository, LedgerTab.Inbox))
+            vm.state.first { it is LedgerUiState.Loaded }
+
+            repository.updateKeywords("a1", mapOf("\$seen" to true))
+
+            vm.state.first { (it as? LedgerUiState.Loaded)?.conversations?.single()?.unread == false }
         }
 }

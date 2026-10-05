@@ -16,6 +16,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -24,7 +26,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.clockTime
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
-import com.verdenroz.corvid.core.model.CorvidKeywords
+import com.verdenroz.corvid.core.model.Conversation
 import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.core.model.Rewrite
 import com.verdenroz.corvid.core.model.SenderKind
@@ -34,68 +36,72 @@ import com.verdenroz.corvid.core.ui.provenance.LabelChip
 import com.verdenroz.corvid.core.ui.provenance.SenderAvatar
 import com.verdenroz.corvid.core.ui.provenance.TrackerCount
 import com.verdenroz.corvid.feature.mailbox.resources.Res
+import com.verdenroz.corvid.feature.mailbox.resources.ledger_thread_messages
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_no_subject
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_separator
 import kotlinx.datetime.TimeZone
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
 internal fun LedgerRow(
-    email: EmailSummary,
+    conversation: Conversation,
     zone: TimeZone,
     wide: Boolean,
     onClick: () -> Unit,
     onOpenSender: (String) -> Unit,
 ) {
     val colors = CorvidTheme.colors
+    val email = conversation.latest
     val openSender = email.from?.email?.let { { onOpenSender(it) } }
     val suspect = email.provenance.suspect
     Column(Modifier.fillMaxWidth().background(if (suspect) colors.dangerTint else colors.surface).clickable(onClick = onClick)) {
-        if (wide) WideRow(email, zone, openSender) else NarrowRow(email, zone, openSender)
+        if (wide) WideRow(conversation, zone, openSender) else NarrowRow(conversation, zone, openSender)
         HorizontalDivider(color = colors.line)
     }
 }
 
 @Composable
 private fun WideRow(
-    email: EmailSummary,
+    conversation: Conversation,
     zone: TimeZone,
     openSender: (() -> Unit)?,
 ) {
+    val email = conversation.latest
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         modifier = Modifier.padding(start = 16.dp, end = 24.dp, top = 12.dp, bottom = 12.dp),
     ) {
-        Time(email, zone, Modifier.width(58.dp))
+        Time(conversation, zone, Modifier.width(58.dp))
         Avatar(email, openSender)
-        SenderName(email, Modifier.width(200.dp), openSender)
-        Summary(email, Modifier.weight(1f))
+        SenderName(conversation, Modifier.width(200.dp), openSender)
+        Summary(conversation, Modifier.weight(1f))
         (email.provenance.rewrite as? Rewrite.Stripped)?.takeIf { it.stripped > 0 }?.let { TrackerCount(it.stripped) }
     }
 }
 
 @Composable
 private fun NarrowRow(
-    email: EmailSummary,
+    conversation: Conversation,
     zone: TimeZone,
     openSender: (() -> Unit)?,
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(horizontal = 16.dp, vertical = 11.dp)) {
-        Avatar(email, openSender)
+        Avatar(conversation.latest, openSender)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(verticalAlignment = Alignment.Top) {
-                SenderName(email, Modifier.weight(1f), openSender)
-                Time(email, zone, Modifier.padding(start = 8.dp, top = 2.dp))
+                SenderName(conversation, Modifier.weight(1f), openSender)
+                Time(conversation, zone, Modifier.padding(start = 8.dp, top = 2.dp))
             }
-            Summary(email, Modifier.fillMaxWidth())
+            Summary(conversation, Modifier.fillMaxWidth())
         }
     }
 }
 
 @Composable
 private fun Time(
-    email: EmailSummary,
+    conversation: Conversation,
     zone: TimeZone,
     modifier: Modifier,
 ) {
@@ -104,9 +110,9 @@ private fun Time(
         horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
         modifier = modifier,
     ) {
-        if (email.isUnread) Box(Modifier.size(7.dp).background(CorvidTheme.colors.accent, CircleShape))
+        if (conversation.unread) Box(Modifier.size(7.dp).background(CorvidTheme.colors.accent, CircleShape))
         Text(
-            clockTime(email.receivedAt, zone).asString(),
+            clockTime(conversation.latest.receivedAt, zone).asString(),
             style = CorvidTheme.type.metaNumeric,
             color = CorvidTheme.colors.inkFaint,
         )
@@ -129,19 +135,23 @@ private fun Avatar(
 
 @Composable
 private fun SenderName(
-    email: EmailSummary,
+    conversation: Conversation,
     modifier: Modifier,
     openSender: (() -> Unit)?,
 ) {
+    val email = conversation.latest
     Column(modifier) {
-        Text(
-            email.from.displayName(),
-            modifier = if (openSender == null) Modifier else Modifier.clickable(onClick = openSender),
-            style = CorvidTheme.type.name,
-            fontWeight = if (email.isUnread) FontWeight.Bold else FontWeight.Medium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                email.from.displayName(),
+                modifier = (if (openSender == null) Modifier else Modifier.clickable(onClick = openSender)).weight(1f, fill = false),
+                style = CorvidTheme.type.name,
+                fontWeight = if (conversation.unread) FontWeight.Bold else FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (conversation.messageCount > 1) MessageCount(conversation.messageCount)
+        }
         email.provenance.sender.sourceLabel()?.let {
             Text(it, style = CorvidTheme.type.meta, color = CorvidTheme.colors.inkFaint, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
@@ -149,10 +159,22 @@ private fun SenderName(
 }
 
 @Composable
+private fun MessageCount(count: Int) {
+    val description = pluralStringResource(Res.plurals.ledger_thread_messages, count, count)
+    Text(
+        count.toString(),
+        style = CorvidTheme.type.metaNumeric,
+        color = CorvidTheme.colors.inkFaint,
+        modifier = Modifier.semantics { contentDescription = description },
+    )
+}
+
+@Composable
 private fun Summary(
-    email: EmailSummary,
+    conversation: Conversation,
     modifier: Modifier,
 ) {
+    val email = conversation.latest
     val colors = CorvidTheme.colors
     val subjectColor = if (email.provenance.suspect) colors.danger else colors.ink
     val subject = email.subject.ifEmpty { stringResource(Res.string.mailbox_no_subject) }
@@ -162,7 +184,7 @@ private fun Summary(
         Text(
             buildAnnotatedString {
                 withStyle(
-                    SpanStyle(color = subjectColor, fontWeight = if (email.isUnread) FontWeight.Bold else FontWeight.Medium),
+                    SpanStyle(color = subjectColor, fontWeight = if (conversation.unread) FontWeight.Bold else FontWeight.Medium),
                 ) { append(subject) }
                 if (email.preview.isNotBlank()) append(" $separator ${email.preview}")
             },
@@ -173,5 +195,3 @@ private fun Summary(
         )
     }
 }
-
-internal val EmailSummary.isUnread: Boolean get() = CorvidKeywords.SEEN !in keywords

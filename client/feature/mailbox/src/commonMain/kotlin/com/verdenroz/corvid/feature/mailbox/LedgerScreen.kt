@@ -68,7 +68,7 @@ internal fun LedgerContent(
             is LedgerUiState.Loading -> Unit
             is LedgerUiState.Failed -> QuietPane(state.message.asString())
             is LedgerUiState.Loaded ->
-                if (state.emails.isEmpty()) {
+                if (state.conversations.isEmpty()) {
                     QuietPane(emptyText)
                 } else {
                     Ledger(state, onOpenEmail, onOpenSender, onLoadMore)
@@ -87,10 +87,10 @@ private fun Ledger(
 ) {
     val zone = remember { TimeZone.currentSystemDefault() }
     val today = Clock.System.now().toLocalDateTime(zone).date
-    val days = remember(state.emails, today) { ledgerDays(state.emails, zone, today) }
+    val days = remember(state.conversations, today) { ledgerDays(state.conversations, zone, today) }
     val listState = rememberLazyListState()
     val nearEnd by remember { derivedStateOf { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 } }
-    LaunchedEffect(nearEnd, state.emails.size) {
+    LaunchedEffect(nearEnd, state.conversations.size) {
         if (state.canLoadMore && nearEnd >= listState.layoutInfo.totalItemsCount - LOAD_AHEAD) onLoadMore()
     }
     val wide = LocalWideLayout.current
@@ -98,9 +98,9 @@ private fun Ledger(
         LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 96.dp), modifier = Modifier.fillMaxSize()) {
             days.forEach { day ->
                 stickyHeader(key = day.date.toString()) { DayHeader(day, wide) }
-                items(day.emails, key = {
-                    it.id
-                }) { email -> LedgerRow(email, zone, wide, onClick = { onOpenEmail(email.id) }, onOpenSender = onOpenSender) }
+                items(day.conversations, key = { it.latest.id }) { conversation ->
+                    LedgerRow(conversation, zone, wide, onClick = { onOpenEmail(conversation.latest.id) }, onOpenSender = onOpenSender)
+                }
             }
         }
     }
