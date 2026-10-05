@@ -6,7 +6,6 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.milliseconds
@@ -26,7 +25,7 @@ class IdleTimeoutControllerTest {
     fun `five minutes without activity fires the idle callback once`() =
         runTest {
             var idleCount = 0
-            val controller = IdleTimeoutController(backgroundScope, onIdle = { idleCount++ }, timeout = 5.minutes)
+            val controller = IdleTimeoutController(backgroundScope, onIdle = { idleCount++ })
 
             controller.recordActivity()
             advanceTimeBy(5.minutes + 1.seconds)
@@ -38,7 +37,7 @@ class IdleTimeoutControllerTest {
     fun `activity inside the window restarts the timer instead of firing early`() =
         runTest {
             var idleCount = 0
-            val controller = IdleTimeoutController(backgroundScope, onIdle = { idleCount++ }, timeout = 5.minutes, clock = virtualClock())
+            val controller = IdleTimeoutController(backgroundScope, onIdle = { idleCount++ }, clock = virtualClock())
 
             controller.recordActivity()
             advanceTimeBy(4.minutes)
@@ -51,7 +50,7 @@ class IdleTimeoutControllerTest {
     @Test
     fun `activity under a second after the last leaves the deadline where it was`() =
         runTest {
-            val controller = IdleTimeoutController(backgroundScope, onIdle = {}, timeout = 5.minutes, clock = virtualClock())
+            val controller = IdleTimeoutController(backgroundScope, onIdle = {}, clock = virtualClock())
 
             controller.recordActivity()
             val deadline = controller.locksAt.value
@@ -68,7 +67,7 @@ class IdleTimeoutControllerTest {
     fun `stop cancels a pending timeout`() =
         runTest {
             var idleCount = 0
-            val controller = IdleTimeoutController(backgroundScope, onIdle = { idleCount++ }, timeout = 5.minutes)
+            val controller = IdleTimeoutController(backgroundScope, onIdle = { idleCount++ })
 
             controller.recordActivity()
             controller.stop()
@@ -85,7 +84,7 @@ class IdleTimeoutControllerTest {
                 object : Clock {
                     override fun now() = now
                 }
-            val controller = IdleTimeoutController(backgroundScope, onIdle = {}, timeout = 5.minutes, clock = clock)
+            val controller = IdleTimeoutController(backgroundScope, onIdle = {}, clock = clock)
 
             controller.recordActivity()
             now += 3.minutes
@@ -95,36 +94,38 @@ class IdleTimeoutControllerTest {
         }
 
     @Test
-    fun `a shorter timeout set mid-run fires on the new schedule`() =
+    fun `a shorter timeout is read when the timer next restarts`() =
         runTest {
             var idleCount = 0
-            val controller = IdleTimeoutController(backgroundScope, onIdle = { idleCount++ }, timeout = 5.minutes, clock = virtualClock())
+            var timeout = 5.minutes
+            val controller = IdleTimeoutController(backgroundScope, onIdle = { idleCount++ }, timeout = { timeout }, clock = virtualClock())
 
             controller.recordActivity()
             advanceTimeBy(30.seconds)
-            controller.setTimeout(1.minutes)
+            timeout = 1.minutes
+            controller.recordActivity()
             advanceTimeBy(1.minutes + 1.seconds)
 
             assertEquals(1, idleCount)
         }
 
     @Test
-    fun `a timeout set while stopped applies from the next start`() =
+    fun `a timeout changed while stopped applies from the next start`() =
         runTest {
-            val controller = IdleTimeoutController(backgroundScope, onIdle = {}, timeout = 5.minutes)
+            var timeout = 5.minutes
+            val controller = IdleTimeoutController(backgroundScope, onIdle = {}, timeout = { timeout }, clock = virtualClock())
 
-            controller.setTimeout(15.minutes)
+            timeout = 15.minutes
             assertNull(controller.locksAt.value)
             controller.recordActivity()
 
-            assertEquals(15.minutes, controller.timeout)
-            assertNotNull(controller.locksAt.value)
+            assertEquals(Instant.fromEpochMilliseconds(0) + 15.minutes, controller.locksAt.value)
         }
 
     @Test
     fun `there is no deadline once stopped or once the key has dropped`() =
         runTest {
-            val controller = IdleTimeoutController(backgroundScope, onIdle = {}, timeout = 5.minutes)
+            val controller = IdleTimeoutController(backgroundScope, onIdle = {})
 
             controller.recordActivity()
             controller.stop()

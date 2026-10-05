@@ -111,7 +111,6 @@ internal fun UnlockedContent(
     DisposableEffect(models) { onDispose { models.clear() } }
 
     val autoLock = preferences.settings.collectAsState().value.autoLock.timeout
-    LaunchedEffect(autoLock) { idleTimeout.setTimeout(autoLock) }
     DisposableEffect(Unit) {
         idleTimeout.recordActivity()
         onDispose { idleTimeout.stop() }
