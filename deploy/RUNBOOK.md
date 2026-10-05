@@ -24,7 +24,7 @@ an array is rejected.
 the host as root:
 
     ssh host /opt/corvid/deploy/device.sh add phone
-    ssh host /opt/corvid/deploy/device.sh add --local corvid-sentinel
+    ssh host /opt/corvid/deploy/device.sh add --local corvid-labeler
     ssh host /opt/corvid/deploy/device.sh list
     ssh host /opt/corvid/deploy/device.sh revoke phone
 
@@ -36,7 +36,7 @@ you to revoke the device's VPN access too, if it has any.
 `--local` scopes `allowedIps` to `127.0.0.1` and `::1` instead of `server.client_access`, for a
 service that calls JMAP from inside the pod rather than from a mail app. It ignores
 `client_access` entirely, since a service on loopback needs no exemption from it. This only
-works because the labeler and the sentinel call `http://127.0.0.1:8080` directly; behind Caddy,
+works because the labeler calls `http://127.0.0.1:8080` directly; behind Caddy,
 `Http.useXForwarded` makes Stalwart see the forwarded client address, not the pod's own loopback,
 and a `--local` credential would be refused.
 
@@ -46,22 +46,19 @@ directly"). `device.sh` speaks JMAP directly with an explicit `accountId`, which
 credential may set for any account; the same call as a non-admin is refused ("you are not an
 owner of account").
 
-### The sentinel's own app password
+### A service's own app password
 
-`corvid-sentinel` signs in over JMAP like any other client, so it needs an app password too,
-never the account password: once TOTP guards the account an app password is the only kind that
-still works, and every notice the sentinel imports would otherwise count as a sign-in with the
-account password.
+The labeler signs in over JMAP like any other client, so it needs an app password, never the
+account password: once TOTP guards the account an app password is the only kind that still works.
 
-It needs one restricted to `127.0.0.1`, since the sentinel calls JMAP from inside the pod on
+It needs one restricted to `127.0.0.1`, since the labeler calls JMAP from inside the pod on
 loopback, not from the networks `client_access` allows, which a plain `device.sh add NAME` is
 scoped to.
 `device.sh add --local NAME` scopes one to loopback instead:
 
-    ssh host /opt/corvid/deploy/device.sh add --local corvid-sentinel
+    ssh host /opt/corvid/deploy/device.sh add --local corvid-labeler
 
-Put the secret in `sentinel.env`'s `CORVID_JMAP_PASSWORD`. Expect one self-notice the first time
-the sentinel starts, for its own first sign-in.
+Put the secret in `labeler.env`'s `CORVID_JMAP_PASSWORD`.
 
 ## Two-factor sign-in (TOTP)
 
@@ -102,9 +99,8 @@ knowing before relying on it:
 - Stalwart discards a queued webhook after `discardAfter` (24h). A sentinel outage longer than
   that loses whatever signed in while it was down, with no record anywhere else. Check it with
   `systemctl status corvid-sentinel`.
-- A notice delivered successfully but followed by a failed state save answers Stalwart with a
-  retryable status, so the retry imports a second copy of the same notice. Duplicates are
-  possible; a missing one should not happen.
+- A notice is recorded and its state saved together. A failed save answers Stalwart with a
+  retryable status and records nothing, so the retry cannot duplicate it.
 
 ## Configuration
 
@@ -121,12 +117,11 @@ The file holds no secrets, so it can be shared or committed. Secrets come from t
     rewriter.env         CORVID_IMGPROXY_SECRET (openssl rand -hex 32)
     labeler.env          CORVID_JMAP_PASSWORD, from device.sh add --local corvid-labeler
     mirror.env           CORVID_JMAP_PASSWORD, from device.sh add corvid-mirror, on the mirror machine
-    sentinel.env         CORVID_JMAP_PASSWORD, from device.sh add --local corvid-sentinel
     sentinel-webhook.env CORVID_SENTINEL_SECRET (openssl rand -hex 32), shared with Stalwart
 
 Use a separate app password per service, created as in the section above, so revoking one does
-not stop the others. The labeler and the sentinel run inside the pod and reach JMAP over
-loopback, so their credentials are `--local`; the mirror is off-host and reaches JMAP through the
+not stop the others. The labeler runs inside the pod and reaches JMAP over
+loopback, so its credential is `--local`; the mirror is off-host and reaches JMAP through the
 VPN, so it needs a plain `add` scoped like any other device. The image-proxy secret signs URLs in
 the milter and verifies them in the proxy, so both read the same value. Changing it invalidates
 the links in mail already delivered: those images stop loading, which is a visible cost and not a

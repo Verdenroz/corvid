@@ -110,7 +110,7 @@ check "both networks are in the request" \
   'request 1 | grep -q "192.0.2.0/24" && request 1 | grep -q "198.51.100.7"'
 
 echo "== add --local ignores client_access"
-run any add --local corvid-sentinel
+run any add --local corvid-labeler
 check "exits 0" '[[ $status -eq 0 ]]'
 check "the request is scoped to loopback, not client_access" \
   'request 1 | grep -q "\"127.0.0.1\": *true" && request 1 | grep -q "\"::1\": *true"'
@@ -118,7 +118,7 @@ check "the note says loopback, not client_access: anywhere" \
   'grep -q "limited to loopback" "$work/err" && ! grep -q "no source restriction" "$work/err"'
 
 echo "== add rejects --local after the name"
-run any add corvid-sentinel --local
+run any add corvid-labeler --local
 check "exits 64" '[[ $status -eq 64 ]]'
 check "no request was sent" '[[ ! -s "$work/requests" ]]'
 

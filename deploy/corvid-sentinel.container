@@ -9,7 +9,6 @@ Image=${CORVID_IMAGE}
 Pod=corvid.pod
 Exec=/usr/local/bin/corvid-sentinel
 EnvironmentFile=/opt/corvid/sentinel-webhook.env
-EnvironmentFile=/opt/corvid/sentinel.env
 Volume=/opt/corvid/config.yaml:/etc/corvid/config.yaml:ro
 Volume=/opt/corvid/sentinel:/var/lib/corvid
 Volume=/opt/corvid/update:/var/lib/corvid-update
