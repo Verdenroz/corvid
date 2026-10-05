@@ -14,11 +14,13 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.OutgoingContent
 import io.ktor.http.headersOf
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
@@ -33,6 +35,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import java.io.IOException
+import java.util.concurrent.CopyOnWriteArrayList
 import javax.net.ssl.SSLHandshakeException
 
 private const val ACCOUNT_ID = "u1"
@@ -133,6 +136,26 @@ class FakeJmapServer {
     var updateAuthorization: String? = null
         private set
 
+    /** The sentinel's feed, oldest first; null answers `/corvid/notices` with 404, as an older server does. */
+    var notices: List<FakeNotice>? = null
+
+    /** Answers GET `/corvid/notices` with a 500. */
+    var noticesBroken: Boolean = false
+
+    /** The `after` of each GET of `/corvid/notices`, in order; null when it was absent. Read from test threads while requests land, so it is copy-on-write. */
+    val noticeReads: MutableList<String?> = CopyOnWriteArrayList()
+
+    /** While set, `/corvid/notices` requests wait on it after reading the feed, so the answer is as of arrival. */
+    var noticesGate: CompletableDeferred<Unit>? = null
+
+    /** How many requests have reached `/corvid/notices`, answered or still waiting on [noticesGate]. */
+    @Volatile
+    var noticeArrivals: Int = 0
+
+    /** The Authorization header the last `/corvid/notices` request carried. */
+    var noticesAuthorization: String? = null
+        private set
+
     var requestCount: Int = 0
         private set
 
@@ -150,6 +173,7 @@ class FakeJmapServer {
             path.startsWith("/jmap/download/") -> downloadResponse(path)
             path.startsWith("/i/") -> imageResponse(request, path)
             path == "/corvid/update" -> updateResponse(request)
+            path == "/corvid/notices" -> noticesResponse(request)
             else -> respond("not found", HttpStatusCode.NotFound)
         }
     }
@@ -199,6 +223,19 @@ class FakeJmapServer {
         }
         if (updateAfterReads.isNotEmpty()) update = updateAfterReads.removeAt(0)
         return respond(current.toJson().toString(), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, listOf("application/json")))
+    }
+
+    private suspend fun MockRequestHandleScope.noticesResponse(request: HttpRequestData): HttpResponseData {
+        noticesAuthorization = request.headers[HttpHeaders.Authorization]
+        noticeArrivals++
+        val feed = notices ?: return respond("not found", HttpStatusCode.NotFound)
+        if (noticesBroken) return respond("", HttpStatusCode.InternalServerError)
+        val after = request.url.parameters["after"]
+        noticeReads += after
+        val newer = feed.filter { it.id > (after?.toLong() ?: 0) }
+        val body = buildJsonObject { putJsonArray("notices") { newer.forEach { add(it.toJson()) } } }
+        noticesGate?.await()
+        return respond(body.toString(), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, listOf("application/json")))
     }
 
     private fun MockRequestHandleScope.sessionResponse(): HttpResponseData {

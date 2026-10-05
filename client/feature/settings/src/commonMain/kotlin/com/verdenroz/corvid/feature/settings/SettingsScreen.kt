@@ -45,6 +45,9 @@ import com.verdenroz.corvid.feature.settings.resources.settings_filters_row
 import com.verdenroz.corvid.feature.settings.resources.settings_identity_provider
 import com.verdenroz.corvid.feature.settings.resources.settings_lock_now
 import com.verdenroz.corvid.feature.settings.resources.settings_name
+import com.verdenroz.corvid.feature.settings.resources.settings_notices
+import com.verdenroz.corvid.feature.settings.resources.settings_notices_detail
+import com.verdenroz.corvid.feature.settings.resources.settings_notices_row
 import com.verdenroz.corvid.feature.settings.resources.settings_security
 import com.verdenroz.corvid.feature.settings.resources.settings_server
 import com.verdenroz.corvid.feature.settings.resources.settings_sign_out
@@ -72,6 +75,7 @@ fun SettingsScreen(
     account: AccountFacts,
     onBack: () -> Unit,
     onOpenFilters: () -> Unit,
+    onOpenNotices: () -> Unit,
 ) {
     val state by viewModel.state.collectAsState()
     val about = remember(updates) { AboutViewModel(updates) }
@@ -118,6 +122,13 @@ fun SettingsScreen(
                         title = stringResource(Res.string.settings_filters_row),
                         detail = stringResource(Res.string.settings_filters_detail),
                         onClick = onOpenFilters,
+                    )
+                }
+                SettingsSection(stringResource(Res.string.settings_notices)) {
+                    LinkRow(
+                        title = stringResource(Res.string.settings_notices_row),
+                        detail = stringResource(Res.string.settings_notices_detail),
+                        onClick = onOpenNotices,
                     )
                 }
                 AboutSection(appVersion, aboutState, about)

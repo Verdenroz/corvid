@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.net.Network
+import com.verdenroz.corvid.app.NoticeNotifier
 import com.verdenroz.corvid.app.di.appModules
 import com.verdenroz.corvid.core.auth.platformAuthModule
 import com.verdenroz.corvid.core.keyring.KeyHolder
@@ -14,15 +15,17 @@ import com.verdenroz.corvid.core.prefs.platformPreferencesModule
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.startKoin
+import org.koin.dsl.module
 
 class CorvidApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+        val notices = module { single<NoticeNotifier> { AndroidNoticeNotifier(androidContext()) } }
         val koin =
             startKoin {
                 androidLogger()
                 androidContext(this@CorvidApplication)
-                modules(appModules + platformAuthModule + platformPreferencesModule)
+                modules(appModules + platformAuthModule + platformPreferencesModule + notices)
             }.koin
         val keyHolder = koin.get<KeyHolder>()
         registerNetworkLossTrigger(keyHolder)

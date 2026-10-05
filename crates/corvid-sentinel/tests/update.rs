@@ -1,20 +1,8 @@
-use std::io;
 use std::path::Path;
+use std::time::Duration;
 
-use corvid_sentinel::{Config, Notifier, Seen, router};
+use corvid_sentinel::{Config, Seen, router};
 use tokio::net::TcpListener;
-
-struct NoMailbox;
-
-impl Notifier for NoMailbox {
-    fn account_email(&self) -> &str {
-        "alice@corvid.test"
-    }
-
-    fn send(&self, _message: &[u8]) -> io::Result<()> {
-        Ok(())
-    }
-}
 
 async fn serve(update_dir: &Path) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -23,8 +11,8 @@ async fn serve(update_dir: &Path) -> String {
         secret: b"secret".to_vec(),
         state_path: update_dir.join("sentinel-state.json"),
         seen: Seen::default(),
-        notifier: NoMailbox,
         update_dir: update_dir.to_owned(),
+        update_poll: Duration::from_secs(60),
     });
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     format!("http://{addr}/corvid/update")

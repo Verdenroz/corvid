@@ -23,6 +23,12 @@
     <string name="settings_filters">Filters</string>
     <string name="settings_filters_row">Edit your filters</string>
     <string name="settings_filters_detail">Rules the server applies as mail arrives.</string>
+    <string name="settings_notices">Notices</string>
+    <string name="settings_notices_row">Server notices</string>
+    <string name="settings_notices_detail">Sign-in alerts and failed updates the server has reported.</string>
+    <string name="notices_title">Notices</string>
+    <string name="notices_empty">The server has reported nothing.</string>
+    <string name="notices_unsupported">This server does not report notices.</string>
     <string name="settings_about">About &amp; updates</string>
     <string name="settings_about_app_version">App version</string>
     <string name="settings_about_server_version">Server version</string>

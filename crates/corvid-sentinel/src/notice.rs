@@ -1,56 +1,13 @@
 use sha2::{Digest, Sha256};
 
-use crate::dates;
 use crate::decide::{Alert, Reason};
-use crate::state::CredentialKind;
+use crate::state::{CredentialKind, NoticeKind};
 
-/// Renders a batch's alerts as one plain-text message, ready for `Email/import`.
+/// What the feed shows for one alert: its kind, a short title and a sentence of detail.
 ///
-/// Carries only what `decide` learned about the sign-in itself: time, address, listener and
+/// Carries only what `decide` learned about the sign-in itself: address, listener and
 /// credential kind. Never the account's mail.
-pub fn render(alerts: &[Alert], to: &str) -> Vec<u8> {
-    let subject = match alerts.len() {
-        1 => "Corvid Sentinel: 1 sign-in alert".to_owned(),
-        n => format!("Corvid Sentinel: {n} sign-in alerts"),
-    };
-    let date = alerts
-        .first()
-        .and_then(|alert| dates::rfc2822(&alert.at))
-        .unwrap_or_else(dates::rfc2822_now);
-    let body = alerts.iter().map(line).collect::<Vec<_>>().join("\r\n");
-    message(&subject, &date, to, &body)
-}
-
-/// A notice for a batch that verified but could not be parsed: identified by its digest rather
-/// than repeated back, since the content is exactly what did not parse as JSON.
-pub fn unparseable(body: &[u8], to: &str) -> Vec<u8> {
-    let digest = hex::encode(Sha256::digest(body));
-    message(
-        "Corvid Sentinel: an unreadable webhook batch",
-        &dates::rfc2822_now(),
-        to,
-        &format!(
-            "A webhook batch of {} bytes verified but could not be parsed. sha256: {digest}",
-            body.len()
-        ),
-    )
-}
-
-fn message(subject: &str, date: &str, to: &str, body: &str) -> Vec<u8> {
-    format!(
-        "From: Corvid Sentinel <corvid-sentinel@corvid.local>\r\n\
-         To: {to}\r\n\
-         Subject: {subject}\r\n\
-         Date: {date}\r\n\
-         Content-Type: text/plain; charset=utf-8\r\n\
-         \r\n\
-         {body}\r\n"
-    )
-    .into_bytes()
-}
-
-fn line(alert: &Alert) -> String {
-    let at = &alert.at;
+pub fn render(alert: &Alert) -> (NoticeKind, &'static str, String) {
     let account = alert.account.as_deref().unwrap_or("an unreported account");
     let address = alert
         .remote_ip
@@ -61,38 +18,78 @@ fn line(alert: &Alert) -> String {
         .as_deref()
         .unwrap_or("an unreported listener");
     match &alert.reason {
-        Reason::NewSignIn(CredentialKind::Primary) => format!(
-            "{at}: {account} signed in with the account password from {address} via \
-             {listener}, a combination not seen before."
+        Reason::NewSignIn(CredentialKind::Primary) => (
+            NoticeKind::SignIn,
+            "New sign-in",
+            format!(
+                "{account} signed in with the account password from {address} via {listener}, \
+                 a combination not seen before."
+            ),
         ),
-        Reason::NewSignIn(CredentialKind::AppPassword) => format!(
-            "{at}: {account} signed in with an app password from {address} via {listener}, a \
-             combination not seen before."
+        Reason::NewSignIn(CredentialKind::AppPassword) => (
+            NoticeKind::SignIn,
+            "New sign-in",
+            format!(
+                "{account} signed in with an app password from {address} via {listener}, a \
+                 combination not seen before."
+            ),
         ),
-        Reason::PasswordAcceptedAwaitingCode => format!(
-            "{at}: the account password for {account} was entered correctly from {address} \
-             via {listener}, but the sign-in stopped at the TOTP step. Mail apps and services \
-             must use an app password instead (device.sh add)."
+        Reason::PasswordAcceptedAwaitingCode => (
+            NoticeKind::SignIn,
+            "Password entered, code missing",
+            format!(
+                "The account password for {account} was entered correctly from {address} via \
+                 {listener}, but the sign-in stopped at the TOTP step. Mail apps and services \
+                 must use an app password instead (device.sh add)."
+            ),
         ),
-        Reason::UnrecognisedCredential(details) => format!(
-            "{at}: {account} signed in from {address} via {listener} with a credential type \
-             this crate does not recognise: {details:?}."
+        Reason::UnrecognisedCredential(details) => (
+            NoticeKind::SignIn,
+            "Unrecognised credential",
+            format!(
+                "{account} signed in from {address} via {listener} with a credential type \
+                 this crate does not recognise: {details:?}."
+            ),
         ),
-        Reason::Incomplete => format!(
-            "{at}: {account} signed in from {address} via {listener}, but the event was \
-             missing a field, so it could not be checked against previous sign-ins."
+        Reason::Incomplete => (
+            NoticeKind::SignIn,
+            "Sign-in not checked",
+            format!(
+                "{account} signed in from {address} via {listener}, but the event was missing \
+                 a field, so it could not be checked against previous sign-ins."
+            ),
         ),
-        Reason::TooManyAttempts => format!(
-            "{at}: repeated failed sign-in attempts for {account} from {address} via {listener}."
+        Reason::TooManyAttempts => (
+            NoticeKind::TooManyAttempts,
+            "Repeated failed sign-ins",
+            format!(
+                "Repeated failed sign-in attempts for {account} from {address} via {listener}."
+            ),
         ),
-        Reason::Banned => {
-            format!("{at}: {address} was banned after repeated failed sign-ins ({account}).")
-        }
-        Reason::UnknownEvent(name) => format!(
-            "{at}: an event type this crate does not recognise ({name}) for {account} from \
-             {address} via {listener}."
+        Reason::Banned => (
+            NoticeKind::Ban,
+            "Address banned",
+            format!("{address} was banned after repeated failed sign-ins ({account})."),
+        ),
+        Reason::UnknownEvent(name) => (
+            NoticeKind::SignIn,
+            "Unknown sign-in event",
+            format!(
+                "An event type this crate does not recognise ({name}) for {account} from \
+                 {address} via {listener}."
+            ),
         ),
     }
+}
+
+/// A batch that verified but could not be parsed is identified by its digest rather than
+/// repeated back, since the content is exactly what did not parse as JSON.
+pub fn unparseable(body: &[u8]) -> String {
+    let digest = hex::encode(Sha256::digest(body));
+    format!(
+        "A webhook batch of {} bytes verified but could not be parsed. sha256: {digest}",
+        body.len()
+    )
 }
 
 #[cfg(test)]
@@ -109,45 +106,11 @@ mod tests {
         }
     }
 
-    fn text(bytes: &[u8]) -> String {
-        String::from_utf8(bytes.to_vec()).unwrap()
-    }
-
-    #[test]
-    fn one_alert_gets_a_singular_subject() {
-        let message = text(&render(
-            &[alert(Reason::NewSignIn(CredentialKind::Primary))],
-            "alice@corvid.test",
-        ));
-        assert!(message.contains("Subject: Corvid Sentinel: 1 sign-in alert\r\n"));
-    }
-
-    #[test]
-    fn several_alerts_get_a_plural_subject_and_one_line_each() {
-        let message = text(&render(
-            &[alert(Reason::TooManyAttempts), alert(Reason::Banned)],
-            "alice@corvid.test",
-        ));
-        assert!(message.contains("Subject: Corvid Sentinel: 2 sign-in alerts\r\n"));
-        assert_eq!(message.matches("2026-09-27T02:08:58Z").count(), 2);
-    }
-
-    #[test]
-    fn the_date_header_is_the_first_alerts_time() {
-        let message = text(&render(
-            &[alert(Reason::NewSignIn(CredentialKind::Primary))],
-            "alice@corvid.test",
-        ));
-        assert!(message.contains("Date: Sun, 27 Sep 2026 02:08:58 +0000\r\n"));
-    }
-
     #[test]
     fn an_app_password_is_named_as_such_not_by_a_description() {
-        let message = text(&render(
-            &[alert(Reason::NewSignIn(CredentialKind::AppPassword))],
-            "alice@corvid.test",
-        ));
-        assert!(message.contains("signed in with an app password"));
+        let (kind, _, detail) = render(&alert(Reason::NewSignIn(CredentialKind::AppPassword)));
+        assert_eq!(kind, NoticeKind::SignIn);
+        assert!(detail.contains("signed in with an app password"));
     }
 
     #[test]
@@ -156,27 +119,31 @@ mod tests {
             "Authenticated with a magic link".to_owned(),
         ));
         alert.account = None;
-        let message = text(&render(&[alert], "alice@corvid.test"));
-        assert!(message.contains("Authenticated with a magic link"));
-        assert!(message.contains("an unreported account"));
+        let (_, _, detail) = render(&alert);
+        assert!(detail.contains("Authenticated with a magic link"));
+        assert!(detail.contains("an unreported account"));
     }
 
     #[test]
     fn a_password_stopped_at_totp_names_the_app_password_alternative() {
-        let message = text(&render(
-            &[alert(Reason::PasswordAcceptedAwaitingCode)],
-            "alice@corvid.test",
-        ));
-        assert!(message.contains("stopped at the TOTP step"));
-        assert!(message.contains("device.sh add"));
+        let (_, _, detail) = render(&alert(Reason::PasswordAcceptedAwaitingCode));
+        assert!(detail.contains("stopped at the TOTP step"));
+        assert!(detail.contains("device.sh add"));
     }
 
     #[test]
-    fn the_from_address_is_a_corvid_identity() {
-        let message = text(&render(
-            &[alert(Reason::NewSignIn(CredentialKind::Primary))],
-            "alice@corvid.test",
-        ));
-        assert!(message.starts_with("From: Corvid Sentinel <corvid-sentinel@corvid.local>\r\n"));
+    fn a_ban_and_repeated_failures_get_their_own_kinds() {
+        assert_eq!(render(&alert(Reason::Banned)).0, NoticeKind::Ban);
+        assert_eq!(
+            render(&alert(Reason::TooManyAttempts)).0,
+            NoticeKind::TooManyAttempts
+        );
+    }
+
+    #[test]
+    fn an_unparseable_batch_is_identified_by_digest_not_content() {
+        let detail = unparseable(b"secret body");
+        assert!(!detail.contains("secret body"));
+        assert!(detail.contains("11 bytes"));
     }
 }

@@ -66,7 +66,7 @@ run() {
 
 no_password_credential='{"credentials":{"1":{"@type":"AppPassword","description":"phone"}}}'
 no_app_password='{"credentials":{"0":{"@type":"Password"}}}'
-loopback_only_app_password='{"credentials":{"0":{"@type":"Password"},"1":{"@type":"AppPassword","description":"corvid-sentinel","allowedIps":{"127.0.0.1":true,"::1":true}}}}'
+loopback_only_app_password='{"credentials":{"0":{"@type":"Password"},"1":{"@type":"AppPassword","description":"corvid-labeler","allowedIps":{"127.0.0.1":true,"::1":true}}}}'
 with_app_password='{"credentials":{"0":{"@type":"Password"},"1":{"@type":"AppPassword","description":"phone"}}}'
 with_otp='{"credentials":{"0":{"@type":"Password","otpAuth":"otpauth://totp/Corvid:alice@example.com?secret=ABC&issuer=Corvid"},"1":{"@type":"AppPassword","description":"phone"}}}'
 

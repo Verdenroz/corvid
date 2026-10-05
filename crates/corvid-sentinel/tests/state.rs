@@ -1,4 +1,4 @@
-use corvid_sentinel::{CredentialKind, Identity, Seen, open, save};
+use corvid_sentinel::{CredentialKind, Identity, NoticeKind, Seen, open, save};
 
 fn scratch() -> (tempfile::TempDir, std::path::PathBuf) {
     let dir = tempfile::tempdir().unwrap();
@@ -42,4 +42,62 @@ fn a_truncated_state_file_refuses_to_start_fresh() {
     std::fs::write(&path, &whole[..whole.len() - 5]).unwrap();
 
     assert!(open(&path).is_err());
+}
+
+#[test]
+fn a_saved_feed_round_trips_with_its_counter() {
+    let (_dir, path) = scratch();
+    let mut seen = Seen::default();
+    seen.push_notice(
+        NoticeKind::Ban,
+        "2026-09-27T02:08:58Z".to_owned(),
+        "Address banned".to_owned(),
+        "203.0.113.9 was banned".to_owned(),
+    );
+    seen.update_noticed = Some("2026-09-27T03:00:00Z".to_owned());
+    save(&path, &seen).unwrap();
+
+    let reopened = open(&path).unwrap();
+    assert_eq!(reopened.notices, seen.notices);
+    assert_eq!(reopened.last_notice_id, 1);
+    assert_eq!(reopened.update_noticed, seen.update_noticed);
+}
+
+#[test]
+fn the_feed_keeps_only_the_newest_two_hundred() {
+    let mut seen = Seen::default();
+    for n in 1..=250 {
+        seen.push_notice(
+            NoticeKind::SignIn,
+            String::new(),
+            n.to_string(),
+            String::new(),
+        );
+    }
+
+    assert_eq!(seen.notices.len(), 200);
+    assert_eq!(seen.notices.first().unwrap().id, 51);
+    assert_eq!(seen.notices.last().unwrap().id, 250);
+}
+
+#[test]
+fn a_file_from_the_previous_schema_keeps_its_history_and_starts_an_empty_feed() {
+    let (_dir, path) = scratch();
+    let previous = serde_json::json!({
+        "identities": [{
+            "account": "alice@corvid.test",
+            "kind": "AppPassword",
+            "listener": "imaps",
+            "remote_ip": "203.0.113.9",
+        }],
+        "too_many_attempts_notified": {"203.0.113.9": 100},
+    });
+    corvid_store::save(&path, 1, &previous).unwrap();
+
+    let migrated = open(&path).unwrap();
+
+    assert_eq!(migrated.identities.len(), 1);
+    assert_eq!(migrated.too_many_attempts_notified["203.0.113.9"], 100);
+    assert!(migrated.notices.is_empty());
+    assert_eq!(migrated.last_notice_id, 0);
 }

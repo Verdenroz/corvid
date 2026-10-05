@@ -1,8 +1,3 @@
-const WEEKDAYS: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const MONTHS: [&str; 12] = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-];
-
 struct Parts {
     year: i64,
     month: i64,
@@ -35,33 +30,17 @@ pub fn seconds(created_at: &str) -> Option<i64> {
     Some(days * 86400 + p.hour * 3600 + p.minute * 60 + p.second)
 }
 
-/// The same timestamp as an RFC 5322 `Date` header value, always at `+0000` since Stalwart's
-/// events carry no other zone.
-pub fn rfc2822(created_at: &str) -> Option<String> {
-    let p = parse(created_at)?;
-    let days = civil_days(p.year, p.month, p.day);
-    // 1970-01-01 was a Thursday, index 4 with Sunday at 0.
-    let weekday = WEEKDAYS[(days + 4).rem_euclid(7) as usize];
-    let month = MONTHS[(p.month - 1) as usize];
-    Some(format!(
-        "{weekday}, {:02} {month} {} {:02}:{:02}:{:02} +0000",
-        p.day, p.year, p.hour, p.minute, p.second
-    ))
-}
-
-/// The current time as an RFC 5322 `Date` header value, for a notice that carries no event
+/// The current time as a Stalwart-style UTC timestamp, for a notice that carries no event
 /// timestamp of its own.
-pub fn rfc2822_now() -> String {
+pub fn rfc3339_now() -> String {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
     let (days, remainder) = (secs.div_euclid(86400), secs.rem_euclid(86400));
     let (year, month, day) = civil_from_days(days);
-    let weekday = WEEKDAYS[(days + 4).rem_euclid(7) as usize];
-    let month_name = MONTHS[(month - 1) as usize];
     format!(
-        "{weekday}, {day:02} {month_name} {year} {:02}:{:02}:{:02} +0000",
+        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
         remainder / 3600,
         (remainder % 3600) / 60,
         remainder % 60
@@ -119,22 +98,6 @@ mod tests {
     }
 
     #[test]
-    fn the_epoch_formats_as_a_thursday() {
-        assert_eq!(
-            rfc2822("1970-01-01T00:00:00Z").as_deref(),
-            Some("Thu, 01 Jan 1970 00:00:00 +0000")
-        );
-    }
-
-    #[test]
-    fn a_captured_timestamp_formats() {
-        assert_eq!(
-            rfc2822("2026-09-27T02:08:58Z").as_deref(),
-            Some("Sun, 27 Sep 2026 02:08:58 +0000")
-        );
-    }
-
-    #[test]
     fn civil_from_days_undoes_civil_days_across_a_wide_range() {
         for days in (-800_000..800_000).step_by(37) {
             let (year, month, day) = civil_from_days(days);
@@ -143,10 +106,13 @@ mod tests {
     }
 
     #[test]
-    fn rfc2822_now_looks_like_a_real_header() {
-        let header = rfc2822_now();
-        let (weekday, rest) = header.split_once(", ").unwrap();
-        assert!(WEEKDAYS.contains(&weekday), "{header}");
-        assert!(rest.ends_with(" +0000"), "{header}");
+    fn rfc3339_now_parses_back_to_a_recent_time() {
+        let now = rfc3339_now();
+        let parsed = seconds(&now).unwrap();
+        let clock = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        assert!((clock - parsed).abs() <= 2, "{now}");
     }
 }

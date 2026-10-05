@@ -381,8 +381,9 @@ pub struct Mirror {
 pub struct Sentinel {
     #[serde(default = "sentinel_bind")]
     pub bind: String,
-    pub jmap_url: String,
-    pub jmap_user: String,
+    /// Unused. Accepted so a `config.yaml` that still carries them parses.
+    pub jmap_url: Option<String>,
+    pub jmap_user: Option<String>,
     pub state: PathBuf,
 }
 
@@ -600,9 +601,7 @@ mod tests {
 
     #[test]
     fn a_sentinel_section_defaults_its_bind_address() {
-        let config =
-            Config::parse("sentinel:\n  jmap_url: http://x\n  jmap_user: u\n  state: /s\n")
-                .unwrap();
+        let config = Config::parse("sentinel:\n  state: /s\n").unwrap();
 
         assert_eq!(config.sentinel.unwrap().bind, "127.0.0.1:11333");
     }
