@@ -22,6 +22,9 @@ private fun email(
 
 private suspend fun repository(fake: FakeJmapServer) = MailboxRepository(fake.client())
 
+private suspend fun inboxSummary(fake: FakeJmapServer) =
+    assertIs<EmailPage.Found>(repository(fake).page(MailFilter.InMailbox("inbox"), null)).conversations.single().latest
+
 class ProvenanceTest {
     @Test
     fun `the inbox list carries each message's seal, tracker count and sender kind`() =
@@ -38,7 +41,7 @@ class ProvenanceTest {
                     ),
                 )
 
-            val summary = assertIs<EmailPage.Found>(repository(fake).page(MailFilter.InMailbox("inbox"), null)).emails.single()
+            val summary = inboxSummary(fake)
 
             assertEquals(Seal.Signed("browser.test"), summary.provenance.seal)
             assertEquals(6, assertIs<Rewrite.Stripped>(summary.provenance.rewrite).stripped)
@@ -89,7 +92,7 @@ class ProvenanceTest {
             val fake = FakeJmapServer().withSendableAccount()
             fake.emails += email("s", "sentinel@example.test", mapOf("Auto-Submitted" to listOf("auto-generated")))
 
-            val summary = assertIs<EmailPage.Found>(repository(fake).page(MailFilter.InMailbox("inbox"), null)).emails.single()
+            val summary = inboxSummary(fake)
 
             assertEquals(SenderKind.Source(SourceKind.OwnServer), summary.provenance.sender)
         }

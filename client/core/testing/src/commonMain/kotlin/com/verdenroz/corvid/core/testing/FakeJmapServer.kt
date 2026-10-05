@@ -289,6 +289,7 @@ class FakeJmapServer {
             "Mailbox/get" -> listOf(name to getResponse("s1", mailboxes, arguments, FakeMailbox::id) { it.toJson() })
             "Email/query" -> listOf(emailQuery(arguments))
             "Email/get" -> listOf(name to getResponse("s1", emails, arguments, FakeEmail::id) { it.toJson(arguments.requestedHeaders()) })
+            "Thread/get" -> listOf(name to threadGet(arguments))
             "Identity/get" -> listOf(name to getResponse("i1", identities, arguments, FakeIdentity::id) { it.toJson() })
             "Email/set" -> listOf(name to emailSet(arguments, createdIds))
             "EmailSubmission/set" -> submissionSet(arguments, createdIds)
@@ -360,7 +361,9 @@ class FakeJmapServer {
         val ascending = arguments["sort"]?.jsonArray?.firstOrNull()?.jsonObject?.get("isAscending")?.jsonPrimitive?.booleanOrNull ?: false
 
         val filtered = emails.filter { it.matches(filter) }
-        val matching = if (ascending) filtered.sortedBy { it.receivedAt } else filtered.sortedByDescending { it.receivedAt }
+        val sorted = if (ascending) filtered.sortedBy { it.receivedAt } else filtered.sortedByDescending { it.receivedAt }
+        val collapse = arguments["collapseThreads"]?.jsonPrimitive?.booleanOrNull ?: false
+        val matching = if (collapse) sorted.distinctBy { it.threadId } else sorted
 
         val start =
             if (anchor != null) {
@@ -570,6 +573,27 @@ class FakeJmapServer {
         arguments.keys.filter { it.startsWith("#") }.any { key ->
             arguments.getValue(key).jsonObject.getValue("resultOf").jsonPrimitive.content in callIds
         }
+
+    private fun threadGet(arguments: JsonObject): JsonObject {
+        val threads = emails.groupBy { it.threadId }.mapValues { (_, members) -> members.sortedBy { it.receivedAt }.map { it.id } }
+        val (selected, notFound) = select(threads.keys.toList(), arguments) { it }
+        return buildJsonObject {
+            put("accountId", ACCOUNT_ID)
+            put("state", "t1")
+            put(
+                "list",
+                JsonArray(
+                    selected.map { id ->
+                        buildJsonObject {
+                            put("id", id)
+                            put("emailIds", JsonArray(threads.getValue(id).map { JsonPrimitive(it) }))
+                        }
+                    },
+                ),
+            )
+            put("notFound", JsonArray(notFound.map { JsonPrimitive(it) }))
+        }
+    }
 
     private fun resolveReferences(
         arguments: JsonObject,

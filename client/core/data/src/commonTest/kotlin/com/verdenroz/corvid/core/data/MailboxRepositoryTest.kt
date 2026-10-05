@@ -63,7 +63,7 @@ class MailboxRepositoryTest {
 
             val page = assertIs<EmailPage.Found>(repository(fake).page(MailFilter.Search("invoice"), null))
 
-            assertEquals(listOf("archived", "old"), page.emails.map { it.id })
+            assertEquals(listOf("archived", "old"), page.conversations.map { it.latest.id })
         }
 
     @Test
@@ -107,9 +107,9 @@ class MailboxRepositoryTest {
             var anchor: String? = null
             do {
                 val page = assertIs<EmailPage.Found>(repository.page(MailFilter.InMailbox("inbox"), anchor))
-                all += page.emails
-                anchor = page.emails.lastOrNull()?.id
-            } while (page.emails.isNotEmpty())
+                all += page.conversations.map { it.latest }
+                anchor = page.conversations.lastOrNull()?.latest?.id
+            } while (page.conversations.isNotEmpty())
 
             assertEquals(EMAIL_COUNT + 2, all.size)
             assertEquals(all.map { it.id }.toSet().size, all.size)

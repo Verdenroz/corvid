@@ -93,9 +93,10 @@ class LedgerViewModel(
                         restartFromTop()
                         return
                     }
-                    emails = if (anchor == null) page.emails else emails + page.emails
+                    val latest = page.conversations.map { it.latest }
+                    emails = if (anchor == null) latest else emails + latest
                     queryState = page.queryState
-                    _state.value = LedgerUiState.Loaded(emails, canLoadMore = page.emails.size == PAGE_SIZE)
+                    _state.value = LedgerUiState.Loaded(emails, canLoadMore = latest.size == PAGE_SIZE)
                 }
             }
         } catch (e: JmapException) {

@@ -10,6 +10,8 @@ import kotlinx.serialization.json.JsonObject
  * the way a real server does when it sees a `#`-prefixed argument. A `*`
  * segment maps the rest of the path over every element of the array at
  * that point, e.g. `list`, `*`, `id` pulled out of an `Email/get` result.
+ * Arrays that mapping yields are flattened into one, as RFC 8620 says, so
+ * `list`, `*`, `emailIds` over a `Thread/get` is one flat list of ids.
  */
 fun resolveJsonPointer(
     root: JsonElement,
@@ -28,7 +30,14 @@ private fun resolveSegments(
     val tail = segments.drop(1)
     if (head == "*") {
         val array = value as? JsonArray ?: return JsonNull
-        return JsonArray(array.map { resolveSegments(it, tail) })
+        return JsonArray(
+            array.flatMap {
+                when (val resolved = resolveSegments(it, tail)) {
+                    is JsonArray -> resolved
+                    else -> listOf(resolved)
+                }
+            },
+        )
     }
     val next =
         when (value) {
