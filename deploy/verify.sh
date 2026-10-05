@@ -31,7 +31,7 @@ done
 for s in "${services[@]}"; do
   if systemctl is-active --quiet "$s.service"; then
     ok "$s active"
-  elif [[ "$(systemctl is-enabled "$s.service" 2>/dev/null)" == masked ]]; then
+  elif unit_masked "$s.service"; then
     warn "$s is masked, so off on purpose"
   else
     bad "$s is not running; check: journalctl -u $s"

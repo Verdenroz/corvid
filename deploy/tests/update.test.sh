@@ -41,7 +41,7 @@ cat > "$work/bin/systemctl" <<'SH'
 SH
 cat > "$work/config" <<'SH'
 #!/bin/sh
-printf 'MAIL_DOMAIN=example.com\nMAIL_HOSTNAME=mail.example.com\nUPDATE_AUTO=%s\n' "$(cat "$WORK/auto")"
+printf 'UPDATE_AUTO=%s\n' "$(cat "$WORK/auto")"
 SH
 chmod +x "$work/bin/podman" "$work/bin/systemctl" "$work/config"
 
