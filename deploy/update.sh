@@ -151,7 +151,6 @@ rm -rf "$deploy_dir"
 mv "$deploy_dir.new" "$deploy_dir"
 
 if deploy_from "$deploy_dir"; then
-  echo "$new_id" > "$deployed_marker"
   rm -f "$failed_marker"
   running="$latest"
   result=updated

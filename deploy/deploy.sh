@@ -143,6 +143,9 @@ if [[ -z "${CORVID_INSTALLER:-}" ]]; then
   "$HERE/verify.sh" "$MAIL_DOMAIN" "$MAIL_HOSTNAME"
 fi
 
+# update.sh compares the registry against this, so a hand-run deploy must record what it started.
+podman image inspect -f '{{.Id}}' "$CORVID_IMAGE" > "$CORVID_DIR/.deployed-id"
+
 if [[ -z "${CORVID_UPDATING:-}" && -e /etc/systemd/system/corvid-update.path ]]; then
   # corvid-update.path fires on the file existing, so it must appear already holding `check`.
   request="$(mktemp "$CORVID_DIR/update/.request.XXXXXX")"
