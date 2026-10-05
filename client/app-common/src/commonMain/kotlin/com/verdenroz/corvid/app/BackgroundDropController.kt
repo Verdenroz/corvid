@@ -2,9 +2,10 @@ package com.verdenroz.corvid.app
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.seconds
 
@@ -20,10 +21,10 @@ class BackgroundDropController(
     private val onTimeout: () -> Unit,
 ) {
     private var job: Job? = null
-    private val returned = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    private val returned = Channel<Unit>(Channel.CONFLATED)
 
-    /** Emits each time the app comes back to the foreground. */
-    val foregrounded: SharedFlow<Unit> = returned
+    /** A return to the foreground, held until read and merged with any not yet read; one reader at a time. */
+    val foregrounded: Flow<Unit> = returned.receiveAsFlow()
 
     fun enteredBackground() {
         job =
@@ -36,6 +37,6 @@ class BackgroundDropController(
     fun enteredForeground() {
         job?.cancel()
         job = null
-        returned.tryEmit(Unit)
+        returned.trySend(Unit)
     }
 }

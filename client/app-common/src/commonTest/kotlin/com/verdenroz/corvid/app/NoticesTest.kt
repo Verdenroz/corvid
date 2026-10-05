@@ -9,10 +9,12 @@ import com.verdenroz.corvid.core.testing.FakeNotice
 import com.verdenroz.corvid.core.testing.InMemoryPreferencesStore
 import com.verdenroz.corvid.core.testing.KeyedTextResolver
 import com.verdenroz.corvid.core.testing.client
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -23,13 +25,14 @@ import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 private class Rig(
     val fake: FakeJmapServer,
     val preferences: DevicePreferences,
     val notices: Notices,
-    val foreground: MutableSharedFlow<Unit>,
+    val foreground: Channel<Unit>,
     val posted: MutableList<Pair<String, String>>,
 )
 
@@ -37,15 +40,16 @@ private class Rig(
 private suspend fun TestScope.rig(
     fake: FakeJmapServer,
     seen: Long = 0,
+    pollEvery: Duration = 60.seconds,
 ): Rig {
     val preferences = DevicePreferences(InMemoryPreferencesStore(), backgroundScope, DeviceSettings())
     preferences.setNoticesSeen(seen)
     runCurrent()
     val posted = mutableListOf<Pair<String, String>>()
-    val foreground = MutableSharedFlow<Unit>()
+    val foreground = Channel<Unit>(Channel.CONFLATED)
     val notices =
-        Notices(NoticeRepository(fake.client()), preferences, { title, text -> posted += title to text }, KeyedTextResolver)
-    backgroundScope.launch { notices.run(foreground) }
+        Notices(NoticeRepository(fake.client()), preferences, { title, text -> posted += title to text }, KeyedTextResolver, pollEvery)
+    backgroundScope.launch { notices.run(foreground.receiveAsFlow()) }
     runCurrent()
     return Rig(fake, preferences, notices, foreground, posted)
 }
@@ -190,13 +194,47 @@ class NoticesTest {
     @Test
     fun `returning to the foreground polls at once`() =
         runTest {
-            val rig = rig(FakeJmapServer().apply { notices = emptyList() })
-            until { rig.fake.noticeReads.size == 1 }
+            val rig = rig(FakeJmapServer().apply { notices = emptyList() }, pollEvery = Duration.INFINITE)
+            until { rig.fake.noticeReads.size == 1 && rig.fake.requestCount > 1 }
 
             rig.fake.notices = listOf(BAN)
-            rig.foreground.emit(Unit)
+            rig.foreground.send(Unit)
             until { rig.notices.banner.value != null }
 
-            assertEquals(listOf<String?>("0", "0"), rig.fake.noticeReads.take(2))
+            assertEquals(listOf<String?>("0", "0"), rig.fake.noticeReads)
+        }
+
+    @Test
+    fun `returning to the foreground during a poll still triggers another right after it`() =
+        runTest {
+            val gate = CompletableDeferred<Unit>()
+            val fake = FakeJmapServer().apply { notices = emptyList() }
+            fake.noticesGate = gate
+            val rig = rig(fake, pollEvery = Duration.INFINITE)
+            until { fake.noticeArrivals == 1 }
+
+            fake.notices = listOf(BAN)
+            rig.foreground.send(Unit)
+            gate.complete(Unit)
+            until { rig.notices.banner.value != null }
+
+            assertEquals(listOf<String?>("0", "0"), fake.noticeReads)
+        }
+
+    @Test
+    fun `several returns during a poll make one more poll, not several`() =
+        runTest {
+            val gate = CompletableDeferred<Unit>()
+            val fake = FakeJmapServer().apply { notices = listOf(BAN) }
+            fake.noticesGate = gate
+            val rig = rig(fake, pollEvery = Duration.INFINITE)
+            until { fake.noticeArrivals == 1 }
+
+            repeat(3) { rig.foreground.send(Unit) }
+            gate.complete(Unit)
+            until { fake.noticeArrivals == 2 }
+            withContext(Dispatchers.Default) { delay(200) }
+
+            assertEquals(2, fake.noticeArrivals)
         }
 }

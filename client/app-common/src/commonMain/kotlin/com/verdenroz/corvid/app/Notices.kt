@@ -10,14 +10,13 @@ import com.verdenroz.corvid.core.text.SystemTextResolver
 import com.verdenroz.corvid.core.text.TextResolver
 import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.uiText
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -51,39 +50,46 @@ class Notices(
     private val _banner = MutableStateFlow<NoticeBanner?>(null)
     val banner: StateFlow<NoticeBanner?> = _banner
 
-    private val polling = Mutex()
     private var seen = preferences.settings.value.noticesSeen
 
     fun dismiss() {
         _banner.value = null
     }
 
-    /** Polls on entry, whenever [foreground] emits, and every [pollEvery]; ends when the caller's scope does. */
+    /**
+     * Polls on entry, again as soon as [foreground] has emitted or [pollEvery] has passed since the last poll began;
+     * ends when the caller's scope does.
+     */
     suspend fun run(foreground: Flow<Unit>) {
         coroutineScope {
-            launch { foreground.collect { poll() } }
+            val due = Channel<Unit>(Channel.CONFLATED)
+            launch { foreground.collect { due.trySend(Unit) } }
+            launch {
+                while (true) {
+                    delay(pollEvery)
+                    due.trySend(Unit)
+                }
+            }
             while (true) {
                 poll()
-                delay(pollEvery)
+                due.receive()
             }
         }
     }
 
     private suspend fun poll() {
-        polling.withLock {
-            val fresh =
-                try {
-                    repository.after(seen)
-                } catch (e: JmapException) {
-                    return@withLock
-                }
-            if (fresh.isNullOrEmpty()) return@withLock
-            seen = fresh.last().id
-            preferences.setNoticesSeen(seen)
-            val banner = NoticeBanner(fresh.last(), (_banner.value?.count ?: 0) + fresh.size)
-            _banner.value = banner
-            notifier.post(text.resolve(banner.line), banner.newest.detail)
-        }
+        val fresh =
+            try {
+                repository.after(seen)
+            } catch (e: JmapException) {
+                return
+            }
+        if (fresh.isNullOrEmpty()) return
+        seen = fresh.last().id
+        preferences.setNoticesSeen(seen)
+        val banner = NoticeBanner(fresh.last(), (_banner.value?.count ?: 0) + fresh.size)
+        _banner.value = banner
+        notifier.post(text.resolve(banner.line), banner.newest.detail)
     }
 }
 

@@ -14,6 +14,7 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.OutgoingContent
 import io.ktor.http.headersOf
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -34,6 +35,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import java.io.IOException
+import java.util.concurrent.CopyOnWriteArrayList
 import javax.net.ssl.SSLHandshakeException
 
 private const val ACCOUNT_ID = "u1"
@@ -140,8 +142,15 @@ class FakeJmapServer {
     /** Answers GET `/corvid/notices` with a 500. */
     var noticesBroken: Boolean = false
 
-    /** The `after` of each GET of `/corvid/notices`, in order; null when it was absent. */
-    val noticeReads: MutableList<String?> = mutableListOf()
+    /** The `after` of each GET of `/corvid/notices`, in order; null when it was absent. Read from test threads while requests land, so it is copy-on-write. */
+    val noticeReads: MutableList<String?> = CopyOnWriteArrayList()
+
+    /** While set, `/corvid/notices` requests wait on it after reading the feed, so the answer is as of arrival. */
+    var noticesGate: CompletableDeferred<Unit>? = null
+
+    /** How many requests have reached `/corvid/notices`, answered or still waiting on [noticesGate]. */
+    @Volatile
+    var noticeArrivals: Int = 0
 
     /** The Authorization header the last `/corvid/notices` request carried. */
     var noticesAuthorization: String? = null
@@ -216,14 +225,16 @@ class FakeJmapServer {
         return respond(current.toJson().toString(), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, listOf("application/json")))
     }
 
-    private fun MockRequestHandleScope.noticesResponse(request: HttpRequestData): HttpResponseData {
+    private suspend fun MockRequestHandleScope.noticesResponse(request: HttpRequestData): HttpResponseData {
         noticesAuthorization = request.headers[HttpHeaders.Authorization]
+        noticeArrivals++
         val feed = notices ?: return respond("not found", HttpStatusCode.NotFound)
         if (noticesBroken) return respond("", HttpStatusCode.InternalServerError)
         val after = request.url.parameters["after"]
         noticeReads += after
         val newer = feed.filter { it.id > (after?.toLong() ?: 0) }
         val body = buildJsonObject { putJsonArray("notices") { newer.forEach { add(it.toJson()) } } }
+        noticesGate?.await()
         return respond(body.toString(), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, listOf("application/json")))
     }
 
