@@ -194,7 +194,7 @@ private fun BodyImage(
             contentDescription = image.alt.ifBlank { null },
             contentScale = ContentScale.FillWidth,
             alignment = Alignment.TopStart,
-            modifier = open.fillMaxWidth().widthIn(max = width),
+            modifier = open.widthIn(max = width).fillMaxWidth(),
         )
     }
 }
