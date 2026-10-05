@@ -12,9 +12,11 @@ object CorvidShape {
     val medium = RoundedCornerShape(12.dp)
 }
 
-/** One horizontal gutter for every screen edge, wide and narrow. */
+/** One horizontal gutter for every screen edge, wide and narrow; the reader and thread use the wider [readingGutter]. */
 object CorvidSpacing {
     fun gutter(wide: Boolean): Dp = if (wide) 24.dp else 16.dp
+
+    fun readingGutter(wide: Boolean): Dp = if (wide) 32.dp else 18.dp
 }
 
 internal val MaterialShapes =

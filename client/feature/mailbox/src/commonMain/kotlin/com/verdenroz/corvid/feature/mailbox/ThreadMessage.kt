@@ -18,12 +18,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.Correction
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.data.stamp
+import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.PillButton
@@ -63,7 +65,7 @@ internal fun ThreadMessage(
 ) {
     val colors = CorvidTheme.colors
     val tint = if (email.provenance.suspect) Modifier.background(colors.dangerTint) else Modifier
-    val gutter = if (wide) 32.dp else 18.dp
+    val gutter = CorvidSpacing.readingGutter(wide)
     Column(Modifier.fillMaxWidth().then(tint)) {
         Column(Modifier.padding(horizontal = gutter).widthIn(max = 860.dp)) {
             if (expanded) {
@@ -97,6 +99,15 @@ private fun ExpandedMessage(
     }
 }
 
+private class ReplyAction(val label: StringResource, val icon: ImageVector, val intent: ComposeIntent)
+
+private fun replyActions(email: EmailDetail) =
+    listOf(
+        ReplyAction(Res.string.mailbox_reply, CorvidIcons.Reply, ComposeIntent.Reply(email.id, all = false)),
+        ReplyAction(Res.string.mailbox_reply_all, CorvidIcons.ReplyAll, ComposeIntent.Reply(email.id, all = true)),
+        ReplyAction(Res.string.mailbox_forward, CorvidIcons.Forward, ComposeIntent.Forward(email.id)),
+    )
+
 @Composable
 private fun Replies(
     email: EmailDetail,
@@ -107,13 +118,7 @@ private fun Replies(
         verticalArrangement = Arrangement.spacedBy(10.dp),
         modifier = Modifier.padding(top = 24.dp),
     ) {
-        PillButton(stringResource(Res.string.mailbox_reply), CorvidIcons.Reply, { onCompose(ComposeIntent.Reply(email.id, all = false)) })
-        PillButton(
-            stringResource(Res.string.mailbox_reply_all),
-            CorvidIcons.ReplyAll,
-            { onCompose(ComposeIntent.Reply(email.id, all = true)) },
-        )
-        PillButton(stringResource(Res.string.mailbox_forward), CorvidIcons.Forward, { onCompose(ComposeIntent.Forward(email.id)) })
+        replyActions(email).forEach { PillButton(stringResource(it.label), it.icon, { onCompose(it.intent) }) }
     }
 }
 
@@ -123,16 +128,9 @@ private fun QuietReplies(
     email: EmailDetail,
     onCompose: (ComposeIntent) -> Unit,
 ) {
-    val tint = CorvidTheme.colors.inkMuted
     Row(Modifier.padding(top = 8.dp)) {
-        IconButton({ onCompose(ComposeIntent.Reply(email.id, all = false)) }) {
-            Icon(CorvidIcons.Reply, stringResource(Res.string.mailbox_reply), tint = tint)
-        }
-        IconButton({ onCompose(ComposeIntent.Reply(email.id, all = true)) }) {
-            Icon(CorvidIcons.ReplyAll, stringResource(Res.string.mailbox_reply_all), tint = tint)
-        }
-        IconButton({ onCompose(ComposeIntent.Forward(email.id)) }) {
-            Icon(CorvidIcons.Forward, stringResource(Res.string.mailbox_forward), tint = tint)
+        replyActions(email).forEach {
+            IconButton({ onCompose(it.intent) }) { Icon(it.icon, stringResource(it.label), tint = CorvidTheme.colors.inkMuted) }
         }
     }
 }
