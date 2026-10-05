@@ -40,7 +40,7 @@ private suspend fun ViewModelTestScope.viewModel(
     fake: FakeJmapServer,
     ceiling: Duration = 20.minutes,
 ): AboutViewModel =
-    track(AboutViewModel(UpdateRepository(fake.client()), pollEvery = 3.seconds, ceiling = ceiling)).also {
+    track(AboutViewModel(UpdateRepository(fake.client()), ceiling = ceiling)).also {
         it.await {
                 state ->
             state !is AboutState.Loading
@@ -212,7 +212,7 @@ class AboutViewModelTest {
             val fake = FakeJmapServer().apply { update.serveUpdates(BUSY) }
             val store = ViewModelStore()
             val repository = UpdateRepository(fake.client())
-            val factory = viewModelFactory { initializer { AboutViewModel(repository, pollEvery = 3.seconds) } }
+            val factory = viewModelFactory { initializer { AboutViewModel(repository) } }
             val viewModel = track(ViewModelProvider.create(store, factory)[AboutViewModel::class])
             viewModel.await { it !is AboutState.Loading }
             val before = fake.requestCount
@@ -223,4 +223,9 @@ class AboutViewModelTest {
 
             assertEquals(before, fake.requestCount)
         }
+
+    @Test
+    fun `polls back off to a ceiling of fifteen seconds`() {
+        assertEquals(listOf(3, 5, 10, 15, 15), (0..4).map { pollDelay(it).inWholeSeconds.toInt() })
+    }
 }

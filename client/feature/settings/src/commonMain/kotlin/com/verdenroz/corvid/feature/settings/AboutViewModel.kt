@@ -47,7 +47,6 @@ sealed interface AboutState {
 
 class AboutViewModel(
     private val repository: UpdateRepository,
-    private val pollEvery: Duration = POLL_EVERY,
     private val ceiling: Duration = CEILING,
 ) : ViewModel() {
     private val _state = MutableStateFlow<AboutState>(AboutState.Loading)
@@ -101,14 +100,18 @@ class AboutViewModel(
     }
 
     private suspend fun settle(since: UpdateReport?) {
-        repeat((ceiling / pollEvery).toInt()) {
-            delay(pollEvery)
+        var waited = Duration.ZERO
+        var polls = 0
+        while (waited < ceiling) {
+            val wait = pollDelay(polls++)
+            delay(wait)
+            waited += wait
             val report =
                 try {
                     repository.status()
                 } catch (e: JmapException) {
                     // The server restarts itself to finish an update, so these two are the expected gap.
-                    if (e.error is JmapError.Unreachable || e.error is JmapError.Server) return@repeat else throw e
+                    if (e.error is JmapError.Unreachable || e.error is JmapError.Server) continue else throw e
                 }
             if (report == null) {
                 _state.value = AboutState.Unsupported
@@ -126,5 +129,8 @@ class AboutViewModel(
     }
 }
 
-private val POLL_EVERY = 3.seconds
+private val POLL_BACKOFF = listOf(3.seconds, 5.seconds, 10.seconds, 15.seconds)
 private val CEILING = 20.minutes
+
+/** The wait before the [poll]th status read, lengthening while the server stays busy. */
+internal fun pollDelay(poll: Int): Duration = POLL_BACKOFF[minOf(poll, POLL_BACKOFF.lastIndex)]

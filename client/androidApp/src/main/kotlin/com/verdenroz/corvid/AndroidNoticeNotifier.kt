@@ -9,11 +9,11 @@ import android.content.Intent
 import com.verdenroz.corvid.app.NoticeNotifier
 
 private const val CHANNEL_ID = "server-notices"
+private const val NOTIFICATION_ID = 1
 
-/** Posts the server's notices; without the notification permission Android drops them and the banner remains. */
+/** Posts the server's notices, each replacing the last since the banner already counts them; without the notification permission Android drops them and the banner remains. */
 class AndroidNoticeNotifier(private val context: Context) : NoticeNotifier {
     private val manager = context.getSystemService(NotificationManager::class.java)
-    private var nextId = 0
 
     init {
         manager.createNotificationChannel(
@@ -50,6 +50,6 @@ class AndroidNoticeNotifier(private val context: Context) : NoticeNotifier {
                 .setContentIntent(open)
                 .setAutoCancel(true)
                 .build()
-        manager.notify(nextId++, notification)
+        manager.notify(NOTIFICATION_ID, notification)
     }
 }
