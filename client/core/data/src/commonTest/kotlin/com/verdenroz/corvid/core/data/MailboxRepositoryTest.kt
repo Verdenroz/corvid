@@ -1,6 +1,7 @@
 package com.verdenroz.corvid.core.data
 
 import com.verdenroz.corvid.core.model.EmailSummary
+import com.verdenroz.corvid.core.model.HtmlBody
 import com.verdenroz.corvid.core.testing.FakeEmail
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.FakeMailbox
@@ -153,7 +154,7 @@ class MailboxRepositoryTest {
         }
 
     @Test
-    fun `an html-only message is flattened to text, never rendered`() =
+    fun `an html-only message gets a flattened plain body and keeps its html`() =
         runTest {
             val fake = FakeJmapServer()
             fake.emails +=
@@ -171,6 +172,41 @@ class MailboxRepositoryTest {
             val detail = assertIs<EmailLookup.Found>(repository(fake).getEmail("e1")).detail
 
             assertEquals("hello world", detail.body)
+            assertEquals(HtmlBody("<p>hello <b>world</b></p>", truncated = false), detail.html)
+        }
+
+    @Test
+    fun `an alternative message keeps its plain body and its html part`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.emails +=
+                FakeEmail(
+                    "e1",
+                    "e1",
+                    setOf("inbox"),
+                    "hello",
+                    "a@example.test",
+                    "2024-01-01T00:00:00Z",
+                    body = "hello world",
+                    htmlBody = "<p>hello <b>world</b></p>",
+                    bodyTruncated = true,
+                )
+
+            val detail = assertIs<EmailLookup.Found>(repository(fake).getEmail("e1")).detail
+
+            assertEquals("hello world", detail.body)
+            assertEquals(HtmlBody("<p>hello <b>world</b></p>", truncated = true), detail.html)
+        }
+
+    @Test
+    fun `a plain-text message has no html`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.emails += FakeEmail("e1", "e1", setOf("inbox"), "hi", "a@example.test", "2024-01-01T00:00:00Z", body = "just text")
+
+            val detail = assertIs<EmailLookup.Found>(repository(fake).getEmail("e1")).detail
+
+            assertNull(detail.html)
         }
 
     @Test
@@ -350,5 +386,43 @@ class MailboxRepositoryTest {
             assertEquals(null, repository.mailboxId("drafts"))
 
             assertEquals(requests, fake.requestCount)
+        }
+
+    @Test
+    fun `a proxied image is fetched without credentials`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.proxiedImages["abc.sig"] = byteArrayOf(1, 2, 3)
+            val repository = MailboxRepository(fake.client(bearerToken = "secret"))
+
+            val bytes = repository.proxiedImage("${repository.imageProxyBase}abc.sig")
+
+            assertEquals(listOf<Byte>(1, 2, 3), bytes?.toList())
+            assertEquals(listOf<String?>(null), fake.imageAuthorizations)
+        }
+
+    @Test
+    fun `an image outside the proxy path is never requested`() =
+        runTest {
+            val fake = FakeJmapServer()
+            val repository = MailboxRepository(fake.client())
+            val before = fake.requestCount
+
+            assertNull(repository.proxiedImage("https://cdn.example.test/i/a.png"))
+            assertNull(repository.proxiedImage("http://127.0.0.1:9999/jmap/download/u1/b/x"))
+            assertEquals(before, fake.requestCount)
+        }
+
+    @Test
+    fun `a missing or unreachable proxied image is null and leaves the session alone`() =
+        runTest {
+            val fake = FakeJmapServer()
+            val repository = MailboxRepository(fake.client())
+
+            assertNull(repository.proxiedImage("${repository.imageProxyBase}gone"))
+            fake.unreachable = true
+            assertNull(repository.proxiedImage("${repository.imageProxyBase}gone"))
+            fake.unreachable = false
+            assertEquals(emptyList(), repository.mailboxes())
         }
 }

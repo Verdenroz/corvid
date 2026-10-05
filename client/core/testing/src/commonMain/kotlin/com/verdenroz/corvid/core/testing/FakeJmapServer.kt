@@ -87,6 +87,12 @@ class FakeJmapServer {
     val fileNodes: MutableList<FakeFileNode> = mutableListOf()
     val sieveScripts: MutableList<FakeSieveScript> = mutableListOf()
     val blobs: MutableMap<String, ByteArray> = mutableMapOf()
+
+    /** Bodies served under `/i/`, as the image proxy serves them, keyed by the path after it. */
+    val proxiedImages: MutableMap<String, ByteArray> = mutableMapOf()
+
+    /** The Authorization header of each `/i/` request, null where there was none. */
+    val imageAuthorizations: MutableList<String?> = mutableListOf()
     private var nextFileNodeId = 1
     private var nextSieveScriptId = 1
     private var nextBlobId = 1
@@ -142,6 +148,7 @@ class FakeJmapServer {
             path.endsWith("/jmap/api/") -> apiResponse(request)
             path.startsWith("/jmap/upload/") -> uploadResponse(request)
             path.startsWith("/jmap/download/") -> downloadResponse(path)
+            path.startsWith("/i/") -> imageResponse(request, path)
             path == "/corvid/update" -> updateResponse(request)
             else -> respond("not found", HttpStatusCode.NotFound)
         }
@@ -160,6 +167,15 @@ class FakeJmapServer {
                 put("size", bytes.size)
             }
         return respond(body.toString(), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, listOf("application/json")))
+    }
+
+    private fun MockRequestHandleScope.imageResponse(
+        request: HttpRequestData,
+        path: String,
+    ): HttpResponseData {
+        imageAuthorizations += request.headers[HttpHeaders.Authorization]
+        val bytes = proxiedImages[path.removePrefix("/i/")] ?: return respond("", HttpStatusCode.NotFound)
+        return respond(bytes, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, listOf("image/png")))
     }
 
     private fun MockRequestHandleScope.downloadResponse(path: String): HttpResponseData {
@@ -674,24 +690,37 @@ private fun FakeEmail.toJson(headerProperties: List<String>): JsonObject =
         put("preview", preview)
         if (body == null) {
             put("textBody", null as String?)
+            put("htmlBody", null as String?)
             putJsonObject("bodyValues") {}
         } else {
-            putJsonArray("textBody") {
-                addJsonObject {
-                    put("partId", "1")
-                    put("type", bodyType)
-                    put("size", body.length)
-                }
-            }
+            val (htmlPartId, htmlType, html) = if (htmlBody == null) Triple("1", bodyType, body) else Triple("2", "text/html", htmlBody)
+            putJsonArray("textBody") { addJsonObject { putPart("1", bodyType, body) } }
+            putJsonArray("htmlBody") { addJsonObject { putPart(htmlPartId, htmlType, html) } }
             putJsonObject("bodyValues") {
-                putJsonObject("1") {
-                    put("value", body)
-                    put("isTruncated", bodyTruncated)
-                    put("isEncodingProblem", false)
-                }
+                putJsonObject("1") { putValue(body, bodyTruncated) }
+                if (htmlBody != null) putJsonObject("2") { putValue(htmlBody, bodyTruncated) }
             }
         }
     }
+
+private fun JsonObjectBuilder.putPart(
+    partId: String,
+    type: String,
+    content: String,
+) {
+    put("partId", partId)
+    put("type", type)
+    put("size", content.length)
+}
+
+private fun JsonObjectBuilder.putValue(
+    content: String,
+    truncated: Boolean,
+) {
+    put("value", content)
+    put("isTruncated", truncated)
+    put("isEncodingProblem", false)
+}
 
 private fun JsonObjectBuilder.putAddressList(
     key: String,

@@ -158,6 +158,23 @@ class JmapClient private constructor(
         return WebReply(response.status.value, json)
     }
 
+    /** The address the client dialled, which the web tier's own paths hang off. */
+    val webBase: String get() = baseUrl.trimEnd('/')
+
+    /**
+     * A GET carrying no bearer token, for a URL that is its own credential. Any failure is null,
+     * and never trips the auth latch, since a missing image must not take the session down.
+     */
+    suspend fun fetchPublic(url: String): ByteArray? {
+        val response =
+            try {
+                httpClient.get(url)
+            } catch (e: IOException) {
+                return null
+            }
+        return if (response.status.isSuccess()) response.body() else null
+    }
+
     suspend fun downloadBlob(
         blobId: String,
         name: String,

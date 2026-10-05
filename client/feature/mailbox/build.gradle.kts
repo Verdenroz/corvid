@@ -8,6 +8,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             implementation(projects.core.data)
+            implementation(projects.core.html)
         }
         commonTest.dependencies {
             implementation(projects.core.testing)

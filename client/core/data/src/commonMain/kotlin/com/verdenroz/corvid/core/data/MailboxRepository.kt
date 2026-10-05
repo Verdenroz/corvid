@@ -10,6 +10,7 @@ import com.verdenroz.corvid.core.model.CorvidKeywords
 import com.verdenroz.corvid.core.model.EmailAddress
 import com.verdenroz.corvid.core.model.EmailDetail
 import com.verdenroz.corvid.core.model.EmailSummary
+import com.verdenroz.corvid.core.model.HtmlBody
 import com.verdenroz.corvid.core.model.Identity
 import com.verdenroz.corvid.core.model.Mailbox
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -37,8 +38,10 @@ private const val PAGE_SIZE = 50
 private const val MAX_BODY_VALUE_BYTES = 262_144
 internal val EMAIL_PROPERTIES = listOf("id", "threadId", "subject", "from", "receivedAt", "keywords", "preview") + PROVENANCE_PROPERTIES
 private val EMAIL_DETAIL_PROPERTIES =
-    listOf("id", "subject", "from", "to", "cc", "replyTo", "messageId", "references", "receivedAt", "keywords", "textBody", "bodyValues") +
-        PROVENANCE_PROPERTIES
+    listOf(
+        "id", "subject", "from", "to", "cc", "replyTo", "messageId", "references", "receivedAt", "keywords",
+        "textBody", "htmlBody", "bodyValues",
+    ) + PROVENANCE_PROPERTIES
 
 /** What a list shows: one mailbox, every starred message wherever it is filed, or every message matching a text search. */
 sealed interface MailFilter {
@@ -83,6 +86,12 @@ class MailboxRepository(private val jmapClient: JmapClient) {
 
     /** Every patch [updateKeywords] got through, so a list already on screen can apply it without refetching. */
     val keywordPatches: SharedFlow<KeywordPatch> = _keywordPatches
+
+    /** The one path images in delivered mail may load from: the milter rewrites each remote image to it. */
+    val imageProxyBase: String get() = "${jmapClient.webBase}/i/"
+
+    /** Never fetches outside [imageProxyBase], whatever the caller passes. */
+    suspend fun proxiedImage(url: String): ByteArray? = if (url.startsWith(imageProxyBase)) jmapClient.fetchPublic(url) else null
 
     suspend fun mailboxes(): List<Mailbox> =
         jmapClient.callOne("Mailbox/get", JsonObject(emptyMap())).getValue("list").jsonArray.map { it.jsonObject.toMailbox() }
@@ -138,6 +147,7 @@ class MailboxRepository(private val jmapClient: JmapClient) {
                 putJsonArray("ids") { add(JsonPrimitive(id)) }
                 putJsonArray("properties") { EMAIL_DETAIL_PROPERTIES.forEach { add(JsonPrimitive(it)) } }
                 put("fetchTextBodyValues", true)
+                put("fetchHTMLBodyValues", true)
                 put("maxBodyValueBytes", MAX_BODY_VALUE_BYTES)
             }
         val result = jmapClient.callOne("Email/get", arguments)
@@ -233,8 +243,8 @@ internal fun JsonObject.idList(key: String): List<String> = (get(key) as? JsonAr
 
 /**
  * textBody already picks the best single-part representation per RFC 8621; an
- * HTML-only message arrives here as one text/html part, flattened rather than
- * shown, since this client has no HTML renderer.
+ * HTML-only message arrives here as one text/html part, flattened for the plain
+ * body and kept as-is in [EmailDetail.html] for the reader to render.
  */
 private fun JsonObject.toEmailDetail(ownDomain: String?): EmailDetail {
     val bodyValues = getValue("bodyValues").jsonObject
@@ -261,8 +271,23 @@ private fun JsonObject.toEmailDetail(ownDomain: String?): EmailDetail {
         receivedAt = Instant.parse(getValue("receivedAt").jsonPrimitive.content),
         body = parts.joinToString("\n\n") { it.first },
         bodyTruncated = parts.any { it.second },
+        html = htmlBody(bodyValues),
         keywords = getValue("keywords").jsonObject.keys,
         provenance = provenance(from, ownDomain),
+    )
+}
+
+/** The text/html parts alone: htmlBody also lists text/plain parts when a message has no HTML. */
+private fun JsonObject.htmlBody(bodyValues: JsonObject): HtmlBody? {
+    val values =
+        getValue("htmlBody").jsonArray
+            .map { it.jsonObject }
+            .filter { it.getValue("type").jsonPrimitive.content == "text/html" }
+            .map { bodyValues.getValue(it.getValue("partId").jsonPrimitive.content).jsonObject }
+    if (values.isEmpty()) return null
+    return HtmlBody(
+        html = values.joinToString("\n") { it.getValue("value").jsonPrimitive.content },
+        truncated = values.any { it.getValue("isTruncated").jsonPrimitive.boolean },
     )
 }
 

@@ -55,6 +55,8 @@
     <string name="teach_wrong">Wrong</string>
     <string name="teach_change">Change</string>
     <string name="reader_link_disabled">(link disabled by Corvid)</string>
+    <string name="reader_link_mismatch">(goes to %1$s)</string>
+    <string name="reader_image_blocked">Image not loaded</string>
     <string name="teach_refused">Not saved: %1$s</string>
     <string name="teach_change_hint">Label</string>
     <string name="teach_apply">Apply</string>
