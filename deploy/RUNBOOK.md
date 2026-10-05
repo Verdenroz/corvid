@@ -285,6 +285,10 @@ sentinel, which serves `status.json` and writes the request file. The sentinel a
 version". On a host that follows a channel tag such as `main`, versions read
 `main-<first 7 of the revision>`; a release tag keeps its own version.
 
+Sign-in alerts and failed or rolled-back updates are never mailed. The sentinel keeps the newest 200
+as a feed in its state, and the app reads it through `GET /corvid/notices?after=<id>` on the same
+authenticated route, oldest first. An alert therefore shows only once a device has the app open.
+
 A host running a `--ship-local` image (`localhost/...`) never updates itself.
 
 To turn it off, set `update: {auto: false}` in `config.yaml`; the timer then logs that it is off.

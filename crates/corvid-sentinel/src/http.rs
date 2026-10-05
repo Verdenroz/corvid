@@ -1,15 +1,17 @@
 use std::io;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
+use axum::Json;
 use axum::Router;
 use axum::body::Bytes;
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode};
-use axum::routing::post;
+use axum::routing::{get, post};
+use serde::{Deserialize, Serialize};
 
-use crate::state::{NoticeKind, Seen, save};
+use crate::state::{Notice, NoticeKind, Seen, save};
 use crate::{dates, handle, notice, parse, update, verify, watch};
 
 pub struct Config {
@@ -27,16 +29,19 @@ pub(crate) struct AppState {
 }
 
 impl AppState {
+    // A poisoned lock means a prior request panicked mid-decision; the state it left behind is
+    // still whatever the last successful commit wrote, so it is safe to keep using.
+    fn lock(&self) -> MutexGuard<'_, Seen> {
+        self.seen
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
     /// Applies `change` to the current state and persists the result before it becomes
     /// current, so a failed save leaves the state, and so a retried batch, as it was. `None`
     /// from `change` means nothing to commit.
     pub(crate) fn commit(&self, change: impl FnOnce(&Seen) -> Option<Seen>) -> io::Result<()> {
-        // A poisoned lock means a prior request panicked mid-decision; the state it left behind
-        // is still whatever the last successful commit wrote, so it is safe to keep using.
-        let mut seen = self
-            .seen
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut seen = self.lock();
         let Some(next) = change(&seen) else {
             return Ok(());
         };
@@ -59,8 +64,31 @@ pub fn router(config: Config) -> Router {
     ));
     Router::new()
         .route("/webhook", post(webhook))
+        .route("/corvid/notices", get(notices))
         .with_state(state)
         .merge(update::routes(config.update_dir))
+}
+
+#[derive(Deserialize)]
+struct After {
+    after: Option<u64>,
+}
+
+#[derive(Serialize)]
+struct Feed {
+    notices: Vec<Notice>,
+}
+
+async fn notices(State(state): State<Arc<AppState>>, Query(query): Query<After>) -> Json<Feed> {
+    let after = query.after.unwrap_or(0);
+    let notices = state
+        .lock()
+        .notices
+        .iter()
+        .filter(|notice| notice.id > after)
+        .cloned()
+        .collect();
+    Json(Feed { notices })
 }
 
 async fn webhook(
