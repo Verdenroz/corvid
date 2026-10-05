@@ -165,4 +165,27 @@ class LedgerViewModelTest {
 
             vm.state.first { it is LedgerUiState.Failed }
         }
+
+    @Test
+    fun `refreshing a loaded ledger picks up a message that arrived since`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "drafts", name = "Drafts", role = "drafts")
+            val vm = track(LedgerViewModel(repository(fake), LedgerTab.Drafts))
+            vm.state.first { it is LedgerUiState.Loaded }
+
+            fake.emails +=
+                FakeEmail(
+                    id = "d1",
+                    threadId = "d1",
+                    mailboxIds = setOf("drafts"),
+                    subject = "half written",
+                    from = "me@example.test",
+                    receivedAt = Instant.fromEpochSeconds(1).toString(),
+                )
+            vm.refresh()
+
+            val loaded = vm.state.first { it is LedgerUiState.Loaded && it.emails.isNotEmpty() } as LedgerUiState.Loaded
+            assertEquals(listOf("d1"), loaded.emails.map { it.id })
+        }
 }

@@ -2,12 +2,14 @@ package com.verdenroz.corvid.core.data
 
 import com.verdenroz.corvid.core.jmap.Invocation
 import com.verdenroz.corvid.core.jmap.JmapClient
+import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.jmap.MethodOutcome
 import com.verdenroz.corvid.core.jmap.callOne
 import com.verdenroz.corvid.core.jmap.reason
 import com.verdenroz.corvid.core.jmap.resultOrThrow
 import com.verdenroz.corvid.core.jmap.setErrorReason
 import com.verdenroz.corvid.core.model.ComposeIntent
+import com.verdenroz.corvid.core.model.CorvidKeywords
 import com.verdenroz.corvid.core.model.Draft
 import com.verdenroz.corvid.core.model.EmailAddress
 import com.verdenroz.corvid.core.model.EmailDetail
@@ -27,11 +29,12 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlin.time.Clock
 
 /** Why this account cannot send at all, as opposed to a server refusing one message. */
-sealed interface SendUnavailable : StartResult, SendResult {
+sealed interface SendUnavailable : StartResult, SendResult, DraftSaveResult {
     data object NoIdentity : SendUnavailable
 
     data class NoMailbox(val role: String) : SendUnavailable
@@ -42,6 +45,15 @@ sealed interface StartResult {
 
     /** The message a reply or forward answers was deleted or moved before compose opened. */
     data object OriginalGone : StartResult
+
+    /** The draft was sent, discarded or never was one. */
+    data object DraftGone : StartResult
+}
+
+sealed interface DraftSaveResult {
+    data class Saved(val emailId: String) : DraftSaveResult
+
+    data class Rejected(val reason: String) : DraftSaveResult
 }
 
 sealed interface SendResult {
@@ -68,11 +80,11 @@ private inline fun <R> Loaded.fold(
 
 /**
  * The identity and the Drafts and Sent mailboxes are fetched once, in one
- * request, and kept for as long as the repository lives. One request then
- * carries the Email/set that files the draft and the EmailSubmission/set that
- * sends it, so a message is never submitted without having been created. A
- * refusal comes back as [SendResult.Rejected] rather than a thrown error: the
- * caller keeps the text and shows why.
+ * request, and kept for as long as the repository lives. A message is always a
+ * server draft before it is sent: [save] files it, [send] submits that draft
+ * and moves it to Sent, so a refused submission leaves the draft in place. A
+ * refusal comes back as [SendResult.Rejected] or [DraftSaveResult.Rejected] rather
+ * than a thrown error: the caller keeps the text and shows why.
  */
 class ComposeRepository(
     private val jmapClient: JmapClient,
@@ -93,6 +105,7 @@ class ComposeRepository(
                     withOriginal(intent.emailId) {
                         replyDraft(it, sending.identity.email, intent.all, textResolver.resolve(replyAttribution(it, zone, clock.now())))
                     }
+                is ComposeIntent.Draft -> loadDraft(intent.emailId)
                 is ComposeIntent.Forward ->
                     withOriginal(intent.emailId) {
                         forwardDraft(
@@ -113,22 +126,51 @@ class ComposeRepository(
             is EmailLookup.NotFound -> StartResult.OriginalGone
         }
 
-    suspend fun send(draft: Draft): SendResult = load().fold({ it }) { transmit(it, draft) }
+    private suspend fun loadDraft(emailId: String): StartResult {
+        val arguments =
+            buildJsonObject {
+                putJsonArray("ids") { add(JsonPrimitive(emailId)) }
+                putJsonArray("properties") { DRAFT_PROPERTIES.forEach { add(JsonPrimitive(it)) } }
+                put("fetchTextBodyValues", true)
+            }
+        val found = jmapClient.callOne("Email/get", arguments).getValue("list").jsonArray.firstOrNull()?.jsonObject
+        return if (found != null && CorvidKeywords.DRAFT in found.getValue("keywords").jsonObject) {
+            StartResult.Ready(found.toDraft())
+        } else {
+            StartResult.DraftGone
+        }
+    }
 
-    private suspend fun transmit(
-        sending: Loaded.Ready,
+    /**
+     * Files [draft] as a new server draft, then destroys [replacing], since an email cannot be edited
+     * in place. The destroy waits for the create so a refused save never costs the old draft.
+     */
+    suspend fun save(
         draft: Draft,
-    ): SendResult {
-        val outcomes =
-            jmapClient.call(
-                listOf(
-                    Invocation("Email/set", createEmail(sending.identity, draft, sending.draftsId), "c0"),
-                    Invocation("EmailSubmission/set", submit(sending.identity, sending.draftsId, sending.sentId), "c1"),
-                ),
-            )
-        val reason = outcomes.rejection() ?: return SendResult.Sent
-        outcomes.createdDraftId()?.let { destroyDraft(it) }
-        return SendResult.Rejected(reason)
+        replacing: String?,
+    ): DraftSaveResult =
+        load().fold({ it }) { sending ->
+            val arguments = createEmail(sending.identity, draft, sending.draftsId)
+            val outcome = jmapClient.call(listOf(Invocation("Email/set", arguments, "c0"))).getValue("c0")
+            outcome.refusal("draft")?.let { return@fold DraftSaveResult.Rejected(it) }
+            try {
+                replacing?.let { discard(it) }
+            } catch (_: JmapException) {
+                // A stray older draft is harmless; losing the new one is not.
+            }
+            DraftSaveResult.Saved(outcome.createdDraftId())
+        }
+
+    suspend fun send(emailId: String): SendResult =
+        load().fold({ it }) { sending ->
+            val arguments = submit(sending.identity, emailId, sending.draftsId, sending.sentId)
+            val outcome = jmapClient.call(listOf(Invocation("EmailSubmission/set", arguments, "c0"))).getValue("c0")
+            outcome.refusal("submission")?.let { SendResult.Rejected(it) } ?: SendResult.Sent
+        }
+
+    suspend fun discard(emailId: String) {
+        val arguments = buildJsonObject { putJsonArray("destroy") { add(JsonPrimitive(emailId)) } }
+        jmapClient.callOne("Email/set", arguments)
     }
 
     private suspend fun load(): Loaded =
@@ -159,11 +201,6 @@ class ComposeRepository(
         val sentId = roles["sent"] ?: return Loaded.Unavailable(SendUnavailable.NoMailbox("sent"))
         return Loaded.Ready(identity, draftsId, sentId)
     }
-
-    private suspend fun destroyDraft(emailId: String) {
-        val arguments = buildJsonObject { putJsonArray("destroy") { add(JsonPrimitive(emailId)) } }
-        jmapClient.callOne("Email/set", arguments)
-    }
 }
 
 internal fun JsonObject.toIdentity() =
@@ -173,14 +210,11 @@ internal fun JsonObject.toIdentity() =
         email = getValue("email").jsonPrimitive.content,
     )
 
-private fun Map<String, MethodOutcome>.rejection(): String? = getValue("c0").refusal("draft") ?: getValue("c1").refusal("submission")
-
 private fun MethodOutcome.refusal(creationId: String): String? =
     when (this) {
         is MethodOutcome.Failure -> error.reason
         is MethodOutcome.Success -> result.setErrorReason("notCreated", creationId)
     }
 
-private fun Map<String, MethodOutcome>.createdDraftId(): String? =
-    (getValue("c0") as? MethodOutcome.Success)?.result?.get("created")?.jsonObject?.get("draft")?.jsonObject
-        ?.get("id")?.jsonPrimitive?.content
+private fun MethodOutcome.createdDraftId(): String =
+    (this as MethodOutcome.Success).result.getValue("created").jsonObject.getValue("draft").jsonObject.getValue("id").jsonPrimitive.content

@@ -10,6 +10,7 @@
     <string name="compose_no_drafts_mailbox">This account has no Drafts mailbox.</string>
     <string name="compose_no_sent_mailbox">This account has no Sent mailbox.</string>
     <string name="compose_original_gone">The message you were answering no longer exists.</string>
+    <string name="compose_draft_gone">This draft no longer exists.</string>
     <string name="compose_add_recipient">Add a recipient.</string>
     <string name="compose_not_sent">Not sent: %1$s</string>
     <string name="compose_close">Close</string>
@@ -17,5 +18,9 @@
     <string name="compose_title_reply">Reply</string>
     <string name="compose_title_forward">Forward</string>
     <string name="compose_discard_question">Discard this message?</string>
+    <string name="compose_discard_draft_question">Discard this draft?</string>
+    <string name="compose_not_saved">Not saved</string>
+    <string name="compose_retry_save">Retry</string>
+    <string name="compose_title_draft">Draft</string>
     <string name="compose_show_copies">Cc, Bcc</string>
 </resources>

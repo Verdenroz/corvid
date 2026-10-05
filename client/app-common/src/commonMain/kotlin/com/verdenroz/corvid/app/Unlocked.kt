@@ -67,6 +67,7 @@ import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.core.ui.WIDE_LAYOUT
 import com.verdenroz.corvid.feature.compose.ComposeScreen
 import com.verdenroz.corvid.feature.filters.FiltersScreen
+import com.verdenroz.corvid.feature.mailbox.LedgerTab
 import com.verdenroz.corvid.feature.mailbox.ReaderScreen
 import com.verdenroz.corvid.feature.mailbox.SearchScreen
 import com.verdenroz.corvid.feature.mailbox.SenderCard
@@ -236,6 +237,7 @@ private fun Home(
     ledgers: Ledgers,
 ) {
     val wide = LocalWideLayout.current
+    LaunchedEffect(route.tab) { if (route.tab == HomeTab.Drafts) ledgers.of(LedgerTab.Drafts).refresh() }
     Column {
         if (!wide) NarrowTopBar(key, onSearch = { navigator.push(Route.Search("")) }, onOpenSettings = { navigator.push(Route.Settings) })
         TabsBar(
@@ -248,7 +250,7 @@ private fun Home(
         HomeContent(
             tab = route.tab,
             ledgers = ledgers,
-            onOpenEmail = { navigator.push(Route.Reader(it)) },
+            onOpenEmail = { navigator.push(if (route.tab == HomeTab.Drafts) Route.Compose(ComposeIntent.Draft(it)) else Route.Reader(it)) },
             onOpenSender = { navigator.push(Route.Sender(it)) },
             onWrite = { navigator.push(Route.Compose(ComposeIntent.New)) },
         )

@@ -102,6 +102,9 @@ class FakeJmapServer {
     /** Fails every SieveScript `create` and `update` with `invalidSieve`, as a script the server cannot compile would. */
     var invalidSieve: Boolean = false
 
+    /** Fails every Email `create` with `notCreated`, as an over-quota account would. */
+    var refuseEmailCreate: Boolean = false
+
     /** Fails every EmailSubmission `create` with `notCreated`, as a rejected sender or recipient would. */
     var refuseSubmission: Boolean = false
 
@@ -368,8 +371,10 @@ class FakeJmapServer {
         arguments: JsonObject,
         createdIds: MutableMap<String, String>,
     ): JsonObject {
+        val creating = arguments["create"]?.jsonObject.orEmpty()
+        val notCreated = if (refuseEmailCreate) creating.mapValues { problem("overQuota", "email refused") } else emptyMap()
         val created =
-            arguments["create"]?.jsonObject.orEmpty().mapValues { (creationId, spec) ->
+            creating.filterKeys { it !in notCreated }.mapValues { (creationId, spec) ->
                 val id = "sent${nextEmailId++}"
                 emails += spec.jsonObject.toFakeEmail(id)
                 createdIds[creationId] = id
@@ -391,7 +396,15 @@ class FakeJmapServer {
         }
         val destroyed = arguments["destroy"]?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty()
         emails.removeAll { it.id in destroyed }
-        return setResponse("s0", "s1", created = created, updated = updated, destroyed = destroyed, notUpdated = notUpdated)
+        return setResponse(
+            "s0",
+            "s1",
+            created = created,
+            notCreated = notCreated,
+            updated = updated,
+            destroyed = destroyed,
+            notUpdated = notUpdated,
+        )
     }
 
     private fun submissionSet(

@@ -229,7 +229,7 @@ private fun JsonObject.toEmailAddress(): EmailAddress? {
 internal fun JsonObject.addressList(key: String): List<EmailAddress> =
     (get(key) as? JsonArray)?.mapNotNull { it.jsonObject.toEmailAddress() }.orEmpty()
 
-private fun JsonObject.idList(key: String): List<String> = (get(key) as? JsonArray)?.map { it.jsonPrimitive.content }.orEmpty()
+internal fun JsonObject.idList(key: String): List<String> = (get(key) as? JsonArray)?.map { it.jsonPrimitive.content }.orEmpty()
 
 /**
  * textBody already picks the best single-part representation per RFC 8621; an

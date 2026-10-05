@@ -17,4 +17,8 @@ sealed interface ComposeIntent {
 
     @Serializable
     data class Forward(val emailId: String) : ComposeIntent
+
+    /** A message saved on the server as a draft, named by its email id. */
+    @Serializable
+    data class Draft(val emailId: String) : ComposeIntent
 }

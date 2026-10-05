@@ -13,10 +13,20 @@ data class ComposeForm(
     val body: String,
 )
 
-val ComposeFormSaver: Saver<ComposeForm?, List<String>> =
+/** [draftId] is the server draft the form was last saved as, if any. */
+data class ComposeRestore(
+    val form: ComposeForm,
+    val draftId: String?,
+)
+
+val ComposeRestoreSaver: Saver<ComposeRestore?, List<String>> =
     Saver(
-        save = { form -> form?.let { listOf(it.to, it.cc, it.bcc, it.subject, it.body) } },
-        restore = { saved -> ComposeForm(saved[0], saved[1], saved[2], saved[3], saved[4]) },
+        save = { restore ->
+            restore?.let { listOf(it.form.to, it.form.cc, it.form.bcc, it.form.subject, it.form.body, it.draftId.orEmpty()) }
+        },
+        restore = { saved ->
+            ComposeRestore(ComposeForm(saved[0], saved[1], saved[2], saved[3], saved[4]), saved[5].ifEmpty { null })
+        },
     )
 
 sealed interface ComposeUiState {
@@ -25,12 +35,18 @@ sealed interface ComposeUiState {
     data class Failed(val message: UiText) : ComposeUiState
 
     /**
-     * [seed] keeps what the form does not show, such as reply threading. [error] is why the last
-     * send did not go out. [confirmingDiscard] while a back press waits on Discard or Keep editing.
+     * [seed] keeps what the form does not show, such as reply threading. [stored] is the form the
+     * server draft [draftId] holds, and the seed's own form while there is none. [error] is why the
+     * last send did not go out. [saveFailed] while the form differs from the server's copy because
+     * the last save was refused or never arrived. [confirmingDiscard] while a back press waits on
+     * Discard or Keep editing.
      */
     data class Editing(
         val seed: Draft,
         val form: ComposeForm,
+        val stored: ComposeForm,
+        val draftId: String? = null,
+        val saveFailed: Boolean = false,
         val sending: Boolean = false,
         val error: UiText? = null,
         val confirmingDiscard: Boolean = false,
