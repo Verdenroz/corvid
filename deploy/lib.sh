@@ -50,9 +50,21 @@ require_image() {
   exit 69
 }
 
-# Sets and exports MAIL_DOMAIN, MAIL_HOSTNAME, MAIL_USER, ACME_CONTACT, WEB_PORT, HOST_ZONE and
-# IDP_HOSTNAME from config.yaml's server section. Tests set CORVID_CONFIG_CMD to run it without
-# the container.
+# Writes CONTENT to DEST through a temp file in CORVID_DIR, outside update/, which the pod's uid
+# can write, so a planted symlink cannot redirect root's write. Rename does not follow one either.
+atomic_write() {
+  local dest="$1" tmp
+  tmp="$(mktemp "$CORVID_DIR/.write.XXXXXX")"
+  printf '%s\n' "$2" >"$tmp"
+  chmod 644 "$tmp"
+  mv "$tmp" "$dest"
+}
+
+unit_masked() { [[ "$(systemctl is-enabled "$1" 2>/dev/null)" == masked ]]; }
+
+# Sets and exports MAIL_DOMAIN, MAIL_HOSTNAME, MAIL_USER, ACME_CONTACT, WEB_PORT, HOST_ZONE,
+# IDP_HOSTNAME, PUBLISH_MTA_STS, PUBLISH_TLSA, MTA_STS_MODE, CLIENT_SOURCES and UPDATE_AUTO from
+# config.yaml. Tests set CORVID_CONFIG_CMD to run it without the container.
 load_server() {
   local out key value
   if [[ -n "${CORVID_CONFIG_CMD:-}" ]]; then

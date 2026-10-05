@@ -1,21 +1,17 @@
-use std::time::Duration;
+mod common;
 
-use corvid_sentinel::{Config, NoticeKind, Seen, router};
-use tokio::net::TcpListener;
+use corvid_sentinel::{Config, NoticeKind, Seen};
 
 async fn serve(seen: Seen) -> String {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
     let dir = std::env::temp_dir();
-    let app = router(Config {
-        secret: b"secret".to_vec(),
-        state_path: dir.join("sentinel-notices-test.json"),
+    let config = Config {
         seen,
-        update_dir: dir.join("sentinel-test-no-update-dir"),
-        update_poll: Duration::from_secs(60),
-    });
-    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    format!("http://{addr}/corvid/notices")
+        ..common::config(
+            &dir.join("sentinel-notices-test.json"),
+            &dir.join("sentinel-test-no-update-dir"),
+        )
+    };
+    format!("{}/corvid/notices", common::serve(config).await)
 }
 
 fn feed(count: u64) -> Seen {

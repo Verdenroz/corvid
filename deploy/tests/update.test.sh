@@ -26,6 +26,7 @@ esac
 case "$1" in
   tag) resolve "$2" > "$(tagfile "$3")" ;;
   pull)
+    cp "$CORVID_DIR/update/status.json" "$WORK/during" 2>/dev/null
     [[ ! -e "$WORK/pull-fails" ]] || exit 1
     cat "$WORK/registry-id" > "$(tagfile "$3")" ;;
   create) echo "ctr-$(resolve "$2")" ;;
@@ -40,7 +41,7 @@ cat > "$work/bin/systemctl" <<'SH'
 SH
 cat > "$work/config" <<'SH'
 #!/bin/sh
-printf 'MAIL_DOMAIN=example.com\nMAIL_HOSTNAME=mail.example.com\nUPDATE_AUTO=%s\n' "$(cat "$WORK/auto")"
+printf 'UPDATE_AUTO=%s\n' "$(cat "$WORK/auto")"
 SH
 chmod +x "$work/bin/podman" "$work/bin/systemctl" "$work/config"
 
@@ -52,7 +53,8 @@ for which in old new; do
 #!/bin/bash
 echo "$step $which" >> "\$WORK/log"
 echo "$step \${CORVID_UPDATING:-}" >> "\$WORK/updating"
-[[ ! -e "\$WORK/$which-$step-fails" ]]
+[[ ! -e "\$WORK/$which-$step-fails" ]] || exit 1
+[[ $step != deploy ]] || podman image inspect -f x "\$(cat "\$CORVID_DIR/image.ref")" > "\$CORVID_DIR/.deployed-id"
 SH
     chmod +x "$work/images/$which/$step.sh"
   done
@@ -68,7 +70,7 @@ tag() { cat "$work/tags/$(echo "$1" | tr '/:' '__')"; }
 # fresh: a host running "old" from the registry tag, the registry still serving "old"
 fresh() {
   rm -rf "$corvid" "$work/tags" "$work/log" "$work/updating" "$work/podman.log" \
-    "$work"/*-fails "$work/pull-fails" "$work/masked"
+    "$work"/*-fails "$work/pull-fails" "$work/masked" "$work/during"
   mkdir -p "$corvid/deploy" "$corvid/update" "$work/tags"
   cp -a "$work/images/old/." "$corvid/deploy/"
   cp "$here/update.sh" "$here/lib.sh" "$corvid/deploy/"
@@ -87,6 +89,7 @@ run() {
   status=$?
 }
 deployed() { grep -q '^deploy new' "$work/log"; }
+pruned() { grep -qx 'image prune -f' "$work/podman.log"; }
 pulled() { grep -q '^pull' "$work/podman.log"; }
 valid_status() { python3 -m json.tool "$corvid/update/status.json" >/dev/null; }
 
@@ -96,6 +99,18 @@ check "exits 0" '[[ $status -eq 0 ]]'
 check "prints nothing" '[[ ! -s "$work/out" ]]'
 check "deploys nothing" '[[ ! -s "$work/log" ]]'
 check "records current" '[[ "$(field result)" == current && "$(field running)" == 1.0.0 && "$(field busy)" == False ]]'
+
+echo "== the first run reports busy without claiming a failure"
+fresh; rm "$corvid/update/status.json" 2>/dev/null; echo new > "$work/registry-id"
+run check
+check "the busy write is skipped, not failed" '[[ "$(python3 -c "import json; d = json.load(open(\"$work/during\")); print(d[\"busy\"], d[\"result\"])")" == "True skipped" ]]'
+check "the finished run is not busy" '[[ "$(field busy)" == False ]]'
+
+echo "== a busy write keeps the prior result"
+fresh
+run check
+run check
+check "the busy write repeats the last outcome" '[[ "$(python3 -c "import json; print(json.load(open(\"$work/during\"))[\"result\"])")" == current ]]'
 
 echo "== a localhost ref never updates"
 fresh; echo localhost/corvid:0.1.0 > "$corvid/image.ref"; echo new > "$work/registry-id"
@@ -120,6 +135,8 @@ check "the registry tag points at the new image" '[[ "$(tag ghcr.io/example/corv
 check "the host deploy dir holds the new files" '[[ "$(cat "$corvid/deploy/which")" == new ]]'
 check "the previous deploy dir is kept" '[[ "$(cat "$corvid/deploy.prev/which")" == old ]]'
 check "tells deploy.sh not to queue its own check" '[[ "$(cat "$work/updating")" == $'"'"'bootstrap \ndeploy 1'"'"' ]]'
+check "the deployed image is recorded by the deploy" '[[ "$(cat "$corvid/.deployed-id")" == new ]]'
+check "prunes dangling images" 'pruned'
 check "records updated" 'valid_status && [[ "$(field result)" == updated && "$(field running)" == 1.1.0 && "$(field latest)" == 1.1.0 ]]'
 
 echo "== a failing deploy restores the previous image and files"
@@ -130,6 +147,8 @@ check "the registry tag points at the old image again" '[[ "$(tag ghcr.io/exampl
 check "the old deploy files are back" '[[ "$(cat "$corvid/deploy/which")" == old ]]'
 check "the old files were deployed again" '[[ "$(tail -1 "$work/log")" == "deploy old" ]]'
 check "records rolledBack" 'valid_status && [[ "$(field result)" == rolledBack && "$(field running)" == 1.0.0 && "$(field latest)" == 1.1.0 ]]'
+check "prunes dangling images" 'pruned'
+check "the restored image is the recorded one" '[[ "$(cat "$corvid/.deployed-id")" == old ]]'
 check "the failed release is remembered" '[[ "$(cat "$corvid/.update-failed")" == new ]]'
 
 echo "== the next night does not retry the release that failed"
@@ -173,6 +192,13 @@ check "exits 0 and deploys nothing" '[[ $status -eq 0 && ! -s "$work/log" ]]'
 check "the local tag still points at the old image" '[[ "$(tag ghcr.io/example/corvid:stable)" == old ]]'
 check "records latest beside running" 'valid_status && [[ "$(field latest)" == 1.1.0 && "$(field running)" == 1.0.0 && "$(field result)" == skipped ]]'
 check "consumes the request" '[[ ! -e "$corvid/update/request" ]]'
+check "prunes dangling images" 'pruned'
+
+echo "== a check after a manual deploy leaves the units' tag alone"
+fresh; echo new > "$work/registry-id"; echo new > "$work/tags/ghcr.io_example_corvid_stable"
+run check
+check "the host is current and the tag stays on the new image" '[[ "$(field result)" == current && "$(tag ghcr.io/example/corvid:stable)" == new ]]'
+check "records the deployed image" '[[ "$(cat "$corvid/.deployed-id")" == new ]]'
 
 echo "== an apply runs even with update.auto false"
 fresh; echo new > "$work/registry-id"; echo false > "$work/auto"

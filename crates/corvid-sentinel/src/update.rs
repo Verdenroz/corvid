@@ -5,8 +5,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use axum::Router;
 use axum::body::Bytes;
-use axum::extract::{DefaultBodyLimit, State};
+use axum::extract::{DefaultBodyLimit, Request as HttpRequest, State};
 use axum::http::{StatusCode, header};
+use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use serde::Deserialize;
@@ -38,16 +39,27 @@ impl Action {
 }
 
 pub fn routes(dir: PathBuf) -> Router {
+    let dir = Arc::new(dir);
     Router::new()
         .route("/corvid/update", get(status).post(request))
         .layer(DefaultBodyLimit::max(REQUEST_BODY_LIMIT))
-        .with_state(Arc::new(dir))
+        .layer(middleware::from_fn_with_state(dir.clone(), require_mounted))
+        .with_state(dir)
+}
+
+async fn require_mounted(
+    State(dir): State<Arc<PathBuf>>,
+    request: HttpRequest,
+    next: Next,
+) -> Response {
+    if dir.is_dir() {
+        next.run(request).await
+    } else {
+        StatusCode::NOT_FOUND.into_response()
+    }
 }
 
 async fn status(State(dir): State<Arc<PathBuf>>) -> Response {
-    if !dir.is_dir() {
-        return StatusCode::NOT_FOUND.into_response();
-    }
     match tokio::fs::read(dir.join("status.json")).await {
         Ok(body) => ([(header::CONTENT_TYPE, "application/json")], body).into_response(),
         Err(error) if error.kind() == io::ErrorKind::NotFound => (
@@ -64,9 +76,6 @@ async fn status(State(dir): State<Arc<PathBuf>>) -> Response {
 }
 
 async fn request(State(dir): State<Arc<PathBuf>>, body: Bytes) -> StatusCode {
-    if !dir.is_dir() {
-        return StatusCode::NOT_FOUND;
-    }
     let Ok(Request { action }) = serde_json::from_slice(&body) else {
         return StatusCode::BAD_REQUEST;
     };

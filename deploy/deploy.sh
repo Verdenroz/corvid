@@ -44,7 +44,7 @@ step() { echo; echo "== $* =="; }
 
 # bootstrap.sh masks the pod while another container holds the mail ports. Starting the pod
 # interrupts mail, so unmasking it is a deliberate step.
-if [[ "$(systemctl is-enabled corvid-pod.service 2>/dev/null)" == masked ]]; then
+if unit_masked corvid-pod.service; then
   echo "corvid-pod.service is masked: retire the container holding the mail ports first" >&2
   echo "see deploy/RUNBOOK.md, 'Replacing an existing Stalwart container'" >&2
   exit 69
@@ -143,9 +143,10 @@ if [[ -z "${CORVID_INSTALLER:-}" ]]; then
   "$HERE/verify.sh" "$MAIL_DOMAIN" "$MAIL_HOSTNAME"
 fi
 
+# update.sh compares the registry against this, so a hand-run deploy must record what it started.
+podman image inspect -f '{{.Id}}' "$CORVID_IMAGE" > "$CORVID_DIR/.deployed-id"
+
 if [[ -z "${CORVID_UPDATING:-}" && -e /etc/systemd/system/corvid-update.path ]]; then
   # corvid-update.path fires on the file existing, so it must appear already holding `check`.
-  request="$(mktemp "$CORVID_DIR/update/.request.XXXXXX")"
-  echo check > "$request"
-  mv "$request" "$CORVID_DIR/update/request"
+  atomic_write "$CORVID_DIR/update/request" check
 fi

@@ -43,12 +43,9 @@ version_of() {
   fi
 }
 
-# The temp file lives outside update/, which the pod's uid can write, so a planted symlink
-# cannot redirect root's write. Rename does not follow one either.
 write_status() {
-  local tmp
-  tmp="$(mktemp "$CORVID_DIR/.status.XXXXXX")"
-  RUNNING="$running" LATEST="$latest" RESULT="$result" DETAIL="$detail" AUTO="$UPDATE_AUTO" BUSY="${1:-false}" \
+  local status
+  status="$(RUNNING="$running" LATEST="$latest" RESULT="$result" DETAIL="$detail" AUTO="$UPDATE_AUTO" BUSY="${1:-false}" \
     PRIOR="$update_dir/status.json" python3 -c '
 import datetime, json, os
 e = os.environ
@@ -61,16 +58,19 @@ status = {
     "auto": e["AUTO"] == "true",
     "busy": e["BUSY"] == "true",
 }
-if status["busy"] and os.path.exists(e["PRIOR"]):
-    status = {**json.load(open(e["PRIOR"])), "busy": True}
-print(json.dumps(status))' >"$tmp"
-  chmod 644 "$tmp"
-  mv "$tmp" "$update_dir/status.json"
+if status["busy"]:
+    if os.path.exists(e["PRIOR"]):
+        status = {**json.load(open(e["PRIOR"])), "busy": True}
+    else:
+        status = {**status, "result": "skipped", "detail": "the first run is in progress"}
+print(json.dumps(status))')"
+  atomic_write "$update_dir/status.json" "$status"
 }
 
 # CORVID_UPDATING keeps deploy.sh from queuing a check that would overwrite this run's status.
 deploy_from() { bash "$1/bootstrap.sh" && CORVID_UPDATING=1 bash "$1/deploy.sh"; }
 keep_old() { podman tag "$rollback_tag" "$ref"; }
+prune_images() { podman image prune -f >/dev/null; }
 
 mode=timer
 if [[ -e "$update_dir/request" ]]; then
@@ -98,7 +98,7 @@ if ! registry_ref "$ref"; then
   echo "$detail"
   exit 0
 fi
-if [[ "$(systemctl is-enabled corvid-pod.service 2>/dev/null)" == masked ]]; then
+if unit_masked corvid-pod.service; then
   result=skipped
   detail="corvid-pod is masked (a container replacement is in progress); not updating"
   echo "$detail"
@@ -126,6 +126,7 @@ if [[ "$new_id" == "$deployed_id" ]]; then
 fi
 if [[ "$mode" == check ]]; then
   keep_old
+  prune_images
   result=skipped
   detail="$latest is available; this was a check, so nothing was deployed"
   echo "$detail"
@@ -133,6 +134,7 @@ if [[ "$mode" == check ]]; then
 fi
 if [[ "$mode" == timer && "$new_id" == "$(cat "$failed_marker" 2>/dev/null)" ]]; then
   keep_old
+  prune_images
   result=skipped
   detail="$latest failed to deploy earlier; waiting for a newer release"
   echo "$detail"
@@ -151,8 +153,8 @@ rm -rf "$deploy_dir"
 mv "$deploy_dir.new" "$deploy_dir"
 
 if deploy_from "$deploy_dir"; then
-  echo "$new_id" > "$deployed_marker"
   rm -f "$failed_marker"
+  prune_images
   running="$latest"
   result=updated
   detail=""
@@ -166,6 +168,7 @@ keep_old
 rm -rf "$deploy_dir"
 mv "$deploy_dir.prev" "$deploy_dir"
 if deploy_from "$deploy_dir"; then
+  prune_images
   result=rolledBack
   detail="$latest failed to deploy; $running is running again and verified"
 else

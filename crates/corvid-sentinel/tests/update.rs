@@ -1,21 +1,10 @@
-use std::path::Path;
-use std::time::Duration;
+mod common;
 
-use corvid_sentinel::{Config, Seen, router};
-use tokio::net::TcpListener;
+use std::path::Path;
 
 async fn serve(update_dir: &Path) -> String {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    let app = router(Config {
-        secret: b"secret".to_vec(),
-        state_path: update_dir.join("sentinel-state.json"),
-        seen: Seen::default(),
-        update_dir: update_dir.to_owned(),
-        update_poll: Duration::from_secs(60),
-    });
-    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    format!("http://{addr}/corvid/update")
+    let config = common::config(&update_dir.join("sentinel-state.json"), update_dir);
+    format!("{}/corvid/update", common::serve(config).await)
 }
 
 async fn post(url: &str, body: &str) -> reqwest::Response {
