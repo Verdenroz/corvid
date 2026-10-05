@@ -292,7 +292,7 @@ class ComposeRepositoryTest {
         }
 
     @Test
-    fun `saving again replaces the previous draft in one request`() =
+    fun `saving again replaces the previous draft`() =
         runTest {
             val fake = server()
             val (_, compose) = repositories(fake)
@@ -301,7 +301,7 @@ class ComposeRepositoryTest {
 
             val second = assertIs<DraftSaveResult.Saved>(compose.save(Draft(to = dan, body = "two"), replacing = first.emailId))
 
-            assertEquals(before + 1, fake.requestCount)
+            assertEquals(before + 2, fake.requestCount)
             assertEquals(listOf("two"), fake.emails.filter { "\$draft" in it.keywords }.map { it.body })
             assertEquals(listOf("orig", second.emailId), fake.emails.map { it.id })
         }
@@ -361,5 +361,18 @@ class ComposeRepositoryTest {
 
             assertEquals(saved.emailId, fake.submissions.single().emailId)
             assertTrue(fake.emails.none { "\$draft" in it.keywords })
+        }
+
+    @Test
+    fun `a refused save leaves the previous draft on the server`() =
+        runTest {
+            val fake = server()
+            val (_, compose) = repositories(fake)
+            val first = assertIs<DraftSaveResult.Saved>(compose.save(Draft(to = dan, body = "one"), replacing = null))
+            fake.refuseEmailCreate = true
+
+            assertIs<DraftSaveResult.Rejected>(compose.save(Draft(to = dan, body = "two"), replacing = first.emailId))
+
+            assertEquals(listOf("one"), fake.emails.filter { "\$draft" in it.keywords }.map { it.body })
         }
 }

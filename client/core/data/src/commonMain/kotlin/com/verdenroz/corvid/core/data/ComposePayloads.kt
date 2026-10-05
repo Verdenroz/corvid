@@ -25,10 +25,8 @@ internal fun createEmail(
     identity: Identity,
     draft: Draft,
     draftsId: String,
-    replacing: String?,
 ): JsonObject =
     buildJsonObject {
-        replacing?.let { putJsonArray("destroy") { add(JsonPrimitive(it)) } }
         putJsonObject("create") {
             putJsonObject("draft") {
                 putJsonObject("mailboxIds") { put(draftsId, true) }

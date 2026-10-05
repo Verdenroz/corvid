@@ -283,6 +283,34 @@ class ComposeViewModelTest {
         }
 
     @Test
+    fun `restored text whose draft is gone saves as a new draft instead of failing`() =
+        runViewModelTest {
+            val fake = server()
+            val typed = ComposeForm(to = "ada@x.test", cc = "", bcc = "", subject = "", body = "half a thought")
+            val vm = viewModel(fake, ComposeIntent.Draft("replaced"), restored = ComposeRestore(typed, draftId = "replaced"))
+
+            val editing = vm.editing()
+            assertEquals(typed, editing.form)
+            assertEquals(null, editing.draftId)
+            vm.idle()
+
+            assertEquals(listOf("half a thought"), drafts(fake).map { it.body })
+        }
+
+    @Test
+    fun `a restored reply whose draft is gone keeps its thread headers`() =
+        runViewModelTest {
+            val fake = server()
+            val typed = ComposeForm(to = "alice@example.test", cc = "", bcc = "", subject = "Re: Lunch", body = "on my way")
+            val vm = viewModel(fake, ComposeIntent.Reply("orig", all = false), restored = ComposeRestore(typed, draftId = "replaced"))
+
+            vm.editing()
+            vm.idle()
+
+            assertEquals(listOf("m1@example.test"), drafts(fake).single().inReplyTo)
+        }
+
+    @Test
     fun `typing then pausing saves one server draft`() =
         runViewModelTest {
             val fake = server()

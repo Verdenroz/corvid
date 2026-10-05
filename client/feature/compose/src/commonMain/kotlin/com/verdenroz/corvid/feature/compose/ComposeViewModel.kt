@@ -61,7 +61,7 @@ class ComposeViewModel(
                                 stored = start.draft.toForm(),
                                 draftId = (target as? ComposeIntent.Draft)?.emailId,
                             )
-                        is StartResult.DraftGone -> ComposeUiState.Failed(uiText(Res.string.compose_draft_gone))
+                        is StartResult.DraftGone -> restoredAsNew() ?: ComposeUiState.Failed(uiText(Res.string.compose_draft_gone))
                         is StartResult.OriginalGone -> ComposeUiState.Failed(uiText(Res.string.compose_original_gone))
                         is SendUnavailable -> ComposeUiState.Failed(start.message())
                     }
@@ -70,6 +70,13 @@ class ComposeViewModel(
             }
             if (restored != null) scheduleSave()
         }
+    }
+
+    /** The restored text outlives a draft that was replaced or sent in the meantime; it saves as a new one. */
+    private suspend fun restoredAsNew(): ComposeUiState.Editing? {
+        val form = restored?.form?.takeUnless { it.isBlank() } ?: return null
+        val seed = (composeRepository.start(intent) as? StartResult.Ready)?.draft ?: Draft()
+        return ComposeUiState.Editing(seed = seed, form = form, stored = seed.toForm())
     }
 
     fun edit(change: ComposeForm.() -> ComposeForm) {

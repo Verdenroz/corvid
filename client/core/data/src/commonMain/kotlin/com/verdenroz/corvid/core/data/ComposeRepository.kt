@@ -2,6 +2,7 @@ package com.verdenroz.corvid.core.data
 
 import com.verdenroz.corvid.core.jmap.Invocation
 import com.verdenroz.corvid.core.jmap.JmapClient
+import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.jmap.MethodOutcome
 import com.verdenroz.corvid.core.jmap.callOne
 import com.verdenroz.corvid.core.jmap.reason
@@ -140,15 +141,24 @@ class ComposeRepository(
         }
     }
 
-    /** Files [draft] as a new server draft and destroys [replacing], since an email cannot be edited in place. */
+    /**
+     * Files [draft] as a new server draft, then destroys [replacing], since an email cannot be edited
+     * in place. The destroy waits for the create so a refused save never costs the old draft.
+     */
     suspend fun save(
         draft: Draft,
         replacing: String?,
     ): DraftSaveResult =
         load().fold({ it }) { sending ->
-            val arguments = createEmail(sending.identity, draft, sending.draftsId, replacing)
+            val arguments = createEmail(sending.identity, draft, sending.draftsId)
             val outcome = jmapClient.call(listOf(Invocation("Email/set", arguments, "c0"))).getValue("c0")
-            outcome.refusal("draft")?.let { DraftSaveResult.Rejected(it) } ?: DraftSaveResult.Saved(outcome.createdDraftId())
+            outcome.refusal("draft")?.let { return@fold DraftSaveResult.Rejected(it) }
+            try {
+                replacing?.let { discard(it) }
+            } catch (_: JmapException) {
+                // A stray older draft is harmless; losing the new one is not.
+            }
+            DraftSaveResult.Saved(outcome.createdDraftId())
         }
 
     suspend fun send(emailId: String): SendResult =
