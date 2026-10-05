@@ -62,9 +62,9 @@ atomic_write() {
 
 unit_masked() { [[ "$(systemctl is-enabled "$1" 2>/dev/null)" == masked ]]; }
 
-# Sets and exports MAIL_DOMAIN, MAIL_HOSTNAME, MAIL_USER, ACME_CONTACT, WEB_PORT, HOST_ZONE and
-# IDP_HOSTNAME from config.yaml's server section. Tests set CORVID_CONFIG_CMD to run it without
-# the container.
+# Sets and exports MAIL_DOMAIN, MAIL_HOSTNAME, MAIL_USER, ACME_CONTACT, WEB_PORT, HOST_ZONE,
+# IDP_HOSTNAME, PUBLISH_MTA_STS, PUBLISH_TLSA, MTA_STS_MODE, CLIENT_SOURCES and UPDATE_AUTO from
+# config.yaml. Tests set CORVID_CONFIG_CMD to run it without the container.
 load_server() {
   local out key value
   if [[ -n "${CORVID_CONFIG_CMD:-}" ]]; then

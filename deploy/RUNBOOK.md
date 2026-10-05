@@ -48,17 +48,18 @@ owner of account").
 
 ### A service's own app password
 
-The labeler signs in over JMAP like any other client, so it needs an app password, never the
+A service signs in over JMAP like any other client, so it needs an app password, never the
 account password: once TOTP guards the account an app password is the only kind that still works.
+Give each service its own, so revoking one does not stop the others.
 
-It needs one restricted to `127.0.0.1`, since the labeler calls JMAP from inside the pod on
-loopback, not from the networks `client_access` allows, which a plain `device.sh add NAME` is
-scoped to.
-`device.sh add --local NAME` scopes one to loopback instead:
+The labeler calls JMAP from inside the pod on loopback, not from the networks `client_access`
+allows, which a plain `device.sh add NAME` is scoped to. `device.sh add --local NAME` scopes one
+to loopback instead:
 
     ssh host /opt/corvid/deploy/device.sh add --local corvid-labeler
 
-Put the secret in `labeler.env`'s `CORVID_JMAP_PASSWORD`.
+Put the secret in `labeler.env`'s `CORVID_JMAP_PASSWORD`. The mirror is off-host and reaches JMAP
+through the VPN, so it takes a plain `add`, scoped like any other device.
 
 ## Two-factor sign-in (TOTP)
 
@@ -119,13 +120,10 @@ The file holds no secrets, so it can be shared or committed. Secrets come from t
     mirror.env           CORVID_JMAP_PASSWORD, from device.sh add corvid-mirror, on the mirror machine
     sentinel-webhook.env CORVID_SENTINEL_SECRET (openssl rand -hex 32), shared with Stalwart
 
-Use a separate app password per service, created as in the section above, so revoking one does
-not stop the others. The labeler runs inside the pod and reaches JMAP over
-loopback, so its credential is `--local`; the mirror is off-host and reaches JMAP through the
-VPN, so it needs a plain `add` scoped like any other device. The image-proxy secret signs URLs in
-the milter and verifies them in the proxy, so both read the same value. Changing it invalidates
-the links in mail already delivered: those images stop loading, which is a visible cost and not a
-broken mailbox.
+The app passwords are created as in "A service's own app password". The image-proxy secret signs
+URLs in the milter and verifies them in the proxy, so both read the same value. Changing it
+invalidates the links in mail already delivered: those images stop loading, which is a visible cost
+and not a broken mailbox.
 
 The web tier answers on `server.web_port`, 4443 by default, leaving 443 to anything else the
 host runs. Everything that names it is generated from `server.hostname` and `server.web_port`:
@@ -264,9 +262,8 @@ and does nothing if the image is unchanged. Otherwise it keeps the previous imag
 `localhost/corvid:rollback` and the previous deploy files in `/opt/corvid/deploy.prev`, copies the
 new image's deploy files into `/opt/corvid/deploy`, and runs `bootstrap.sh` then `deploy.sh`,
 which ends in `verify.sh`. If any step fails it puts the old image and files back and deploys them
-again. A release that failed is not retried until a newer one is tagged. It sends no mail: the
-outcome is in `status.json`, which the Corvid app surfaces, and the log is
-`journalctl -u corvid-update.service`.
+again. A release that failed is not retried until a newer one is tagged. The outcome is in
+`status.json`, which the Corvid app surfaces, and the log is `journalctl -u corvid-update.service`.
 
 Every run writes `/opt/corvid/update/status.json`, first marking it `busy: true` while the run
 works. A busy report repeats the previous outcome; on a host's first run, with nothing to repeat, it
@@ -282,8 +279,8 @@ sentinel, which serves `status.json` and writes the request file. The sentinel a
 version". On a host that follows a channel tag such as `main`, versions read
 `main-<first 7 of the revision>`; a release tag keeps its own version.
 
-Sign-in alerts and failed or rolled-back updates are never mailed. The sentinel keeps the newest 200
-as a feed in its state, and the app reads it through `GET /corvid/notices?after=<id>` on the same
+Sign-in alerts and failed or rolled-back updates become notices in the sentinel's feed. It keeps the
+newest 200 in its state, and the app reads it through `GET /corvid/notices?after=<id>` on the same
 authenticated route, oldest first. An alert therefore shows only once a device has the app open.
 
 A host running a `--ship-local` image (`localhost/...`) never updates itself.

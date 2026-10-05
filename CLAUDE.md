@@ -49,10 +49,13 @@ namespace, so services reach each other on `127.0.0.1`:
 | `corvid-milter` | `corvid-milter` binary, called by Stalwart at DATA | 11332 |
 | `corvid-imgproxy` | serves the images the milter rewrote | 8081 |
 | `corvid-labeler` | polls JMAP, writes labels as keywords | none |
-| `corvid-caddy` | the web tier: JMAP, `/i/*` to imgproxy; a second site proxies `server.idp_hostname` to Pocket-ID | `server.web_port`, 4443 by default |
+| `corvid-sentinel` | the pod's authenticated side door: the alert feed from Stalwart webhooks and update status, and update requests | 11333 loopback |
+| `corvid-caddy` | the web tier: JMAP, `/i/*` to imgproxy, `/corvid/update` and `/corvid/notices` to the sentinel behind `forward_auth`; a second site proxies `server.idp_hostname` to Pocket-ID | `server.web_port`, 4443 by default |
 | `corvid-idp` | Pocket-ID, OIDC passkeys; applied separately via `oidc.plan.ndjson` | 1411 |
 
 `corvid-mirror` is the exception: a systemd timer on a separate machine that pulls over JMAP.
+`corvid-update.{service,timer,path}` are host units outside the pod: `update.sh` follows the
+image tag, on the timer or when the sentinel writes `update/request`.
 
 `charts/corvid` runs the same pod on Kubernetes, with `values.config` rendered verbatim as
 `config.yaml`. It carries its own `unbound.conf` (loopback only, since pod addresses are

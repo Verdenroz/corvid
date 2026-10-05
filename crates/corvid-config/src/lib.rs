@@ -381,7 +381,8 @@ pub struct Mirror {
 pub struct Sentinel {
     #[serde(default = "sentinel_bind")]
     pub bind: String,
-    /// Unused. Accepted so a `config.yaml` that still carries them parses.
+    /// Retired, and both stay accepted: an unattended update must not leave the sentinel exiting
+    /// 78 on a `config.yaml` that still carries them.
     pub jmap_url: Option<String>,
     pub jmap_user: Option<String>,
     pub state: PathBuf,
