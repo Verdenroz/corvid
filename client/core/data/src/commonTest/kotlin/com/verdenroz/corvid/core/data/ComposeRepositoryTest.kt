@@ -261,7 +261,7 @@ class ComposeRepositoryTest {
             assertTrue(fake.submissions.isEmpty())
             val kept = fake.emails.single { it.id != "orig" }
             assertEquals(setOf("drafts"), kept.mailboxIds)
-            assertEquals(setOf("\$draft"), kept.keywords)
+            assertEquals(setOf("\$draft", "\$seen"), kept.keywords)
         }
 
     @Test
@@ -287,7 +287,7 @@ class ComposeRepositoryTest {
 
             val email = fake.emails.single { it.id == saved.emailId }
             assertEquals(setOf("drafts"), email.mailboxIds)
-            assertEquals(setOf("\$draft"), email.keywords)
+            assertEquals(setOf("\$draft", "\$seen"), email.keywords)
             assertTrue(fake.submissions.isEmpty())
         }
 

@@ -32,7 +32,10 @@ internal fun createEmail(
         putJsonObject("create") {
             putJsonObject("draft") {
                 putJsonObject("mailboxIds") { put(draftsId, true) }
-                putJsonObject("keywords") { put(CorvidKeywords.DRAFT, true) }
+                putJsonObject("keywords") {
+                    put(CorvidKeywords.DRAFT, true)
+                    put(CorvidKeywords.SEEN, true)
+                }
                 putAddresses("from", listOf(EmailAddress(identity.name.ifEmpty { null }, identity.email)))
                 putAddresses("to", draft.to)
                 putAddresses("cc", draft.cc)
