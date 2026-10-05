@@ -3,6 +3,7 @@ package com.verdenroz.corvid.feature.compose
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.core.data.ComposeRepository
+import com.verdenroz.corvid.core.data.DraftSaveResult
 import com.verdenroz.corvid.core.data.SendResult
 import com.verdenroz.corvid.core.data.SendUnavailable
 import com.verdenroz.corvid.core.data.StartResult
@@ -15,6 +16,7 @@ import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.uiText
 import com.verdenroz.corvid.feature.compose.resources.Res
 import com.verdenroz.corvid.feature.compose.resources.compose_add_recipient
+import com.verdenroz.corvid.feature.compose.resources.compose_draft_gone
 import com.verdenroz.corvid.feature.compose.resources.compose_no_drafts_mailbox
 import com.verdenroz.corvid.feature.compose.resources.compose_no_identity
 import com.verdenroz.corvid.feature.compose.resources.compose_no_sent_mailbox
@@ -39,6 +41,7 @@ class ComposeViewModel(
                 _state.value =
                     when (val start = composeRepository.start(intent)) {
                         is StartResult.Ready -> ComposeUiState.Editing(seed = start.draft, form = restored ?: start.draft.toForm())
+                        is StartResult.DraftGone -> ComposeUiState.Failed(uiText(Res.string.compose_draft_gone))
                         is StartResult.OriginalGone -> ComposeUiState.Failed(uiText(Res.string.compose_original_gone))
                         is SendUnavailable -> ComposeUiState.Failed(start.message())
                     }
@@ -80,10 +83,15 @@ class ComposeViewModel(
         _state.value = current.copy(sending = true, error = null)
         viewModelScope.launch {
             try {
-                when (val result = composeRepository.send(draft)) {
-                    is SendResult.Sent -> _state.value = ComposeUiState.Sent
-                    is SendResult.Rejected -> fail(UiText.FromServer(result.reason))
-                    is SendUnavailable -> fail(result.message())
+                when (val saved = composeRepository.save(draft, replacing = null)) {
+                    is DraftSaveResult.Saved ->
+                        when (val result = composeRepository.send(saved.emailId)) {
+                            is SendResult.Sent -> _state.value = ComposeUiState.Sent
+                            is SendResult.Rejected -> fail(UiText.FromServer(result.reason))
+                            is SendUnavailable -> fail(result.message())
+                        }
+                    is DraftSaveResult.Rejected -> fail(UiText.FromServer(saved.reason))
+                    is SendUnavailable -> fail(saved.message())
                 }
             } catch (e: JmapException) {
                 fail(e.userMessage())

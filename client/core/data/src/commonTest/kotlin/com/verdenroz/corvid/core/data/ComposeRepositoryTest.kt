@@ -51,6 +51,13 @@ private suspend fun repositories(fake: FakeJmapServer): Pair<MailboxRepository, 
     return mailboxes to ComposeRepository(client, mailboxes, KeyedTextResolver, TimeZone.UTC)
 }
 
+private suspend fun ComposeRepository.sendNew(draft: Draft): SendResult =
+    when (val saved = save(draft, replacing = null)) {
+        is DraftSaveResult.Saved -> send(saved.emailId)
+        is DraftSaveResult.Rejected -> SendResult.Rejected(saved.reason)
+        is SendUnavailable -> saved
+    }
+
 private suspend fun MailboxRepository.original(): EmailDetail = assertIs<EmailLookup.Found>(getEmail("orig")).detail
 
 class ComposeRepositoryTest {
@@ -71,8 +78,8 @@ class ComposeRepositoryTest {
             compose.start(ComposeIntent.New)
             val afterStart = fake.requestCount
 
-            compose.send(draft)
-            compose.send(draft)
+            compose.save(draft, replacing = null)
+            compose.save(draft, replacing = null)
 
             assertEquals(afterStart + 2, fake.requestCount)
         }
@@ -83,7 +90,7 @@ class ComposeRepositoryTest {
             val fake = server()
             val (_, compose) = repositories(fake)
 
-            val result = compose.send(Draft(to = listOf(EmailAddress(null, "dan@example.test")), subject = "Hi", body = "hello"))
+            val result = compose.sendNew(Draft(to = listOf(EmailAddress(null, "dan@example.test")), subject = "Hi", body = "hello"))
 
             assertEquals(SendResult.Sent, result)
             val submission = fake.submissions.single()
@@ -103,7 +110,7 @@ class ComposeRepositoryTest {
             val (_, compose) = repositories(fake)
 
             val draft = assertIs<StartResult.Ready>(compose.start(ComposeIntent.Reply("orig", all = false))).draft
-            compose.send(draft)
+            compose.sendNew(draft)
 
             val email = fake.emails.single { it.id == fake.submissions.single().emailId }
             assertEquals(listOf("m1@example.test"), email.inReplyTo)
@@ -153,7 +160,7 @@ class ComposeRepositoryTest {
             val fake = server()
             val (_, compose) = repositories(fake)
 
-            compose.send(Draft(to = listOf(EmailAddress(null, "dan@example.test")), body = "hello"))
+            compose.sendNew(Draft(to = listOf(EmailAddress(null, "dan@example.test")), body = "hello"))
 
             assertEquals(setOf("\$seen"), fake.emails.single { it.id == fake.submissions.single().emailId }.keywords)
         }
@@ -224,7 +231,7 @@ class ComposeRepositoryTest {
             val (_, compose) = repositories(fake)
 
             assertEquals(SendUnavailable.NoIdentity, compose.start(ComposeIntent.New))
-            assertEquals(SendUnavailable.NoIdentity, compose.send(Draft()))
+            assertEquals(SendUnavailable.NoIdentity, compose.save(Draft(), replacing = null))
         }
 
     @Test
@@ -235,10 +242,10 @@ class ComposeRepositoryTest {
             fake.mailboxes -= sent
             val (_, compose) = repositories(fake)
 
-            assertEquals(SendUnavailable.NoMailbox("sent"), compose.send(Draft()))
+            assertEquals(SendUnavailable.NoMailbox("sent"), compose.sendNew(Draft()))
 
             fake.mailboxes += sent
-            assertEquals(SendResult.Sent, compose.send(Draft(to = listOf(EmailAddress(null, "dan@example.test")))))
+            assertEquals(SendResult.Sent, compose.sendNew(Draft(to = listOf(EmailAddress(null, "dan@example.test")))))
         }
 
     @Test
@@ -248,11 +255,13 @@ class ComposeRepositoryTest {
             fake.refuseSubmission = true
             val (_, compose) = repositories(fake)
 
-            val result = compose.send(Draft(to = listOf(EmailAddress(null, "dan@example.test")), body = "hello"))
+            val result = compose.sendNew(Draft(to = listOf(EmailAddress(null, "dan@example.test")), body = "hello"))
 
             assertEquals(SendResult.Rejected("submission refused"), result)
             assertTrue(fake.submissions.isEmpty())
-            assertEquals(listOf("orig"), fake.emails.map { it.id })
+            val kept = fake.emails.single { it.id != "orig" }
+            assertEquals(setOf("drafts"), kept.mailboxIds)
+            assertEquals(setOf("\$draft"), kept.keywords)
         }
 
     @Test
@@ -264,5 +273,93 @@ class ComposeRepositoryTest {
 
             assertEquals(listOf(EmailAddress(null, "leave@list.test")), draft.to)
             assertEquals("unsubscribe", draft.subject)
+        }
+
+    private val dan = listOf(EmailAddress(null, "dan@example.test"))
+
+    @Test
+    fun `saving files a draft in drafts with the draft keyword and no sent copy`() =
+        runTest {
+            val fake = server()
+            val (_, compose) = repositories(fake)
+
+            val saved = assertIs<DraftSaveResult.Saved>(compose.save(Draft(to = dan, subject = "Hi", body = "hello"), replacing = null))
+
+            val email = fake.emails.single { it.id == saved.emailId }
+            assertEquals(setOf("drafts"), email.mailboxIds)
+            assertEquals(setOf("\$draft"), email.keywords)
+            assertTrue(fake.submissions.isEmpty())
+        }
+
+    @Test
+    fun `saving again replaces the previous draft in one request`() =
+        runTest {
+            val fake = server()
+            val (_, compose) = repositories(fake)
+            val first = assertIs<DraftSaveResult.Saved>(compose.save(Draft(to = dan, body = "one"), replacing = null))
+            val before = fake.requestCount
+
+            val second = assertIs<DraftSaveResult.Saved>(compose.save(Draft(to = dan, body = "two"), replacing = first.emailId))
+
+            assertEquals(before + 1, fake.requestCount)
+            assertEquals(listOf("two"), fake.emails.filter { "\$draft" in it.keywords }.map { it.body })
+            assertEquals(listOf("orig", second.emailId), fake.emails.map { it.id })
+        }
+
+    @Test
+    fun `a refused save is rejected with its reason`() =
+        runTest {
+            val fake = server()
+            fake.refuseEmailCreate = true
+            val (_, compose) = repositories(fake)
+
+            assertEquals(DraftSaveResult.Rejected("email refused"), compose.save(Draft(to = dan), replacing = null))
+        }
+
+    @Test
+    fun `a saved reply keeps its thread headers when reopened`() =
+        runTest {
+            val fake = server()
+            val (_, compose) = repositories(fake)
+            val reply = assertIs<StartResult.Ready>(compose.start(ComposeIntent.Reply("orig", all = true))).draft
+            val saved = assertIs<DraftSaveResult.Saved>(compose.save(reply.copy(bcc = dan), replacing = null))
+
+            val reopened = assertIs<StartResult.Ready>(compose.start(ComposeIntent.Draft(saved.emailId))).draft
+
+            assertEquals(reply.copy(bcc = dan), reopened)
+        }
+
+    @Test
+    fun `reopening an email that is not a draft or is gone says the draft is gone`() =
+        runTest {
+            val (_, compose) = repositories(server())
+
+            assertEquals(StartResult.DraftGone, compose.start(ComposeIntent.Draft("orig")))
+            assertEquals(StartResult.DraftGone, compose.start(ComposeIntent.Draft("nope")))
+        }
+
+    @Test
+    fun `discarding removes the draft`() =
+        runTest {
+            val fake = server()
+            val (_, compose) = repositories(fake)
+            val saved = assertIs<DraftSaveResult.Saved>(compose.save(Draft(to = dan), replacing = null))
+
+            compose.discard(saved.emailId)
+
+            assertEquals(listOf("orig"), fake.emails.map { it.id })
+        }
+
+    @Test
+    fun `sending moves the saved draft to sent without leaving a draft behind`() =
+        runTest {
+            val fake = server()
+            val (_, compose) = repositories(fake)
+            val saved = assertIs<DraftSaveResult.Saved>(compose.save(Draft(to = dan, body = "hello"), replacing = null))
+
+            assertEquals(SendResult.Sent, compose.send(saved.emailId))
+
+            assertEquals(saved.emailId, fake.submissions.single().emailId)
+            assertTrue(fake.emails.none { "\$draft" in it.keywords })
         }
 }
