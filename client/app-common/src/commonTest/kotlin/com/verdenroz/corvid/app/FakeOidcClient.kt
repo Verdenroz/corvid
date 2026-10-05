@@ -1,5 +1,6 @@
 package com.verdenroz.corvid.app
 
+import com.verdenroz.corvid.core.auth.createOidcClient
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.URLBuilder
@@ -13,7 +14,8 @@ import org.publicvalue.multiplatform.oidc.types.remote.OpenIdConnectConfiguratio
 
 /** Only [refreshToken] is exercised by [TokenSource]; nothing here refreshes a token. */
 class FakeOidcClient(private val refreshResult: suspend () -> AccessTokenResponse) : OpenIdConnectClient {
-    override val config: OpenIdConnectClientConfig get() = TODO("not used by AppLockViewModel")
+    override val config: OpenIdConnectClientConfig =
+        createOidcClient("https://idp.corvid.test/.well-known/openid-configuration", "corvid.test:/redirect").config
     override val discoverDocument: OpenIdConnectConfiguration? get() = null
 
     override suspend fun discover(configure: (HttpRequestBuilder.() -> Unit)?) = Unit

@@ -52,7 +52,7 @@ import com.verdenroz.corvid.feature.settings.resources.settings_theme_system
 import com.verdenroz.corvid.feature.settings.resources.settings_title
 import org.jetbrains.compose.resources.stringResource
 
-/** What the account section states; each is null until known, and a null row is left out. */
+/** What the account section states; the server is always known, the other rows are left out while null. */
 data class AccountFacts(
     val name: String?,
     val address: String?,

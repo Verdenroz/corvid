@@ -52,8 +52,7 @@ fun CorvidApp(
                     }
                 is AppLockState.Unlocked ->
                     UnlockedContent(
-                        host = viewModel.serverHost.orEmpty(),
-                        hosts = viewModel.accountHosts ?: AccountHosts(server = "", identityProvider = null),
+                        hosts = current.hosts,
                         onLock = viewModel::lock,
                         onSignOut = viewModel::signOut,
                     )

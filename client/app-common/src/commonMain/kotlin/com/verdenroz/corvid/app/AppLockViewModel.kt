@@ -73,10 +73,6 @@ class AppLockViewModel(
         viewModelScope.launch { keyHolder.state.collect(::onKeyState) }
     }
 
-    /** The signed-in server's short name, for the key pill. */
-    val serverHost: String?
-        get() = (tokenSource.state.value as? AuthState.SignedIn)?.server?.baseUrl?.let(::shortHost)
-
     /** What the locked screen can say for certain: whichever of these this session knows. */
     val lockFacts: LockFacts
         get() = LockFacts((tokenSource.state.value as? AuthState.SignedIn)?.server?.baseUrl?.let(::host), deviceName, lockedAt)
@@ -102,8 +98,7 @@ class AppLockViewModel(
 
     fun signOut() = tokenSource.signOut()
 
-    /** The signed-in server and identity provider as the settings screen states them. */
-    val accountHosts: AccountHosts?
+    private val accountHosts: AccountHosts?
         get() =
             (tokenSource.state.value as? AuthState.SignedIn)?.let { signedIn ->
                 AccountHosts(host(signedIn.server.baseUrl), tokenSource.issuerUrl?.let(::host))
@@ -199,13 +194,14 @@ class AppLockViewModel(
                 // A sign-out can land between the key unlocking and this collector
                 // running, clearing jmapClient underneath it.
                 val client = jmapClient
-                if (client == null) {
+                val hosts = accountHosts
+                if (client == null || hosts == null) {
                     _state.value = AppLockState.SignedOut
                     return
                 }
                 reconnectPolicy.reset()
                 unlockedScopeHolder.open().declare(client)
-                _state.value = AppLockState.Unlocked
+                _state.value = AppLockState.Unlocked(hosts)
                 heartbeatJob = viewModelScope.launch { heartbeatLoop() }
             }
             is KeyState.Locked -> {
@@ -245,10 +241,14 @@ class AppLockViewModel(
     }
 }
 
+/** The signed-in server's hostname and, when there is an identity provider, its hostname. */
 data class AccountHosts(
     val server: String,
     val identityProvider: String?,
-)
+) {
+    /** The first label of [server], the key pill's name for the machine holding the key. */
+    val short: String get() = shortHost(server)
+}
 
 data class LockFacts(
     val server: String?,
