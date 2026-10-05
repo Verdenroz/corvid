@@ -19,6 +19,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
@@ -62,10 +63,14 @@ fun ComposeScreen(
     intent: ComposeIntent,
     onClose: () -> Unit,
 ) {
-    var savedForm by rememberSaveable(stateSaver = ComposeFormSaver) { mutableStateOf<ComposeForm?>(null) }
-    val viewModel = remember(composeRepository, intent) { ComposeViewModel(composeRepository, intent, savedForm) }
+    var restore by rememberSaveable(stateSaver = ComposeRestoreSaver) { mutableStateOf<ComposeRestore?>(null) }
+    val viewModel = remember(composeRepository, intent) { ComposeViewModel(composeRepository, intent, restore) }
+    DisposableEffect(viewModel) { onDispose(viewModel::release) }
     val state by viewModel.state.collectAsState()
-    (state as? ComposeUiState.Editing)?.form?.let { if (it != savedForm) SideEffect { savedForm = it } }
+    (state as? ComposeUiState.Editing)?.let { editing ->
+        val current = ComposeRestore(editing.form, editing.draftId)
+        if (current != restore) SideEffect { restore = current }
+    }
     val close = { if (viewModel.requestClose()) onClose() }
     GuardBack { !viewModel.requestClose() }
 
@@ -80,7 +85,10 @@ fun ComposeScreen(
                 if (current.confirmingDiscard) {
                     DiscardQuestion(
                         stringResource(Res.string.compose_discard_question),
-                        onDiscard = onClose,
+                        onDiscard = {
+                            viewModel.discard()
+                            onClose()
+                        },
                         onKeep = viewModel::keepEditing,
                     )
                 }
