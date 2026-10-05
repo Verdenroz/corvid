@@ -132,12 +132,68 @@ class FakeJmapServerMethodCallTest {
         }
 
     @Test
+    fun `a collapsed query lists each thread once by its first match in sort order`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.emails += FakeEmail("a1", "a", setOf("m1"), "s", "x@example.test", "2024-01-01T00:00:00Z")
+            fake.emails += FakeEmail("a2", "a", setOf("m1"), "s", "x@example.test", "2024-01-03T00:00:00Z")
+            fake.emails += FakeEmail("b1", "b", setOf("m1"), "s", "x@example.test", "2024-01-02T00:00:00Z")
+            val client = connect(fake)
+
+            val outcome =
+                client.call(
+                    listOf(
+                        Invocation(
+                            "Email/query",
+                            buildJsonObject {
+                                putFilter("m1")
+                                put("collapseThreads", true)
+                            },
+                            "c0",
+                        ),
+                    ),
+                ).getValue("c0")
+
+            val ids = assertIs<MethodOutcome.Success>(outcome).result["ids"]?.jsonArray?.map { it.jsonPrimitive.content }
+            assertEquals(listOf("a2", "b1"), ids)
+        }
+
+    @Test
+    fun `a Thread get through a result reference flattens each thread's emailIds into one list`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.emails += FakeEmail("a2", "a", setOf("m1"), "s", "x@example.test", "2024-01-02T00:00:00Z")
+            fake.emails += FakeEmail("a1", "a", setOf("m1"), "s", "x@example.test", "2024-01-01T00:00:00Z")
+            fake.emails += FakeEmail("b1", "b", setOf("m1"), "s", "x@example.test", "2024-01-03T00:00:00Z")
+            val client = connect(fake)
+
+            val outcomes =
+                client.call(
+                    listOf(
+                        Invocation("Thread/get", buildJsonObject { put("ids", JsonArray(listOf("a", "b").map(::JsonPrimitive))) }, "c0"),
+                        Invocation(
+                            "Email/get",
+                            buildJsonObject {
+                                put("#ids", resultReference(resultOf = "c0", name = "Thread/get", path = "/list/*/emailIds"))
+                            },
+                            "c1",
+                        ),
+                    ),
+                )
+
+            val thread = assertIs<MethodOutcome.Success>(outcomes.getValue("c0")).result["list"]?.jsonArray?.first()?.jsonObject
+            assertEquals(listOf("a1", "a2"), thread?.get("emailIds")?.jsonArray?.map { it.jsonPrimitive.content })
+            val listed = assertIs<MethodOutcome.Success>(outcomes.getValue("c1")).result["list"]?.jsonArray
+            assertEquals(setOf("a1", "a2", "b1"), listed?.map { it.jsonObject.getValue("id").jsonPrimitive.content }?.toSet())
+        }
+
+    @Test
     fun `an unknown method is a method error naming it, not a thrown exception`() =
         runTest {
             val fake = FakeJmapServer()
             val client = connect(fake)
 
-            val outcome = client.call(listOf(Invocation("Thread/get", buildJsonObject {}, "c0"))).getValue("c0")
+            val outcome = client.call(listOf(Invocation("Calendar/get", buildJsonObject {}, "c0"))).getValue("c0")
 
             assertTrue(assertIs<MethodOutcome.Failure>(outcome).error.type.isNotEmpty())
         }

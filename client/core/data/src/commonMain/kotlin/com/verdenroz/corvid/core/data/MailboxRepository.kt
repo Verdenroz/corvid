@@ -6,6 +6,7 @@ import com.verdenroz.corvid.core.jmap.callOne
 import com.verdenroz.corvid.core.jmap.resultOrThrow
 import com.verdenroz.corvid.core.jmap.resultReference
 import com.verdenroz.corvid.core.jmap.setErrorReason
+import com.verdenroz.corvid.core.model.Conversation
 import com.verdenroz.corvid.core.model.CorvidKeywords
 import com.verdenroz.corvid.core.model.EmailAddress
 import com.verdenroz.corvid.core.model.EmailDetail
@@ -45,15 +46,20 @@ private val EMAIL_DETAIL_PROPERTIES =
 
 /** What a list shows: one mailbox, every starred message wherever it is filed, or every message matching a text search. */
 sealed interface MailFilter {
-    data class InMailbox(val mailboxId: String) : MailFilter
+    /** Whether a list shows one row per thread; a search, and a mailbox of drafts opened one by one, do not. */
+    val threaded: Boolean get() = true
+
+    data class InMailbox(val mailboxId: String, override val threaded: Boolean = true) : MailFilter
 
     data object Starred : MailFilter
 
-    data class Search(val text: String) : MailFilter
+    data class Search(val text: String) : MailFilter {
+        override val threaded: Boolean get() = false
+    }
 }
 
 sealed interface EmailPage {
-    data class Found(val emails: List<EmailSummary>, val queryState: String) : EmailPage
+    data class Found(val conversations: List<Conversation>, val queryState: String) : EmailPage
 
     data object AnchorNotFound : EmailPage
 }
@@ -61,6 +67,21 @@ sealed interface EmailPage {
 /** Keywords set (true) or cleared (false) on one message, as the server accepted them. */
 data class KeywordPatch(val emailId: String, val patch: Map<String, Boolean>) {
     fun applyTo(keywords: Set<String>): Set<String> = keywords + patch.filterValues { it }.keys - patch.filterValues { !it }.keys
+
+    fun applyTo(conversation: Conversation): Conversation {
+        if (emailId !in conversation.emailIds) return conversation
+        val latest = conversation.latest
+        val unreadIds =
+            when (patch[CorvidKeywords.SEEN]) {
+                true -> conversation.unreadIds - emailId
+                false -> conversation.unreadIds + emailId
+                null -> conversation.unreadIds
+            }
+        return conversation.copy(
+            latest = if (emailId == latest.id) latest.copy(keywords = applyTo(latest.keywords)) else latest,
+            unreadIds = unreadIds,
+        )
+    }
 }
 
 sealed interface EmailLookup {
@@ -68,6 +89,13 @@ sealed interface EmailLookup {
 
     /** The message was deleted or moved between the inbox list and opening it. */
     data object NotFound : EmailLookup
+}
+
+sealed interface ThreadLookup {
+    /** [messages] are the whole thread, oldest first. */
+    data class Found(val messages: List<EmailDetail>) : ThreadLookup
+
+    data object NotFound : ThreadLookup
 }
 
 /**
@@ -106,10 +134,12 @@ class MailboxRepository(private val jmapClient: JmapClient) {
             ids[role]
         }
 
+    /** Lists conversations, newest first, unless the filter is not [MailFilter.threaded]; then each row is one message. */
     suspend fun page(
         filter: MailFilter,
         anchor: String?,
     ): EmailPage {
+        val grouped = filter.threaded
         val queryArguments =
             buildJsonObject {
                 putJsonObject("filter") {
@@ -125,20 +155,62 @@ class MailboxRepository(private val jmapClient: JmapClient) {
                         put("isAscending", false)
                     }
                 }
-                put("collapseThreads", false)
+                put("collapseThreads", grouped)
                 put("limit", PAGE_SIZE)
                 anchor?.let {
                     put("anchor", it)
                     put("anchorOffset", 1)
                 }
             }
+        return if (grouped) conversationPage(queryArguments) else messagePage(queryArguments)
+    }
+
+    private suspend fun messagePage(queryArguments: JsonObject): EmailPage {
         val outcomes = jmapClient.queryAndGet(queryArguments, EMAIL_PROPERTIES)
-        if ((outcomes.query as? MethodOutcome.Failure)?.error?.type == "anchorNotFound") return EmailPage.AnchorNotFound
-        val queryResult = outcomes.query.resultOrThrow()
-        val getResult = outcomes.get.resultOrThrow()
+        if (outcomes.query.anchorNotFound()) return EmailPage.AnchorNotFound
         val domain = ownDomain()
-        val emails = getResult.getValue("list").jsonArray.map { it.jsonObject.toEmailSummary(domain) }
-        return EmailPage.Found(emails, queryResult.getValue("queryState").jsonPrimitive.content)
+        val emails = outcomes.get.resultOrThrow().getValue("list").jsonArray.map { it.jsonObject.toEmailSummary(domain) }
+        val conversations =
+            emails.map { Conversation(it, listOf(it.id), if (CorvidKeywords.SEEN in it.keywords) emptySet() else setOf(it.id)) }
+        return EmailPage.Found(conversations, outcomes.query.resultOrThrow().queryState())
+    }
+
+    private suspend fun conversationPage(queryArguments: JsonObject): EmailPage {
+        val outcomes = jmapClient.queryConversations(queryArguments, EMAIL_PROPERTIES)
+        if (outcomes.query.anchorNotFound()) return EmailPage.AnchorNotFound
+        val domain = ownDomain()
+        val latest = outcomes.latest.resultOrThrow().getValue("list").jsonArray.map { it.jsonObject.toEmailSummary(domain) }
+        val threads =
+            outcomes.threads.resultOrThrow().getValue("list").jsonArray.associate {
+                it.jsonObject.getValue("id").jsonPrimitive.content to it.jsonObject.idList("emailIds")
+            }
+        val keywords =
+            outcomes.members.resultOrThrow().getValue("list").jsonArray.associate {
+                it.jsonObject.getValue("id").jsonPrimitive.content to it.jsonObject.getValue("keywords").jsonObject.keys
+            }
+        val conversations =
+            latest.map { summary ->
+                val emailIds = threads.getValue(summary.threadId)
+                Conversation(summary, emailIds, emailIds.filterTo(mutableSetOf()) { CorvidKeywords.SEEN !in keywords.getValue(it) })
+            }
+        return EmailPage.Found(conversations, outcomes.query.resultOrThrow().queryState())
+    }
+
+    /** The thread holding [emailId], every message with its body, oldest first. */
+    suspend fun thread(emailId: String): ThreadLookup {
+        val arguments =
+            buildJsonObject {
+                putJsonArray("properties") { EMAIL_DETAIL_PROPERTIES.forEach { add(JsonPrimitive(it)) } }
+                put("fetchTextBodyValues", true)
+                put("fetchHTMLBodyValues", true)
+                put("maxBodyValueBytes", MAX_BODY_VALUE_BYTES)
+            }
+        val outcomes = jmapClient.fetchThread(emailId, arguments)
+        if (outcomes.email.resultOrThrow().getValue("notFound").jsonArray.isNotEmpty()) return ThreadLookup.NotFound
+        val order = outcomes.thread.resultOrThrow().getValue("list").jsonArray.single().jsonObject.idList("emailIds")
+        val domain = ownDomain()
+        val messages = outcomes.messages.resultOrThrow().getValue("list").jsonArray.map { it.jsonObject.toEmailDetail(domain) }
+        return ThreadLookup.Found(messages.sortedBy { order.indexOf(it.id) })
     }
 
     suspend fun getEmail(id: String): EmailLookup {
@@ -227,6 +299,10 @@ internal fun JsonObject.toEmailSummary(ownDomain: String?): EmailSummary {
         provenance = provenance(from, ownDomain),
     )
 }
+
+private fun MethodOutcome.anchorNotFound() = (this as? MethodOutcome.Failure)?.error?.type == "anchorNotFound"
+
+private fun JsonObject.queryState() = getValue("queryState").jsonPrimitive.content
 
 private class KnownIdentity(val identity: Identity?)
 
