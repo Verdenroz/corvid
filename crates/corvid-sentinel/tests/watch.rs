@@ -1,21 +1,16 @@
+mod common;
+
 use std::path::Path;
 use std::time::Duration;
 
-use corvid_sentinel::{Config, NoticeKind, Seen, open, router};
-use tokio::net::TcpListener;
+use corvid_sentinel::{Config, NoticeKind, open};
 
-fn start(dir: &Path) {
-    let app = router(Config {
-        secret: b"secret".to_vec(),
-        state_path: dir.join("sentinel.json"),
-        seen: Seen::default(),
-        update_dir: dir.to_owned(),
+async fn start(dir: &Path) {
+    let config = Config {
         update_poll: Duration::from_millis(20),
-    });
-    tokio::spawn(async move {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        axum::serve(listener, app).await.unwrap()
-    });
+        ..common::config(&dir.join("sentinel.json"), dir)
+    };
+    common::serve(config).await;
 }
 
 fn status(result: &str, checked_at: &str, detail: &str) -> String {
@@ -45,7 +40,7 @@ async fn a_rolled_back_update_becomes_one_notice_however_often_it_is_polled() {
         "v2 failed its health check",
     );
     std::fs::write(dir.path().join("status.json"), body).unwrap();
-    start(dir.path());
+    start(dir.path()).await;
 
     settle().await;
 
@@ -66,7 +61,7 @@ async fn a_later_failure_with_a_new_check_time_is_a_second_notice() {
         status("failed", "2026-10-04T01:00:00Z", "pull failed"),
     )
     .unwrap();
-    start(dir.path());
+    start(dir.path()).await;
     settle().await;
 
     std::fs::write(
@@ -83,7 +78,7 @@ async fn a_later_failure_with_a_new_check_time_is_a_second_notice() {
 async fn updated_current_and_skipped_results_add_nothing() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("status.json");
-    start(dir.path());
+    start(dir.path()).await;
 
     for (n, result) in ["updated", "current", "skipped"].into_iter().enumerate() {
         std::fs::write(
@@ -106,7 +101,7 @@ async fn a_busy_report_is_never_noticed_even_when_it_repeats_a_failure() {
         report("failed", "2026-10-04T01:00:00Z", "stopped", true),
     )
     .unwrap();
-    start(dir.path());
+    start(dir.path()).await;
     settle().await;
 
     assert!(!dir.path().join("sentinel.json").exists());
@@ -117,7 +112,7 @@ async fn an_unreadable_status_does_not_stop_the_watcher() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("status.json");
     std::fs::write(&path, "not json").unwrap();
-    start(dir.path());
+    start(dir.path()).await;
     settle().await;
 
     std::fs::write(

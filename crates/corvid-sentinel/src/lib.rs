@@ -10,7 +10,7 @@ mod watch;
 mod webhook;
 
 pub use decide::{Alert, Reason, decide};
-pub use http::{Config, router};
+pub use http::{Config, build};
 pub use service::handle;
 pub use signature::verify;
 pub use state::{CredentialKind, Identity, Notice, NoticeKind, Seen, open, save};

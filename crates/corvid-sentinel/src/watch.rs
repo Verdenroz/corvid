@@ -1,5 +1,5 @@
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -23,15 +23,13 @@ pub(crate) async fn updates(state: Arc<AppState>, dir: PathBuf, every: Duration)
     let mut ticks = tokio::time::interval(every);
     loop {
         ticks.tick().await;
-        match tokio::spawn(check(state.clone(), dir.clone())).await {
-            Ok(Ok(())) => {}
-            Ok(Err(error)) => tracing::warn!(%error, "cannot check the update status"),
-            Err(error) => tracing::error!(%error, "the update status check panicked"),
+        if let Err(error) = check(state.clone(), &dir).await {
+            tracing::warn!(%error, "cannot check the update status");
         }
     }
 }
 
-async fn check(state: Arc<AppState>, dir: PathBuf) -> io::Result<()> {
+async fn check(state: Arc<AppState>, dir: &Path) -> io::Result<()> {
     let body = match tokio::fs::read(dir.join("status.json")).await {
         Ok(body) => body,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
@@ -64,5 +62,5 @@ async fn check(state: Arc<AppState>, dir: PathBuf) -> io::Result<()> {
         })
     })
     .await
-    .expect("the blocking task panicked")
+    .map_err(io::Error::other)?
 }

@@ -3,7 +3,7 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use corvid_config::{or_exit, secret, section};
-use corvid_sentinel::{Config, open, router};
+use corvid_sentinel::{Config, build, open};
 use tokio::net::TcpListener;
 use tokio::signal;
 
@@ -38,7 +38,7 @@ async fn main() -> ExitCode {
         }
     };
     let bind = settings.bind.clone();
-    let app = router(Config {
+    let (app, watcher) = build(Config {
         secret: hmac_secret.into_bytes(),
         state_path: settings.state,
         seen,
@@ -46,6 +46,7 @@ async fn main() -> ExitCode {
         update_poll: UPDATE_POLL,
     });
 
+    tokio::spawn(watcher);
     let listener = TcpListener::bind(&bind).await.expect("cannot bind");
     tracing::info!(%bind, "corvid-sentinel listening");
     axum::serve(listener, app)

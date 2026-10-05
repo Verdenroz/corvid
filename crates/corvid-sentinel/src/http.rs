@@ -51,22 +51,20 @@ impl AppState {
     }
 }
 
-pub fn router(config: Config) -> Router {
+/// The routes, and the watcher that turns failed updates into notices; the caller spawns it.
+pub fn build(config: Config) -> (Router, impl Future<Output = ()> + Send + 'static) {
     let state = Arc::new(AppState {
         secret: config.secret,
         state_path: config.state_path,
         seen: Mutex::new(config.seen),
     });
-    tokio::spawn(watch::updates(
-        state.clone(),
-        config.update_dir.clone(),
-        config.update_poll,
-    ));
-    Router::new()
+    let watcher = watch::updates(state.clone(), config.update_dir.clone(), config.update_poll);
+    let router = Router::new()
         .route("/webhook", post(webhook))
         .route("/corvid/notices", get(notices))
         .with_state(state)
-        .merge(update::routes(config.update_dir))
+        .merge(update::routes(config.update_dir));
+    (router, watcher)
 }
 
 #[derive(Deserialize)]
@@ -108,7 +106,7 @@ async fn webhook(
 
     let outcome = tokio::task::spawn_blocking(move || {
         state.commit(|seen| match events {
-            Ok(events) => Some(handle(&events, seen)),
+            Ok(events) => handle(&events, seen),
             Err(error) => {
                 tracing::warn!(%error, "a verified webhook body could not be parsed");
                 let mut next = seen.clone();
@@ -150,7 +148,7 @@ mod tests {
     async fn serve(state_path: &Path) -> String {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
-        let app = router(Config {
+        let (app, _watcher) = build(Config {
             secret: SECRET.to_vec(),
             state_path: state_path.to_owned(),
             seen: Seen::default(),
@@ -199,6 +197,21 @@ mod tests {
         let notices = open(&path).unwrap().notices;
         assert_eq!(notices.len(), 1);
         assert_eq!(notices[0].kind, NoticeKind::SignIn);
+    }
+
+    #[tokio::test]
+    async fn a_batch_that_changes_nothing_does_not_rewrite_the_state_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sentinel.json");
+        let url = serve(&path).await;
+        let body = success_body();
+        post(&url, sign(&body), body.clone()).await;
+        std::fs::remove_file(&path).unwrap();
+
+        let response = post(&url, sign(&body), body).await;
+
+        assert_eq!(response.status(), 200);
+        assert!(!path.exists());
     }
 
     #[tokio::test]
