@@ -674,24 +674,37 @@ private fun FakeEmail.toJson(headerProperties: List<String>): JsonObject =
         put("preview", preview)
         if (body == null) {
             put("textBody", null as String?)
+            put("htmlBody", null as String?)
             putJsonObject("bodyValues") {}
         } else {
-            putJsonArray("textBody") {
-                addJsonObject {
-                    put("partId", "1")
-                    put("type", bodyType)
-                    put("size", body.length)
-                }
-            }
+            val (htmlPartId, htmlType, html) = if (htmlBody == null) Triple("1", bodyType, body) else Triple("2", "text/html", htmlBody)
+            putJsonArray("textBody") { addJsonObject { putPart("1", bodyType, body) } }
+            putJsonArray("htmlBody") { addJsonObject { putPart(htmlPartId, htmlType, html) } }
             putJsonObject("bodyValues") {
-                putJsonObject("1") {
-                    put("value", body)
-                    put("isTruncated", bodyTruncated)
-                    put("isEncodingProblem", false)
-                }
+                putJsonObject("1") { putValue(body, bodyTruncated) }
+                if (htmlBody != null) putJsonObject("2") { putValue(htmlBody, bodyTruncated) }
             }
         }
     }
+
+private fun JsonObjectBuilder.putPart(
+    partId: String,
+    type: String,
+    content: String,
+) {
+    put("partId", partId)
+    put("type", type)
+    put("size", content.length)
+}
+
+private fun JsonObjectBuilder.putValue(
+    content: String,
+    truncated: Boolean,
+) {
+    put("value", content)
+    put("isTruncated", truncated)
+    put("isEncodingProblem", false)
+}
 
 private fun JsonObjectBuilder.putAddressList(
     key: String,

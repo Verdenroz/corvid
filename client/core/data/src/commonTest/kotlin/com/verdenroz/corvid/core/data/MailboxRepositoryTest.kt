@@ -1,6 +1,7 @@
 package com.verdenroz.corvid.core.data
 
 import com.verdenroz.corvid.core.model.EmailSummary
+import com.verdenroz.corvid.core.model.HtmlBody
 import com.verdenroz.corvid.core.testing.FakeEmail
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.FakeMailbox
@@ -153,7 +154,7 @@ class MailboxRepositoryTest {
         }
 
     @Test
-    fun `an html-only message is flattened to text, never rendered`() =
+    fun `an html-only message gets a flattened plain body and keeps its html`() =
         runTest {
             val fake = FakeJmapServer()
             fake.emails +=
@@ -171,6 +172,41 @@ class MailboxRepositoryTest {
             val detail = assertIs<EmailLookup.Found>(repository(fake).getEmail("e1")).detail
 
             assertEquals("hello world", detail.body)
+            assertEquals(HtmlBody("<p>hello <b>world</b></p>", truncated = false), detail.html)
+        }
+
+    @Test
+    fun `an alternative message keeps its plain body and its html part`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.emails +=
+                FakeEmail(
+                    "e1",
+                    "e1",
+                    setOf("inbox"),
+                    "hello",
+                    "a@example.test",
+                    "2024-01-01T00:00:00Z",
+                    body = "hello world",
+                    htmlBody = "<p>hello <b>world</b></p>",
+                    bodyTruncated = true,
+                )
+
+            val detail = assertIs<EmailLookup.Found>(repository(fake).getEmail("e1")).detail
+
+            assertEquals("hello world", detail.body)
+            assertEquals(HtmlBody("<p>hello <b>world</b></p>", truncated = true), detail.html)
+        }
+
+    @Test
+    fun `a plain-text message has no html`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.emails += FakeEmail("e1", "e1", setOf("inbox"), "hi", "a@example.test", "2024-01-01T00:00:00Z", body = "just text")
+
+            val detail = assertIs<EmailLookup.Found>(repository(fake).getEmail("e1")).detail
+
+            assertNull(detail.html)
         }
 
     @Test
