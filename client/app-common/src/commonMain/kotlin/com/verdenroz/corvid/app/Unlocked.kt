@@ -69,7 +69,9 @@ import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.core.ui.WIDE_LAYOUT
 import com.verdenroz.corvid.feature.compose.ComposeScreen
 import com.verdenroz.corvid.feature.filters.FiltersScreen
+import com.verdenroz.corvid.feature.mailbox.LedgerSource
 import com.verdenroz.corvid.feature.mailbox.LedgerTab
+import com.verdenroz.corvid.feature.mailbox.LedgerViewModel
 import com.verdenroz.corvid.feature.mailbox.ReaderScreen
 import com.verdenroz.corvid.feature.mailbox.SearchScreen
 import com.verdenroz.corvid.feature.mailbox.SenderCard
@@ -105,8 +107,8 @@ internal fun UnlockedContent(
     LaunchedEffect(notices) { notices.run(backgroundDrop.foregrounded) }
     val ledgers = remember(repository) { Ledgers(repository) }
     DisposableEffect(ledgers) { onDispose { ledgers.clear() } }
-    val searches = remember(repository) { Searches(repository) }
-    DisposableEffect(searches) { onDispose { searches.clear() } }
+    val models = remember(scope) { EntryModels() }
+    DisposableEffect(models) { onDispose { models.clear() } }
 
     val autoLock = preferences.settings.collectAsState().value.autoLock.timeout
     LaunchedEffect(autoLock) { idleTimeout.setTimeout(autoLock) }
@@ -120,7 +122,7 @@ internal fun UnlockedContent(
     val navigator = remember(backStack, saved) { Navigator(backStack, saved) }
     val route = navigator.route
     val entryKeys = (0 until navigator.depth).map(navigator::entryKey).toSet()
-    LaunchedEffect(entryKeys) { searches.retainOnly(entryKeys) }
+    LaunchedEffect(entryKeys) { models.retainOnly(entryKeys) }
     val home = route is Route.Home
     LaunchedEffect(home) { if (home) shell.refresh() }
     NavigationBackHandler(
@@ -197,7 +199,7 @@ internal fun UnlockedContent(
                                             entry,
                                             navigator,
                                             scope,
-                                            searches,
+                                            models,
                                             entryKey,
                                             settings = {
                                                 SettingsPage(
@@ -205,6 +207,8 @@ internal fun UnlockedContent(
                                                     scope,
                                                     SettingsSession(hosts, shellState.identity, onLock, onSignOut),
                                                     navigator,
+                                                    models,
+                                                    entryKey,
                                                 )
                                             },
                                         ) { Home(it, key, shellState, navigator, ledgers) }
@@ -281,16 +285,17 @@ private fun Page(
     route: Route,
     navigator: Navigator,
     scope: Scope,
-    searches: Searches,
+    models: EntryModels,
     entryKey: String,
     settings: @Composable () -> Unit,
     home: @Composable (Route.Home) -> Unit,
 ) {
+    val mailbox = remember(scope) { scope.get<MailboxRepository>() }
     when (route) {
         is Route.Home -> home(route)
         is Route.Reader ->
             ReaderScreen(
-                remember(scope) { scope.get<MailboxRepository>() },
+                mailbox,
                 route.emailId,
                 onBack = navigator::back,
                 onCompose = { navigator.push(Route.Compose(it)) },
@@ -298,7 +303,14 @@ private fun Page(
             )
         is Route.Search ->
             SearchScreen(
-                viewModel = if (route.query.isBlank()) null else searches.of(entryKey, route.query),
+                viewModel =
+                    if (route.query.isBlank()) {
+                        null
+                    } else {
+                        models.of(entryKey, LedgerViewModel::class) {
+                            LedgerViewModel(mailbox, LedgerSource.Search(route.query))
+                        }
+                    },
                 query = route.query,
                 onOpenEmail = { navigator.push(Route.Reader(it)) },
                 onOpenSender = { navigator.push(Route.Sender(it)) },
@@ -306,7 +318,10 @@ private fun Page(
         is Route.Compose -> ComposeScreen(remember(scope) { scope.get<ComposeRepository>() }, route.intent, onClose = navigator::back)
         is Route.Filters -> FiltersScreen(remember(scope) { scope.get<FiltersRepository>() }, onBack = navigator::back)
         is Route.Settings -> settings()
-        is Route.Notices -> NoticesScreen(remember(scope) { NoticesViewModel(scope.get<NoticeRepository>()) }, onBack = navigator::back)
+        is Route.Notices -> {
+            val viewModel = models.of(entryKey, NoticesViewModel::class) { NoticesViewModel(scope.get<NoticeRepository>()) }
+            NoticesScreen(viewModel, onBack = navigator::back)
+        }
         is Route.Sender ->
             SenderCard(
                 senders = remember(scope) { scope.get<SenderRepository>() },

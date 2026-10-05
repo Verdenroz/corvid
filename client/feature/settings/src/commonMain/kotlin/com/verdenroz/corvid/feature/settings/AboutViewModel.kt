@@ -63,11 +63,6 @@ class AboutViewModel(
 
     fun apply() = request(UpdateActivity.Updating) { repository.apply() }
 
-    /** Ends polling; the screen calls it on leaving, since the view model outlives it. */
-    fun stop() {
-        polling?.cancel()
-    }
-
     private suspend fun load() {
         try {
             val report = repository.status()

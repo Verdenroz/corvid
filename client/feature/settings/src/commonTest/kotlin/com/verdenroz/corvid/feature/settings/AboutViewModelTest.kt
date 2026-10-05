@@ -1,5 +1,9 @@
 package com.verdenroz.corvid.feature.settings
 
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import com.verdenroz.corvid.core.data.UpdateRepository
 import com.verdenroz.corvid.core.data.userMessage
 import com.verdenroz.corvid.core.jmap.JmapError
@@ -203,13 +207,17 @@ class AboutViewModelTest {
         }
 
     @Test
-    fun `stopping ends polling`() =
+    fun `clearing ends polling`() =
         runViewModelTest {
             val fake = FakeJmapServer().apply { update.serveUpdates(BUSY) }
-            val viewModel = viewModel(fake)
+            val store = ViewModelStore()
+            val repository = UpdateRepository(fake.client())
+            val factory = viewModelFactory { initializer { AboutViewModel(repository, pollEvery = 3.seconds) } }
+            val viewModel = track(ViewModelProvider.create(store, factory)[AboutViewModel::class])
+            viewModel.await { it !is AboutState.Loading }
             val before = fake.requestCount
 
-            viewModel.stop()
+            store.clear()
             delay(10.seconds)
             withContext(Dispatchers.Default) { delay(200.milliseconds) }
 
