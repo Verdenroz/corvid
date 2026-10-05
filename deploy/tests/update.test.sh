@@ -89,6 +89,7 @@ run() {
   status=$?
 }
 deployed() { grep -q '^deploy new' "$work/log"; }
+pruned() { grep -qx 'image prune -f' "$work/podman.log"; }
 pulled() { grep -q '^pull' "$work/podman.log"; }
 valid_status() { python3 -m json.tool "$corvid/update/status.json" >/dev/null; }
 
@@ -135,6 +136,7 @@ check "the host deploy dir holds the new files" '[[ "$(cat "$corvid/deploy/which
 check "the previous deploy dir is kept" '[[ "$(cat "$corvid/deploy.prev/which")" == old ]]'
 check "tells deploy.sh not to queue its own check" '[[ "$(cat "$work/updating")" == $'"'"'bootstrap \ndeploy 1'"'"' ]]'
 check "the deployed image is recorded by the deploy" '[[ "$(cat "$corvid/.deployed-id")" == new ]]'
+check "prunes dangling images" 'pruned'
 check "records updated" 'valid_status && [[ "$(field result)" == updated && "$(field running)" == 1.1.0 && "$(field latest)" == 1.1.0 ]]'
 
 echo "== a failing deploy restores the previous image and files"
@@ -145,6 +147,7 @@ check "the registry tag points at the old image again" '[[ "$(tag ghcr.io/exampl
 check "the old deploy files are back" '[[ "$(cat "$corvid/deploy/which")" == old ]]'
 check "the old files were deployed again" '[[ "$(tail -1 "$work/log")" == "deploy old" ]]'
 check "records rolledBack" 'valid_status && [[ "$(field result)" == rolledBack && "$(field running)" == 1.0.0 && "$(field latest)" == 1.1.0 ]]'
+check "prunes dangling images" 'pruned'
 check "the restored image is the recorded one" '[[ "$(cat "$corvid/.deployed-id")" == old ]]'
 check "the failed release is remembered" '[[ "$(cat "$corvid/.update-failed")" == new ]]'
 
@@ -189,6 +192,7 @@ check "exits 0 and deploys nothing" '[[ $status -eq 0 && ! -s "$work/log" ]]'
 check "the local tag still points at the old image" '[[ "$(tag ghcr.io/example/corvid:stable)" == old ]]'
 check "records latest beside running" 'valid_status && [[ "$(field latest)" == 1.1.0 && "$(field running)" == 1.0.0 && "$(field result)" == skipped ]]'
 check "consumes the request" '[[ ! -e "$corvid/update/request" ]]'
+check "prunes dangling images" 'pruned'
 
 echo "== a check after a manual deploy leaves the units' tag alone"
 fresh; echo new > "$work/registry-id"; echo new > "$work/tags/ghcr.io_example_corvid_stable"

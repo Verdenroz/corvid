@@ -74,6 +74,7 @@ print(json.dumps(status))' >"$tmp"
 # CORVID_UPDATING keeps deploy.sh from queuing a check that would overwrite this run's status.
 deploy_from() { bash "$1/bootstrap.sh" && CORVID_UPDATING=1 bash "$1/deploy.sh"; }
 keep_old() { podman tag "$rollback_tag" "$ref"; }
+prune_images() { podman image prune -f >/dev/null; }
 
 mode=timer
 if [[ -e "$update_dir/request" ]]; then
@@ -129,6 +130,7 @@ if [[ "$new_id" == "$deployed_id" ]]; then
 fi
 if [[ "$mode" == check ]]; then
   keep_old
+  prune_images
   result=skipped
   detail="$latest is available; this was a check, so nothing was deployed"
   echo "$detail"
@@ -136,6 +138,7 @@ if [[ "$mode" == check ]]; then
 fi
 if [[ "$mode" == timer && "$new_id" == "$(cat "$failed_marker" 2>/dev/null)" ]]; then
   keep_old
+  prune_images
   result=skipped
   detail="$latest failed to deploy earlier; waiting for a newer release"
   echo "$detail"
@@ -155,6 +158,7 @@ mv "$deploy_dir.new" "$deploy_dir"
 
 if deploy_from "$deploy_dir"; then
   rm -f "$failed_marker"
+  prune_images
   running="$latest"
   result=updated
   detail=""
@@ -168,6 +172,7 @@ keep_old
 rm -rf "$deploy_dir"
 mv "$deploy_dir.prev" "$deploy_dir"
 if deploy_from "$deploy_dir"; then
+  prune_images
   result=rolledBack
   detail="$latest failed to deploy; $running is running again and verified"
 else
