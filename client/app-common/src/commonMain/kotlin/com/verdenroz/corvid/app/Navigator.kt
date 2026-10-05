@@ -15,6 +15,8 @@ internal class Navigator(
 
     val depth: Int get() = stack.size
 
+    val searching: Boolean get() = stack.any { it is Route.Search }
+
     operator fun get(index: Int): Route = stack[index]
 
     fun entryKey(index: Int): String = "$index ${stack[index].encode()}"

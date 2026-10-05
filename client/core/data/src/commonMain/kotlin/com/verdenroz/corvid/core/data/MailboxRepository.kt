@@ -1,5 +1,6 @@
 package com.verdenroz.corvid.core.data
 
+import com.verdenroz.corvid.core.html.flattenHtml
 import com.verdenroz.corvid.core.jmap.JmapClient
 import com.verdenroz.corvid.core.jmap.MethodOutcome
 import com.verdenroz.corvid.core.jmap.callOne
@@ -40,7 +41,7 @@ private const val MAX_BODY_VALUE_BYTES = 262_144
 internal val EMAIL_PROPERTIES = listOf("id", "threadId", "subject", "from", "receivedAt", "keywords", "preview") + PROVENANCE_PROPERTIES
 private val EMAIL_DETAIL_PROPERTIES =
     listOf(
-        "id", "subject", "from", "to", "cc", "replyTo", "messageId", "references", "receivedAt", "keywords",
+        "id", "subject", "from", "to", "cc", "replyTo", "messageId", "references", "receivedAt", "keywords", "preview",
         "textBody", "htmlBody", "bodyValues",
     ) + PROVENANCE_PROPERTIES
 
@@ -245,20 +246,28 @@ class MailboxRepository(private val jmapClient: JmapClient) {
     suspend fun updateKeywords(
         id: String,
         patch: Map<String, Boolean>,
-    ): String? {
+    ): String? = updateKeywords(listOf(id), patch)[id]
+
+    /** One request for every id in [ids]; the result maps each id the server refused to its reason. */
+    suspend fun updateKeywords(
+        ids: List<String>,
+        patch: Map<String, Boolean>,
+    ): Map<String, String> {
         val arguments =
             buildJsonObject {
                 putJsonObject("update") {
-                    putJsonObject(id) {
-                        patch.forEach {
-                                (keyword, set) ->
-                            put("keywords/${keyword.pointerEscaped()}", if (set) JsonPrimitive(true) else JsonNull)
+                    ids.forEach { id ->
+                        putJsonObject(id) {
+                            patch.forEach { (keyword, set) ->
+                                put("keywords/${keyword.pointerEscaped()}", if (set) JsonPrimitive(true) else JsonNull)
+                            }
                         }
                     }
                 }
             }
-        val refused = jmapClient.callOne("Email/set", arguments).setErrorReason("notUpdated", id)
-        if (refused == null) _keywordPatches.emit(KeywordPatch(id, patch))
+        val result = jmapClient.callOne("Email/set", arguments)
+        val refused = ids.mapNotNull { id -> result.setErrorReason("notUpdated", id)?.let { id to it } }.toMap()
+        ids.filter { it !in refused }.forEach { _keywordPatches.emit(KeywordPatch(it, patch)) }
         return refused
     }
 
@@ -348,6 +357,7 @@ private fun JsonObject.toEmailDetail(ownDomain: String?): EmailDetail {
         body = parts.joinToString("\n\n") { it.first },
         bodyTruncated = parts.any { it.second },
         html = htmlBody(bodyValues),
+        preview = getValue("preview").jsonPrimitive.content,
         keywords = getValue("keywords").jsonObject.keys,
         provenance = provenance(from, ownDomain),
     )

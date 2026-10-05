@@ -2,33 +2,29 @@ package com.verdenroz.corvid.feature.mailbox
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.Correction
 import com.verdenroz.corvid.core.data.MailboxRepository
+import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
-import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.LocalWideLayout
+import com.verdenroz.corvid.core.ui.PageHeader
 import com.verdenroz.corvid.core.ui.QuietPane
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_back
@@ -46,6 +42,8 @@ fun ReaderScreen(
 ) {
     val viewModel = remember(repository, emailId) { ReaderViewModel(repository, emailId) }
     val state by viewModel.state.collectAsState()
+    val onToggle = remember(viewModel) { viewModel::toggle }
+    val onAnswer = remember(viewModel) { viewModel::answer }
 
     val wide = LocalWideLayout.current
     Box(Modifier.fillMaxSize()) {
@@ -60,8 +58,8 @@ fun ReaderScreen(
                         current,
                         repository,
                         wide,
-                        viewModel::toggle,
-                        viewModel::answer,
+                        onToggle,
+                        onAnswer,
                         onCompose,
                         onOpenSender,
                     )
@@ -76,14 +74,7 @@ private fun ActionBar(
     onBack: () -> Unit,
 ) {
     Column {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().height(if (wide) 48.dp else 52.dp).padding(horizontal = 4.dp),
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(CorvidIcons.Back, contentDescription = stringResource(Res.string.mailbox_back), tint = CorvidTheme.colors.inkMuted)
-            }
-        }
+        PageHeader(null, stringResource(Res.string.mailbox_back), onBack)
         if (wide) HorizontalDivider(color = CorvidTheme.colors.line)
     }
 }
@@ -98,7 +89,7 @@ private fun ThreadColumn(
     onCompose: (ComposeIntent) -> Unit,
     onOpenSender: (String) -> Unit,
 ) {
-    val gutter = if (wide) 32.dp else 18.dp
+    val gutter = CorvidSpacing.readingGutter(wide)
     val threaded = state.messages.size > 1
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         Text(
@@ -122,8 +113,8 @@ private fun ThreadColumn(
                 threaded = threaded,
                 wide = wide,
                 teach = state.teach[email.id] ?: TeachState(),
-                onToggle = { onToggle(email.id) },
-                onAnswer = { onAnswer(email.id, it) },
+                onToggle = onToggle,
+                onAnswer = onAnswer,
                 onCompose = onCompose,
                 onOpenSender = onOpenSender,
             )

@@ -7,6 +7,7 @@ import com.verdenroz.corvid.core.model.NoticeKind
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.FakeNotice
 import com.verdenroz.corvid.core.testing.client
+import com.verdenroz.corvid.core.testing.serveNotices
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -26,7 +27,7 @@ class NoticeRepositoryTest {
         runTest {
             val fake =
                 FakeJmapServer().apply {
-                    notices = listOf(FakeNotice(7, "update", "2026-10-04T09:30:00Z", "Update failed", "pull failed"))
+                    notices.serveNotices(listOf(FakeNotice(7, "update", "2026-10-04T09:30:00Z", "Update failed", "pull failed")))
                 }
 
             assertEquals(
@@ -39,7 +40,7 @@ class NoticeRepositoryTest {
     fun `every kind the server writes is understood`() =
         runTest {
             val kinds = listOf("signIn", "tooManyAttempts", "ban", "update")
-            val fake = FakeJmapServer().apply { notices = kinds.mapIndexed { index, kind -> FakeNotice(index + 1L, kind) } }
+            val fake = FakeJmapServer().apply { notices.serveNotices(kinds.mapIndexed { index, kind -> FakeNotice(index + 1L, kind) }) }
 
             assertEquals(NoticeKind.entries, repository(fake).after()?.map { it.kind })
         }
@@ -47,26 +48,26 @@ class NoticeRepositoryTest {
     @Test
     fun `asking after an id returns only newer notices, oldest first, and says so on the wire`() =
         runTest {
-            val fake = FakeJmapServer().apply { notices = listOf(FakeNotice(1), FakeNotice(2), FakeNotice(3)) }
+            val fake = FakeJmapServer().apply { notices.serveNotices(listOf(FakeNotice(1), FakeNotice(2), FakeNotice(3))) }
 
             assertEquals(listOf(2L, 3L), repository(fake).after(1)?.map { it.id })
-            assertEquals(listOf<String?>("1"), fake.noticeReads)
+            assertEquals(listOf("after=1"), fake.notices.reads)
         }
 
     @Test
     fun `asking for everything sends no after`() =
         runTest {
-            val fake = FakeJmapServer().apply { notices = listOf(FakeNotice(1)) }
+            val fake = FakeJmapServer().apply { notices.serveNotices(listOf(FakeNotice(1))) }
 
             repository(fake).after()
 
-            assertEquals(listOf<String?>(null), fake.noticeReads)
+            assertEquals(listOf(""), fake.notices.reads)
         }
 
     @Test
     fun `an empty feed is an empty list, not an absent one`() =
         runTest {
-            assertEquals(emptyList(), repository(FakeJmapServer().apply { notices = emptyList() }).after())
+            assertEquals(emptyList(), repository(FakeJmapServer().apply { notices.serveNotices(emptyList()) }).after())
         }
 
     @Test
@@ -78,7 +79,7 @@ class NoticeRepositoryTest {
     @Test
     fun `a kind the client has never seen is refused loudly`() =
         runTest {
-            val fake = FakeJmapServer().apply { notices = listOf(FakeNotice(1, kind = "meteor")) }
+            val fake = FakeJmapServer().apply { notices.serveNotices(listOf(FakeNotice(1, kind = "meteor"))) }
 
             val failure = assertFailsWith<JmapException> { repository(fake).after() }
 
@@ -88,8 +89,8 @@ class NoticeRepositoryTest {
     @Test
     fun `a server error is a failure`() =
         runTest {
-            val fake = FakeJmapServer().apply { notices = listOf(FakeNotice(1)) }
-            fake.noticesBroken = true
+            val fake = FakeJmapServer().apply { notices.serveNotices(listOf(FakeNotice(1))) }
+            fake.notices.broken = true
 
             assertFailsWith<JmapException> { repository(fake).after() }
         }
@@ -97,10 +98,10 @@ class NoticeRepositoryTest {
     @Test
     fun `the bearer token travels with the request`() =
         runTest {
-            val fake = FakeJmapServer().apply { notices = emptyList() }
+            val fake = FakeJmapServer().apply { notices.serveNotices(emptyList()) }
 
             repository(fake, token = "tok").after()
 
-            assertEquals("Bearer tok", fake.noticesAuthorization)
+            assertEquals("Bearer tok", fake.notices.authorization)
         }
 }

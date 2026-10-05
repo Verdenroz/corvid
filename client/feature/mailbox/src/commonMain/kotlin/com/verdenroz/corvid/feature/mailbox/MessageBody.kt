@@ -7,6 +7,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
@@ -42,13 +43,14 @@ fun MessageBody(
     modifier: Modifier = Modifier,
 ) {
     val html = email.html
+    val context = remember(email.provenance, repository) { BodyContext(email.provenance, repository::proxiedImage) }
     val parsed = html?.let { parse(it.html, repository).value } ?: Parsed.Plain
     SelectionContainer(modifier) {
         Column {
             when (parsed) {
                 Parsed.Pending -> Unit
                 Parsed.Plain -> PlainBody(email)
-                is Parsed.Ready -> Blocks(parsed.blocks, BodyContext(email.provenance, repository::proxiedImage))
+                is Parsed.Ready -> Blocks(parsed.blocks, context)
             }
             if (html?.truncated ?: email.bodyTruncated) {
                 Text(

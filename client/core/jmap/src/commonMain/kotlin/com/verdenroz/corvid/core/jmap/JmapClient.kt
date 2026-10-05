@@ -117,46 +117,43 @@ class JmapClient private constructor(
     }
 
     /**
-     * A request to the web tier outside JMAP, such as `/corvid/update`, with the same bearer
-     * token. A 404 is a reply, not a failure: it means the server does not offer the path.
+     * A GET to the web tier outside JMAP, such as `/corvid/update`, with the same bearer token.
+     * A 404 is null, not a failure: it means the server does not offer the path.
      */
-    suspend fun webGet(path: String): WebReply = webCall(HttpMethod.Get, path, null)
+    suspend fun webGet(path: String): JsonObject? {
+        val response = webCall(HttpMethod.Get, path, null)
+        if (response.status != HttpStatusCode.OK) return null
+        return try {
+            response.body<JsonObject>()
+        } catch (e: NoTransformationFoundException) {
+            throw JmapException(JmapError.Request(type = "notJSON", detail = e.message))
+        } catch (e: SerializationException) {
+            throw JmapException(JmapError.Request(type = "notJSON", detail = e.message))
+        }
+    }
 
     suspend fun webPost(
         path: String,
         body: JsonObject,
-    ): WebReply = webCall(HttpMethod.Post, path, body)
+    ) {
+        webCall(HttpMethod.Post, path, body)
+    }
 
     private suspend fun webCall(
         method: HttpMethod,
         path: String,
         body: JsonObject?,
-    ): WebReply {
-        val response =
-            guarded(authLatch, passThrough = setOf(HttpStatusCode.NotFound)) {
-                httpClient.request("$baseUrl$path") {
-                    this.method = method
-                    bearerToken()?.let { header(HttpHeaders.Authorization, "Bearer $it") }
-                    body?.let {
-                        contentType(ContentType.Application.Json)
-                        setBody(it)
-                    }
+    ): HttpResponse =
+        guarded(authLatch, passThrough = setOf(HttpStatusCode.NotFound)) {
+            httpClient.request("$baseUrl$path") {
+                this.method = method
+                bearerToken()?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+                body?.let {
+                    contentType(ContentType.Application.Json)
+                    setBody(it)
                 }
             }
-        val json =
-            if (response.status != HttpStatusCode.OK) {
-                null
-            } else {
-                try {
-                    response.body<JsonObject>()
-                } catch (e: NoTransformationFoundException) {
-                    throw JmapException(JmapError.Request(type = "notJSON", detail = e.message))
-                } catch (e: SerializationException) {
-                    throw JmapException(JmapError.Request(type = "notJSON", detail = e.message))
-                }
-            }
-        return WebReply(response.status.value, json)
-    }
+        }
 
     /** The address the client dialled, which the web tier's own paths hang off. */
     val webBase: String get() = baseUrl.trimEnd('/')
@@ -195,12 +192,6 @@ class JmapClient private constructor(
         return response.body()
     }
 }
-
-/** [body] is the JSON object of a 200 answer, null for any other status. */
-class WebReply(
-    val status: Int,
-    val body: JsonObject?,
-)
 
 /**
  * A call can be answered more than once under its callId: RFC 8621 has

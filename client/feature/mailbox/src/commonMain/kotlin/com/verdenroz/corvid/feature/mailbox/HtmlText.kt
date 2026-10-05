@@ -2,15 +2,12 @@ package com.verdenroz.corvid.feature.mailbox
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.em
 import com.verdenroz.corvid.core.html.Inline
@@ -62,8 +59,7 @@ private fun AnnotatedString.Builder.liveLink(
     mismatchNote: (String) -> String,
     onOpen: (String) -> Unit,
 ) {
-    val style = TextLinkStyles(SpanStyle(color = palette.link, textDecoration = TextDecoration.Underline))
-    withLink(LinkAnnotation.Url(link.href, style) { onOpen(link.href) }) {
+    liveLink(link.href, palette.link, onOpen) {
         run.forEach { withStyle(it.marks.style(palette)) { append(it.text) } }
     }
     val host = link.host
@@ -78,11 +74,8 @@ private fun AnnotatedString.Builder.deadLink(
     palette: BodyPalette,
     disabledNote: String,
 ) {
-    run.forEach {
-        withStyle(it.marks.style(palette).copy(color = palette.dead, textDecoration = TextDecoration.LineThrough)) { append(it.text) }
-    }
-    append(" ")
-    withStyle(SpanStyle(color = palette.dead)) { append(disabledNote) }
+    run.forEach { withStyle(it.marks.style(palette).merge(deadStyle(palette.dead))) { append(it.text) } }
+    deadNote(palette.dead, disabledNote)
 }
 
 private fun Marks.style(palette: BodyPalette): SpanStyle {

@@ -12,8 +12,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -37,6 +35,7 @@ import com.verdenroz.corvid.core.model.FilterRule
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.DiscardQuestion
 import com.verdenroz.corvid.core.ui.GuardBack
+import com.verdenroz.corvid.core.ui.PageHeader
 import com.verdenroz.corvid.core.ui.QuietPane
 import com.verdenroz.corvid.feature.filters.resources.Res
 import com.verdenroz.corvid.feature.filters.resources.filters_add_rule
@@ -68,12 +67,10 @@ fun FiltersScreen(
     GuardBack(viewModel::back)
 
     Column(modifier = Modifier.fillMaxSize().background(CorvidTheme.colors.surface)) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 4.dp, top = 4.dp, end = 16.dp)) {
-            IconButton(
-                onClick = { if (!viewModel.back()) onBack() },
-            ) { Icon(CorvidIcons.Back, stringResource(Res.string.filters_back), tint = CorvidTheme.colors.inkMuted) }
-            Text(stringResource(Res.string.filters_title), style = CorvidTheme.type.headline)
-        }
+        PageHeader(
+            stringResource(Res.string.filters_title),
+            stringResource(Res.string.filters_back),
+        ) { if (!viewModel.back()) onBack() }
         when (val current = state) {
             is FiltersUiState.Loading -> Unit
             is FiltersUiState.Failed ->

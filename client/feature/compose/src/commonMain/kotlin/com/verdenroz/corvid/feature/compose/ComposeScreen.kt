@@ -91,11 +91,11 @@ fun ComposeScreen(
                         stringResource(
                             if (current.draftId == null) Res.string.compose_discard_question else Res.string.compose_discard_draft_question,
                         ),
-                        onDiscard = {
+                        onConfirm = {
                             viewModel.discard()
                             onClose()
                         },
-                        onKeep = viewModel::keepEditing,
+                        onCancel = viewModel::keepEditing,
                     )
                 }
                 Fields(current, onEdit = viewModel::edit, onRetrySave = viewModel::retrySave)

@@ -22,7 +22,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
@@ -50,8 +49,6 @@ import androidx.navigationevent.compose.rememberNavigationEventState
 import com.verdenroz.corvid.app.shell.HomeContent
 import com.verdenroz.corvid.app.shell.KeyState
 import com.verdenroz.corvid.app.shell.NarrowTopBar
-import com.verdenroz.corvid.app.shell.NoticeBannerBar
-import com.verdenroz.corvid.app.shell.SearchInput
 import com.verdenroz.corvid.app.shell.SearchTopBar
 import com.verdenroz.corvid.app.shell.TabsBar
 import com.verdenroz.corvid.app.shell.WideTopBar
@@ -69,47 +66,40 @@ import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.core.ui.WIDE_LAYOUT
 import com.verdenroz.corvid.feature.compose.ComposeScreen
 import com.verdenroz.corvid.feature.filters.FiltersScreen
+import com.verdenroz.corvid.feature.mailbox.LedgerSource
 import com.verdenroz.corvid.feature.mailbox.LedgerTab
+import com.verdenroz.corvid.feature.mailbox.LedgerViewModel
 import com.verdenroz.corvid.feature.mailbox.ReaderScreen
 import com.verdenroz.corvid.feature.mailbox.SearchScreen
 import com.verdenroz.corvid.feature.mailbox.SenderCard
 import com.verdenroz.corvid.feature.mailbox.SenderCardActions
 import com.verdenroz.corvid.feature.settings.NoticesScreen
 import com.verdenroz.corvid.feature.settings.NoticesViewModel
-import kotlinx.coroutines.delay
 import org.koin.compose.koinInject
 import org.koin.core.scope.Scope
-import kotlin.time.Duration.Companion.milliseconds
-
-private val SEARCH_DEBOUNCE = 350.milliseconds
 
 private fun KeyEvent.isSearchShortcut() = type == KeyEventType.KeyDown && key == Key.K && (isCtrlPressed || isMetaPressed)
 
 /** Every pointer event here resets the idle timer. */
 @Composable
 internal fun UnlockedContent(
-    host: String,
     hosts: AccountHosts,
     onLock: () -> Unit,
     onSignOut: () -> Unit,
     idleTimeout: IdleTimeoutController = koinInject(),
     preferences: DevicePreferences = koinInject(),
     scopeHolder: UnlockedScopeHolder = koinInject(),
-    notifier: NoticeNotifier = koinInject(),
-    backgroundDrop: BackgroundDropController = koinInject(),
 ) {
     val scope = scopeHolder.current()
     val repository = remember(scope) { scope.get<MailboxRepository>() }
     val shell = remember(scope) { ShellViewModel(repository) }
-    val notices = remember(scope) { Notices(scope.get<NoticeRepository>(), preferences, notifier) }
-    LaunchedEffect(notices) { notices.run(backgroundDrop.foregrounded) }
+    val notices = rememberNotices(scope)
     val ledgers = remember(repository) { Ledgers(repository) }
     DisposableEffect(ledgers) { onDispose { ledgers.clear() } }
-    val searches = remember(repository) { Searches(repository) }
-    DisposableEffect(searches) { onDispose { searches.clear() } }
+    val models = remember(scope) { EntryModels() }
+    DisposableEffect(models) { onDispose { models.clear() } }
 
     val autoLock = preferences.settings.collectAsState().value.autoLock.timeout
-    LaunchedEffect(autoLock) { idleTimeout.setTimeout(autoLock) }
     DisposableEffect(Unit) {
         idleTimeout.recordActivity()
         onDispose { idleTimeout.stop() }
@@ -120,7 +110,7 @@ internal fun UnlockedContent(
     val navigator = remember(backStack, saved) { Navigator(backStack, saved) }
     val route = navigator.route
     val entryKeys = (0 until navigator.depth).map(navigator::entryKey).toSet()
-    LaunchedEffect(entryKeys) { searches.retainOnly(entryKeys) }
+    LaunchedEffect(entryKeys) { models.retainOnly(entryKeys) }
     val home = route is Route.Home
     LaunchedEffect(home) { if (home) shell.refresh() }
     NavigationBackHandler(
@@ -129,20 +119,12 @@ internal fun UnlockedContent(
         onBackCompleted = navigator::handleBack,
     )
 
-    val searching = backStack.any { it is Route.Search }
-    var typed by rememberSaveable { mutableStateOf("") }
-    LaunchedEffect(searching) { if (!searching) typed = "" }
-    LaunchedEffect(typed) {
-        delay(SEARCH_DEBOUNCE)
-        navigator.search(typed)
-    }
-    val searchFocus = remember { FocusRequester() }
+    val searchInput = rememberSearchInput(navigator)
     val shellFocus = remember { FocusRequester() }
-    val searchInput = SearchInput(typed, { typed = it }, { navigator.search(typed) }, searchFocus)
 
     val shellState by shell.state.collectAsState()
-    val banner by notices.banner.collectAsState()
-    val key = remember(host, autoLock, onLock) { KeyState(host, idleTimeout.locksAt, autoLock, onLock) }
+    val session = SettingsSession(hosts, shellState.identity, onLock, onSignOut)
+    val key = remember(hosts, autoLock, onLock) { KeyState(hosts.short, idleTimeout.locksAt, autoLock, onLock) }
     BoxWithConstraints(
         Modifier.fillMaxSize().pointerInput(Unit) {
             awaitPointerEventScope {
@@ -158,19 +140,10 @@ internal fun UnlockedContent(
             LaunchedEffect(Unit) { shellFocus.requestFocus() }
             Column(
                 Modifier.fillMaxSize().focusRequester(shellFocus).focusable().onPreviewKeyEvent { event ->
-                    (wide && event.isSearchShortcut()).also { if (it) searchFocus.requestFocus() }
+                    (wide && event.isSearchShortcut()).also { if (it) searchInput.focus.requestFocus() }
                 },
             ) {
-                banner?.let { current ->
-                    NoticeBannerBar(
-                        current,
-                        onOpen = {
-                            notices.dismiss()
-                            if (route != Route.Notices) navigator.push(Route.Notices)
-                        },
-                        onDismiss = notices::dismiss,
-                    )
-                }
+                NoticesBanner(notices, navigator)
                 if (wide) {
                     WideTopBar(
                         key,
@@ -197,16 +170,9 @@ internal fun UnlockedContent(
                                             entry,
                                             navigator,
                                             scope,
-                                            searches,
+                                            models,
                                             entryKey,
-                                            settings = {
-                                                SettingsPage(
-                                                    preferences,
-                                                    scope,
-                                                    SettingsSession(hosts, shellState.identity, onLock, onSignOut),
-                                                    navigator,
-                                                )
-                                            },
+                                            session,
                                         ) { Home(it, key, shellState, navigator, ledgers) }
                                     }
                                 }
@@ -281,16 +247,17 @@ private fun Page(
     route: Route,
     navigator: Navigator,
     scope: Scope,
-    searches: Searches,
+    models: EntryModels,
     entryKey: String,
-    settings: @Composable () -> Unit,
+    session: SettingsSession,
     home: @Composable (Route.Home) -> Unit,
 ) {
+    val mailbox = remember(scope) { scope.get<MailboxRepository>() }
     when (route) {
         is Route.Home -> home(route)
         is Route.Reader ->
             ReaderScreen(
-                remember(scope) { scope.get<MailboxRepository>() },
+                mailbox,
                 route.emailId,
                 onBack = navigator::back,
                 onCompose = { navigator.push(Route.Compose(it)) },
@@ -298,15 +265,25 @@ private fun Page(
             )
         is Route.Search ->
             SearchScreen(
-                viewModel = if (route.query.isBlank()) null else searches.of(entryKey, route.query),
+                viewModel =
+                    if (route.query.isBlank()) {
+                        null
+                    } else {
+                        models.of(entryKey, LedgerViewModel::class) {
+                            LedgerViewModel(mailbox, LedgerSource.Search(route.query))
+                        }
+                    },
                 query = route.query,
                 onOpenEmail = { navigator.push(Route.Reader(it)) },
                 onOpenSender = { navigator.push(Route.Sender(it)) },
             )
         is Route.Compose -> ComposeScreen(remember(scope) { scope.get<ComposeRepository>() }, route.intent, onClose = navigator::back)
         is Route.Filters -> FiltersScreen(remember(scope) { scope.get<FiltersRepository>() }, onBack = navigator::back)
-        is Route.Settings -> settings()
-        is Route.Notices -> NoticesScreen(remember(scope) { NoticesViewModel(scope.get<NoticeRepository>()) }, onBack = navigator::back)
+        is Route.Settings -> SettingsPage(scope, session, navigator, models, entryKey)
+        is Route.Notices -> {
+            val viewModel = models.of(entryKey, NoticesViewModel::class) { NoticesViewModel(scope.get<NoticeRepository>()) }
+            NoticesScreen(viewModel, onBack = navigator::back)
+        }
         is Route.Sender ->
             SenderCard(
                 senders = remember(scope) { scope.get<SenderRepository>() },

@@ -49,7 +49,10 @@ data class Provenance(
     val suspect: Boolean get() = seal is Seal.Failed
 
     /** Whether a link this message carries may be opened: never from a suspect message, and only on web or mail schemes. */
-    fun canOpen(url: String): Boolean = !suspect && url.substringBefore(':').lowercase() in OPENABLE_SCHEMES
+    fun canOpen(url: String): Boolean = !suspect && isOpenableUrl(url)
 }
 
 private val OPENABLE_SCHEMES = setOf("http", "https", "mailto")
+
+/** The one allowlist of link schemes the client will hand to the system. */
+fun isOpenableUrl(url: String): Boolean = url.contains(':') && url.substringBefore(':').lowercase() in OPENABLE_SCHEMES

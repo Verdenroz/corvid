@@ -1,6 +1,7 @@
 package com.verdenroz.corvid.core.html
 
 import com.fleeksoft.ksoup.nodes.Element
+import com.verdenroz.corvid.core.model.isOpenableUrl
 
 private val DROPPED_TAGS =
     setOf(
@@ -9,7 +10,6 @@ private val DROPPED_TAGS =
         "meta", "link", "title", "base",
     )
 
-private val OPENABLE_SCHEMES = setOf("http", "https", "mailto")
 private val HIDING_STYLE = Regex("""display:none|visibility:hidden""")
 private val WHITESPACE = Regex("""\s+""")
 
@@ -18,10 +18,7 @@ internal fun Element.isDropped(): Boolean = tagName() in DROPPED_TAGS || hasAttr
 
 private fun Element.hasHidingStyle(): Boolean = HIDING_STYLE.containsMatchIn(attr("style").lowercase().replace(WHITESPACE, ""))
 
-internal fun safeLink(raw: String): String? {
-    val href = raw.trim()
-    return href.takeIf { it.substringBefore(':', "").lowercase() in OPENABLE_SCHEMES && it.contains(':') }
-}
+internal fun safeLink(raw: String): String? = raw.trim().takeIf(::isOpenableUrl)
 
 /** An image loads only from the user's own proxy path; [proxyBase] ends in `/i/`. */
 internal fun imageUrl(

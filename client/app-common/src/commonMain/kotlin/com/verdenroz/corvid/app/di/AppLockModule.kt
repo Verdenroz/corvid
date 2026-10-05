@@ -17,7 +17,7 @@ val appLockModule =
             IdleTimeoutController(
                 scope = get(applicationScopeQualifier),
                 onIdle = get<KeyHolder>()::drop,
-                timeout = get<DevicePreferences>().settings.value.autoLock.timeout,
+                timeout = { get<DevicePreferences>().settings.value.autoLock.timeout },
             )
         }
         single { BackgroundDropController(scope = get(applicationScopeQualifier), onTimeout = get<KeyHolder>()::drop) }

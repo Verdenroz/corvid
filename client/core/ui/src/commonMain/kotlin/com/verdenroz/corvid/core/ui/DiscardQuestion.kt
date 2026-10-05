@@ -20,8 +20,10 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 fun DiscardQuestion(
     question: String,
-    onDiscard: () -> Unit,
-    onKeep: () -> Unit,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+    confirmLabel: String = stringResource(Res.string.discard),
+    cancelLabel: String = stringResource(Res.string.keep_editing),
 ) {
     val colors = CorvidTheme.colors
     Row(
@@ -30,7 +32,7 @@ fun DiscardQuestion(
         modifier = Modifier.fillMaxWidth().background(colors.dangerSoft).padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
         Text(question, style = CorvidTheme.type.metaStrong, color = colors.onDangerSoft, modifier = Modifier.weight(1f))
-        PillButton(stringResource(Res.string.discard), null, onDiscard, height = 30.dp)
-        PillButton(stringResource(Res.string.keep_editing), null, onKeep, height = 30.dp)
+        PillButton(confirmLabel, null, onConfirm, height = 30.dp)
+        PillButton(cancelLabel, null, onCancel, height = 30.dp)
     }
 }

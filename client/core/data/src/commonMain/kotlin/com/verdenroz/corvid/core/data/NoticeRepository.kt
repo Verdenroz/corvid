@@ -1,9 +1,6 @@
 package com.verdenroz.corvid.core.data
 
 import com.verdenroz.corvid.core.jmap.JmapClient
-import com.verdenroz.corvid.core.jmap.JmapError
-import com.verdenroz.corvid.core.jmap.JmapException
-import com.verdenroz.corvid.core.jmap.JmapJson
 import com.verdenroz.corvid.core.model.Notice
 import com.verdenroz.corvid.core.model.NoticeKind
 import kotlinx.serialization.Serializable
@@ -27,13 +24,8 @@ private class WireNotice(
 class NoticeRepository(private val jmapClient: JmapClient) {
     /** Notices newer than [after], oldest first; null when the server does not offer the feed, as an older one does not. */
     suspend fun after(after: Long? = null): List<Notice>? {
-        val reply = jmapClient.webGet(if (after == null) NOTICES_PATH else "$NOTICES_PATH?after=$after")
-        val body = reply.body ?: return null
-        return try {
-            JmapJson.decodeFromJsonElement(WireNotices.serializer(), body).notices.map { it.toNotice() }
-        } catch (e: IllegalArgumentException) {
-            throw JmapException(JmapError.Request(type = "unrecognisedNotices", detail = e.message))
-        }
+        val body = jmapClient.webGet(if (after == null) NOTICES_PATH else "$NOTICES_PATH?after=$after") ?: return null
+        return body.decodeWeb(WireNotices.serializer(), "Notices") { wire -> wire.notices.map { it.toNotice() } }
     }
 }
 

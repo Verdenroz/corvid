@@ -1,9 +1,11 @@
 package com.verdenroz.corvid.core.testing
 
+import io.ktor.http.Parameters
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /** One `/corvid/update` answer; [result] is the wire spelling, so a test can send one the client has never seen. */
@@ -27,3 +29,9 @@ data class FakeUpdate(
             put("busy", busy)
         }
 }
+
+/** The `action` of each POST, in order. */
+val FakeWebEndpoint.actions: List<String> get() = posts.map { it.getValue("action").jsonPrimitive.content }
+
+/** Successive GETs report [reports] in order; the last stays. */
+fun FakeWebEndpoint.serveUpdates(vararg reports: FakeUpdate) = serveEach(reports.map { report -> { _: Parameters -> report.toJson() } })

@@ -5,6 +5,7 @@ import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.FakeNotice
 import com.verdenroz.corvid.core.testing.client
 import com.verdenroz.corvid.core.testing.runViewModelTest
+import com.verdenroz.corvid.core.testing.serveNotices
 import kotlinx.coroutines.flow.first
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -16,19 +17,19 @@ class NoticesViewModelTest {
     @Test
     fun `the list is every notice the server holds, newest first`() =
         runViewModelTest {
-            val fake = FakeJmapServer().apply { notices = listOf(FakeNotice(1), FakeNotice(2), FakeNotice(3)) }
+            val fake = FakeJmapServer().apply { notices.serveNotices(listOf(FakeNotice(1), FakeNotice(2), FakeNotice(3))) }
 
             val viewModel = track(NoticesViewModel(NoticeRepository(fake.client())))
 
             val ready = assertIs<NoticesState.Ready>(viewModel.settled())
             assertEquals(listOf(3L, 2L, 1L), ready.notices.map { it.id })
-            assertEquals(listOf<String?>(null), fake.noticeReads)
+            assertEquals(listOf(""), fake.notices.reads)
         }
 
     @Test
     fun `a server with no notices is an empty list`() =
         runViewModelTest {
-            val fake = FakeJmapServer().apply { notices = emptyList() }
+            val fake = FakeJmapServer().apply { notices.serveNotices(emptyList()) }
 
             val viewModel = track(NoticesViewModel(NoticeRepository(fake.client())))
 
@@ -46,8 +47,8 @@ class NoticesViewModelTest {
     @Test
     fun `a server error is a failure with a message`() =
         runViewModelTest {
-            val fake = FakeJmapServer().apply { notices = listOf(FakeNotice(1)) }
-            fake.noticesBroken = true
+            val fake = FakeJmapServer().apply { notices.serveNotices(listOf(FakeNotice(1))) }
+            fake.notices.broken = true
 
             val viewModel = track(NoticesViewModel(NoticeRepository(fake.client())))
 

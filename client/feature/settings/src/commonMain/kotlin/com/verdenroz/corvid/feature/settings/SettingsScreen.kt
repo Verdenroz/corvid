@@ -1,7 +1,6 @@
 package com.verdenroz.corvid.feature.settings
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,26 +9,20 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.verdenroz.corvid.core.data.UpdateRepository
-import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.prefs.AutoLock
 import com.verdenroz.corvid.core.prefs.ThemeChoice
+import com.verdenroz.corvid.core.ui.DiscardQuestion
 import com.verdenroz.corvid.core.ui.LocalWideLayout
+import com.verdenroz.corvid.core.ui.PageHeader
 import com.verdenroz.corvid.feature.settings.resources.Res
 import com.verdenroz.corvid.feature.settings.resources.settings_account
 import com.verdenroz.corvid.feature.settings.resources.settings_address
@@ -59,7 +52,7 @@ import com.verdenroz.corvid.feature.settings.resources.settings_theme_system
 import com.verdenroz.corvid.feature.settings.resources.settings_title
 import org.jetbrains.compose.resources.stringResource
 
-/** What the account section states; each is null until known, and a null row is left out. */
+/** What the account section states; the server is always known, the other rows are left out while null. */
 data class AccountFacts(
     val name: String?,
     val address: String?,
@@ -70,7 +63,7 @@ data class AccountFacts(
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
-    updates: UpdateRepository,
+    about: AboutViewModel,
     appVersion: String,
     account: AccountFacts,
     onBack: () -> Unit,
@@ -78,18 +71,11 @@ fun SettingsScreen(
     onOpenNotices: () -> Unit,
 ) {
     val state by viewModel.state.collectAsState()
-    val about = remember(updates) { AboutViewModel(updates) }
-    DisposableEffect(about) { onDispose(about::stop) }
     val aboutState by about.state.collectAsState()
     val gutter = CorvidSpacing.gutter(LocalWideLayout.current)
 
     Column(modifier = Modifier.fillMaxSize().background(CorvidTheme.colors.surface)) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 4.dp, top = 4.dp, end = 16.dp)) {
-            IconButton(onClick = onBack) {
-                Icon(CorvidIcons.Back, stringResource(Res.string.settings_back), tint = CorvidTheme.colors.inkMuted)
-            }
-            Text(stringResource(Res.string.settings_title), style = CorvidTheme.type.headline)
-        }
+        PageHeader(stringResource(Res.string.settings_title), stringResource(Res.string.settings_back), onBack)
         Column(
             Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = gutter).padding(bottom = 48.dp),
         ) {
@@ -149,29 +135,17 @@ private fun AccountSection(
         FactRow(stringResource(Res.string.settings_server), account.server)
         account.identityProvider?.let { FactRow(stringResource(Res.string.settings_identity_provider), it) }
         if (confirmingSignOut) {
-            SignOutQuestion(onConfirm = viewModel::confirmSignOut, onCancel = viewModel::keepSignedIn)
+            DiscardQuestion(
+                stringResource(Res.string.settings_sign_out_question),
+                viewModel::confirmSignOut,
+                viewModel::keepSignedIn,
+                confirmLabel = stringResource(Res.string.settings_sign_out),
+                cancelLabel = stringResource(Res.string.settings_cancel),
+            )
         } else {
             Row(Modifier.padding(vertical = 14.dp)) {
                 PillButton(stringResource(Res.string.settings_sign_out), null, viewModel::askSignOut)
             }
-        }
-    }
-}
-
-@Composable
-private fun SignOutQuestion(
-    onConfirm: () -> Unit,
-    onCancel: () -> Unit,
-) {
-    val colors = CorvidTheme.colors
-    Column(
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-        modifier = Modifier.fillMaxWidth().background(colors.dangerSoft, CorvidShape.medium).padding(16.dp),
-    ) {
-        Text(stringResource(Res.string.settings_sign_out_question), style = CorvidTheme.type.metaStrong, color = colors.onDangerSoft)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            PillButton(stringResource(Res.string.settings_sign_out), null, onConfirm, height = 30.dp)
-            PillButton(stringResource(Res.string.settings_cancel), null, onCancel, height = 30.dp)
         }
     }
 }
