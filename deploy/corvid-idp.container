@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Container]
 ContainerName=corvid-idp
-Image=ghcr.io/pocket-id/pocket-id:v1.6.2
+Image=ghcr.io/pocket-id/pocket-id:v2.17.0
 Pod=corvid.pod
 EnvironmentFile=/opt/corvid/idp.env
 EnvironmentFile=/opt/corvid/server.env
