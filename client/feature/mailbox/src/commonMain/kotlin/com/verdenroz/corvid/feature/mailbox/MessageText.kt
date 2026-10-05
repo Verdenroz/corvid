@@ -2,12 +2,7 @@ package com.verdenroz.corvid.feature.mailbox
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.LinkAnnotation
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 
 private val URL = Regex("""https?://[^\s<>"]+[^\s<>".,;:!?)\]]""")
@@ -29,18 +24,10 @@ internal fun messageText(
         for (match in URL.findAll(body)) {
             append(body.substring(from, match.range.first))
             if (disabled) {
-                withStyle(SpanStyle(color = deadColor, textDecoration = TextDecoration.LineThrough)) { append(match.value) }
-                append(" ")
-                withStyle(SpanStyle(color = deadColor)) { append(disabledNote) }
+                withStyle(deadStyle(deadColor)) { append(match.value) }
+                deadNote(deadColor, disabledNote)
             } else {
-                withLink(
-                    LinkAnnotation.Url(
-                        match.value,
-                        TextLinkStyles(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)),
-                    ) { onOpen(match.value) },
-                ) {
-                    append(match.value)
-                }
+                liveLink(match.value, linkColor, onOpen) { append(match.value) }
             }
             from = match.range.last + 1
         }

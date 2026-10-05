@@ -8,6 +8,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             implementation(libs.ksoup)
+            implementation(projects.core.model)
         }
     }
 }
