@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -26,7 +25,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -45,7 +43,6 @@ import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.core.ui.QuietPane
 import com.verdenroz.corvid.core.ui.provenance.SenderAvatar
-import com.verdenroz.corvid.core.ui.provenance.openUntrusted
 import com.verdenroz.corvid.core.ui.provenance.sealDescription
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_back
@@ -54,9 +51,7 @@ import com.verdenroz.corvid.feature.mailbox.resources.mailbox_gone
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_no_subject
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_reply
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_reply_all
-import com.verdenroz.corvid.feature.mailbox.resources.mailbox_truncated
 import com.verdenroz.corvid.feature.mailbox.resources.reader_cc
-import com.verdenroz.corvid.feature.mailbox.resources.reader_link_disabled
 import com.verdenroz.corvid.feature.mailbox.resources.reader_to
 import kotlinx.datetime.TimeZone
 import org.jetbrains.compose.resources.StringResource
@@ -85,6 +80,7 @@ fun ReaderScreen(
                 is ReaderUiState.Loaded ->
                     Reader(
                         current.email,
+                        repository,
                         wide,
                         onCompose,
                         onOpenSender,
@@ -115,13 +111,13 @@ private fun ActionBar(
 @Composable
 private fun Reader(
     email: EmailDetail,
+    repository: MailboxRepository,
     wide: Boolean,
     onCompose: (ComposeIntent) -> Unit,
     onOpenSender: (String) -> Unit,
     teach: @Composable (Label.Guess) -> Unit,
 ) {
     val colors = CorvidTheme.colors
-    val uriHandler = LocalUriHandler.current
     val padding =
         if (wide) {
             Modifier.padding(
@@ -144,28 +140,7 @@ private fun Reader(
             SenderLine(email, onOpenSender)
             Spacer(Modifier.height(16.dp))
             Custody(email, wide, teach)
-            if (email.bodyTruncated) {
-                Text(
-                    stringResource(Res.string.mailbox_truncated),
-                    style = CorvidTheme.type.meta,
-                    color = colors.danger,
-                    modifier = Modifier.padding(top = 12.dp),
-                )
-            }
-            SelectionContainer(Modifier.padding(top = 18.dp).widthIn(max = 640.dp)) {
-                Text(
-                    messageText(
-                        email.body,
-                        disabled = email.provenance.suspect,
-                        linkColor = colors.accent,
-                        deadColor = colors.inkFaint,
-                        disabledNote = stringResource(Res.string.reader_link_disabled),
-                        onOpen = { uriHandler.openUntrusted(it, email.provenance) },
-                    ),
-                    style = CorvidTheme.type.body,
-                    color = colors.ink,
-                )
-            }
+            MessageBody(email, repository, Modifier.padding(top = 18.dp).widthIn(max = 640.dp))
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),

@@ -12,7 +12,7 @@ internal fun mismatchedHost(
     return shown.lowercase().removePrefix("www.") != target.removePrefix("www.")
 }
 
-private fun hostOf(href: String): String? {
+internal fun hostOf(href: String): String? {
     if (!href.contains("://")) return null
     val authority = href.substringAfter("://").substringBefore('/').substringBefore('?').substringBefore('#')
     return authority.substringAfterLast('@').substringBefore(':').lowercase().ifEmpty { null }

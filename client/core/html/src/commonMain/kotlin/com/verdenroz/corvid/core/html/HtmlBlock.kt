@@ -9,7 +9,9 @@ data class Marks(
 )
 
 /** [mismatched] is set when the link's visible text names a different host than [href]. */
-data class Link(val href: String, val mismatched: Boolean = false)
+data class Link(val href: String, val mismatched: Boolean = false) {
+    val host: String? get() = hostOf(href)
+}
 
 sealed interface Inline {
     data class Text(val text: String, val marks: Marks = Marks(), val link: Link? = null) : Inline
