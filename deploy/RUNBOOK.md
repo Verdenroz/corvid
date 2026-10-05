@@ -268,7 +268,9 @@ again. A release that failed is not retried until a newer one is tagged. It send
 outcome is in `status.json`, which the Corvid app surfaces, and the log is
 `journalctl -u corvid-update.service`.
 
-Every run writes `/opt/corvid/update/status.json`. Writing `check` or `apply` to
+Every run writes `/opt/corvid/update/status.json`, first marking it `busy: true` while the run
+works. A busy report repeats the previous outcome; on a host's first run, with nothing to repeat, it
+reads `skipped` with detail "the first run is in progress". Watchers ignore a busy report. Writing `check` or `apply` to
 `/opt/corvid/update/request` starts a run on demand: `check` only records the latest version, and
 `apply` updates even with `update.auto: false`. `deploy.sh` queues a `check` when it finishes, so
 a fresh or redeployed host has a status within seconds.

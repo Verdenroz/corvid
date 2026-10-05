@@ -14,6 +14,7 @@ struct Status {
     result: String,
     checked_at: Option<String>,
     detail: Option<String>,
+    busy: bool,
 }
 
 /// Polls the updater's `status.json` forever, turning each failed or rolled-back update into a
@@ -37,6 +38,9 @@ async fn check(state: Arc<AppState>, dir: PathBuf) -> io::Result<()> {
         Err(error) => return Err(error),
     };
     let status: Status = serde_json::from_slice(&body).map_err(io::Error::other)?;
+    if status.busy {
+        return Ok(());
+    }
     let title = match status.result.as_str() {
         "rolledBack" => "Update rolled back",
         "failed" => "Update failed",

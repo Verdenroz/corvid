@@ -19,8 +19,12 @@ fn start(dir: &Path) {
 }
 
 fn status(result: &str, checked_at: &str, detail: &str) -> String {
+    report(result, checked_at, detail, false)
+}
+
+fn report(result: &str, checked_at: &str, detail: &str, busy: bool) -> String {
     format!(
-        r#"{{"running":"v1","latest":"v2","checkedAt":"{checked_at}","result":"{result}","detail":"{detail}","auto":true,"busy":false}}"#
+        r#"{{"running":"v1","latest":"v2","checkedAt":"{checked_at}","result":"{result}","detail":"{detail}","auto":true,"busy":{busy}}}"#
     )
 }
 
@@ -89,6 +93,21 @@ async fn updated_current_and_skipped_results_add_nothing() {
         .unwrap();
         settle().await;
     }
+
+    assert!(!dir.path().join("sentinel.json").exists());
+}
+
+#[tokio::test]
+async fn a_busy_report_is_never_noticed_even_when_it_repeats_a_failure() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("status.json");
+    std::fs::write(
+        &path,
+        report("failed", "2026-10-04T01:00:00Z", "stopped", true),
+    )
+    .unwrap();
+    start(dir.path());
+    settle().await;
 
     assert!(!dir.path().join("sentinel.json").exists());
 }

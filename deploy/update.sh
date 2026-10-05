@@ -61,8 +61,11 @@ status = {
     "auto": e["AUTO"] == "true",
     "busy": e["BUSY"] == "true",
 }
-if status["busy"] and os.path.exists(e["PRIOR"]):
-    status = {**json.load(open(e["PRIOR"])), "busy": True}
+if status["busy"]:
+    if os.path.exists(e["PRIOR"]):
+        status = {**json.load(open(e["PRIOR"])), "busy": True}
+    else:
+        status = {**status, "result": "skipped", "detail": "the first run is in progress"}
 print(json.dumps(status))' >"$tmp"
   chmod 644 "$tmp"
   mv "$tmp" "$update_dir/status.json"

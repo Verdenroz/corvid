@@ -26,6 +26,7 @@ esac
 case "$1" in
   tag) resolve "$2" > "$(tagfile "$3")" ;;
   pull)
+    cp "$CORVID_DIR/update/status.json" "$WORK/during" 2>/dev/null
     [[ ! -e "$WORK/pull-fails" ]] || exit 1
     cat "$WORK/registry-id" > "$(tagfile "$3")" ;;
   create) echo "ctr-$(resolve "$2")" ;;
@@ -69,7 +70,7 @@ tag() { cat "$work/tags/$(echo "$1" | tr '/:' '__')"; }
 # fresh: a host running "old" from the registry tag, the registry still serving "old"
 fresh() {
   rm -rf "$corvid" "$work/tags" "$work/log" "$work/updating" "$work/podman.log" \
-    "$work"/*-fails "$work/pull-fails" "$work/masked"
+    "$work"/*-fails "$work/pull-fails" "$work/masked" "$work/during"
   mkdir -p "$corvid/deploy" "$corvid/update" "$work/tags"
   cp -a "$work/images/old/." "$corvid/deploy/"
   cp "$here/update.sh" "$here/lib.sh" "$corvid/deploy/"
@@ -97,6 +98,18 @@ check "exits 0" '[[ $status -eq 0 ]]'
 check "prints nothing" '[[ ! -s "$work/out" ]]'
 check "deploys nothing" '[[ ! -s "$work/log" ]]'
 check "records current" '[[ "$(field result)" == current && "$(field running)" == 1.0.0 && "$(field busy)" == False ]]'
+
+echo "== the first run reports busy without claiming a failure"
+fresh; rm "$corvid/update/status.json" 2>/dev/null; echo new > "$work/registry-id"
+run check
+check "the busy write is skipped, not failed" '[[ "$(python3 -c "import json; d = json.load(open(\"$work/during\")); print(d[\"busy\"], d[\"result\"])")" == "True skipped" ]]'
+check "the finished run is not busy" '[[ "$(field busy)" == False ]]'
+
+echo "== a busy write keeps the prior result"
+fresh
+run check
+run check
+check "the busy write repeats the last outcome" '[[ "$(python3 -c "import json; print(json.load(open(\"$work/during\"))[\"result\"])")" == current ]]'
 
 echo "== a localhost ref never updates"
 fresh; echo localhost/corvid:0.1.0 > "$corvid/image.ref"; echo new > "$work/registry-id"
