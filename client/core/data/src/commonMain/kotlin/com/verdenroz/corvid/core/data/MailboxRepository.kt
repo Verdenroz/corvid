@@ -1,5 +1,6 @@
 package com.verdenroz.corvid.core.data
 
+import com.verdenroz.corvid.core.html.flattenHtml
 import com.verdenroz.corvid.core.jmap.JmapClient
 import com.verdenroz.corvid.core.jmap.MethodOutcome
 import com.verdenroz.corvid.core.jmap.callOne

@@ -12,17 +12,10 @@ kotlin {
             api(libs.kotlinx.datetime)
             api(projects.core.text)
             implementation(projects.core.common)
+            implementation(projects.core.html)
             implementation(projects.core.jmap)
             implementation(libs.koin.core)
             implementation(libs.kotlinx.serialization.json)
-        }
-        androidMain.dependencies {
-            implementation(libs.jsoup)
-        }
-        val desktopMain by getting {
-            dependencies {
-                implementation(libs.jsoup)
-            }
         }
         commonTest.dependencies {
             implementation(projects.core.testing)
