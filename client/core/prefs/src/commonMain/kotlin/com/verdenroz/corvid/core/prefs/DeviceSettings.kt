@@ -15,8 +15,9 @@ enum class AutoLock(val minutes: Int) {
     val timeout: Duration get() = minutes.minutes
 }
 
-/** Choices that belong to this device and hold no mail, so they live in a plain file. */
+/** Choices that belong to this device and hold no mail, so they live in a plain file. [noticesSeen] is the newest server notice id shown here. */
 data class DeviceSettings(
     val theme: ThemeChoice = ThemeChoice.System,
     val autoLock: AutoLock = AutoLock.FiveMinutes,
+    val noticesSeen: Long = 0,
 )

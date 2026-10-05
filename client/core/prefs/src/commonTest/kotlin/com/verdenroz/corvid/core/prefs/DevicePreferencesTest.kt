@@ -3,6 +3,7 @@ package com.verdenroz.corvid.core.prefs
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.preferencesOf
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.verdenroz.corvid.core.testing.InMemoryPreferencesStore
@@ -50,6 +51,31 @@ class DevicePreferencesTest {
 
             assertEquals(DeviceSettings(ThemeChoice.Light, AutoLock.ThirtyMinutes), prefs.settings.value)
         }
+
+    @Test
+    fun `the newest notice seen starts at zero and is published once set`() =
+        runTest {
+            val prefs = preferences()
+            runCurrent()
+            assertEquals(0, prefs.settings.value.noticesSeen)
+
+            prefs.setNoticesSeen(41)
+            runCurrent()
+
+            assertEquals(41, prefs.settings.value.noticesSeen)
+        }
+
+    @Test
+    fun `a file written before notices existed reads as nothing seen and keeps its choices`() {
+        val preferences = preferencesOf(stringPreferencesKey("theme") to "Dark", intPreferencesKey("auto_lock_minutes") to 15)
+
+        assertEquals(DeviceSettings(ThemeChoice.Dark, AutoLock.FifteenMinutes, noticesSeen = 0), decode(preferences))
+    }
+
+    @Test
+    fun `a stored notice id is read back`() {
+        assertEquals(9, decode(preferencesOf(longPreferencesKey("notices_seen") to 9L)).noticesSeen)
+    }
 
     @Test
     fun `stored values the app does not offer fall back to the defaults`() {

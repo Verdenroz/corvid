@@ -41,5 +41,6 @@ internal fun SettingsPage(
         account,
         onBack = navigator::back,
         onOpenFilters = { navigator.push(Route.Filters) },
+        onOpenNotices = { navigator.push(Route.Notices) },
     )
 }

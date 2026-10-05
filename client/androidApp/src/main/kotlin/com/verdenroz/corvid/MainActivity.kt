@@ -1,10 +1,13 @@
 package com.verdenroz.corvid
 
+import android.Manifest
+import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import com.verdenroz.corvid.app.BackgroundDropController
 import com.verdenroz.corvid.app.CorvidApp
 import org.koin.android.ext.android.inject
@@ -20,6 +23,9 @@ class MainActivity : ComponentActivity() {
         window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         authFlowFactory.registerActivity(this)
         enableEdgeToEdge()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerForActivityResult(ActivityResultContracts.RequestPermission()) {}.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
         setContent { CorvidApp() }
     }
 

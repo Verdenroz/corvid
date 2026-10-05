@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Corvid</string>
+    <string name="notice_channel">Server notices</string>
+    <string name="notice_generic">A server notice</string>
 </resources>

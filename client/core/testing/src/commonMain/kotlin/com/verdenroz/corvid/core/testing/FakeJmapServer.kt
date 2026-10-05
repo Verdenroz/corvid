@@ -19,6 +19,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
@@ -133,6 +134,19 @@ class FakeJmapServer {
     var updateAuthorization: String? = null
         private set
 
+    /** The sentinel's feed, oldest first; null answers `/corvid/notices` with 404, as an older server does. */
+    var notices: List<FakeNotice>? = null
+
+    /** Answers GET `/corvid/notices` with a 500. */
+    var noticesBroken: Boolean = false
+
+    /** The `after` of each GET of `/corvid/notices`, in order; null when it was absent. */
+    val noticeReads: MutableList<String?> = mutableListOf()
+
+    /** The Authorization header the last `/corvid/notices` request carried. */
+    var noticesAuthorization: String? = null
+        private set
+
     var requestCount: Int = 0
         private set
 
@@ -150,6 +164,7 @@ class FakeJmapServer {
             path.startsWith("/jmap/download/") -> downloadResponse(path)
             path.startsWith("/i/") -> imageResponse(request, path)
             path == "/corvid/update" -> updateResponse(request)
+            path == "/corvid/notices" -> noticesResponse(request)
             else -> respond("not found", HttpStatusCode.NotFound)
         }
     }
@@ -199,6 +214,17 @@ class FakeJmapServer {
         }
         if (updateAfterReads.isNotEmpty()) update = updateAfterReads.removeAt(0)
         return respond(current.toJson().toString(), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, listOf("application/json")))
+    }
+
+    private fun MockRequestHandleScope.noticesResponse(request: HttpRequestData): HttpResponseData {
+        noticesAuthorization = request.headers[HttpHeaders.Authorization]
+        val feed = notices ?: return respond("not found", HttpStatusCode.NotFound)
+        if (noticesBroken) return respond("", HttpStatusCode.InternalServerError)
+        val after = request.url.parameters["after"]
+        noticeReads += after
+        val newer = feed.filter { it.id > (after?.toLong() ?: 0) }
+        val body = buildJsonObject { putJsonArray("notices") { newer.forEach { add(it.toJson()) } } }
+        return respond(body.toString(), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, listOf("application/json")))
     }
 
     private fun MockRequestHandleScope.sessionResponse(): HttpResponseData {

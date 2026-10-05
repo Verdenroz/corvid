@@ -50,6 +50,7 @@ import androidx.navigationevent.compose.rememberNavigationEventState
 import com.verdenroz.corvid.app.shell.HomeContent
 import com.verdenroz.corvid.app.shell.KeyState
 import com.verdenroz.corvid.app.shell.NarrowTopBar
+import com.verdenroz.corvid.app.shell.NoticeBannerBar
 import com.verdenroz.corvid.app.shell.SearchInput
 import com.verdenroz.corvid.app.shell.SearchTopBar
 import com.verdenroz.corvid.app.shell.TabsBar
@@ -57,6 +58,7 @@ import com.verdenroz.corvid.app.shell.WideTopBar
 import com.verdenroz.corvid.core.data.ComposeRepository
 import com.verdenroz.corvid.core.data.FiltersRepository
 import com.verdenroz.corvid.core.data.MailboxRepository
+import com.verdenroz.corvid.core.data.NoticeRepository
 import com.verdenroz.corvid.core.data.SenderRepository
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
@@ -72,6 +74,8 @@ import com.verdenroz.corvid.feature.mailbox.ReaderScreen
 import com.verdenroz.corvid.feature.mailbox.SearchScreen
 import com.verdenroz.corvid.feature.mailbox.SenderCard
 import com.verdenroz.corvid.feature.mailbox.SenderCardActions
+import com.verdenroz.corvid.feature.settings.NoticesScreen
+import com.verdenroz.corvid.feature.settings.NoticesViewModel
 import kotlinx.coroutines.delay
 import org.koin.compose.koinInject
 import org.koin.core.scope.Scope
@@ -91,10 +95,14 @@ internal fun UnlockedContent(
     idleTimeout: IdleTimeoutController = koinInject(),
     preferences: DevicePreferences = koinInject(),
     scopeHolder: UnlockedScopeHolder = koinInject(),
+    notifier: NoticeNotifier = koinInject(),
+    backgroundDrop: BackgroundDropController = koinInject(),
 ) {
     val scope = scopeHolder.current()
     val repository = remember(scope) { scope.get<MailboxRepository>() }
     val shell = remember(scope) { ShellViewModel(repository) }
+    val notices = remember(scope) { Notices(scope.get<NoticeRepository>(), preferences, notifier) }
+    LaunchedEffect(notices) { notices.run(backgroundDrop.foregrounded) }
     val ledgers = remember(repository) { Ledgers(repository) }
     DisposableEffect(ledgers) { onDispose { ledgers.clear() } }
     val searches = remember(repository) { Searches(repository) }
@@ -133,6 +141,7 @@ internal fun UnlockedContent(
     val searchInput = SearchInput(typed, { typed = it }, { navigator.search(typed) }, searchFocus)
 
     val shellState by shell.state.collectAsState()
+    val banner by notices.banner.collectAsState()
     val key = remember(host, autoLock, onLock) { KeyState(host, idleTimeout.locksAt, autoLock, onLock) }
     BoxWithConstraints(
         Modifier.fillMaxSize().pointerInput(Unit) {
@@ -152,6 +161,16 @@ internal fun UnlockedContent(
                     (wide && event.isSearchShortcut()).also { if (it) searchFocus.requestFocus() }
                 },
             ) {
+                banner?.let { current ->
+                    NoticeBannerBar(
+                        current,
+                        onOpen = {
+                            notices.dismiss()
+                            if (route != Route.Notices) navigator.push(Route.Notices)
+                        },
+                        onDismiss = notices::dismiss,
+                    )
+                }
                 if (wide) {
                     WideTopBar(
                         key,
@@ -287,6 +306,7 @@ private fun Page(
         is Route.Compose -> ComposeScreen(remember(scope) { scope.get<ComposeRepository>() }, route.intent, onClose = navigator::back)
         is Route.Filters -> FiltersScreen(remember(scope) { scope.get<FiltersRepository>() }, onBack = navigator::back)
         is Route.Settings -> settings()
+        is Route.Notices -> NoticesScreen(remember(scope) { NoticesViewModel(scope.get<NoticeRepository>()) }, onBack = navigator::back)
         is Route.Sender ->
             SenderCard(
                 senders = remember(scope) { scope.get<SenderRepository>() },
