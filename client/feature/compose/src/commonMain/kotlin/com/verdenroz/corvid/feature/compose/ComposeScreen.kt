@@ -46,11 +46,15 @@ import com.verdenroz.corvid.feature.compose.resources.Res
 import com.verdenroz.corvid.feature.compose.resources.compose_bcc
 import com.verdenroz.corvid.feature.compose.resources.compose_cc
 import com.verdenroz.corvid.feature.compose.resources.compose_close
+import com.verdenroz.corvid.feature.compose.resources.compose_discard_draft_question
 import com.verdenroz.corvid.feature.compose.resources.compose_discard_question
 import com.verdenroz.corvid.feature.compose.resources.compose_message
+import com.verdenroz.corvid.feature.compose.resources.compose_not_saved
+import com.verdenroz.corvid.feature.compose.resources.compose_retry_save
 import com.verdenroz.corvid.feature.compose.resources.compose_send
 import com.verdenroz.corvid.feature.compose.resources.compose_show_copies
 import com.verdenroz.corvid.feature.compose.resources.compose_subject
+import com.verdenroz.corvid.feature.compose.resources.compose_title_draft
 import com.verdenroz.corvid.feature.compose.resources.compose_title_forward
 import com.verdenroz.corvid.feature.compose.resources.compose_title_new
 import com.verdenroz.corvid.feature.compose.resources.compose_title_reply
@@ -84,7 +88,9 @@ fun ComposeScreen(
             is ComposeUiState.Editing -> {
                 if (current.confirmingDiscard) {
                     DiscardQuestion(
-                        stringResource(Res.string.compose_discard_question),
+                        stringResource(
+                            if (current.draftId == null) Res.string.compose_discard_question else Res.string.compose_discard_draft_question,
+                        ),
                         onDiscard = {
                             viewModel.discard()
                             onClose()
@@ -92,7 +98,7 @@ fun ComposeScreen(
                         onKeep = viewModel::keepEditing,
                     )
                 }
-                Fields(current, onEdit = viewModel::edit)
+                Fields(current, onEdit = viewModel::edit, onRetrySave = viewModel::retrySave)
             }
         }
     }
@@ -109,6 +115,7 @@ private fun Bar(
         when (intent) {
             is ComposeIntent.Reply -> Res.string.compose_title_reply
             is ComposeIntent.Forward -> Res.string.compose_title_forward
+            is ComposeIntent.Draft -> Res.string.compose_title_draft
             else -> Res.string.compose_title_new
         }
     Row(
@@ -129,8 +136,10 @@ private fun Bar(
 private fun Fields(
     state: ComposeUiState.Editing,
     onEdit: (ComposeForm.() -> ComposeForm) -> Unit,
+    onRetrySave: () -> Unit,
 ) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        if (state.saveFailed) NotSaved(onRetrySave)
         state.error?.let {
             Text(
                 it.asString(),
@@ -151,6 +160,23 @@ private fun Fields(
         }
         Field(stringResource(Res.string.compose_subject), state.form.subject) { onEdit { copy(subject = it) } }
         Body(state.form.body) { onEdit { copy(body = it) } }
+    }
+}
+
+@Composable
+private fun NotSaved(onRetry: () -> Unit) {
+    val colors = CorvidTheme.colors
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+    ) {
+        Text(stringResource(Res.string.compose_not_saved), style = CorvidTheme.type.meta, color = colors.inkMuted)
+        Text(
+            stringResource(Res.string.compose_retry_save),
+            style = CorvidTheme.type.metaStrong,
+            color = colors.accent,
+            modifier = Modifier.clickable(onClick = onRetry).padding(horizontal = 12.dp, vertical = 8.dp),
+        )
     }
 }
 

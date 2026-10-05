@@ -23,6 +23,7 @@ class RouteTest {
                 Route.Compose(ComposeIntent.Reply("e1", all = false)),
                 Route.Compose(ComposeIntent.Reply("e1", all = true)),
                 Route.Compose(ComposeIntent.Forward("e1")),
+                Route.Compose(ComposeIntent.Draft("d1")),
             )
 
         assertEquals(routes, routes.map { decodeRoute(it.encode()) })

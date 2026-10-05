@@ -18,5 +18,9 @@
     <string name="compose_title_reply">Reply</string>
     <string name="compose_title_forward">Forward</string>
     <string name="compose_discard_question">Discard this message?</string>
+    <string name="compose_discard_draft_question">Discard this draft?</string>
+    <string name="compose_not_saved">Not saved</string>
+    <string name="compose_retry_save">Retry</string>
+    <string name="compose_title_draft">Draft</string>
     <string name="compose_show_copies">Cc, Bcc</string>
 </resources>
