@@ -87,6 +87,12 @@ class MailboxRepository(private val jmapClient: JmapClient) {
     /** Every patch [updateKeywords] got through, so a list already on screen can apply it without refetching. */
     val keywordPatches: SharedFlow<KeywordPatch> = _keywordPatches
 
+    /** The one path images in delivered mail may load from: the milter rewrites each remote image to it. */
+    val imageProxyBase: String get() = "${jmapClient.webBase}/i/"
+
+    /** Never fetches outside [imageProxyBase], whatever the caller passes. */
+    suspend fun proxiedImage(url: String): ByteArray? = if (url.startsWith(imageProxyBase)) jmapClient.fetchPublic(url) else null
+
     suspend fun mailboxes(): List<Mailbox> =
         jmapClient.callOne("Mailbox/get", JsonObject(emptyMap())).getValue("list").jsonArray.map { it.jsonObject.toMailbox() }
 

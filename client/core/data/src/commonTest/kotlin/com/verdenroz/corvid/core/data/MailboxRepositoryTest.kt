@@ -387,4 +387,42 @@ class MailboxRepositoryTest {
 
             assertEquals(requests, fake.requestCount)
         }
+
+    @Test
+    fun `a proxied image is fetched without credentials`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.proxiedImages["abc.sig"] = byteArrayOf(1, 2, 3)
+            val repository = MailboxRepository(fake.client(bearerToken = "secret"))
+
+            val bytes = repository.proxiedImage("${repository.imageProxyBase}abc.sig")
+
+            assertEquals(listOf<Byte>(1, 2, 3), bytes?.toList())
+            assertEquals(listOf<String?>(null), fake.imageAuthorizations)
+        }
+
+    @Test
+    fun `an image outside the proxy path is never requested`() =
+        runTest {
+            val fake = FakeJmapServer()
+            val repository = MailboxRepository(fake.client())
+            val before = fake.requestCount
+
+            assertNull(repository.proxiedImage("https://cdn.example.test/i/a.png"))
+            assertNull(repository.proxiedImage("http://127.0.0.1:9999/jmap/download/u1/b/x"))
+            assertEquals(before, fake.requestCount)
+        }
+
+    @Test
+    fun `a missing or unreachable proxied image is null and leaves the session alone`() =
+        runTest {
+            val fake = FakeJmapServer()
+            val repository = MailboxRepository(fake.client())
+
+            assertNull(repository.proxiedImage("${repository.imageProxyBase}gone"))
+            fake.unreachable = true
+            assertNull(repository.proxiedImage("${repository.imageProxyBase}gone"))
+            fake.unreachable = false
+            assertEquals(emptyList(), repository.mailboxes())
+        }
 }

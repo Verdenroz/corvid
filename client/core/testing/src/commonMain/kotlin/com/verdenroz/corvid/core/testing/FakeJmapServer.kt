@@ -87,6 +87,12 @@ class FakeJmapServer {
     val fileNodes: MutableList<FakeFileNode> = mutableListOf()
     val sieveScripts: MutableList<FakeSieveScript> = mutableListOf()
     val blobs: MutableMap<String, ByteArray> = mutableMapOf()
+
+    /** Bodies served under `/i/`, as the image proxy serves them, keyed by the path after it. */
+    val proxiedImages: MutableMap<String, ByteArray> = mutableMapOf()
+
+    /** The Authorization header of each `/i/` request, null where there was none. */
+    val imageAuthorizations: MutableList<String?> = mutableListOf()
     private var nextFileNodeId = 1
     private var nextSieveScriptId = 1
     private var nextBlobId = 1
@@ -142,6 +148,7 @@ class FakeJmapServer {
             path.endsWith("/jmap/api/") -> apiResponse(request)
             path.startsWith("/jmap/upload/") -> uploadResponse(request)
             path.startsWith("/jmap/download/") -> downloadResponse(path)
+            path.startsWith("/i/") -> imageResponse(request, path)
             path == "/corvid/update" -> updateResponse(request)
             else -> respond("not found", HttpStatusCode.NotFound)
         }
@@ -160,6 +167,15 @@ class FakeJmapServer {
                 put("size", bytes.size)
             }
         return respond(body.toString(), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, listOf("application/json")))
+    }
+
+    private fun MockRequestHandleScope.imageResponse(
+        request: HttpRequestData,
+        path: String,
+    ): HttpResponseData {
+        imageAuthorizations += request.headers[HttpHeaders.Authorization]
+        val bytes = proxiedImages[path.removePrefix("/i/")] ?: return respond("", HttpStatusCode.NotFound)
+        return respond(bytes, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, listOf("image/png")))
     }
 
     private fun MockRequestHandleScope.downloadResponse(path: String): HttpResponseData {
