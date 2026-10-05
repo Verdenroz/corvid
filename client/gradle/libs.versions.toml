@@ -21,6 +21,7 @@ ktor = "3.5.2"
 kalinjulOidc = "0.18.3"
 tink = "1.23.0"
 jsoup = "1.23.2"
+ksoup = "0.2.6"
 datastore = "1.2.1"
 ktlint = "1.5.0"
 ktlintGradle = "12.1.2"
@@ -59,6 +60,7 @@ kalinjul-oidc-preferences = { group = "io.github.kalinjul.kotlin.multiplatform",
 androidx-datastore-preferences-core = { group = "androidx.datastore", name = "datastore-preferences-core", version.ref = "datastore" }
 tink-android = { group = "com.google.crypto.tink", name = "tink-android", version.ref = "tink" }
 tink = { group = "com.google.crypto.tink", name = "tink", version.ref = "tink" }
+ksoup = { group = "com.fleeksoft.ksoup", name = "ksoup", version.ref = "ksoup" }
 jsoup = { group = "org.jsoup", name = "jsoup", version.ref = "jsoup" }
 android-gradlePlugin = { group = "com.android.tools.build", name = "gradle", version.ref = "agp" }
 android-tools-common = { group = "com.android.tools", name = "common", version.ref = "androidTools" }
