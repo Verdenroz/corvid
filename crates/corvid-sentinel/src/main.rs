@@ -6,6 +6,9 @@ use corvid_sentinel::{Config, Jmap, open, router};
 use tokio::net::TcpListener;
 use tokio::signal;
 
+/// Where the host's update directory is mounted; absent where no host updater exists.
+const UPDATE_DIR: &str = "/var/lib/corvid-update";
+
 #[tokio::main]
 async fn main() -> ExitCode {
     tracing_subscriber::fmt()
@@ -59,6 +62,7 @@ async fn main() -> ExitCode {
         state_path: settings.state,
         seen,
         notifier: jmap,
+        update_dir: UPDATE_DIR.into(),
     });
 
     let listener = TcpListener::bind(&bind).await.expect("cannot bind");

@@ -10,6 +10,12 @@
 	handle /i/* {
 		reverse_proxy 127.0.0.1:8081
 	}
+	handle /corvid/update {
+		forward_auth 127.0.0.1:8080 {
+			uri /jmap/session
+		}
+		reverse_proxy 127.0.0.1:11333
+	}
 	handle {
 		reverse_proxy 127.0.0.1:8080
 	}

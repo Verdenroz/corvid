@@ -12,6 +12,7 @@ EnvironmentFile=/opt/corvid/sentinel-webhook.env
 EnvironmentFile=/opt/corvid/sentinel.env
 Volume=/opt/corvid/config.yaml:/etc/corvid/config.yaml:ro
 Volume=/opt/corvid/sentinel:/var/lib/corvid
+Volume=/opt/corvid/update:/var/lib/corvid-update
 
 [Service]
 # Off the delivery path: Stalwart's webhook queue discards after discardAfter while this is

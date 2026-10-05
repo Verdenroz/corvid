@@ -268,13 +268,22 @@ night at 04:00 with up to an hour of random delay. It pulls the tag in `/opt/cor
 and does nothing if the image is unchanged. Otherwise it keeps the previous image as
 `localhost/corvid:rollback` and the previous deploy files in `/opt/corvid/deploy.prev`, copies the
 new image's deploy files into `/opt/corvid/deploy`, and runs `bootstrap.sh` then `deploy.sh`,
-which ends in `verify.sh`. If any step fails it puts the old image and files back, deploys them
-again and mails `postmaster@<domain>` through the host's own Stalwart. A release that failed is not
-retried until a newer one is tagged. The log is `journalctl -u corvid-update.service`.
+which ends in `verify.sh`. If any step fails it puts the old image and files back and deploys them
+again. A release that failed is not retried until a newer one is tagged. It sends no mail: the
+outcome is in `status.json`, which the Corvid app surfaces, and the log is
+`journalctl -u corvid-update.service`.
 
 Every run writes `/opt/corvid/update/status.json`. Writing `check` or `apply` to
 `/opt/corvid/update/request` starts a run on demand: `check` only records the latest version, and
-`apply` updates even with `update.auto: false`.
+`apply` updates even with `update.auto: false`. `deploy.sh` queues a `check` when it finishes, so
+a fresh or redeployed host has a status within seconds.
+
+The Corvid app's Settings reads and drives this through `GET` and `POST /corvid/update` on the
+web tier. Caddy checks the bearer token against Stalwart's `/jmap/session`, then proxies to the
+sentinel, which serves `status.json` and writes the request file. The sentinel answers 404 where
+`/opt/corvid/update` is not mounted, as on the chart, so the app shows "does not report its
+version". On a host that follows a channel tag such as `main`, versions read
+`main-<first 7 of the revision>`; a release tag keeps its own version.
 
 A host running a `--ship-local` image (`localhost/...`) never updates itself.
 

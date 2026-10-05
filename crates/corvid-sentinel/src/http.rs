@@ -9,13 +9,14 @@ use axum::routing::post;
 
 use crate::service::{Notifier, handle};
 use crate::state::{Seen, save};
-use crate::{notice, parse, verify};
+use crate::{notice, parse, update, verify};
 
 pub struct Config<N> {
     pub secret: Vec<u8>,
     pub state_path: PathBuf,
     pub seen: Seen,
     pub notifier: N,
+    pub update_dir: PathBuf,
 }
 
 struct AppState<N> {
@@ -35,6 +36,7 @@ pub fn router<N: Notifier + Send + Sync + 'static>(config: Config<N>) -> Router 
     Router::new()
         .route("/webhook", post(webhook::<N>))
         .with_state(state)
+        .merge(update::routes(config.update_dir))
 }
 
 async fn webhook<N: Notifier + Send + Sync + 'static>(
@@ -128,6 +130,7 @@ mod tests {
             state_path: std::env::temp_dir().join(format!("sentinel-test-{addr}.json")),
             seen: Seen::default(),
             notifier: mailbox,
+            update_dir: std::env::temp_dir().join("sentinel-test-no-update-dir"),
         });
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         format!("http://{addr}/webhook")

@@ -14,7 +14,6 @@ deploy_dir="$CORVID_DIR/deploy"
 update_dir="$CORVID_DIR/update"
 failed_marker="$CORVID_DIR/.update-failed"
 deployed_marker="$CORVID_DIR/.deployed-id"
-smtp_port="${CORVID_SMTP_PORT:-25}"
 
 registry_ref() {
   [[ "$1" == */* ]] || return 1
@@ -27,10 +26,21 @@ registry_ref() {
 
 image_id() { podman image inspect -f '{{.Id}}' "$1"; }
 
+label_of() { podman image inspect -f "{{index .Labels \"org.opencontainers.image.$2\"}}" "$1"; }
+
+# A moving tag such as main carries one version label on every build, so the revision tells
+# builds apart.
 version_of() {
-  local version
-  version="$(podman image inspect -f '{{index .Labels "org.opencontainers.image.version"}}' "$1")"
-  echo "${version:-$(image_id "$1" | cut -c1-12)}"
+  local version revision
+  version="$(label_of "$1" version)"
+  if [[ -z "$version" ]]; then
+    image_id "$1" | cut -c1-12
+  elif [[ "$version" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+    echo "$version"
+  else
+    revision="$(label_of "$1" revision)"
+    echo "$version${revision:+-${revision:0:7}}"
+  fi
 }
 
 # The temp file lives outside update/, which the pod's uid can write, so a planted symlink
@@ -58,35 +68,8 @@ print(json.dumps(status))' >"$tmp"
   mv "$tmp" "$update_dir/status.json"
 }
 
-smtp_expect() {
-  local line
-  while IFS= read -r -u "$smtp_fd" line; do
-    line="${line%$'\r'}"
-    [[ "$line" == "$1"* ]] || { printf 'QUIT\r\n' >&"$smtp_fd"; return 1; }
-    [[ "${line:3:1}" == " " ]] && return 0
-  done
-  return 1
-}
-
-# Plain inbound SMTP to the host's own Stalwart. Every exit says QUIT: one malformed command
-# gets the sender's address banned.
-send_mail() {
-  local to="$1" subject="$2" body="${3//$'\n'/$'\r\n'}" status
-  exec {smtp_fd}<>"/dev/tcp/127.0.0.1/$smtp_port" || return 1
-  smtp_expect 220 &&
-    printf 'EHLO %s\r\n' "$MAIL_HOSTNAME" >&"$smtp_fd" && smtp_expect 250 &&
-    printf 'MAIL FROM:<corvid-update@%s>\r\n' "$MAIL_HOSTNAME" >&"$smtp_fd" && smtp_expect 250 &&
-    printf 'RCPT TO:<%s>\r\n' "$to" >&"$smtp_fd" && smtp_expect 250 &&
-    printf 'DATA\r\n' >&"$smtp_fd" && smtp_expect 354 &&
-    printf 'From: corvid-update@%s\r\nTo: %s\r\nSubject: %s\r\n\r\n%s\r\n.\r\n' \
-      "$MAIL_HOSTNAME" "$to" "$subject" "$body" >&"$smtp_fd" && smtp_expect 250 &&
-    printf 'QUIT\r\n' >&"$smtp_fd"
-  status=$?
-  exec {smtp_fd}>&-
-  return $status
-}
-
-deploy_from() { bash "$1/bootstrap.sh" && bash "$1/deploy.sh"; }
+# CORVID_UPDATING keeps deploy.sh from queuing a check that would overwrite this run's status.
+deploy_from() { bash "$1/bootstrap.sh" && CORVID_UPDATING=1 bash "$1/deploy.sh"; }
 keep_old() { podman tag "$rollback_tag" "$ref"; }
 
 mode=timer
@@ -190,11 +173,4 @@ else
   detail="$latest failed to deploy and restoring $running failed too; the host needs attention"
 fi
 echo "$detail" >&2
-send_mail "postmaster@$MAIL_DOMAIN" "Corvid update to $latest failed on $MAIL_HOSTNAME" \
-  "Updating $MAIL_HOSTNAME from $running to $latest failed.
-
-$detail.
-
-The log is in the journal: journalctl -u corvid-update.service" ||
-  echo "could not mail postmaster@$MAIL_DOMAIN" >&2
 exit 1

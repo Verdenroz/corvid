@@ -142,3 +142,10 @@ if [[ -z "${CORVID_INSTALLER:-}" ]]; then
   step "verifying"
   "$HERE/verify.sh" "$MAIL_DOMAIN" "$MAIL_HOSTNAME"
 fi
+
+if [[ -z "${CORVID_UPDATING:-}" && -e /etc/systemd/system/corvid-update.path ]]; then
+  # corvid-update.path fires on the file existing, so it must appear already holding `check`.
+  request="$(mktemp "$CORVID_DIR/update/.request.XXXXXX")"
+  echo check > "$request"
+  mv "$request" "$CORVID_DIR/update/request"
+fi
