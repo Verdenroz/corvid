@@ -151,6 +151,18 @@ class ThreadsTest {
         }
 
     @Test
+    fun `each message of a thread carries its HTML part`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.emails += message("a1", "a", "2024-01-01T00:00:00Z", body = "<p>hi</p>").copy(bodyType = "text/html")
+            fake.emails += message("a2", "a", "2024-01-02T00:00:00Z", body = "plain")
+
+            val lookup = assertIs<ThreadLookup.Found>(repository(fake).thread("a2"))
+
+            assertEquals(listOf("<p>hi</p>", null), lookup.messages.map { it.html?.html })
+        }
+
+    @Test
     fun `a thread is one request however many messages it holds`() =
         runTest {
             val fake = FakeJmapServer()

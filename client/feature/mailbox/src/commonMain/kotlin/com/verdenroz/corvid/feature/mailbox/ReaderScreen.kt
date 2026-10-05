@@ -55,7 +55,16 @@ fun ReaderScreen(
                 is ReaderUiState.Loading -> Unit
                 is ReaderUiState.Failed -> QuietPane(current.message.asString())
                 is ReaderUiState.Gone -> QuietPane(stringResource(Res.string.mailbox_gone))
-                is ReaderUiState.Loaded -> ThreadColumn(current, repository, wide, viewModel::toggle, viewModel::answer, onCompose, onOpenSender)
+                is ReaderUiState.Loaded ->
+                    ThreadColumn(
+                        current,
+                        repository,
+                        wide,
+                        viewModel::toggle,
+                        viewModel::answer,
+                        onCompose,
+                        onOpenSender,
+                    )
             }
         }
     }

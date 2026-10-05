@@ -202,6 +202,7 @@ class MailboxRepository(private val jmapClient: JmapClient) {
             buildJsonObject {
                 putJsonArray("properties") { EMAIL_DETAIL_PROPERTIES.forEach { add(JsonPrimitive(it)) } }
                 put("fetchTextBodyValues", true)
+                put("fetchHTMLBodyValues", true)
                 put("maxBodyValueBytes", MAX_BODY_VALUE_BYTES)
             }
         val outcomes = jmapClient.fetchThread(emailId, arguments)
