@@ -73,14 +73,14 @@ class ReaderViewModel(
             is ThreadLookup.Found -> {
                 val unread = lookup.messages.filter { CorvidKeywords.SEEN !in it.keywords }.map { it.id }
                 _state.value = ReaderUiState.Loaded(lookup.messages, unread.toSet() + emailId + lookup.messages.last().id)
-                viewModelScope.launch { markRead(unread) }
+                if (unread.isNotEmpty()) viewModelScope.launch { markRead(unread) }
             }
         }
     }
 
     private suspend fun markRead(ids: List<String>) {
         try {
-            ids.forEach { repository.updateKeywords(it, mapOf(CorvidKeywords.SEEN to true)) }
+            repository.updateKeywords(ids, mapOf(CorvidKeywords.SEEN to true))
         } catch (_: JmapException) {
             // Unread stays unread and the next open tries again.
         }

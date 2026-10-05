@@ -5,6 +5,7 @@ import kotlin.time.Instant
 /**
  * messageId and references are the original's `Message-ID` and `References`, what a reply threads on.
  * replyTo is empty unless the sender set a `Reply-To`.
+ * preview is the server's own short text of the body, for a collapsed message.
  * bodyTruncated reflects the server's own isTruncated flag at maxBodyValueBytes, not a client guess.
  * html is the message's HTML part as sent, null when it has none; body is always the plain-text form.
  */
@@ -21,6 +22,7 @@ data class EmailDetail(
     val body: String,
     val bodyTruncated: Boolean,
     val html: HtmlBody?,
+    val preview: String,
     val keywords: Set<String>,
     val provenance: Provenance,
 )

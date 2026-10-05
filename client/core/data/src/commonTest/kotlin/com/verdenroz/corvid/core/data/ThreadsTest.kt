@@ -3,7 +3,10 @@ package com.verdenroz.corvid.core.data
 import com.verdenroz.corvid.core.testing.FakeEmail
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.client
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -204,5 +207,36 @@ class ThreadsTest {
             val conversation = assertIs<EmailPage.Found>(repository(fake).page(MailFilter.InMailbox("inbox"), null)).conversations.single()
 
             assertEquals(conversation, KeywordPatch("elsewhere", mapOf("\$seen" to true)).applyTo(conversation))
+        }
+
+    @Test
+    fun `several messages are marked in one request and only the accepted ones are announced`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.emails += message("a1", "a", "2024-01-01T00:00:00Z", keywords = emptySet())
+            fake.emails += message("a2", "a", "2024-01-02T00:00:00Z", keywords = emptySet())
+            val repository = repository(fake)
+            val patches = mutableListOf<KeywordPatch>()
+            val collecting = launch(start = CoroutineStart.UNDISPATCHED) { repository.keywordPatches.collect { patches += it } }
+            val before = fake.requestCount
+
+            val refused = repository.updateKeywords(listOf("a1", "gone", "a2"), mapOf("\$seen" to true))
+            yield()
+            collecting.cancel()
+
+            assertEquals(setOf("gone"), refused.keys)
+            assertEquals(1, fake.requestCount - before)
+            assertEquals(listOf("a1", "a2"), patches.map { it.emailId })
+        }
+
+    @Test
+    fun `a message carries the server's own preview`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.emails += message("a", "t", "2024-01-01T00:00:00Z", body = "first words and more").copy(preview = "first words")
+
+            val thread = assertIs<ThreadLookup.Found>(repository(fake).thread("a"))
+
+            assertEquals("first words", thread.messages.single().preview)
         }
 }

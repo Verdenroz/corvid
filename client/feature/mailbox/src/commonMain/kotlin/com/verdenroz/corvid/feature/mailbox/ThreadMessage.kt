@@ -159,7 +159,7 @@ private fun CollapsedMessage(
             modifier = Modifier.widthIn(max = 160.dp),
         )
         Text(
-            previewLine(email.body),
+            email.preview,
             style = CorvidTheme.type.name.copy(fontWeight = FontWeight.Normal),
             color = colors.inkMuted,
             maxLines = 1,
