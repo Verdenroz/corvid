@@ -46,3 +46,11 @@ internal fun messageText(
         }
         append(body.substring(from))
     }
+
+private val WHITESPACE = Regex("""\s+""")
+
+private const val PREVIEW_CHARS = 240
+
+/** A body's first words on one line, skipping quoted reply lines, for a collapsed message. */
+internal fun previewLine(body: String): String =
+    body.lineSequence().filterNot { it.startsWith(">") }.joinToString(" ").take(PREVIEW_CHARS).replace(WHITESPACE, " ").trim()

@@ -137,6 +137,20 @@ class ThreadsTest {
         }
 
     @Test
+    fun `a forged message in a thread is suspect without making its neighbours so`() =
+        runTest {
+            val fake = FakeJmapServer()
+            val forged = mapOf("Authentication-Results" to listOf("mx; dkim=pass header.d=evil.test; dmarc=fail header.from=bank.test"))
+            fake.emails += message("honest", "a", "2024-01-01T00:00:00Z", body = "hi")
+            fake.emails += message("forged", "a", "2024-01-02T00:00:00Z", body = "pay").copy(from = "service@bank.test", headers = forged)
+            fake.emails += message("reply", "a", "2024-01-03T00:00:00Z", body = "ok")
+
+            val lookup = assertIs<ThreadLookup.Found>(repository(fake).thread("reply"))
+
+            assertEquals(listOf(false, true, false), lookup.messages.map { it.provenance.suspect })
+        }
+
+    @Test
     fun `a thread is one request however many messages it holds`() =
         runTest {
             val fake = FakeJmapServer()

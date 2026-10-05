@@ -3,11 +3,12 @@ package com.verdenroz.corvid.feature.mailbox
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.core.data.Correction
-import com.verdenroz.corvid.core.data.EmailLookup
 import com.verdenroz.corvid.core.data.MailboxRepository
+import com.verdenroz.corvid.core.data.ThreadLookup
 import com.verdenroz.corvid.core.data.keywordPatch
 import com.verdenroz.corvid.core.data.userMessage
 import com.verdenroz.corvid.core.jmap.JmapException
+import com.verdenroz.corvid.core.model.CorvidKeywords
 import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.uiText
 import com.verdenroz.corvid.feature.mailbox.resources.Res
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/** Reads the thread holding [emailId]; its unread messages are marked read once it is on screen. */
 class ReaderViewModel(
     private val repository: MailboxRepository,
     private val emailId: String,
@@ -34,42 +36,78 @@ class ReaderViewModel(
         }
     }
 
+    fun toggle(id: String) {
+        _state.update { current ->
+            if (current !is ReaderUiState.Loaded) return@update current
+            current.copy(expanded = if (id in current.expanded) current.expanded - id else current.expanded + id)
+        }
+    }
+
     /** Writes the answer, then rereads the keywords, so the labels shown are the server's, not a guess at them. */
-    fun answer(correction: Correction) {
+    fun answer(
+        id: String,
+        correction: Correction,
+    ) {
         val current = _state.value as? ReaderUiState.Loaded ?: return
-        if (current.answering) return
-        _state.value = current.copy(answering = true, answerError = null)
+        if (current.teach[id]?.answering == true) return
+        setTeach(id, TeachState(answering = true))
         viewModelScope.launch {
             try {
-                val refused = repository.updateKeywords(emailId, correction.keywordPatch())
-                if (refused == null) showKeywords() else fail(uiText(Res.string.teach_refused, UiText.FromServer(refused)))
+                val refused = repository.updateKeywords(id, correction.keywordPatch())
+                if (refused == null) {
+                    showKeywords(
+                        id,
+                    )
+                } else {
+                    setTeach(id, TeachState(error = uiText(Res.string.teach_refused, UiText.FromServer(refused))))
+                }
             } catch (e: JmapException) {
-                fail(e.userMessage())
+                setTeach(id, TeachState(error = e.userMessage()))
             }
         }
     }
 
     private suspend fun load() {
-        _state.value =
-            when (val lookup = repository.getEmail(emailId)) {
-                is EmailLookup.NotFound -> ReaderUiState.Gone
-                is EmailLookup.Found -> ReaderUiState.Loaded(lookup.detail)
-            }
-    }
-
-    private suspend fun showKeywords() {
-        val keywords = repository.keywords(emailId)
-        _state.update { current ->
-            when {
-                current !is ReaderUiState.Loaded -> current
-                keywords == null -> ReaderUiState.Gone
-                else -> current.copy(email = current.email.copy(keywords = keywords), answering = false)
+        when (val lookup = repository.thread(emailId)) {
+            is ThreadLookup.NotFound -> _state.value = ReaderUiState.Gone
+            is ThreadLookup.Found -> {
+                val unread = lookup.messages.filter { CorvidKeywords.SEEN !in it.keywords }.map { it.id }
+                _state.value = ReaderUiState.Loaded(lookup.messages, unread.toSet() + emailId + lookup.messages.last().id)
+                viewModelScope.launch { markRead(unread) }
             }
         }
     }
 
-    private fun fail(reason: UiText) {
-        val current = _state.value as? ReaderUiState.Loaded ?: return
-        _state.value = current.copy(answering = false, answerError = reason)
+    private suspend fun markRead(ids: List<String>) {
+        try {
+            ids.forEach { repository.updateKeywords(it, mapOf(CorvidKeywords.SEEN to true)) }
+        } catch (_: JmapException) {
+            // Unread stays unread and the next open tries again.
+        }
     }
+
+    private suspend fun showKeywords(id: String) {
+        val keywords = repository.keywords(id)
+        _state.update { current ->
+            when {
+                current !is ReaderUiState.Loaded -> current
+                keywords == null -> current.without(id)
+                else ->
+                    current.copy(
+                        messages = current.messages.map { if (it.id == id) it.copy(keywords = keywords) else it },
+                        teach = current.teach - id,
+                    )
+            }
+        }
+    }
+
+    private fun setTeach(
+        id: String,
+        teach: TeachState,
+    ) {
+        _state.update { current -> if (current is ReaderUiState.Loaded) current.copy(teach = current.teach + (id to teach)) else current }
+    }
+
+    private fun ReaderUiState.Loaded.without(id: String): ReaderUiState =
+        messages.filter { it.id != id }.takeIf { it.isNotEmpty() }?.let { copy(messages = it, teach = teach - id) } ?: ReaderUiState.Gone
 }

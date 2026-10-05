@@ -11,6 +11,8 @@ import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.uiText
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.teach_refused
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -40,7 +42,7 @@ class ReaderViewModelTest {
 
             val loaded = vm.state.first { it is ReaderUiState.Loaded } as ReaderUiState.Loaded
 
-            assertEquals("hello world", loaded.email.body)
+            assertEquals("hello world", loaded.messages.single().body)
         }
 
     @Test
@@ -62,7 +64,7 @@ class ReaderViewModelTest {
 
             val loaded = vm.state.first { it is ReaderUiState.Loaded } as ReaderUiState.Loaded
 
-            assertEquals(true, loaded.email.bodyTruncated)
+            assertEquals(true, loaded.messages.single().bodyTruncated)
         }
 
     @Test
@@ -82,7 +84,7 @@ class ReaderViewModelTest {
             "s",
             "ada@x.test",
             "2024-01-01T00:00:00Z",
-            keywords = setOf("corvid-llm-done", "corvid-llm-label-personal"),
+            keywords = setOf("\$seen", "corvid-llm-done", "corvid-llm-label-personal"),
             body = "b",
         )
 
@@ -94,11 +96,11 @@ class ReaderViewModelTest {
             val vm = track(ReaderViewModel(repository(fake), "g1"))
             vm.state.first { it is ReaderUiState.Loaded }
 
-            vm.answer(Correction.Right(Label.Guess("personal")))
+            vm.answer("g1", Correction.Right(Label.Guess("personal")))
 
-            val after = vm.state.first { it is ReaderUiState.Loaded && "personal" in it.email.keywords } as ReaderUiState.Loaded
-            assertEquals(setOf("corvid-llm-done", "personal"), after.email.keywords)
-            assertEquals(false, after.answering)
+            val after = vm.state.first { it is ReaderUiState.Loaded && "personal" in it.messages.single().keywords } as ReaderUiState.Loaded
+            assertEquals(setOf("\$seen", "corvid-llm-done", "personal"), after.messages.single().keywords)
+            assertEquals(null, after.teach["g1"])
         }
 
     @Test
@@ -110,10 +112,10 @@ class ReaderViewModelTest {
             vm.state.first { it is ReaderUiState.Loaded }
             fake.emails[0] = fake.emails[0].copy(body = "edited on the server")
 
-            vm.answer(Correction.Right(Label.Guess("personal")))
+            vm.answer("g1", Correction.Right(Label.Guess("personal")))
 
-            val after = vm.state.first { it is ReaderUiState.Loaded && "personal" in it.email.keywords } as ReaderUiState.Loaded
-            assertEquals("b", after.email.body)
+            val after = vm.state.first { it is ReaderUiState.Loaded && "personal" in it.messages.single().keywords } as ReaderUiState.Loaded
+            assertEquals("b", after.messages.single().body)
         }
 
     @Test
@@ -125,10 +127,98 @@ class ReaderViewModelTest {
             vm.state.first { it is ReaderUiState.Loaded }
             fake.emails.clear()
 
-            vm.answer(Correction.Wrong(Label.Guess("personal")))
+            vm.answer("g1", Correction.Wrong(Label.Guess("personal")))
 
-            val failed = vm.state.first { it is ReaderUiState.Loaded && it.answerError != null } as ReaderUiState.Loaded
-            assertEquals(uiText(Res.string.teach_refused, UiText.FromServer("no such email")), failed.answerError)
-            assertEquals(setOf("corvid-llm-done", "corvid-llm-label-personal"), failed.email.keywords)
+            val failed = vm.state.first { it is ReaderUiState.Loaded && it.teach["g1"]?.error != null } as ReaderUiState.Loaded
+            assertEquals(uiText(Res.string.teach_refused, UiText.FromServer("no such email")), failed.teach["g1"]?.error)
+            assertEquals(setOf("\$seen", "corvid-llm-done", "corvid-llm-label-personal"), failed.messages.single().keywords)
+        }
+
+    private fun thread(fake: FakeJmapServer) {
+        fun message(
+            n: Int,
+            unread: Boolean = false,
+        ) = FakeEmail(
+            "m$n",
+            "t",
+            setOf("inbox"),
+            "s",
+            "a@x.test",
+            "2024-01-0${n}T00:00:00Z",
+            keywords = if (unread) emptySet() else setOf("\$seen"),
+            body = "body $n",
+        )
+        fake.emails += listOf(message(1), message(2), message(3, unread = true), message(4), message(5))
+    }
+
+    @Test
+    fun `a thread reads oldest first with the newest and every unread message expanded`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            thread(fake)
+            val vm = track(ReaderViewModel(repository(fake), "m5"))
+
+            val loaded = vm.state.first { it is ReaderUiState.Loaded } as ReaderUiState.Loaded
+
+            assertEquals(listOf("m1", "m2", "m3", "m4", "m5"), loaded.messages.map { it.id })
+            assertEquals(setOf("m3", "m5"), loaded.expanded)
+        }
+
+    @Test
+    fun `opening a collapsed message from elsewhere shows it in full`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            thread(fake)
+            val vm = track(ReaderViewModel(repository(fake), "m1"))
+
+            val loaded = vm.state.first { it is ReaderUiState.Loaded } as ReaderUiState.Loaded
+
+            assertEquals(setOf("m1", "m3", "m5"), loaded.expanded)
+        }
+
+    @Test
+    fun `toggling a message expands and collapses it`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            thread(fake)
+            val vm = track(ReaderViewModel(repository(fake), "m5"))
+            vm.state.first { it is ReaderUiState.Loaded }
+
+            vm.toggle("m2")
+            val opened = vm.state.first { it is ReaderUiState.Loaded && "m2" in it.expanded } as ReaderUiState.Loaded
+            vm.toggle("m2")
+
+            assertEquals(setOf("m2", "m3", "m5"), opened.expanded)
+            vm.state.first { it is ReaderUiState.Loaded && "m2" !in it.expanded }
+        }
+
+    @Test
+    fun `opening a thread marks its unread messages read and tells the lists`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            thread(fake)
+            val repository = repository(fake)
+            coroutineScope {
+                val patch = async { repository.keywordPatches.first() }
+                track(ReaderViewModel(repository, "m5"))
+
+                assertEquals("m3", patch.await().emailId)
+            }
+            assertEquals(true, "\$seen" in fake.emails.single { it.id == "m3" }.keywords)
+        }
+
+    @Test
+    fun `answering on one message leaves the others' teach state alone`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            thread(fake)
+            fake.emails.replaceAll { if (it.id == "m3") it.copy(keywords = it.keywords + "corvid-llm-label-personal") else it }
+            val vm = track(ReaderViewModel(repository(fake), "m5"))
+            vm.state.first { it is ReaderUiState.Loaded }
+
+            vm.answer("m3", Correction.Right(Label.Guess("personal")))
+
+            val after = vm.state.first { it is ReaderUiState.Loaded && "personal" in it.messages.single { m -> m.id == "m3" }.keywords }
+            assertEquals(emptyMap(), (after as ReaderUiState.Loaded).teach)
         }
 }
