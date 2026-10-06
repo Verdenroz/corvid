@@ -254,8 +254,12 @@ web tier is not on 443.
   `401` from `/jmap/session` reaches the client with its own status, body and `WWW-Authenticate`,
   and the upstream stub never sees the request. The auth call is a bodyless `GET` carrying the
   client's `Authorization` and an `X-Forwarded-For` of the client, so with `Http.useXForwarded`
-  Stalwart bans the client and not the proxy. The proxied `POST` body arrives intact. A request
-  with no `Authorization` still reaches Stalwart and answers `401`.
+  Stalwart bans the client and not the proxy. The proxied `POST` body arrives intact.
+- **A credential-less `/jmap/session` is `200`, so `forward_auth` alone guards nothing.**
+  v0.16.21 answers it with an empty session (no accounts), which `forward_auth` passes. The
+  Caddyfile sends `/corvid/*` to the auth call only when `Authorization` is present; without
+  it the request falls through to Stalwart's `404`. Measured on n1: the matcher without the
+  header check served notices and accepted update requests from anyone.
 - **A single SMTP session delivers at most 10 messages** (`MtaStageData.maxMessages`), and the
   inbound throttle is 25/hour per sender domain plus recipient. Bulk-loading a test mailbox
   silently loses everything past the session cap.

@@ -10,7 +10,12 @@
 	handle /i/* {
 		reverse_proxy 127.0.0.1:8081
 	}
-	handle /corvid/update /corvid/notices {
+	# Stalwart answers a credential-less /jmap/session with 200, which forward_auth would pass.
+	@corvid {
+		path /corvid/update /corvid/notices
+		header Authorization *
+	}
+	handle @corvid {
 		forward_auth 127.0.0.1:8080 {
 			uri /jmap/session
 		}
