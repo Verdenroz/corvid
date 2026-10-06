@@ -33,10 +33,12 @@ for port, handler in ((8080, Stalwart), (11333, Sentinel)):
 ' &
 stubs=$!
 
+# Rootless containers cannot bind 80, where Caddy puts its HTTP-to-HTTPS redirect.
+{ printf '{\n\thttp_port 18080\n}\n\n'; cat "$here/Caddyfile"; } > "$work/Caddyfile"
 "$engine" run -d --name "$name" --network host \
   -e CORVID_WEB_HOSTNAME=localhost -e CORVID_WEB_PORT="$port" -e CORVID_MTA_STS_SITE= \
   -e CORVID_MAIL_DOMAIN=localhost -e CORVID_IDP_HOSTNAME=idp.localhost \
-  -v "$here/Caddyfile:/etc/caddy/Caddyfile:ro,z" "$image" >/dev/null
+  -v "$work/Caddyfile:/etc/caddy/Caddyfile:ro,z" "$image" >/dev/null
 
 fetch() {
   curl -sk --max-time 5 -o "$work/body" -w '%{http_code}' --resolve "localhost:$port:127.0.0.1" \
