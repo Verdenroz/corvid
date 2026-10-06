@@ -15,7 +15,7 @@ fun createOidcClient(
 ): OpenIdConnectClient =
     OpenIdConnectClient(discoveryUri = discoveryUri) {
         clientId = OIDC_CLIENT_ID
-        scope = "openid"
+        scope = "openid profile"
         codeChallengeMethod = CodeChallengeMethod.S256
         this.redirectUri = redirectUri
     }
