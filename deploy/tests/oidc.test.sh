@@ -21,6 +21,9 @@ volumes=("$mail-etc" "$mail-data" "$idp-data")
 trap '"$engine" rm -f "$mail" "$idp" >/dev/null 2>&1; "$engine" volume rm "${volumes[@]}" >/dev/null 2>&1; rm -rf "$work"' EXIT
 
 command -v stalwart-cli >/dev/null || { echo "stalwart-cli not found" >&2; exit 69; }
+for port in 8080 "$mail_port" "$idp_port"; do
+  ! (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null || { echo "port $port is in use" >&2; exit 69; }
+done
 
 "$engine" run -d --name "$idp" --network host \
   -e PORT="$idp_port" -e APP_URL="$issuer" -e ENCRYPTION_KEY=rig-encryption-key-0123456789 \
@@ -40,34 +43,52 @@ idp_api() {
 json() { python3 -c 'import json,sys; print(json.load(sys.stdin)[sys.argv[1]])' "$1"; }
 
 # One-time access token, then a session, then the authorization-code flow with PKCE, the way the
-# client does it minus the passkey and the browser. Prints the access token.
+# client does it minus the passkey and the browser. Prints the access token. Pocket-ID skips the
+# consent step when the user already consented to the scopes, so the interaction is optional.
 mint() {
-  local user_id="$1" scope="$2" jar="$work/jar-$1" verifier challenge ott interaction code
+  local user_id="$1" scope="$2" jar="$work/jar-$1" verifier challenge ott location code
   verifier="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
   challenge="$(printf %s "$verifier" | python3 -c '
 import base64, hashlib, sys
 print(base64.urlsafe_b64encode(hashlib.sha256(sys.stdin.buffer.read()).digest()).decode().rstrip("="))')"
   ott="$(idp_api "users/$user_id/one-time-access-token" -d '{"ttl":"5m"}' | json token)"
-  curl -sf -c "$jar" -o /dev/null -X POST "$issuer/api/one-time-access-token/$ott"
-  interaction="$(curl -s -b "$jar" -o /dev/null -w '%{redirect_url}' -G "$issuer/authorize" \
+  [[ -n "$ott" ]] || { echo "mint: no one-time access token" >&2; return 1; }
+  curl -sf -c "$jar" -o /dev/null -X POST "$issuer/api/one-time-access-token/$ott" \
+    || { echo "mint: the one-time access token was refused" >&2; return 1; }
+  location="$(curl -s -b "$jar" -o /dev/null -w '%{redirect_url}' -G "$issuer/authorize" \
     --data-urlencode client_id=corvid --data-urlencode response_type=code \
     --data-urlencode redirect_uri=http://127.0.0.1/callback --data-urlencode "scope=$scope" \
     --data-urlencode "code_challenge=$challenge" --data-urlencode code_challenge_method=S256 \
-    --data-urlencode state=rig-state-0123 | sed 's/.*interaction=//')"
-  curl -sf -b "$jar" -o /dev/null -H 'content-type: application/json' \
-    -d '{"step":"consent"}' "$issuer/api/oidc/interactions/$interaction/complete"
-  code="$(curl -s -b "$jar" -o /dev/null -w '%{redirect_url}' "$issuer/authorize?interaction=$interaction" \
-    | sed 's/.*[?&]code=\([^&]*\).*/\1/')"
+    --data-urlencode state=rig-state-0123)"
+  if [[ "$location" == *interaction=* ]]; then
+    location="${location##*interaction=}"
+    curl -sf -b "$jar" -o /dev/null -H 'content-type: application/json' \
+      -d '{"step":"consent"}' "$issuer/api/oidc/interactions/$location/complete" \
+      || { echo "mint: the consent step was refused" >&2; return 1; }
+    location="$(curl -s -b "$jar" -o /dev/null -w '%{redirect_url}' "$issuer/authorize?interaction=$location")"
+  fi
+  [[ "$location" == *code=* ]] || { echo "mint: no authorization code in '$location'" >&2; return 1; }
+  code="$(sed 's/.*[?&]code=\([^&]*\).*/\1/' <<<"$location")"
   curl -sf "$issuer/api/oidc/token" -d grant_type=authorization_code -d client_id=corvid \
     -d "code=$code" -d redirect_uri=http://127.0.0.1/callback -d "code_verifier=$verifier" \
     | json access_token
 }
 
 idp_api oidc/clients -d '{"id":"corvid","name":"corvid","isPublic":true,"pkceEnabled":true,"callbackURLs":["http://127.0.0.1/callback"]}' >/dev/null
+nomail_id="$(idp_api users -d '{"username":"nomail","email":"nomail@rig.test","firstName":"No","lastName":"Mail","isAdmin":false}' | json id)"
+outsider_id="$(idp_api users -d '{"username":"outsider","email":"outsider@rig.test","firstName":"Out","lastName":"Sider","isAdmin":false}' | json id)"
 verde_id="$(idp_api users -d '{"username":"verde","email":"verde@rig.test","firstName":"Verde","lastName":"Rig","isAdmin":false}' | json id)"
 
-export STALWART_URL=http://127.0.0.1:8080 STALWART_USER=recovery STALWART_PASSWORD="$recovery_pw"
-stalwart-cli update Bootstrap --json '{"serverHostname":"mail.rig.test","defaultDomain":"rig.test","requestTlsCertificate":false,"generateDkimKeys":false,"dataStore":{"@type":"RocksDb","path":"/var/lib/stalwart/data"}}' >/dev/null
+cat > "$work/shell" <<SH
+#!/bin/sh
+printf 'MAIL_DOMAIN=rig.test\nMAIL_HOSTNAME=mail.rig.test\nMAIL_USER=verde\nACME_CONTACT=ops@rig.test\nWEB_PORT=$idp_port\n'
+SH
+chmod +x "$work/shell"
+printf 'STALWART_URL=http://127.0.0.1:8080\nRECOVERY_ADMIN_USER=recovery\nRECOVERY_ADMIN_PASSWORD=%s\n' \
+  "$recovery_pw" > "$work/corvid.env"
+CORVID_DIR="$work" CORVID_ENV="$work/corvid.env" CORVID_CONFIG_CMD="$work/shell" \
+  bash "$here/bootstrap-server.sh" >/dev/null || { echo "bootstrap-server.sh failed" >&2; exit 1; }
+set -a; . "$work/corvid.env"; set +a
 "$engine" restart "$mail" >/dev/null
 wait_for http://127.0.0.1:8080/healthz/live || { echo "Stalwart never restarted" >&2; exit 1; }
 
@@ -90,7 +111,7 @@ wait_for "$STALWART_URL/healthz/live" || { echo "Stalwart never listened on $mai
 
 fail=0
 check() { if [[ "$2" == "$3" ]]; then echo "  ok    $1"; else echo "  FAIL  $1 (got '$2')"; fail=1; fi; }
-auth_failures() { "$engine" logs "$mail" 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep 'auth.failed'; }
+auth_failures() { "$engine" logs "$mail" 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E 'auth\.(failed|error)'; }
 # Prints the status and, when Stalwart logged a failure for the request, its reason.
 session() {
   local before after status
@@ -98,7 +119,7 @@ session() {
   status="$(curl -s -o "$work/body" -w '%{http_code}' -H "Authorization: Bearer $1" "$STALWART_URL/jmap/session")"
   after="$(auth_failures | wc -l)"
   printf '%s' "$status"
-  [[ "$after" -gt "$before" ]] && printf ' %s' "$(auth_failures | tail -1 | sed 's/.*reason = "\(.*\)", causedBy.*/\1/')"
+  [[ "$after" -gt "$before" ]] && printf ' %s' "$(auth_failures | tail -1 | sed -E 's/.*(reason|details) = "(.*)", causedBy.*/\2/')"
   echo
 }
 mailbox_of() {
@@ -108,7 +129,7 @@ s = json.load(sys.stdin)
 print(s["accounts"][s["primaryAccounts"]["urn:ietf:params:jmap:mail"]]["name"])' < "$work/body"
 }
 
-token="$(mint "$verde_id" "openid profile")"
+token="$(mint "$verde_id" "openid profile")" || exit 1
 check "Pocket-ID issues an at+jwt for scope 'openid profile'" \
   "$(cut -d. -f1 <<<"$token" | python3 -c 'import base64,json,sys; s=sys.stdin.read().strip(); print(json.loads(base64.urlsafe_b64decode(s+"="*(-len(s)%4)))["typ"])')" at+jwt
 check "the token's userinfo names the user" \
@@ -116,6 +137,25 @@ check "the token's userinfo names the user" \
 
 check "Stalwart accepts the token over JMAP" "$(session "$token")" 200
 check "the session's mail account is the user's mailbox" "$(mailbox_of 2>/dev/null)" verde@rig.test
+
+echo "== tokens and credentials Stalwart must refuse"
+check "a token without the profile scope" "$(session "$(mint "$verde_id" openid)")" \
+  "401 Missing required scope 'profile', present scopes: [\"openid\"]"
+status="$(curl -s -u "$STALWART_USER:$STALWART_PASSWORD" "$STALWART_URL/jmap/session" -o /dev/null -w '%{http_code}')"
+check "the admin password once the OIDC directory is active" "$status" 401
+
+echo "== a Pocket-ID user with no mailbox"
+check "gets a mailbox created on its first token" "$(session "$(mint "$nomail_id" "openid profile")")" 200
+accounts="$(STALWART_USER=recovery STALWART_PASSWORD="$recovery_pw" stalwart-cli query Account --json)"
+check "the new account is nomail@rig.test" "$(grep -c '"emailAddress":"nomail@rig.test"' <<<"$accounts")" 1
+group_id="$(idp_api user-groups -d '{"name":"mail","friendlyName":"mail"}' | json id)"
+idp_api "user-groups/$group_id/users" -X PUT -d "{\"userIds\":[\"$verde_id\"]}" >/dev/null
+idp_api oidc/clients/corvid/allowed-user-groups -X PUT -d "{\"userGroupIds\":[\"$group_id\"]}" >/dev/null
+idp_api oidc/clients/corvid -X PUT \
+  -d '{"name":"corvid","isPublic":true,"pkceEnabled":true,"callbackURLs":["http://127.0.0.1/callback"],"isGroupRestricted":true}' >/dev/null
+check "a group-restricted client issues no code to a user outside the group" \
+  "$(mint "$outsider_id" "openid profile" 2>&1 | grep -o 'not+allowed+to+access+this+service' | head -1)" not+allowed+to+access+this+service
+check "a group member still gets a working token" "$(session "$(mint "$verde_id" "openid profile")")" 200
 
 [[ $fail -eq 0 ]] || { "$engine" logs "$mail" 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E 'auth\.|http\.' | tail -10; }
 exit "$fail"
