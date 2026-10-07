@@ -40,6 +40,11 @@ if grep -q '^APP_URL=' "$CORVID_DIR/idp.env" 2>/dev/null; then
   exit 78
 fi
 
+grep -q '^STATIC_API_KEY=.' "$CORVID_DIR/idp.env" 2>/dev/null || {
+  echo "$CORVID_DIR/idp.env has no STATIC_API_KEY; install.sh generates it, or set one: openssl rand -hex 32" >&2
+  exit 78
+}
+
 step() { echo; echo "== $* =="; }
 
 # bootstrap.sh masks the pod while another container holds the mail ports. Starting the pod
@@ -78,9 +83,9 @@ wait_healthy() {
 # restarts only what changed, and a run that died before its restart is caught by the next.
 POD_MARKER="$CORVID_DIR/.live-pod"
 CONFIG_MARKER="$CORVID_DIR/.live-config"
-mapfile -t PLAN_OBJECTS < <(grep -oh '"object":"[A-Za-z]*"' "$HERE"/stalwart*.ndjson | cut -d'"' -f4 | sort -u)
+mapfile -t PLAN_OBJECTS < <(grep -oh '"object":"[A-Za-z]*"' "$HERE"/stalwart*.ndjson "$HERE/oidc.plan.ndjson" | cut -d'"' -f4 | sort -u)
 pod_inputs() {
-  { cat /etc/containers/systemd/corvid* "$CORVID_DIR"/{server.env,Caddyfile,unbound.conf}
+  { cat /etc/containers/systemd/corvid* "$CORVID_DIR"/{server.env,idp.env,Caddyfile,unbound.conf}
     podman image inspect -f '{{.Id}}' "$CORVID_IMAGE"; } | sha256sum
 }
 # Snapshots list object keys in a different order each call, so they are sorted before hashing.
@@ -136,6 +141,14 @@ fi
 step "applying configuration"
 CORVID_SKIP_RELOAD=1 "$HERE/apply-plan.sh"
 
+# The OIDC plan makes Pocket-ID the only way to sign in with a password, so nobody can log in until
+# provisioning has created the users. The deploy scripts keep working through the API key.
+step "configuring Pocket-ID"
+systemctl start corvid-idp.service
+enrollment="$("$HERE/idp.sh" provision)"
+step "switching sign-in to Pocket-ID"
+CORVID_SKIP_RELOAD=1 PLAN="$HERE/oidc.plan.ndjson" "$HERE/apply-plan.sh"
+
 config="$(config_state)" || config="unknown"
 if [[ "$config" == "$(cat "$CONFIG_MARKER" 2>/dev/null)" ]]; then
   step "configuration unchanged; no restart needed"
@@ -146,6 +159,12 @@ else
   systemctl restart corvid-mail.service
   wait_healthy
   [[ "$config" == unknown ]] || printf '%s\n' "$config" > "$CONFIG_MARKER"
+fi
+
+if [[ -n "$enrollment" ]]; then
+  step "enrollment links"
+  echo "Open each link once within 24 hours and add a passkey; deploy/idp.sh link USERNAME mints another."
+  echo "$enrollment"
 fi
 
 # install.sh verifies once certificates are in, so a second run here would repeat it.

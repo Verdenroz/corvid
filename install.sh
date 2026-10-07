@@ -507,12 +507,10 @@ EOF
 
 step "preparing the host"
 on_host 'cd /opt/corvid/deploy && CORVID_INSTALLER=1 bash bootstrap.sh'
-# The labeler runs once config.yaml has its section, and Pocket-ID once the passkey plan has
-# given Stalwart an OIDC directory. Until then each stays masked, on every run.
+# The labeler runs once config.yaml has its section; until then it stays masked, on every run.
 on_host 'bash -s' <<'EOF'
 grep -q "^labeler:" /opt/corvid/config.yaml || systemctl mask corvid-labeler.service >/dev/null 2>&1
-set -a; . /opt/corvid/corvid.env 2>/dev/null; set +a
-stalwart-cli query Directory --json 2>/dev/null | grep -q . || systemctl mask corvid-idp.service >/dev/null 2>&1
+systemctl unmask corvid-idp.service >/dev/null 2>&1
 true
 EOF
 held="$(on_host "podman ps --format '{{.Names}}' | grep -vx 'corvid-.*' || true")"

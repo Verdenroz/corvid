@@ -31,8 +31,8 @@ command -v "$STALWART_CLI" >/dev/null 2>&1 || {
 curl_authed -fsS -o /dev/null "$STALWART_URL/api/account" \
   || { echo "credentials in $ENV_FILE do not authenticate against $STALWART_URL" >&2; exit 1; }
 
-# Passkeys are applied separately: oidc.plan.ndjson points Authentication at an external
-# directory, and until someone is enrolled in it nobody can log in. See RUNBOOK.md.
+# deploy.sh applies oidc.plan.ndjson, which points Authentication at an external directory, only
+# after idp.sh has provisioned the users; until someone is enrolled nobody can log in.
 PLAN="${PLAN:-$HERE/stalwart.plan.ndjson}"
 [[ -r "$PLAN" ]] || { echo "no such plan: $PLAN" >&2; exit 66; }
 
