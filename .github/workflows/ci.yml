@@ -31,6 +31,7 @@ jobs:
       - run: bash deploy/tests/mta-sts-lib.test.sh
       - run: bash deploy/tests/idp-hostname.test.sh
       - run: bash deploy/tests/idp-dns-lib.test.sh
+      - run: bash deploy/tests/srv-dns-lib.test.sh
       - run: bash deploy/tests/set-password.test.sh
       - run: bash deploy/tests/device.test.sh
       - run: bash deploy/tests/totp.test.sh

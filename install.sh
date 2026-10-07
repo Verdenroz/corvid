@@ -24,6 +24,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/deploy/mta-sts-lib.sh"
 . "$HERE/deploy/idp-dns-lib.sh"
+. "$HERE/deploy/srv-dns-lib.sh"
 VERSION="$(sed -nE 's/^version = "([^"]+)"/\1/p' "$HERE/Cargo.toml" | head -1)"
 IMAGE="ghcr.io/verdenroz/corvid:stable"
 CLI_VERSION=1.0.12
@@ -358,6 +359,7 @@ elif ! grep -qx "$server_ip" <<<"$a_records"; then
   die "$hostname points to $(tr '\n' ' ' <<<"$a_records")at Cloudflare, not to this server's $server_ip; fix that record and rerun"
 fi
 idp_dns_preflight "$token" "$domain_zone_id" "$idp_hostname" "$server_ip"
+srv_dns_preflight "$token" "$domain_zone_id" "$domain" "$hostname" "$web_port"
 
 dnssec_off=()
 declare -A zone_id=([$domain]="$domain_zone_id" [$host_zone]="$host_zone_id")
@@ -406,7 +408,8 @@ cat <<EOF
   Server name            $hostname$([[ $create_a == 1 ]] && echo " (A record to $server_ip will be created)")
   Web address            https://$hostname:$web_port
   Identity provider      $idp_hostname$([[ $idp_create_a == 1 ]] && echo " (A record to $server_ip will be created)")
-  Mail apps from         $(case "$client_access" in anywhere) echo "anywhere" ;; host) echo "this server only, such as its VPN" ;; *) echo "$client_access" ;; esac)
+  App sign-in record     _corvid._tcp.$domain$([[ $srv_create == 1 ]] && echo " (SRV to $hostname port $web_port will be created)")
+  Mail apps from       $(case "$client_access" in anywhere) echo "anywhere" ;; host) echo "this server only, such as its VPN" ;; *) echo "$client_access" ;; esac)
   Certificate notices    $acme_contact
   Cloudflare token       $([[ -n "$token" ]] && echo "new" || echo "unchanged")
   DNSSEC                 $(if (( ${#dnssec_off[@]} == 0 )); then echo "on"; elif (( enable_dnssec )); then echo "will be turned on for $off_zones"; else echo "stays off for $off_zones"; fi)
@@ -428,6 +431,11 @@ fi
 if (( idp_create_a )); then
   step "creating the identity provider's A record"
   idp_dns_create "$token" "$domain_zone_id" "$idp_hostname" "$server_ip"
+fi
+
+if (( srv_create )); then
+  step "creating the app sign-in record"
+  srv_dns_create "$token" "$domain_zone_id" "$domain" "$hostname" "$web_port"
 fi
 
 if (( enable_dnssec )); then

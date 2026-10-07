@@ -4,6 +4,8 @@
     cloudflare.py zones                  one line per zone: NAME ID edit|read-only
     cloudflare.py a-records ZONE NAME    the addresses NAME's A records point to
     cloudflare.py create-a ZONE NAME IP  adds an A record, not proxied
+    cloudflare.py srv-records ZONE NAME  one line per SRV record: ID PORT TARGET
+    cloudflare.py create-srv ZONE NAME PORT TARGET   adds an SRV record, priority 0 weight 5
     cloudflare.py create-txt ZONE NAME CONTENT [COMMENT]   adds a TXT record
     cloudflare.py update-record ZONE ID CONTENT  replaces a record's content
     cloudflare.py records ZONE NAME TYPE one line per record: ID CONTENT
@@ -98,6 +100,11 @@ def main():
         query = urllib.parse.urlencode({"type": kind, "name": name})
         for record in call(token, f"zones/{zone}/dns_records?{query}"):
             print(record["id"], record["content"])
+    elif command == "srv-records":
+        zone, name = args
+        query = urllib.parse.urlencode({"type": "SRV", "name": name})
+        for record in call(token, f"zones/{zone}/dns_records?{query}"):
+            print(record["id"], record["data"]["port"], record["data"]["target"])
     elif command == "dkim":
         zone, domain = args
         suffix = "._domainkey." + domain
@@ -117,6 +124,11 @@ def main():
         zone, name, ip = args
         call(token, f"zones/{zone}/dns_records",
              {"type": "A", "name": name, "content": ip, "ttl": 1, "proxied": False})
+    elif command == "create-srv":
+        zone, name, port, target = args
+        call(token, f"zones/{zone}/dns_records",
+             {"type": "SRV", "name": name, "ttl": 1,
+              "data": {"priority": 0, "weight": 5, "port": int(port), "target": target}})
     elif command == "create-txt":
         zone, name, content = args[:3]
         record = {"type": "TXT", "name": name, "content": content, "ttl": 1}
