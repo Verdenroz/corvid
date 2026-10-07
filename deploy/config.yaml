@@ -85,3 +85,6 @@ mirror:
 sentinel:
   bind: 127.0.0.1:11333
   state: /var/lib/corvid/sentinel.json
+  # Approving a new device with the Pocket-ID admin's passkey. Needs CORVID_STALWART_TOKEN.
+  devices:
+    state: /var/lib/corvid/devices.json

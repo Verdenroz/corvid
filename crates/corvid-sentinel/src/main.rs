@@ -3,7 +3,7 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use corvid_config::{or_exit, secret, section};
-use corvid_sentinel::{Config, build, open};
+use corvid_sentinel::{Config, build, devices, open};
 use tokio::net::TcpListener;
 use tokio::signal;
 
@@ -37,6 +37,14 @@ async fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    let devices = match settings
+        .devices
+        .map(|devices| device_config(config.server, devices))
+    {
+        Some(Ok(devices)) => Some(devices),
+        Some(Err(code)) => return code,
+        None => None,
+    };
     let bind = settings.bind.clone();
     let (app, watcher) = build(Config {
         secret: hmac_secret.into_bytes(),
@@ -44,6 +52,7 @@ async fn main() -> ExitCode {
         seen,
         update_dir: UPDATE_DIR.into(),
         update_poll: UPDATE_POLL,
+        devices,
     });
 
     tokio::spawn(watcher);
@@ -54,6 +63,31 @@ async fn main() -> ExitCode {
         .await
         .expect("server failed");
     ExitCode::SUCCESS
+}
+
+fn device_config(
+    server: Option<corvid_config::Server>,
+    settings: corvid_config::Devices,
+) -> Result<devices::Config, ExitCode> {
+    let server = or_exit(section(server, "server"));
+    let stalwart_token = or_exit(secret("CORVID_STALWART_TOKEN"));
+    let state = match devices::open(&settings.state) {
+        Ok(state) => state,
+        Err(error) => {
+            tracing::error!(%error, state = %settings.state.display(), "refusing to start");
+            return Err(ExitCode::FAILURE);
+        }
+    };
+    Ok(devices::Config {
+        state_path: settings.state,
+        devices: state,
+        issuer: settings.issuer.unwrap_or_else(|| server.idp_issuer()),
+        idp_url: settings.idp_url,
+        admin_user: server.admin_user(),
+        mail_user: server.mail_user().to_owned(),
+        stalwart_url: settings.stalwart_url,
+        stalwart_token,
+    })
 }
 
 /// Returns on Ctrl-C or SIGTERM. As a container's PID 1 this process ignores any signal it has

@@ -12,7 +12,7 @@ use axum::routing::{get, post};
 use serde::{Deserialize, Serialize};
 
 use crate::state::{Notice, NoticeKind, Seen, save};
-use crate::{dates, handle, notice, parse, update, verify, watch};
+use crate::{dates, devices, handle, notice, parse, update, verify, watch};
 
 pub struct Config {
     pub secret: Vec<u8>,
@@ -20,6 +20,7 @@ pub struct Config {
     pub seen: Seen,
     pub update_dir: PathBuf,
     pub update_poll: Duration,
+    pub devices: Option<devices::Config>,
 }
 
 pub(crate) struct AppState {
@@ -64,6 +65,10 @@ pub fn build(config: Config) -> (Router, impl Future<Output = ()> + Send + 'stat
         .route("/corvid/notices", get(notices))
         .with_state(state)
         .merge(update::routes(config.update_dir));
+    let router = match config.devices {
+        Some(devices) => router.merge(devices::routes(devices)),
+        None => router,
+    };
     (router, watcher)
 }
 
@@ -154,6 +159,7 @@ mod tests {
             seen: Seen::default(),
             update_dir: std::env::temp_dir().join("sentinel-test-no-update-dir"),
             update_poll: Duration::from_secs(60),
+            devices: None,
         });
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         format!("http://{addr}/webhook")

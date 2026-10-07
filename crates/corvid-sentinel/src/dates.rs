@@ -37,6 +37,11 @@ pub fn rfc3339_now() -> String {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
+    rfc3339(secs)
+}
+
+/// A Stalwart-style UTC timestamp for `secs` since the epoch.
+pub fn rfc3339(secs: i64) -> String {
     let (days, remainder) = (secs.div_euclid(86400), secs.rem_euclid(86400));
     let (year, month, day) = civil_from_days(days);
     format!(
