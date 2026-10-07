@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Runs the real Caddyfile in the pinned Caddy image against stub upstreams on the loopback ports
 # it names. Confirms it parses, and that /corvid/* reaches the sentinel only with a credential
-# Stalwart accepts. The stub answers a credential-less /jmap/session with 200, as v0.16.21 does.
+# Stalwart accepts, and serves the
+# discovery document without one. The stub answers a credential-less /jmap/session with 200, as v0.16.21 does.
 set -uo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 image="$(awk -F= '$1=="Image"{print $2}' "$here/corvid-caddy.container")"
@@ -62,6 +63,10 @@ for path in /corvid/update /corvid/notices; do
   check "$path with a refused credential gets Stalwart's 401" "$(fetch -u bad:bad "$url$path")" "401 stalwart"
   check "$path with an accepted credential reaches the sentinel" "$(fetch -u good:good "$url$path")" "200 sentinel"
 done
+doc='{"version":1,"server":"https://localhost:'"$port"'","issuer":"https://idp.localhost:'"$port"'"}'
+check "the discovery document names the web tier and the issuer" "$(fetch "$url/.well-known/corvid")" "200 $doc"
+check "the discovery document ignores a credential" "$(fetch -u bad:bad "$url/.well-known/corvid")" "200 $doc"
+check "the discovery document is JSON" "$(curl -sk --max-time 5 -o /dev/null -w '%{content_type}' --resolve "localhost:$port:127.0.0.1" "$url/.well-known/corvid")" application/json
 check "everything else goes to Stalwart" "$(fetch "$url/jmap/session")" "200 stalwart"
 idp="https://idp.localhost:$port"
 check "the identity provider's site reaches Pocket-ID" "$(fetch "$idp/api/users")" "200 idp"
