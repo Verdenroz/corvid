@@ -51,7 +51,7 @@ namespace, so services reach each other on `127.0.0.1`:
 | `corvid-labeler` | polls JMAP, writes labels as keywords | none |
 | `corvid-sentinel` | the pod's authenticated side door: the alert feed from Stalwart webhooks and update status, and update requests | 11333 loopback |
 | `corvid-caddy` | the web tier: JMAP, `/i/*` to imgproxy, `/corvid/update` and `/corvid/notices` to the sentinel behind `forward_auth`; a second site proxies `server.idp_hostname` to Pocket-ID | `server.web_port`, 4443 by default |
-| `corvid-idp` | Pocket-ID, OIDC passkeys; applied separately via `oidc.plan.ndjson` | 1411 |
+| `corvid-idp` | Pocket-ID, OIDC passkeys; provisioned by `idp.sh`, switched on by `oidc.plan.ndjson` | 1411 |
 
 `corvid-mirror` is the exception: a systemd timer on a separate machine that pulls over JMAP.
 `corvid-update.{service,timer,path}` are host units outside the pod: `update.sh` follows the
@@ -213,8 +213,23 @@ web tier is not on 443.
   message the header lands in the sub-part.
 - **`Authentication.directoryId` is a cutover, not an addition.** Null means the internal
   directory; setting it to an OIDC directory means Stalwart stops consulting its own account
-  store. On a live mailbox with nobody enrolled in the IdP that is a login outage, so passkeys
-  live in `oidc.plan.ndjson` and are applied deliberately, after mail works. Measured: once active, the admin's own password gets a 401 on JMAP.
+  store. With nobody enrolled in the IdP that is a login outage, so `deploy.sh` applies
+  `oidc.plan.ndjson` only after `idp.sh provision` has created the users. Measured: once active,
+  the admin's own password gets a 401 on JMAP, while an admin API key (`x:ApiKey/set`, kept as
+  `STALWART_TOKEN`) still reads, applies plans and acts on other accounts, since a Bearer key is
+  tried before any directory. `stalwart-cli` errors if a user and a token are both set, even
+  empty, so `prefer_token` in `lib.sh` unsets the password pair.
+- **An admin account answers `x:ApiKey/set` only once Stalwart has left bootstrap mode.** Right
+  after `Bootstrap` the new admin gets a 401 until the restart, so the key is created by
+  `deploy.sh` after that restart, not by `bootstrap-server.sh`. The default quota is 5 keys per
+  account; creating one destroys earlier `corvid-deploy` keys.
+- **Pocket-ID's setup page gives the admin account to whoever opens it first, and no variable
+  disables it.** Caddy answers 404 for `/setup` and `/api/signup/setup` on its site, and the pod
+  provisions everything through `STATIC_API_KEY`. Pocket-ID's port is not published, so `idp.sh`
+  runs the host's curl in the `corvid-idp` network namespace (`nsenter`), which needs neither a
+  certificate nor a new image; the container's own busybox `wget` cannot send `PUT`.
+- **Pocket-ID rate-limits one-time token redemption** (`429` after a handful in a minute), and
+  caps a one-time token's `ttl` at 24 hours (`7d` is a 400). A test minting many tokens waits.
 - **Stalwart's OIDC directory demands the `email` scope by default**, and Pocket-ID's access token
   is an RFC 9068 JWT with no `preferred_username` or `email` claim, only the scopes the client
   asked for. `requireScopes` defaults to `openid` and `email`, so a client asking `openid profile`

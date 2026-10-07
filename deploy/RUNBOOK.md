@@ -225,23 +225,46 @@ domain may never reach it, in which case the classifier never trains and the rul
 all the work with nothing saying so. A count stuck at eleven for a year answers the question,
 and is the argument for raising the hold or lowering the floor.
 
-## Passkeys are a separate apply, on purpose
+## Passkeys come with the deploy
 
 `Authentication.directoryId` selects the "external directory used for authentication, or null to
 use the internal directory". Pointing it at the OIDC directory stops Stalwart authenticating
-against its own account store and starts it asking Pocket-ID, which on a fresh instance has
-nobody enrolled. On a mailbox that already works, that is a login outage waiting for the first
-reconnect.
+against its own account store and starts it asking Pocket-ID. So `stalwart.plan.ndjson` does not
+set it, and `deploy.sh` applies `oidc.plan.ndjson` only after provisioning has created the users.
 
-So `stalwart.plan.ndjson` does not set it. Mail deploys first and keeps the internal
-directory. When passkeys are wanted:
+`deploy.sh` brings Pocket-ID up and configures it with no web UI, through its REST API and the
+`STATIC_API_KEY` in `idp.env` (`install.sh` generates it). `deploy/idp.sh provision` creates:
 
-    PLAN=deploy/oidc.plan.ndjson ./deploy/apply-plan.sh
-    systemctl unmask corvid-idp.service && systemctl start corvid-idp.service
+- `<mail_user>-admin`, a Pocket-ID admin, and `<mail_user>`, the mailbox owner. Both get an
+  address at the mail domain; the admin's has no mailbox and nothing mails it.
+- a `mail` group holding only the mail user, and the `corvid` client (public, PKCE) restricted to
+  that group, so the admin and any other Pocket-ID user get no sign-in code for the client.
 
-The installer keeps Pocket-ID masked while Stalwart has no OIDC directory, and leaves it alone
-once the plan above has created one, so a rerun does not switch passkeys off. Enrol a passkey in Pocket-ID and confirm a web login before relying on it, and keep the recovery
-credential until then: it authenticates ahead of the directory, so it is the way back in.
+It checks what exists before creating anything, so a rerun changes nothing and prints no links. A
+`corvid` client registered by hand is restricted in place. Pocket-ID's setup routes
+(`/setup`, `/api/signup/setup`) answer 404 at Caddy, so nobody can claim the first admin account.
+`idp.sh` reaches the API from inside the `corvid-idp` container's network namespace, so it needs
+neither a certificate nor a published port.
+
+The deploy prints one enrollment link per user it created, valid 24 hours. Open each, register a
+passkey, and confirm a sign-in; the Corvid app signs in as
+the mail user. The deploy scripts authenticate with an admin API key (`STALWART_TOKEN` in
+`corvid.env`, created on the first deploy that finds a working password), because Stalwart
+refuses the admin password once the OIDC directory is active. App passwords for IMAP and SMTP are
+unaffected.
+
+A lost or broken key, or an expired link, needs a new link, minted on the host:
+
+    /opt/corvid/deploy/idp.sh link <mail_user>
+
+If `idp.sh` itself is unusable, Pocket-ID's own CLI does the same inside the container:
+
+    podman exec corvid-idp /app/pocket-id one-time-access-token <username>
+
+and the link is `https://<idp_hostname>:<web_port>/lc/<token>`. A host that already has Pocket-ID
+data from the setup page keeps its users: `provision` finds them by username and prints no link
+for them, so use `idp.sh link` for each. A half-finished setup that left a stray user is cleared
+by stopping `corvid-idp` and removing `/opt/corvid/idp/pocket-id.db*` before the deploy.
 
 ## `server.mail_user` is a local part, not an address
 
