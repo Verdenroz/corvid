@@ -30,6 +30,7 @@ const REQUEST_BODY_LIMIT: usize = 256;
 const NAME_LENGTH: std::ops::RangeInclusive<usize> = 1..=32;
 
 pub struct Config {
+    pub secret: Vec<u8>,
     pub state_path: PathBuf,
     pub devices: Devices,
     pub issuer: String,
@@ -41,6 +42,7 @@ pub struct Config {
 }
 
 struct DeviceState {
+    secret: Vec<u8>,
     path: PathBuf,
     devices: Mutex<Devices>,
     master: Master,
@@ -72,6 +74,7 @@ type Shared = Arc<DeviceState>;
 
 pub fn routes(config: Config) -> Router {
     let state = Arc::new(DeviceState {
+        secret: config.secret,
         path: config.state_path,
         devices: Mutex::new(config.devices),
         master: Master::new(config.issuer, config.idp_url, config.admin_user),
@@ -345,12 +348,23 @@ async fn read(
         .ok_or(StatusCode::NOT_FOUND)
 }
 
-/// Not routed through the web tier: it is how the host removes a device's key, and only the
-/// pod's own loopback reaches it.
+/// How the host removes a device's key. Caddy does not route it, but every container in the pod
+/// reaches the loopback port, so the caller signs `revoke <name>` with the webhook secret.
 async fn revoke(
     State(state): State<Shared>,
     Path(name): Path<String>,
+    headers: HeaderMap,
 ) -> Result<StatusCode, StatusCode> {
+    let signature = headers
+        .get("X-Signature")
+        .and_then(|value| value.to_str().ok());
+    if !crate::verify(
+        &state.secret,
+        format!("revoke {name}").as_bytes(),
+        signature,
+    ) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
     let approved = state
         .snapshot()
         .approved

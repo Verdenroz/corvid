@@ -11,6 +11,7 @@ use serde_json::{Value, json};
 use stalwart::{KEYS_ACCOUNT, MAIL_ACCOUNT, Stalwart, TOKEN};
 
 const ADMIN: &str = "mailuser-admin";
+const SECRET: &[u8] = b"secret";
 
 struct Rig {
     url: String,
@@ -34,6 +35,7 @@ async fn rig_with(devices: Devices) -> Rig {
         &dir.path().join("no-update"),
     );
     config.devices = Some(devices::Config {
+        secret: SECRET.to_vec(),
         state_path: state.clone(),
         devices,
         issuer: ISSUER.to_owned(),
@@ -97,11 +99,17 @@ impl Rig {
     }
 
     async fn revoke(&self, name: &str) -> reqwest::Response {
-        reqwest::Client::new()
-            .delete(format!("{}/internal/devices/{name}", self.url))
-            .send()
+        self.revoke_signed(name, Some(sign_revoke(SECRET, name)))
             .await
-            .unwrap()
+    }
+
+    async fn revoke_signed(&self, name: &str, signature: Option<String>) -> reqwest::Response {
+        let mut request =
+            reqwest::Client::new().delete(format!("{}/internal/devices/{name}", self.url));
+        if let Some(signature) = signature {
+            request = request.header("X-Signature", signature);
+        }
+        request.send().await.unwrap()
     }
 
     async fn approved(&self, name: &str) -> Approved {
@@ -482,6 +490,31 @@ async fn revoking_removes_the_key_file_and_the_record() {
     assert_eq!(rig.record("phone").await.status(), 404);
     assert_eq!(rig.record("tablet").await.status(), 200);
     assert_eq!(rig.revoke("phone").await.status(), 404);
+}
+
+#[tokio::test]
+async fn revoking_without_the_webhook_secret_is_refused_and_removes_nothing() {
+    let rig = rig().await;
+    rig.approved("phone").await;
+    let wrong = sign_revoke(b"another secret", "phone");
+    let for_another_device = sign_revoke(SECRET, "tablet");
+
+    for signature in [None, Some(wrong), Some(for_another_device)] {
+        assert_eq!(rig.revoke_signed("phone", signature).await.status(), 401);
+    }
+
+    assert!(rig.stalwart.node("phone.key").is_some());
+    assert_eq!(rig.record("phone").await.status(), 200);
+}
+
+fn sign_revoke(secret: &[u8], name: &str) -> String {
+    use base64::Engine;
+    use hmac::{Hmac, KeyInit, Mac};
+    use sha2::Sha256;
+
+    let mut mac = <Hmac<Sha256>>::new_from_slice(secret).unwrap();
+    mac.update(format!("revoke {name}").as_bytes());
+    base64::engine::general_purpose::STANDARD.encode(mac.finalize().into_bytes())
 }
 
 fn base64_url(text: &str) -> String {

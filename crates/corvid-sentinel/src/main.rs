@@ -39,7 +39,7 @@ async fn main() -> ExitCode {
     };
     let devices = match settings
         .devices
-        .map(|devices| device_config(config.server, devices))
+        .map(|devices| device_config(config.server, devices, hmac_secret.as_bytes().to_vec()))
     {
         Some(Ok(devices)) => Some(devices),
         Some(Err(code)) => return code,
@@ -68,6 +68,7 @@ async fn main() -> ExitCode {
 fn device_config(
     server: Option<corvid_config::Server>,
     settings: corvid_config::Devices,
+    webhook_secret: Vec<u8>,
 ) -> Result<devices::Config, ExitCode> {
     let server = or_exit(section(server, "server"));
     let stalwart_token = or_exit(secret("CORVID_STALWART_TOKEN"));
@@ -79,6 +80,7 @@ fn device_config(
         }
     };
     Ok(devices::Config {
+        secret: webhook_secret,
         state_path: settings.state,
         devices: state,
         issuer: settings.issuer.unwrap_or_else(|| server.idp_issuer()),
