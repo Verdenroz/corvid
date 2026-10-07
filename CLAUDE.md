@@ -49,8 +49,8 @@ namespace, so services reach each other on `127.0.0.1`:
 | `corvid-milter` | `corvid-milter` binary, called by Stalwart at DATA | 11332 |
 | `corvid-imgproxy` | serves the images the milter rewrote | 8081 |
 | `corvid-labeler` | polls JMAP, writes labels as keywords | none |
-| `corvid-sentinel` | the pod's authenticated side door: the alert feed from Stalwart webhooks and update status, and update requests | 11333 loopback |
-| `corvid-caddy` | the web tier: JMAP, `/i/*` to imgproxy, `/corvid/update` and `/corvid/notices` to the sentinel behind `forward_auth`; a second site proxies `server.idp_hostname` to Pocket-ID | `server.web_port`, 4443 by default |
+| `corvid-sentinel` | the pod's authenticated side door: the alert feed from Stalwart webhooks and update status, update requests, and master-approved device keys | 11333 loopback |
+| `corvid-caddy` | the web tier: JMAP, `/i/*` to imgproxy, `/corvid/update`, `/corvid/notices` and `/corvid/devices/*` to the sentinel behind `forward_auth`; a second site proxies `server.idp_hostname` to Pocket-ID | `server.web_port`, 4443 by default |
 | `corvid-idp` | Pocket-ID, OIDC passkeys; provisioned by `idp.sh`, switched on by `oidc.plan.ndjson` | 1411 |
 
 `corvid-mirror` is the exception: a systemd timer on a separate machine that pulls over JMAP.
@@ -403,6 +403,25 @@ Caddyfile built from the same env vars as everything else. `core/discovery` hold
   accepted, even a folder it cannot see. Only a top-level create is refused. Measured on the rig with
   a real Pocket-ID token. So a shared folder proves what the owner wrote only if readers look up
   nodes by the id the owner recorded, never by name.
+- **An account that must take no mail needs more than a permission.** Disabling `emailReceive`
+  on an account, or `isEnabled` on its domain, still answers `250` to `RCPT TO`. What refuses it is
+  an `MtaStageRcpt.script` naming a Sieve script that `reject`s on `rcpt_domain`, which is how
+  `corvid-keys` is closed, in a `keys.<domain>` domain of its own. Disabling `authenticate` is what
+  refuses its credentials (`403`).
+- **An account name is not unique across domains.** A Pocket-ID user called `corvid-keys` gets its
+  own auto-created `corvid-keys@<mail domain>`, so `x:Account/query` by `name` returns two
+  accounts. The sentinel matches on `emailAddress`. The namesake gets a session of its own and
+  `forbidden` on the keys account.
+- **Pocket-ID's `requiresReauthentication` stops the authorization at a `reauthenticate` step**
+  that only a passkey assertion completes (`reauthenticationToken` is required), so a one-time
+  link session cannot mint a `corvid-admin` token. The rig switches the flag off to mint one and
+  `idp.sh provision` puts it back.
+- **A Pocket-ID refresh keeps the access token's `iat`.** A refresh grant needs no passkey, hands
+  out a rotated refresh token each time (so a chain never expires) and extends `exp`, but the new
+  access token carries the original `iat`. The sentinel's five minute window runs on `iat`, so a
+  chain of refreshes never renews it; the rig refreshes for over five minutes and the last token
+  is refused. Pocket-ID issues a refresh token even without `offline_access`, and one minute is
+  the shortest refresh lifetime it accepts, which `idp.sh` sets on `corvid-admin`.
 - **A default 5-app-password-per-account quota exists**, reported as `overQuota` in `notCreated`
   rather than failing the request outright. `stalwart.plan.ndjson` raises it to 20 via
   `Account.quotas/maxAppPasswords`; verified by creating a 6th after applying.
