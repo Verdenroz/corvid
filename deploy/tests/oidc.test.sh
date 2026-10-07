@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Runs the pinned Stalwart and Pocket-ID side by side with oidc.plan.ndjson applied, mints a real
 # Pocket-ID access token for a user without a passkey or browser, and checks what Stalwart makes
-# of it over JMAP. Pocket-ID is driven only through STATIC_API_KEY and its REST API. Needs
-# stalwart-cli, curl, python3 and docker or podman; bootstrap mode needs port 8080 free.
+# of it over JMAP. idp.sh provisions Pocket-ID, and the rig drives the rest only through
+# STATIC_API_KEY and its REST API. Needs stalwart-cli, curl, python3 and docker or podman;
+# bootstrap mode needs port 8080 free.
 set -uo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 image() { awk -F= '$1=="Image"{print $2}' "$here/$1.container"; }
@@ -42,6 +43,18 @@ idp_api() {
 }
 json() { python3 -c 'import json,sys; print(json.load(sys.stdin)[sys.argv[1]])' "$1"; }
 
+# Prints the status of redeeming a one-time token into cookie jar $2. Pocket-ID rate-limits
+# redemption, so a 429 waits for the window to reopen.
+redeem() {
+  local status
+  for _ in $(seq 1 12); do
+    status="$(curl -s -c "$2" -o /dev/null -w '%{http_code}' -X POST "$issuer/api/one-time-access-token/$1")"
+    [[ "$status" == 429 ]] || break
+    sleep 5
+  done
+  echo "$status"
+}
+
 # One-time access token, then a session, then the authorization-code flow with PKCE, the way the
 # client does it minus the passkey and the browser. Prints the access token. Pocket-ID skips the
 # consent step when the user already consented to the scopes, so the interaction is optional.
@@ -53,8 +66,7 @@ import base64, hashlib, sys
 print(base64.urlsafe_b64encode(hashlib.sha256(sys.stdin.buffer.read()).digest()).decode().rstrip("="))')"
   ott="$(idp_api "users/$user_id/one-time-access-token" -d '{"ttl":"5m"}' | json token)"
   [[ -n "$ott" ]] || { echo "mint: no one-time access token" >&2; return 1; }
-  curl -sf -c "$jar" -o /dev/null -X POST "$issuer/api/one-time-access-token/$ott" \
-    || { echo "mint: the one-time access token was refused" >&2; return 1; }
+  [[ "$(redeem "$ott" "$jar")" == 200 ]] || { echo "mint: the one-time access token was refused" >&2; return 1; }
   location="$(curl -s -b "$jar" -o /dev/null -w '%{redirect_url}' -G "$issuer/authorize" \
     --data-urlencode client_id=corvid --data-urlencode response_type=code \
     --data-urlencode redirect_uri=http://127.0.0.1/callback --data-urlencode "scope=$scope" \
@@ -74,16 +86,31 @@ print(base64.urlsafe_b64encode(hashlib.sha256(sys.stdin.buffer.read()).digest())
     | json access_token
 }
 
-idp_api oidc/clients -d '{"id":"corvid","name":"corvid","isPublic":true,"pkceEnabled":true,"callbackURLs":["http://127.0.0.1/callback"]}' >/dev/null
-nomail_id="$(idp_api users -d '{"username":"nomail","email":"nomail@rig.test","firstName":"No","lastName":"Mail","isAdmin":false}' | json id)"
-outsider_id="$(idp_api users -d '{"username":"outsider","email":"outsider@rig.test","firstName":"Out","lastName":"Sider","isAdmin":false}' | json id)"
-mailuser_id="$(idp_api users -d '{"username":"mailuser","email":"mailuser@rig.test","firstName":"Mailuser","lastName":"Rig","isAdmin":false}' | json id)"
-
 cat > "$work/shell" <<SH
 #!/bin/sh
-printf 'MAIL_DOMAIN=rig.test\nMAIL_HOSTNAME=mail.rig.test\nMAIL_USER=mailuser\nACME_CONTACT=ops@rig.test\nWEB_PORT=$idp_port\n'
+printf 'MAIL_DOMAIN=rig.test\nMAIL_HOSTNAME=mail.rig.test\nMAIL_USER=mailuser\nACME_CONTACT=ops@rig.test\nWEB_PORT=$idp_port\nIDP_HOSTNAME=localhost\n'
 SH
 chmod +x "$work/shell"
+printf 'STATIC_API_KEY=%s\n' "$api_key" > "$work/idp.env"
+provision() {
+  CORVID_DIR="$work" CORVID_CONFIG_CMD="$work/shell" CORVID_IDP_URL="$issuer" bash "$here/idp.sh" "$@"
+}
+snapshot() { idp_api users; idp_api user-groups; idp_api oidc/clients; }
+first_run="$(provision provision 2>/dev/null)" || { echo "idp.sh provision failed" >&2; exit 1; }
+after_first="$(snapshot)"
+second_run="$(provision provision 2>/dev/null)" || { echo "the second idp.sh provision failed" >&2; exit 1; }
+after_second="$(snapshot)"
+user_id() {
+  idp_api "users?search=$1" | python3 -c '
+import json, sys
+print(next(u["id"] for u in json.load(sys.stdin)["data"] if u["username"] == sys.argv[1]))' "$1"
+}
+mailuser_id="$(user_id mailuser)"
+admin_id="$(user_id mailuser-admin)"
+nomail_id="$(idp_api users -d '{"username":"nomail","email":"nomail@rig.test","firstName":"No","lastName":"Mail","isAdmin":false}' | json id)"
+outsider_id="$(idp_api users -d '{"username":"outsider","email":"outsider@rig.test","firstName":"Out","lastName":"Sider","isAdmin":false}' | json id)"
+group_id="$(idp_api 'user-groups?search=mail' | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"][0]["id"])')"
+idp_api "user-groups/$group_id/users" -X PUT -d "{\"userIds\":[\"$mailuser_id\",\"$nomail_id\"]}" >/dev/null
 printf 'STALWART_URL=http://127.0.0.1:8080\nRECOVERY_ADMIN_USER=recovery\nRECOVERY_ADMIN_PASSWORD=%s\n' \
   "$recovery_pw" > "$work/corvid.env"
 CORVID_DIR="$work" CORVID_ENV="$work/corvid.env" CORVID_CONFIG_CMD="$work/shell" \
@@ -179,14 +206,22 @@ echo "== a Pocket-ID user with no mailbox"
 check "gets a mailbox created on its first token" "$(session "$(mint "$nomail_id" "openid profile")")" 200
 accounts="$(stalwart-cli query Account --json)"
 check "the new account is nomail@rig.test" "$(grep -c '"emailAddress":"nomail@rig.test"' <<<"$accounts")" 1
-group_id="$(idp_api user-groups -d '{"name":"mail","friendlyName":"mail"}' | json id)"
-idp_api "user-groups/$group_id/users" -X PUT -d "{\"userIds\":[\"$mailuser_id\"]}" >/dev/null
-idp_api oidc/clients/corvid/allowed-user-groups -X PUT -d "{\"userGroupIds\":[\"$group_id\"]}" >/dev/null
-idp_api oidc/clients/corvid -X PUT \
-  -d '{"name":"corvid","isPublic":true,"pkceEnabled":true,"callbackURLs":["http://127.0.0.1/callback"],"isGroupRestricted":true}' >/dev/null
-check "a group-restricted client issues no code to a user outside the group" \
-  "$(mint "$outsider_id" "openid profile" 2>&1 | grep -o 'not+allowed+to+access+this+service' | head -1)" not+allowed+to+access+this+service
-check "a group member still gets a working token" "$(session "$(mint "$mailuser_id" "openid profile")")" 200
+
+echo "== the provisioned client and users"
+denied=not+allowed+to+access+this+service
+check "a user outside the mail group gets no code" \
+  "$(mint "$outsider_id" "openid profile" 2>&1 | grep -o "$denied" | head -1)" "$denied"
+check "the admin user gets no code" \
+  "$(mint "$admin_id" "openid profile" 2>&1 | grep -o "$denied" | head -1)" "$denied"
+check "the mail user gets a working token" "$(session "$(mint "$mailuser_id" "openid profile")")" 200
+check "the first provision prints a link for the admin and the mail user" \
+  "$(sed -E 's#^(\S+) https://localhost:[0-9]+/lc/\S+$#\1#' <<<"$first_run" | sort | tr '\n' ' ')" "mailuser mailuser-admin "
+check "the second provision prints nothing" "$second_run" ""
+check "the second provision changes nothing in Pocket-ID" "$([[ "$after_first" == "$after_second" ]] && echo same)" same
+link="$(provision link mailuser)"
+check "link mints a fresh enrollment link" "$(grep -cE '^https://localhost:[0-9]+/lc/[A-Za-z0-9]+$' <<<"$link")" 1
+check "the link's token signs the user in" \
+  "$(redeem "${link##*/}" "$work/jar-link")" 200
 
 [[ $fail -eq 0 ]] || { "$engine" logs "$mail" 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E 'auth\.|http\.' | tail -10; }
 exit "$fail"

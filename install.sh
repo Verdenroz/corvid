@@ -502,6 +502,7 @@ keep() {
 }
 keep /opt/corvid/rewriter.env CORVID_IMGPROXY_SECRET "$(openssl rand -hex 32)"
 keep /opt/corvid/idp.env ENCRYPTION_KEY "$(openssl rand -base64 32)"
+keep /opt/corvid/idp.env STATIC_API_KEY "$(openssl rand -hex 32)"
 EOF
 
 step "preparing the host"
