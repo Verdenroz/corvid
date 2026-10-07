@@ -27,8 +27,13 @@ class Sentinel(http.server.BaseHTTPRequestHandler):
         self.send_response(200); self.end_headers(); self.wfile.write(b"sentinel")
     do_POST = do_GET
     def log_message(self, *a): pass
+class Idp(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200); self.end_headers(); self.wfile.write(b"idp")
+    do_POST = do_GET
+    def log_message(self, *a): pass
 socketserver.TCPServer.allow_reuse_address = True
-for port, handler in ((8080, Stalwart), (11333, Sentinel)):
+for port, handler in ((8080, Stalwart), (11333, Sentinel), (1411, Idp)):
     threading.Thread(target=socketserver.TCPServer(("127.0.0.1", port), handler).serve_forever).start()
 ' &
 stubs=$!
@@ -41,7 +46,7 @@ stubs=$!
   -v "$work/Caddyfile:/etc/caddy/Caddyfile:ro,z" "$image" >/dev/null
 
 fetch() {
-  curl -sk --max-time 5 -o "$work/body" -w '%{http_code}' --resolve "localhost:$port:127.0.0.1" \
+  curl -sk --max-time 5 -o "$work/body" -w '%{http_code}' --resolve "localhost:$port:127.0.0.1" --resolve "idp.localhost:$port:127.0.0.1" \
     "$@" 2>/dev/null
   printf ' %s' "$(cat "$work/body" 2>/dev/null)"
 }
@@ -58,6 +63,12 @@ for path in /corvid/update /corvid/notices; do
   check "$path with an accepted credential reaches the sentinel" "$(fetch -u good:good "$url$path")" "200 sentinel"
 done
 check "everything else goes to Stalwart" "$(fetch "$url/jmap/session")" "200 stalwart"
+idp="https://idp.localhost:$port"
+check "the identity provider's site reaches Pocket-ID" "$(fetch "$idp/api/users")" "200 idp"
+for path in /setup /api/signup/setup; do
+  check "$path on the identity provider's site is a 404" "$(fetch "$idp$path")" "404 "
+  check "$path POST on the identity provider's site is a 404" "$(fetch -X POST -d '{}' "$idp$path")" "404 "
+done
 
 [[ $fail -eq 0 ]] || "$engine" logs "$name" 2>&1 | tail -20
 exit "$fail"
