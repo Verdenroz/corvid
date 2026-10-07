@@ -2,7 +2,7 @@
 # install.sh's discovery SRV step: _corvid._tcp.<domain> points the app at the web tier. Stalwart
 # publishes its own _jmap._tcp record on port 443 and manages it, so this is a different name.
 
-# clear, current or foreign. Records are "ID PORT TARGET" lines.
+# Prints clear, current or foreign for the "ID PORT TARGET" lines in RECORDS.
 srv_dns_status() {
   local records="$1" hostname="$2" web_port="$3"
   if [[ -z "$records" ]]; then

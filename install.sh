@@ -409,7 +409,7 @@ cat <<EOF
   Web address            https://$hostname:$web_port
   Identity provider      $idp_hostname$([[ $idp_create_a == 1 ]] && echo " (A record to $server_ip will be created)")
   App sign-in record     _corvid._tcp.$domain$([[ $srv_create == 1 ]] && echo " (SRV to $hostname port $web_port will be created)")
-  Mail apps from       $(case "$client_access" in anywhere) echo "anywhere" ;; host) echo "this server only, such as its VPN" ;; *) echo "$client_access" ;; esac)
+  Mail apps from         $(case "$client_access" in anywhere) echo "anywhere" ;; host) echo "this server only, such as its VPN" ;; *) echo "$client_access" ;; esac)
   Certificate notices    $acme_contact
   Cloudflare token       $([[ -n "$token" ]] && echo "new" || echo "unchanged")
   DNSSEC                 $(if (( ${#dnssec_off[@]} == 0 )); then echo "on"; elif (( enable_dnssec )); then echo "will be turned on for $off_zones"; else echo "stays off for $off_zones"; fi)
