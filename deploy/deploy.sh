@@ -138,6 +138,14 @@ if [[ -z "${STALWART_TOKEN:-}" ]]; then
   echo "  API key verified"
 fi
 
+# The sentinel writes device keys as admin and gets a key of its own, so replacing either key
+# leaves the other working.
+if ! grep -q '^CORVID_STALWART_TOKEN=.' "$CORVID_DIR/sentinel-devices.env" 2>/dev/null; then
+  step "creating the sentinel's admin API key"
+  create_admin_api_key "$CORVID_DIR/sentinel-devices.env" corvid-sentinel CORVID_STALWART_TOKEN
+  systemctl restart corvid-sentinel.service
+fi
+
 step "applying configuration"
 CORVID_SKIP_RELOAD=1 "$HERE/apply-plan.sh"
 

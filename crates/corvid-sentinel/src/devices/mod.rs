@@ -36,7 +36,8 @@ pub struct Config {
     pub issuer: String,
     pub idp_url: String,
     pub admin_user: String,
-    pub mail_user: String,
+    pub keys_address: String,
+    pub mail_address: String,
     pub stalwart_url: String,
     pub stalwart_token: String,
 }
@@ -78,7 +79,12 @@ pub fn routes(config: Config) -> Router {
         path: config.state_path,
         devices: Mutex::new(config.devices),
         master: Master::new(config.issuer, config.idp_url, config.admin_user),
-        keys: Keys::new(config.stalwart_url, config.stalwart_token, config.mail_user),
+        keys: Keys::new(
+            config.stalwart_url,
+            config.stalwart_token,
+            config.keys_address,
+            config.mail_address,
+        ),
     });
     Router::new()
         .route("/corvid/devices/requests", post(create))

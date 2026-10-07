@@ -185,14 +185,38 @@ if found:
     print(f"{file_id}\t{blob_id}")'
 }
 
-# Not one atomic step, so a rerun after a partial failure must still make progress: only
-# neither the credential nor the key file existing counts as "no such device".
+# Asks the sentinel to destroy the key file it approved for NAME and forget it, and prints 204,
+# or 404 when it recorded none. The route is not served through Caddy, so it runs inside the pod,
+# and it takes an HMAC of the request under the sentinel's webhook secret.
+sentinel_revoke() {
+  local url="${CORVID_SENTINEL_URL:-}" pid status signature in_pod=()
+  signature="$(python3 -c '
+import base64, hashlib, hmac, sys
+secret = next(l.split("=", 1)[1].strip() for l in open(sys.argv[1]) if l.startswith("CORVID_SENTINEL_SECRET="))
+print(base64.b64encode(hmac.new(secret.encode(), f"revoke {sys.argv[2]}".encode(), hashlib.sha256).digest()).decode())' \
+    "${CORVID_SENTINEL_ENV:-$CORVID_DIR/sentinel-webhook.env}" "$1")"
+  if [[ -z "$url" ]]; then
+    url=http://127.0.0.1:11333
+    pid="$(podman inspect -f '{{.State.Pid}}' corvid-sentinel 2>/dev/null || echo 0)"
+    (( pid > 0 )) || { echo "corvid-sentinel is not running; check: systemctl status corvid-sentinel" >&2; exit 69; }
+    in_pod=(nsenter "--net=/proc/$pid/ns/net")
+  fi
+  status="$("${in_pod[@]}" curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "X-Signature: $signature" \
+    "$url/internal/devices/$1" || true)"
+  [[ "$status" == 204 || "$status" == 404 ]] || { echo "the sentinel answered $status revoking $1's approved key" >&2; exit 1; }
+  echo "$status"
+}
+
+# Not one atomic step, so a rerun after a partial failure must still make progress: only none of
+# the credential, a key file and an approved key existing counts as "no such device".
 cmd_revoke() {
-  local name="$1" id="$2" credential_id found file_id blob_id status
+  local name="$1" id="$2" credential_id found approved file_id blob_id status
 
   credential_id="$(credential_id_for "$id" "$name")"
   found="$(find_key_file "$id" "$name")"
-  [[ -n "$credential_id" || -n "$found" ]] || { echo "no such device: $name" >&2; exit 65; }
+  approved="$(sentinel_revoke "$name")"
+  [[ -n "$credential_id" || -n "$found" || "$approved" == 204 ]] || { echo "no such device: $name" >&2; exit 65; }
+  [[ "$approved" != 204 ]] || echo "  approved key revoked"
 
   if [[ -n "$credential_id" ]]; then
     python3 -c '

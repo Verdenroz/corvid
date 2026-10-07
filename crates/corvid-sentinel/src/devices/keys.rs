@@ -5,7 +5,6 @@ use serde_json::{Value, json};
 
 use super::state::Approved;
 
-const KEYS_ACCOUNT: &str = "corvid-keys";
 const FOLDER: &str = "corvid-devices";
 const KEY_VERSION: u8 = 1;
 const KEY_LENGTH: usize = 32;
@@ -36,23 +35,25 @@ pub struct Keys {
     http: reqwest::Client,
     url: String,
     token: String,
-    mail_user: String,
+    keys_address: String,
+    mail_address: String,
 }
 
 impl Keys {
-    pub fn new(url: String, token: String, mail_user: String) -> Self {
+    pub fn new(url: String, token: String, keys_address: String, mail_address: String) -> Self {
         Self {
             http: reqwest::Client::new(),
             url,
             token,
-            mail_user,
+            keys_address,
+            mail_address,
         }
     }
 
     /// Creates the key file for a device with fresh random content and returns where it is.
     pub async fn enroll(&self, device: &str) -> Result<Approved, Error> {
-        let keys = self.account(KEYS_ACCOUNT).await?;
-        let mail = self.account(&self.mail_user).await?;
+        let keys = self.account(&self.keys_address).await?;
+        let mail = self.account(&self.mail_address).await?;
         let folder = self.folder(&keys, &mail).await?;
         let mut content = vec![KEY_VERSION; KEY_LENGTH + 1];
         SystemRandom::new()
@@ -108,14 +109,27 @@ impl Keys {
         }
     }
 
-    async fn account(&self, name: &str) -> Result<String, Error> {
+    /// Looks accounts up by address, since a Pocket-ID user of the same name in the mail domain
+    /// gets an account of its own with the same local part.
+    async fn account(&self, address: &str) -> Result<String, Error> {
+        let local = address.split('@').next().unwrap_or_default();
         let found = self
-            .call("x:Account/query", json!({"filter": {"name": name}}))
+            .call("x:Account/query", json!({"filter": {"name": local}}))
             .await?;
-        match found["ids"].as_array().map(Vec::as_slice) {
-            Some([id]) => Ok(id.as_str().unwrap_or_default().to_owned()),
-            _ => Err(Error(format!("no single account named {name}"))),
-        }
+        let accounts = self
+            .call(
+                "x:Account/get",
+                json!({"ids": found["ids"], "properties": ["emailAddress"]}),
+            )
+            .await?;
+        accounts["list"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|account| account["emailAddress"] == address)
+            .and_then(|account| account["id"].as_str())
+            .map(str::to_owned)
+            .ok_or_else(|| Error(format!("no account {address}")))
     }
 
     /// The top-level folder, created on first use, shared read-only with the mailbox.

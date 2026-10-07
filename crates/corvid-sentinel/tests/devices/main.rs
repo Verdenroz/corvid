@@ -41,7 +41,8 @@ async fn rig_with(devices: Devices) -> Rig {
         issuer: ISSUER.to_owned(),
         idp_url: idp.url.clone(),
         admin_user: ADMIN.to_owned(),
-        mail_user: "mailuser".to_owned(),
+        keys_address: "corvid-keys@keys.rig.test".to_owned(),
+        mail_address: "mailuser@rig.test".to_owned(),
         stalwart_url: stalwart.url.clone(),
         stalwart_token: TOKEN.to_owned(),
     });

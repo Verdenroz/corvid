@@ -45,6 +45,10 @@ jobs:
           echo "76fcd7250a10c7bee704dc4a08000b3faca6b5a22895d41831c0c37efd95acce  cli.tar.xz" | sha256sum -c --quiet
           tar -xJf cli.tar.xz
           sudo install -m 755 stalwart-cli-x86_64-unknown-linux-musl/stalwart-cli /usr/local/bin/stalwart-cli
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.98"
+      - uses: Swatinem/rust-cache@v2
       - run: bash deploy/tests/oidc.test.sh
       - run: cat deploy/stalwart.plan.ndjson deploy/stalwart.host-zone.ndjson > combined.ndjson && ./deploy/check-plan.py combined.ndjson
       - run: ./deploy/check-plan.py

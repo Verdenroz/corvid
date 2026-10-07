@@ -128,6 +128,9 @@ spec:
             - name: CORVID_SENTINEL_SECRET
               valueFrom:
                 secretKeyRef: {name: {{ $secret }}, key: CORVID_SENTINEL_SECRET}
+            - name: CORVID_STALWART_TOKEN
+              valueFrom:
+                secretKeyRef: {name: {{ $secret }}, key: CORVID_STALWART_TOKEN, optional: true}
           volumeMounts:
             - {name: config, mountPath: /etc/corvid/config.yaml, subPath: config.yaml}
             - {name: state, mountPath: /var/lib/corvid, subPath: sentinel}

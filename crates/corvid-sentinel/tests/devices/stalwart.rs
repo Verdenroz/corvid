@@ -157,6 +157,7 @@ async fn jmap(
     };
     let answer = match method.as_str().unwrap() {
         "x:Account/query" => query_account(arguments),
+        "x:Account/get" => get_accounts(arguments),
         "FileNode/get" => get_nodes(&shared, arguments),
         "FileNode/set" => set_nodes(&shared, arguments),
         other => panic!("unexpected method {other}"),
@@ -164,13 +165,32 @@ async fn jmap(
     Ok(Json(json!({"methodResponses": [[method, answer, id]]})))
 }
 
+/// The mail domain also holds an account named like the keys account, as a Pocket-ID user of that
+/// name would get, so a lookup by local part alone is ambiguous.
+const ACCOUNTS: [(&str, &str, &str); 3] = [
+    ("namesake-id", "corvid-keys", "corvid-keys@rig.test"),
+    (KEYS_ACCOUNT, "corvid-keys", "corvid-keys@keys.rig.test"),
+    (MAIL_ACCOUNT, "mailuser", "mailuser@rig.test"),
+];
+
 fn query_account(arguments: &Value) -> Value {
-    let ids: Vec<&str> = match arguments["filter"]["name"].as_str().unwrap() {
-        "corvid-keys" => vec![KEYS_ACCOUNT],
-        "mailuser" => vec![MAIL_ACCOUNT],
-        _ => vec![],
-    };
+    let name = arguments["filter"]["name"].as_str().unwrap();
+    let ids: Vec<&str> = ACCOUNTS
+        .iter()
+        .filter(|(_, local, _)| *local == name)
+        .map(|(id, _, _)| *id)
+        .collect();
     json!({"ids": ids})
+}
+
+fn get_accounts(arguments: &Value) -> Value {
+    let wanted = arguments["ids"].as_array().unwrap();
+    let list: Vec<Value> = ACCOUNTS
+        .iter()
+        .filter(|(id, _, _)| wanted.contains(&json!(id)))
+        .map(|(id, _, address)| json!({"id": id, "emailAddress": address}))
+        .collect();
+    json!({"list": list})
 }
 
 fn describe(node: &Node) -> Value {

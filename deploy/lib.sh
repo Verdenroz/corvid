@@ -38,16 +38,17 @@ jmap_admin() {
     -d "{\"using\": [\"urn:ietf:params:jmap:core\", \"urn:stalwart:jmap\"], \"methodCalls\": $1}"
 }
 
-# Creates an admin API key and records it in ENV_FILE as STALWART_TOKEN. A Bearer key is tried
-# before any directory, so it keeps working once an external directory refuses the admin password.
-# Keys an earlier run left behind when its token was lost are destroyed first, to spare the quota.
+# Creates an admin API key and records it in ENV_FILE as STALWART_TOKEN, or as $3 under the
+# description $2. A Bearer key is tried before any directory, so it keeps working once an external
+# directory refuses the admin password. Keys an earlier run left behind when its token was lost
+# are destroyed first, to spare the quota.
 create_admin_api_key() {
-  local env_file="$1" stale token
+  local env_file="$1" description="${2:-corvid-deploy}" variable="${3:-STALWART_TOKEN}" stale token
   stale="$(jmap_admin '[["x:ApiKey/get", {"ids": null}, "c0"]]' | python3 -c '
 import json, sys
 rows = json.load(sys.stdin)["methodResponses"][0][1]["list"]
-print(json.dumps([r["id"] for r in rows if r.get("description") == "corvid-deploy"]))')" || return 1
-  token="$(jmap_admin "[[\"x:ApiKey/set\", {\"destroy\": $stale, \"create\": {\"n0\": {\"description\": \"corvid-deploy\"}}}, \"c0\"]]" |
+print(json.dumps([r["id"] for r in rows if r.get("description") == sys.argv[1]]))' "$description")" || return 1
+  token="$(jmap_admin "[[\"x:ApiKey/set\", {\"destroy\": $stale, \"create\": {\"n0\": {\"description\": \"$description\"}}}, \"c0\"]]" |
     python3 -c '
 import json, sys
 result = json.load(sys.stdin)["methodResponses"][0][1]
@@ -55,7 +56,7 @@ created = result.get("created", {}).get("n0")
 if not created:
     sys.exit(json.dumps(result.get("notCreated", result)))
 print(created["secret"])')" || return 1
-  atomic_write "$env_file" "$(grep -v '^STALWART_TOKEN=' "$env_file"; printf 'STALWART_TOKEN=%s' "$token")" 600
+  atomic_write "$env_file" "$(grep -v "^$variable=" "$env_file"; printf '%s=%s' "$variable" "$token")" 600
 }
 
 account_id() {

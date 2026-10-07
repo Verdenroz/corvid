@@ -2,8 +2,9 @@
 # Runs the pinned Stalwart and Pocket-ID side by side with oidc.plan.ndjson applied, mints a real
 # Pocket-ID access token for a user without a passkey or browser, and checks what Stalwart makes
 # of it over JMAP. idp.sh provisions Pocket-ID, and the rig drives the rest only through
-# STATIC_API_KEY and its REST API. Needs stalwart-cli, curl, python3 and docker or podman;
-# bootstrap mode needs port 8080 free.
+# STATIC_API_KEY and its REST API. The sentinel, built with cargo unless CORVID_SENTINEL_BIN names
+# one, then approves a device end to end. Needs stalwart-cli, curl, python3 and docker or podman;
+# bootstrap mode needs port 8080 free, and a run takes about six minutes, most of it a refresh chain.
 set -uo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 image() { awk -F= '$1=="Image"{print $2}' "$here/$1.container"; }
@@ -13,6 +14,7 @@ engine="$(command -v podman || command -v docker)"
 mail_port="${CORVID_RIG_MAIL_PORT:-18080}"
 smtp_port="${CORVID_RIG_SMTP_PORT:-18125}"
 idp_port="${CORVID_RIG_IDP_PORT:-18411}"
+sentinel_port="${CORVID_RIG_SENTINEL_PORT:-18333}"
 issuer="http://localhost:$idp_port"
 api_key=rig-static-api-key-0123456789
 recovery_pw=RigRecovery-93kQxz7pW
@@ -20,10 +22,11 @@ work="$(mktemp -d)"
 mail="corvid-rig-mail-$$"
 idp="corvid-rig-idp-$$"
 volumes=("$mail-etc" "$mail-data" "$idp-data")
-trap '"$engine" rm -f "$mail" "$idp" >/dev/null 2>&1; "$engine" volume rm "${volumes[@]}" >/dev/null 2>&1; rm -rf "$work"' EXIT
+sentinel_pid=
+trap '"$engine" rm -f "$mail" "$idp" >/dev/null 2>&1; "$engine" volume rm "${volumes[@]}" >/dev/null 2>&1; [[ -z "$sentinel_pid" ]] || kill "$sentinel_pid" 2>/dev/null; rm -rf "$work"' EXIT
 
 command -v stalwart-cli >/dev/null || { echo "stalwart-cli not found" >&2; exit 69; }
-for port in 8080 "$mail_port" "$smtp_port" "$idp_port"; do
+for port in 8080 "$mail_port" "$smtp_port" "$idp_port" "$sentinel_port"; do
   ! (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null || { echo "port $port is in use" >&2; exit 69; }
 done
 
@@ -84,7 +87,7 @@ print(base64.urlsafe_b64encode(hashlib.sha256(sys.stdin.buffer.read()).digest())
   code="$(sed 's/.*[?&]code=\([^&]*\).*/\1/' <<<"$location")"
   curl -sf "$issuer/api/oidc/token" -d grant_type=authorization_code -d "client_id=$client" \
     -d "code=$code" -d redirect_uri=http://127.0.0.1/callback -d "code_verifier=$verifier" \
-    | json access_token
+    | tee "$work/last-token.json" | json access_token
 }
 
 cat > "$work/shell" <<SH
@@ -374,6 +377,108 @@ check "the keys account holds only the planted file besides the original" \
 curl_authed -s "$STALWART_URL/jmap/download/$keys_account/$(node_field dev1.key blobId <<<"$listing")/dev1.key" > "$work/after.bin"
 check "the original key's bytes are unchanged after every write" "$(cmp -s "$key_bytes" "$work/after.bin" && echo same)" same
 
+echo "== approving a device end to end"
+# One-time link sessions cannot pass the passkey step, so the admin client stops asking for it
+# while a token is minted and provision puts it back.
+set_admin_reauth() {
+  idp_api oidc/clients/corvid-admin | python3 -c '
+import json, sys
+keep = ("name", "callbackURLs", "logoutCallbackURLs", "isPublic", "pkceEnabled", "skipConsent", "isGroupRestricted",
+        "accessTokenDurationMinutes", "refreshTokenDurationMinutes")
+client = json.load(sys.stdin)
+print(json.dumps({**{k: client[k] for k in keep}, "requiresReauthentication": sys.argv[1] == "true"}))' "$1" |
+    idp_api oidc/clients/corvid-admin -X PUT -d @- >/dev/null
+}
+set_admin_reauth false
+admin_token="$(mint "$admin_id" "openid profile" corvid-admin)" || exit 1
+jwt_claim() {
+  cut -d. -f2 <<<"$1" | python3 -c '
+import base64, json, sys
+s = sys.stdin.read().strip()
+print(json.loads(base64.urlsafe_b64decode(s + "=" * (-len(s) % 4)))[sys.argv[1]])' "$2"
+}
+admin_iat="$(jwt_claim "$admin_token" iat)"
+# Refreshes every 45 seconds for just over the five minutes the sentinel allows, each time with
+# the refresh token the previous grant rotated in, which keeps the chain inside its one minute.
+(
+  refresh="$(json refresh_token < "$work/last-token.json")"
+  for _ in $(seq 1 7); do
+    sleep 45
+    curl -s "$issuer/api/oidc/token" -d grant_type=refresh_token -d client_id=corvid-admin \
+      -d "refresh_token=$refresh" > "$work/chained.json"
+    refresh="$(json refresh_token < "$work/chained.json")"
+  done
+) &
+chain_pid=$!
+provision provision >/dev/null 2>&1
+check "provision puts the passkey requirement back" "$(client_flags corvid-admin)" "True True ['admins'] 5 1"
+check "an admin token is not a mailbox credential" "$(session "$admin_token" | cut -d' ' -f1)" 401
+
+sentinel_bin="${CORVID_SENTINEL_BIN:-}"
+if [[ -z "$sentinel_bin" ]]; then
+  (cd "$here/.." && cargo build -p corvid-sentinel --locked --quiet) || { echo "the sentinel did not build" >&2; exit 1; }
+  sentinel_bin="${CARGO_TARGET_DIR:-$here/../target}/debug/corvid-sentinel"
+fi
+sentinel_secret=rig-sentinel-secret-0123456789
+cat > "$work/sentinel.yaml" <<YAML
+server: {domain: rig.test, hostname: mail.rig.test, mail_user: mailuser, acme_contact: ops@rig.test}
+sentinel:
+  bind: 127.0.0.1:$sentinel_port
+  state: $work/sentinel.json
+  devices: {state: $work/devices.json, issuer: "$issuer", idp_url: "$issuer", stalwart_url: "$STALWART_URL"}
+YAML
+CORVID_CONFIG="$work/sentinel.yaml" CORVID_SENTINEL_SECRET="$sentinel_secret" CORVID_STALWART_TOKEN="$STALWART_TOKEN" \
+  "$sentinel_bin" > "$work/sentinel.log" 2>&1 &
+sentinel_pid=$!
+wait_for "http://127.0.0.1:$sentinel_port/corvid/notices" || { cat "$work/sentinel.log" >&2; echo "the sentinel never came up" >&2; exit 1; }
+# Prints the status, leaving the body in $work/sbody.
+sentinel() {
+  local method="$1" path="$2"
+  shift 2
+  curl -s -o "$work/sbody" -w '%{http_code}' -X "$method" -H 'content-type: application/json' "$@" \
+    "http://127.0.0.1:$sentinel_port$path"
+}
+check "a device asks for a key" "$(sentinel POST /corvid/devices/requests -d '{"name":"rig-phone"}')" 201
+request_id="$(json id < "$work/sbody")"
+request_code="$(json code < "$work/sbody")"
+approve() { sentinel POST "/corvid/devices/requests/$request_id/approve" -H "X-Corvid-Master: $1" -d "{\"code\":\"$2\"}"; }
+check "the request reads as pending" "$(sentinel GET "/corvid/devices/requests/$request_id" >/dev/null; json status < "$work/sbody")" pending
+check "a daily token cannot approve it" "$(approve "$mailuser_token" "$request_code")" 401
+check "the admin token with a wrong code is refused" "$(approve "$admin_token" 000000)" 403
+check "the admin token with the code approves it" "$(approve "$admin_token" "$request_code")" 200
+approved_node="$(json nodeId < "$work/sbody")"
+approved_blob="$(json blobId < "$work/sbody")"
+check "the approval is for the keys account" "$(json accountId < "$work/sbody")" "$keys_account"
+check "the request reads as approved" "$(sentinel GET "/corvid/devices/requests/$request_id" >/dev/null; json status < "$work/sbody")" approved
+check "the mail user is given the record by device name" \
+  "$(sentinel GET /corvid/devices/rig-phone >/dev/null; json nodeId < "$work/sbody")" "$approved_node"
+read_key() {
+  curl -s -H "Authorization: Bearer $mailuser_token" "$STALWART_URL/jmap/download/$keys_account/$approved_blob/rig-phone.key" |
+    python3 -c 'import sys; key = sys.stdin.buffer.read(); print(len(key), key[:1].hex())'
+}
+check "the mail user reads a 33 byte version 1 key from that node" "$(read_key)" "33 01"
+key_before="$(read_key)"
+check "the mail user plants a file under a new name beside it" \
+  "$(files_as mailuser FileNode/set '{"create":{"n":{"name":"planted.key","parentId":"'"$folder_id"'","blobId":"'"$mailuser_blob"'"}}}' | refusal notCreated)" accepted
+check "the mail user cannot plant one under the approved name" \
+  "$(files_as mailuser FileNode/set '{"create":{"n":{"name":"rig-phone.key","parentId":"'"$folder_id"'","blobId":"'"$mailuser_blob"'"}}}' | refusal notCreated)" alreadyExists
+check "a planted name has no record" "$(sentinel GET /corvid/devices/planted)" 404
+check "the approved record still names the approved node" \
+  "$(sentinel GET /corvid/devices/rig-phone >/dev/null; json nodeId < "$work/sbody")" "$approved_node"
+check "the approved key's bytes are unchanged" "$(read_key)" "$key_before"
+check "the same request cannot be approved twice" "$(approve "$admin_token" "$request_code")" 410
+revoke_signature() {
+  python3 -c '
+import base64, hashlib, hmac, sys
+print(base64.b64encode(hmac.new(sys.argv[1].encode(), f"revoke {sys.argv[2]}".encode(), hashlib.sha256).digest()).decode())' "$sentinel_secret" "$1"
+}
+check "a revoke without the secret is refused" "$(sentinel DELETE /internal/devices/rig-phone)" 401
+check "a signed revoke removes the key" \
+  "$(sentinel DELETE /internal/devices/rig-phone -H "X-Signature: $(revoke_signature rig-phone)")" 204
+check "the revoked device has no record" "$(sentinel GET /corvid/devices/rig-phone)" 404
+check "the revoked key file is gone from the keys account" \
+  "$(files_as admin FileNode/get '{"ids":null}' | node_names | tr ' ' '\n' | grep -c '^rig-phone.key$')" 0
+
 echo "== Pocket-ID unreachable when Stalwart verifies a token"
 token="$(mint "$mailuser_id" "openid profile")"
 basic() { curl -s -u "mailuser@rig.test:$app_password" "$STALWART_URL/jmap/session" -o /dev/null -w '%{http_code}'; }
@@ -421,5 +526,18 @@ check "it returns as soon as Pocket-ID answers within the bound" "$status" 0
 wait_for "$STALWART_URL/healthz/live" || { echo "Stalwart did not start" >&2; exit 1; }
 check "a token is accepted on Stalwart's first start after the wait, with no second restart" "$(session "$token")" 200
 
-[[ $fail -eq 0 ]] || { "$engine" logs "$mail" 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E 'auth\.|http\.' | tail -10; }
+echo "== a refresh chain cannot renew an approval token"
+wait "$chain_pid"
+chained_token="$(json access_token < "$work/chained.json")"
+check "a refreshed token keeps the issue time of the passkey authorization" \
+  "$(jwt_claim "$chained_token" iat)" "$admin_iat"
+check "while its expiry moves on" "$([[ "$(jwt_claim "$chained_token" exp)" -gt "$(jwt_claim "$admin_token" exp)" ]] && echo later)" later
+check "a device asks for another key" "$(sentinel POST /corvid/devices/requests -d '{"name":"rig-tablet"}')" 201
+request_id="$(json id < "$work/sbody")"
+request_code="$(json code < "$work/sbody")"
+check "the last token of the chain is refused five minutes after the passkey" \
+  "$(approve "$chained_token" "$request_code")" 401
+check "and the request is still pending" "$(sentinel GET "/corvid/devices/requests/$request_id" >/dev/null; json status < "$work/sbody")" pending
+
+[[ $fail -eq 0 ]] || { [[ ! -s "$work/sentinel.log" ]] || tail -5 "$work/sentinel.log"; "$engine" logs "$mail" 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E 'auth\.|http\.' | tail -10; }
 exit "$fail"

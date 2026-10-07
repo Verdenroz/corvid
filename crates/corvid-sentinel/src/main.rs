@@ -86,7 +86,8 @@ fn device_config(
         issuer: settings.issuer.unwrap_or_else(|| server.idp_issuer()),
         idp_url: settings.idp_url,
         admin_user: server.admin_user(),
-        mail_user: server.mail_user().to_owned(),
+        keys_address: format!("corvid-keys@keys.{}", server.domain.as_str()),
+        mail_address: format!("{}@{}", server.mail_user(), server.domain.as_str()),
         stalwart_url: settings.stalwart_url,
         stalwart_token,
     })
