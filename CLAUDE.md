@@ -125,6 +125,11 @@ uses (`POD_PORTS`), since every container shares one network namespace.
 Clients must rebase the URLs a JMAP session advertises onto the address they dialled, since the
 web tier is not on 443.
 
+The app signs in from an email address alone. It looks up SRV `_corvid._tcp.<domain>` (published
+by `install.sh`; Stalwart's own `_jmap._tcp` is hard-coded to 443 and not ours to edit), falls back to
+the domain on 443, and reads `/.well-known/corvid` from the web tier, a static JSON `respond` in the
+Caddyfile built from the same env vars as everything else. `core/discovery` holds the dnsjava lookup.
+
 ## Conventions
 
 - Services read settings from one `config.yaml` through `corvid-config`, which owns the whole
@@ -166,6 +171,9 @@ web tier is not on 443.
 - **`dataStore` RocksDb requires `path`** in the Bootstrap payload.
 - **`serverHostname` rejects reserved TLDs**, so `.example` is refused.
 - **Gmail does not validate ed25519 DKIM.** Keep RSA-2048 primary.
+- **A Caddy `respond` body with JSON braces needs backticks, and `{$VAR}` still expands inside
+  them.** `/.well-known/corvid` is one such line; `caddy.test.sh` compares the served document
+  byte for byte against the env values it started Caddy with.
 - **A milter with `enable: true` also runs on mail the user sends.** It rewrote nothing, but it
   stamped `X-Corvid-Rewrite` on outgoing mail, naming the software to every recipient. The plan
   gates it on `is_empty(authenticated_as)`, the same rule Stalwart's own spam filter uses.
