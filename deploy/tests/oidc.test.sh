@@ -77,11 +77,11 @@ print(base64.urlsafe_b64encode(hashlib.sha256(sys.stdin.buffer.read()).digest())
 idp_api oidc/clients -d '{"id":"corvid","name":"corvid","isPublic":true,"pkceEnabled":true,"callbackURLs":["http://127.0.0.1/callback"]}' >/dev/null
 nomail_id="$(idp_api users -d '{"username":"nomail","email":"nomail@rig.test","firstName":"No","lastName":"Mail","isAdmin":false}' | json id)"
 outsider_id="$(idp_api users -d '{"username":"outsider","email":"outsider@rig.test","firstName":"Out","lastName":"Sider","isAdmin":false}' | json id)"
-verde_id="$(idp_api users -d '{"username":"verde","email":"verde@rig.test","firstName":"Verde","lastName":"Rig","isAdmin":false}' | json id)"
+mailuser_id="$(idp_api users -d '{"username":"mailuser","email":"mailuser@rig.test","firstName":"Mailuser","lastName":"Rig","isAdmin":false}' | json id)"
 
 cat > "$work/shell" <<SH
 #!/bin/sh
-printf 'MAIL_DOMAIN=rig.test\nMAIL_HOSTNAME=mail.rig.test\nMAIL_USER=verde\nACME_CONTACT=ops@rig.test\nWEB_PORT=$idp_port\n'
+printf 'MAIL_DOMAIN=rig.test\nMAIL_HOSTNAME=mail.rig.test\nMAIL_USER=mailuser\nACME_CONTACT=ops@rig.test\nWEB_PORT=$idp_port\n'
 SH
 chmod +x "$work/shell"
 printf 'STALWART_URL=http://127.0.0.1:8080\nRECOVERY_ADMIN_USER=recovery\nRECOVERY_ADMIN_PASSWORD=%s\n' \
@@ -100,7 +100,7 @@ print(next(d["id"] for d in map(json.loads, filter(str.strip, sys.stdin)) if d["
   cat <<JSON
 {"@type":"reconcile","object":"Tracer","matchOn":["@type"],"value":{"stdout":{"@type":"Stdout","enable":true,"ansi":false,"buffered":false,"level":"debug","eventsPolicy":"exclude","events":{}}}}
 {"@type":"reconcile","object":"NetworkListener","matchOn":["name"],"value":{"l-http":{"name":"http","protocol":"http","useTls":false,"tlsImplicit":false,"bind":{"[::]:$mail_port":true}}}}
-{"@type":"upsert","object":"Account","matchOn":["name"],"value":{"acct":{"@type":"User","name":"verde","description":"verde","domainId":"$domain_id","roles":{"@type":"User"}}}}
+{"@type":"upsert","object":"Account","matchOn":["name"],"value":{"acct":{"@type":"User","name":"mailuser","description":"mailuser","domainId":"$domain_id","roles":{"@type":"User"}}}}
 JSON
   IDP_HOSTNAME=localhost WEB_PORT="$idp_port" MAIL_DOMAIN=rig.test \
     envsubst '${MAIL_DOMAIN} ${IDP_HOSTNAME} ${WEB_PORT}' < "$here/oidc.plan.ndjson" | sed 's#"https://#"http://#'
@@ -129,17 +129,17 @@ s = json.load(sys.stdin)
 print(s["accounts"][s["primaryAccounts"]["urn:ietf:params:jmap:mail"]]["name"])' < "$work/body"
 }
 
-token="$(mint "$verde_id" "openid profile")" || exit 1
+token="$(mint "$mailuser_id" "openid profile")" || exit 1
 check "Pocket-ID issues an at+jwt for scope 'openid profile'" \
   "$(cut -d. -f1 <<<"$token" | python3 -c 'import base64,json,sys; s=sys.stdin.read().strip(); print(json.loads(base64.urlsafe_b64decode(s+"="*(-len(s)%4)))["typ"])')" at+jwt
 check "the token's userinfo names the user" \
-  "$(curl -s -H "Authorization: Bearer $token" "$issuer/api/oidc/userinfo" | json preferred_username)" verde
+  "$(curl -s -H "Authorization: Bearer $token" "$issuer/api/oidc/userinfo" | json preferred_username)" mailuser
 
 check "Stalwart accepts the token over JMAP" "$(session "$token")" 200
-check "the session's mail account is the user's mailbox" "$(mailbox_of 2>/dev/null)" verde@rig.test
+check "the session's mail account is the user's mailbox" "$(mailbox_of 2>/dev/null)" mailuser@rig.test
 
 echo "== tokens and credentials Stalwart must refuse"
-check "a token without the profile scope" "$(session "$(mint "$verde_id" openid)")" \
+check "a token without the profile scope" "$(session "$(mint "$mailuser_id" openid)")" \
   "401 Missing required scope 'profile', present scopes: [\"openid\"]"
 status="$(curl -s -u "$STALWART_USER:$STALWART_PASSWORD" "$STALWART_URL/jmap/session" -o /dev/null -w '%{http_code}')"
 check "the admin password once the OIDC directory is active" "$status" 401
@@ -149,13 +149,13 @@ check "gets a mailbox created on its first token" "$(session "$(mint "$nomail_id
 accounts="$(STALWART_USER=recovery STALWART_PASSWORD="$recovery_pw" stalwart-cli query Account --json)"
 check "the new account is nomail@rig.test" "$(grep -c '"emailAddress":"nomail@rig.test"' <<<"$accounts")" 1
 group_id="$(idp_api user-groups -d '{"name":"mail","friendlyName":"mail"}' | json id)"
-idp_api "user-groups/$group_id/users" -X PUT -d "{\"userIds\":[\"$verde_id\"]}" >/dev/null
+idp_api "user-groups/$group_id/users" -X PUT -d "{\"userIds\":[\"$mailuser_id\"]}" >/dev/null
 idp_api oidc/clients/corvid/allowed-user-groups -X PUT -d "{\"userGroupIds\":[\"$group_id\"]}" >/dev/null
 idp_api oidc/clients/corvid -X PUT \
   -d '{"name":"corvid","isPublic":true,"pkceEnabled":true,"callbackURLs":["http://127.0.0.1/callback"],"isGroupRestricted":true}' >/dev/null
 check "a group-restricted client issues no code to a user outside the group" \
   "$(mint "$outsider_id" "openid profile" 2>&1 | grep -o 'not+allowed+to+access+this+service' | head -1)" not+allowed+to+access+this+service
-check "a group member still gets a working token" "$(session "$(mint "$verde_id" "openid profile")")" 200
+check "a group member still gets a working token" "$(session "$(mint "$mailuser_id" "openid profile")")" 200
 
 [[ $fail -eq 0 ]] || { "$engine" logs "$mail" 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E 'auth\.|http\.' | tail -10; }
 exit "$fail"

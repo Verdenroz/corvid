@@ -275,7 +275,7 @@ web tier is not on 443.
 - **A credential-less `/jmap/session` is `200`, so `forward_auth` alone guards nothing.**
   v0.16.21 answers it with an empty session (no accounts), which `forward_auth` passes. The
   Caddyfile sends `/corvid/*` to the auth call only when `Authorization` is present; without
-  it the request falls through to Stalwart's `404`. Measured on n1: the matcher without the
+  it the request falls through to Stalwart's `404`. Measured on a live host: the matcher without the
   header check served notices and accepted update requests from anyone.
 - **A single SMTP session delivers at most 10 messages** (`MtaStageData.maxMessages`), and the
   inbound throttle is 25/hour per sender domain plus recipient. Bulk-loading a test mailbox
