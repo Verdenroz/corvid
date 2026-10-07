@@ -11,6 +11,7 @@ mail_image="$(image corvid-mail)"
 idp_image="$(image corvid-idp)"
 engine="$(command -v podman || command -v docker)"
 mail_port="${CORVID_RIG_MAIL_PORT:-18080}"
+smtp_port="${CORVID_RIG_SMTP_PORT:-18125}"
 idp_port="${CORVID_RIG_IDP_PORT:-18411}"
 issuer="http://localhost:$idp_port"
 api_key=rig-static-api-key-0123456789
@@ -22,7 +23,7 @@ volumes=("$mail-etc" "$mail-data" "$idp-data")
 trap '"$engine" rm -f "$mail" "$idp" >/dev/null 2>&1; "$engine" volume rm "${volumes[@]}" >/dev/null 2>&1; rm -rf "$work"' EXIT
 
 command -v stalwart-cli >/dev/null || { echo "stalwart-cli not found" >&2; exit 69; }
-for port in 8080 "$mail_port" "$idp_port"; do
+for port in 8080 "$mail_port" "$smtp_port" "$idp_port"; do
   ! (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null || { echo "port $port is in use" >&2; exit 69; }
 done
 
@@ -136,10 +137,11 @@ print(next(d["id"] for d in map(json.loads, filter(str.strip, sys.stdin)) if d["
 {
   cat <<JSON
 {"@type":"reconcile","object":"Tracer","matchOn":["@type"],"value":{"stdout":{"@type":"Stdout","enable":true,"ansi":false,"buffered":false,"level":"debug","eventsPolicy":"exclude","events":{}}}}
-{"@type":"reconcile","object":"NetworkListener","matchOn":["name"],"value":{"l-http":{"name":"http","protocol":"http","useTls":false,"tlsImplicit":false,"bind":{"[::]:$mail_port":true}}}}
+{"@type":"reconcile","object":"NetworkListener","matchOn":["name"],"value":{"l-http":{"name":"http","protocol":"http","useTls":false,"tlsImplicit":false,"bind":{"[::]:$mail_port":true}},"l-smtp":{"name":"smtp","protocol":"smtp","useTls":false,"tlsImplicit":false,"bind":{"[::]:$smtp_port":true}}}}
 {"@type":"upsert","object":"Account","matchOn":["name"],"value":{"acct":{"@type":"User","name":"mailuser","description":"mailuser","domainId":"$domain_id","roles":{"@type":"User"}}}}
-{"@type":"upsert","object":"Account","matchOn":["name"],"value":{"acct":{"@type":"User","name":"corvid-keys","description":"corvid-keys","domainId":"$domain_id","roles":{"@type":"User"}}}}
+{"@type":"update","object":"MtaStageAuth","value":{"require":{"match":{},"else":"false"}}}
 JSON
+  grep -E '"keysdom"|"acctkeys"|refuse-keys' "$here/stalwart.plan.ndjson" | MAIL_DOMAIN=rig.test envsubst '${MAIL_DOMAIN}'
   IDP_HOSTNAME=localhost WEB_PORT="$idp_port" MAIL_DOMAIN=rig.test \
     envsubst '${MAIL_DOMAIN} ${IDP_HOSTNAME} ${WEB_PORT}' < "$here/oidc.plan.ndjson" | sed 's#"https://#"http://#'
 } | stalwart-cli apply --stdin >/dev/null
@@ -270,7 +272,35 @@ account_of() {
 import json, sys
 print(next(a["id"] for a in map(json.loads, filter(str.strip, sys.stdin)) if a.get("emailAddress") == sys.argv[1]))' "$1"
 }
-keys_account="$(account_of corvid-keys@rig.test)"
+keys_account="$(account_of corvid-keys@keys.rig.test)"
+# Speaks SMTP politely and prints the reply code to RCPT TO, since a malformed command bans the address.
+rcpt_code() {
+  python3 -c '
+import smtplib, sys
+smtp = smtplib.SMTP("127.0.0.1", int(sys.argv[1]))
+smtp.ehlo("probe.test")
+smtp.mail("sender@probe.test")
+print(smtp.rcpt(sys.argv[2])[0])
+smtp.quit()' "$smtp_port" "$1"
+}
+check "the mailbox accepts mail" "$(rcpt_code mailuser@rig.test)" 250
+check "the keys account refuses mail" "$(rcpt_code corvid-keys@keys.rig.test)" 550
+keys_secret="$(jmap_admin "[[\"x:AppPassword/set\", {\"accountId\": \"$keys_account\", \"create\": {\"n0\": {\"description\": \"rig\"}}}, \"c0\"]]" |
+  python3 -c 'import json,sys; print(json.load(sys.stdin)["methodResponses"][0][1]["created"]["n0"]["secret"])')"
+check "the mailbox signs in with an app password" \
+  "$(curl -s -u "mailuser@rig.test:$app_password" "$STALWART_URL/jmap/session" -o /dev/null -w '%{http_code}')" 200
+check "the keys account cannot sign in even with a credential" \
+  "$(curl -s -u "corvid-keys@keys.rig.test:$keys_secret" "$STALWART_URL/jmap/session" -o /dev/null -w '%{http_code}')" 403
+keys_user_id="$(idp_api users -d '{"username":"corvid-keys","email":"corvid-keys@keys.rig.test","firstName":"Corvid","lastName":"Keys","isAdmin":false}' | json id)"
+idp_api "user-groups/$group_id/users" -X PUT \
+  -d "{\"userIds\":[\"$mailuser_id\",\"$nomail_id\",\"$keys_user_id\"]}" >/dev/null
+namesake_token="$(mint "$keys_user_id" "openid profile")" || exit 1
+check "a Pocket-ID user named for the keys account gets a mailbox of its own" \
+  "$(session "$namesake_token" >/dev/null; mailbox_of)" corvid-keys@rig.test
+check "and no access to the keys account" \
+  "$(curl -s -H "Authorization: Bearer $namesake_token" -H 'content-type: application/json' "$STALWART_URL/jmap" \
+    -d "{\"using\": [\"urn:ietf:params:jmap:core\", \"urn:ietf:params:jmap:filenode\"], \"methodCalls\": [[\"FileNode/get\", {\"accountId\": \"$keys_account\", \"ids\": null}, \"c0\"]]}" |
+    json methodResponses | grep -c forbidden)" 1
 mailuser_token="$(mint "$mailuser_id" "openid profile")" || exit 1
 # Prints the JMAP response to one FileNode method on the keys account, called as $1 (admin or
 # mailuser) with $3 as the arguments besides accountId.
