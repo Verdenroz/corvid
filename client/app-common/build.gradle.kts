@@ -28,6 +28,7 @@ kotlin {
             implementation(projects.core.model)
             implementation(projects.core.jmap)
             implementation(projects.core.auth)
+            implementation(projects.core.discovery)
             implementation(projects.core.domain)
             implementation(projects.core.keyring)
             implementation(projects.core.prefs)

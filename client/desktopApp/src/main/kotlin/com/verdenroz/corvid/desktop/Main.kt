@@ -17,6 +17,7 @@ import com.verdenroz.corvid.app.NoticeNotifier
 import com.verdenroz.corvid.app.di.appModules
 import com.verdenroz.corvid.core.auth.InMemoryPreferencesFactory
 import com.verdenroz.corvid.core.auth.platformAuthModule
+import com.verdenroz.corvid.core.discovery.platformDiscoveryModule
 import com.verdenroz.corvid.core.prefs.platformPreferencesModule
 import kotlinx.coroutines.runBlocking
 import org.koin.compose.koinInject
@@ -30,7 +31,7 @@ fun main() {
     runBlocking { InMemoryPreferencesFactory.seed() }
     val notifier = TrayNoticeNotifier()
     val notices = module { single<NoticeNotifier> { notifier } }
-    startKoin { modules(appModules + platformAuthModule + platformPreferencesModule + notices) }
+    startKoin { modules(appModules + platformAuthModule + platformDiscoveryModule + platformPreferencesModule + notices) }
     application {
         val windowState = rememberWindowState()
         val icon = remember { windowIcon() }
