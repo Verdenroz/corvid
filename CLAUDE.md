@@ -397,6 +397,12 @@ Caddyfile built from the same env vars as everything else. `core/discovery` hold
   items will not be archived and will be permanently deleted immediately"). Querying `ArchivedItem`
   on Community fails outright (`forbidden: Enterprise edition`). Verified: a destroyed FileNode's
   blob 404s on the next download.
+- **A read-only `FileNode` share does not stop the sharee creating children.** With
+  `shareWith: {<id>: {mayRead: true}}`, the sharee reads the nodes and is refused update, destroy and
+  a `shareWith` change, but `FileNode/set create` under any existing folder of that account is
+  accepted, even a folder it cannot see. Only a top-level create is refused. Measured on the rig with
+  a real Pocket-ID token. So a shared folder proves what the owner wrote only if readers look up
+  nodes by the id the owner recorded, never by name.
 - **A default 5-app-password-per-account quota exists**, reported as `overQuota` in `notCreated`
   rather than failing the request outright. `stalwart.plan.ndjson` raises it to 20 via
   `Account.quotas/maxAppPasswords`; verified by creating a 6th after applying.

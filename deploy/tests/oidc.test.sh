@@ -138,6 +138,7 @@ print(next(d["id"] for d in map(json.loads, filter(str.strip, sys.stdin)) if d["
 {"@type":"reconcile","object":"Tracer","matchOn":["@type"],"value":{"stdout":{"@type":"Stdout","enable":true,"ansi":false,"buffered":false,"level":"debug","eventsPolicy":"exclude","events":{}}}}
 {"@type":"reconcile","object":"NetworkListener","matchOn":["name"],"value":{"l-http":{"name":"http","protocol":"http","useTls":false,"tlsImplicit":false,"bind":{"[::]:$mail_port":true}}}}
 {"@type":"upsert","object":"Account","matchOn":["name"],"value":{"acct":{"@type":"User","name":"mailuser","description":"mailuser","domainId":"$domain_id","roles":{"@type":"User"}}}}
+{"@type":"upsert","object":"Account","matchOn":["name"],"value":{"acct":{"@type":"User","name":"corvid-keys","description":"corvid-keys","domainId":"$domain_id","roles":{"@type":"User"}}}}
 JSON
   IDP_HOSTNAME=localhost WEB_PORT="$idp_port" MAIL_DOMAIN=rig.test \
     envsubst '${MAIL_DOMAIN} ${IDP_HOSTNAME} ${WEB_PORT}' < "$here/oidc.plan.ndjson" | sed 's#"https://#"http://#'
@@ -223,6 +224,85 @@ link="$(provision link mailuser)"
 check "link mints a fresh enrollment link" "$(grep -cE '^https://localhost:[0-9]+/lc/[A-Za-z0-9]+$' <<<"$link")" 1
 check "the link's token signs the user in" \
   "$(redeem "${link##*/}" "$work/jar-link")" 200
+
+echo "== device keys owned by another account"
+account_of() {
+  stalwart-cli query Account --json | python3 -c '
+import json, sys
+print(next(a["id"] for a in map(json.loads, filter(str.strip, sys.stdin)) if a.get("emailAddress") == sys.argv[1]))' "$1"
+}
+keys_account="$(account_of corvid-keys@rig.test)"
+mailuser_token="$(mint "$mailuser_id" "openid profile")" || exit 1
+# Prints the JMAP response to one FileNode method on the keys account, called as $1 (admin or
+# mailuser) with $3 as the arguments besides accountId.
+files_as() {
+  local body
+  body="$(python3 -c '
+import json, sys
+print(json.dumps({"using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:filenode"],
+                  "methodCalls": [[sys.argv[1], {"accountId": sys.argv[2], **json.loads(sys.argv[3])}, "c0"]]}))' \
+    "$2" "$keys_account" "$3")"
+  if [[ "$1" == admin ]]; then
+    curl_authed -s -H 'content-type: application/json' "$STALWART_URL/jmap" -d "$body"
+  else
+    curl -s -H "Authorization: Bearer $mailuser_token" -H 'content-type: application/json' "$STALWART_URL/jmap" -d "$body"
+  fi
+}
+upload_as() {
+  curl -s -H "Authorization: Bearer $1" -H 'content-type: application/octet-stream' \
+    --data-binary "@$3" "$STALWART_URL/jmap/upload/$2/" | json blobId
+}
+created_id() {
+  python3 -c 'import json,sys; print(json.load(sys.stdin)["methodResponses"][0][1]["created"]["n"]["id"])'
+}
+node_names() {
+  python3 -c '
+import json, sys
+print(" ".join(sorted(n["name"] for n in json.load(sys.stdin)["methodResponses"][0][1]["list"])))'
+}
+node_field() {
+  python3 -c '
+import json, sys
+node = next(n for n in json.load(sys.stdin)["methodResponses"][0][1]["list"] if n["name"] == sys.argv[1])
+print(node[sys.argv[2]])' "$1" "$2"
+}
+refusal() {
+  python3 -c '
+import json, sys
+rows = json.load(sys.stdin)["methodResponses"][0][1].get(sys.argv[1]) or {}
+print(" ".join(sorted({row["type"] for row in rows.values()})) or "accepted")' "$1"
+}
+key_bytes="$work/key.bin"
+{ printf '\001'; head -c 32 /dev/urandom; } > "$key_bytes"
+folder_id="$(files_as admin FileNode/set '{"create":{"n":{"name":"corvid-devices","parentId":null,"shareWith":{"'"$mailuser_account"'":{"mayRead":true}}}}}' | created_id)"
+key_id="$(files_as admin FileNode/set '{"create":{"n":{"name":"dev1.key","parentId":"'"$folder_id"'","blobId":"'"$(upload_as "$STALWART_TOKEN" "$keys_account" "$key_bytes")"'"}}}' | created_id)"
+listing="$(files_as mailuser FileNode/get '{"ids":null}')"
+check "the mail user lists the shared folder and key" "$(node_names <<<"$listing")" "corvid-devices dev1.key"
+check "the mail user holds read access only" \
+  "$(python3 -c '
+import json, sys
+nodes = json.load(sys.stdin)["methodResponses"][0][1]["list"]
+print(sorted({right for n in nodes for right, held in n["myRights"].items() if held}))' <<<"$listing")" "['mayRead']"
+curl -s -H "Authorization: Bearer $mailuser_token" \
+  "$STALWART_URL/jmap/download/$keys_account/$(node_field dev1.key blobId <<<"$listing")/dev1.key" > "$work/downloaded.bin"
+check "the mail user downloads the key bytes" "$(cmp -s "$key_bytes" "$work/downloaded.bin" && echo same)" same
+mailuser_blob="$(upload_as "$mailuser_token" "$mailuser_account" "$key_bytes")"
+check "the mail user can still plant a file in the shared folder" \
+  "$(files_as mailuser FileNode/set '{"create":{"n":{"name":"dev2.key","parentId":"'"$folder_id"'","blobId":"'"$mailuser_blob"'"}}}' | refusal notCreated)" accepted
+check "the mail user cannot create at the root of the keys account" \
+  "$(files_as mailuser FileNode/set '{"create":{"n":{"name":"dev3.key","parentId":null,"blobId":"'"$mailuser_blob"'"}}}' | refusal notCreated)" invalidProperties
+check "the mail user cannot replace a key's content" \
+  "$(files_as mailuser FileNode/set '{"update":{"'"$key_id"'":{"blobId":"'"$mailuser_blob"'"}}}' | refusal notUpdated)" forbidden
+check "the mail user cannot rename a key" \
+  "$(files_as mailuser FileNode/set '{"update":{"'"$key_id"'":{"name":"dev4.key"}}}' | refusal notUpdated)" forbidden
+check "the mail user cannot destroy a key" \
+  "$(files_as mailuser FileNode/set '{"destroy":["'"$key_id"'"]}' | refusal notDestroyed)" forbidden
+check "the mail user cannot widen its own access" \
+  "$(files_as mailuser FileNode/set '{"update":{"'"$folder_id"'":{"shareWith":{"'"$mailuser_account"'":{"mayRead":true,"mayAddChildren":true}}}}}' | refusal notUpdated)" forbidden
+check "the keys account holds only the planted file besides the original" \
+  "$(files_as admin FileNode/get '{"ids":null}' | node_names)" "corvid-devices dev1.key dev2.key"
+curl_authed -s "$STALWART_URL/jmap/download/$keys_account/$(node_field dev1.key blobId <<<"$listing")/dev1.key" > "$work/after.bin"
+check "the original key's bytes are unchanged after every write" "$(cmp -s "$key_bytes" "$work/after.bin" && echo same)" same
 
 echo "== Pocket-ID unreachable when Stalwart verifies a token"
 token="$(mint "$mailuser_id" "openid profile")"
