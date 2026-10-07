@@ -12,9 +12,12 @@ set -a; . "$ENV_FILE"; set +a
 . "$HERE/lib.sh"
 load_server
 
-for v in STALWART_URL STALWART_USER STALWART_PASSWORD; do
-  [[ -n "${!v:-}" ]] || { echo "missing required variable: $v" >&2; exit 78; }
-done
+[[ -n "${STALWART_URL:-}" ]] || { echo "missing required variable: STALWART_URL" >&2; exit 78; }
+if [[ -z "${STALWART_TOKEN:-}" ]]; then
+  for v in STALWART_USER STALWART_PASSWORD; do
+    [[ -n "${!v:-}" ]] || { echo "missing required variable: $v (or STALWART_TOKEN)" >&2; exit 78; }
+  done
+fi
 
 TOKEN="$CORVID_DIR/secrets/cloudflare.token"
 [[ -s "$TOKEN" ]] || { echo "$TOKEN is empty; write the Cloudflare API token to it" >&2; exit 78; }
@@ -107,4 +110,4 @@ fi
 # A plan can lock the admin out of the interface that would fix it, or fail partway on a
 # required field --dry-run cannot see. This notices while a shell is still open.
 curl_authed -fsS -o /dev/null "$STALWART_URL/api/account" \
-  || { echo "$STALWART_USER can no longer log in after this plan; fix it before closing this shell" >&2; exit 1; }
+  || { echo "the admin credential can no longer log in after this plan; fix it before closing this shell" >&2; exit 1; }

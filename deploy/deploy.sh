@@ -118,9 +118,20 @@ fi
 
 # A parse can succeed on the wrong string, so prove the credential before anything uses it.
 set -a; . "$ENV_FILE"; set +a
+prefer_token
 curl_authed -fsS -o /dev/null "$STALWART_URL/api/account" \
-  || { echo "the admin credential in $ENV_FILE does not log in; check STALWART_USER and STALWART_PASSWORD" >&2; exit 1; }
+  || { echo "the admin credential in $ENV_FILE does not log in; check STALWART_USER and STALWART_PASSWORD, or STALWART_TOKEN" >&2; exit 1; }
 echo "  credential verified"
+
+if [[ -z "${STALWART_TOKEN:-}" ]]; then
+  step "creating the admin API key"
+  create_admin_api_key "$ENV_FILE"
+  set -a; . "$ENV_FILE"; set +a
+  prefer_token
+  curl_authed -fsS -o /dev/null "$STALWART_URL/api/account" \
+    || { echo "the new API key in $ENV_FILE does not log in" >&2; exit 1; }
+  echo "  API key verified"
+fi
 
 step "applying configuration"
 CORVID_SKIP_RELOAD=1 "$HERE/apply-plan.sh"

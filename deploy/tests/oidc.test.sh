@@ -89,8 +89,13 @@ printf 'STALWART_URL=http://127.0.0.1:8080\nRECOVERY_ADMIN_USER=recovery\nRECOVE
 CORVID_DIR="$work" CORVID_ENV="$work/corvid.env" CORVID_CONFIG_CMD="$work/shell" \
   bash "$here/bootstrap-server.sh" >/dev/null || { echo "bootstrap-server.sh failed" >&2; exit 1; }
 set -a; . "$work/corvid.env"; set +a
+admin_user="$STALWART_USER"; admin_pw="$STALWART_PASSWORD"
 "$engine" restart "$mail" >/dev/null
 wait_for http://127.0.0.1:8080/healthz/live || { echo "Stalwart never restarted" >&2; exit 1; }
+CORVID_DIR="$work" . "$here/lib.sh"
+create_admin_api_key "$work/corvid.env" || { echo "the admin API key was not created" >&2; exit 1; }
+set -a; . "$work/corvid.env"; set +a
+prefer_token
 
 domain_id="$(stalwart-cli query Domain --json | python3 -c '
 import json, sys
@@ -141,12 +146,18 @@ check "the session's mail account is the user's mailbox" "$(mailbox_of 2>/dev/nu
 echo "== tokens and credentials Stalwart must refuse"
 check "a token without the profile scope" "$(session "$(mint "$mailuser_id" openid)")" \
   "401 Missing required scope 'profile', present scopes: [\"openid\"]"
-status="$(curl -s -u "$STALWART_USER:$STALWART_PASSWORD" "$STALWART_URL/jmap/session" -o /dev/null -w '%{http_code}')"
+status="$(curl -s -u "$admin_user:$admin_pw" "$STALWART_URL/jmap/session" -o /dev/null -w '%{http_code}')"
 check "the admin password once the OIDC directory is active" "$status" 401
+check "the admin API key once the OIDC directory is active" \
+  "$(curl_authed -s "$STALWART_URL/api/account" -o /dev/null -w '%{http_code}')" 200
+check "stalwart-cli with the admin API key once the OIDC directory is active" \
+  "$(stalwart-cli query Account --json 2>&1 | grep -c '"emailAddress":"admin@rig.test"')" 1
+check "stalwart-cli with the admin password once the OIDC directory is active" \
+  "$( (unset STALWART_TOKEN; stalwart-cli --user "$admin_user" --password "$admin_pw" query Account --json 2>&1) | grep -c '"emailAddress"')" 0
 
 echo "== a Pocket-ID user with no mailbox"
 check "gets a mailbox created on its first token" "$(session "$(mint "$nomail_id" "openid profile")")" 200
-accounts="$(STALWART_USER=recovery STALWART_PASSWORD="$recovery_pw" stalwart-cli query Account --json)"
+accounts="$(stalwart-cli query Account --json)"
 check "the new account is nomail@rig.test" "$(grep -c '"emailAddress":"nomail@rig.test"' <<<"$accounts")" 1
 group_id="$(idp_api user-groups -d '{"name":"mail","friendlyName":"mail"}' | json id)"
 idp_api "user-groups/$group_id/users" -X PUT -d "{\"userIds\":[\"$mailuser_id\"]}" >/dev/null
