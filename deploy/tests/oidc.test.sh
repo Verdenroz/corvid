@@ -199,9 +199,9 @@ print(next(a["id"] for a in map(json.loads, filter(str.strip, sys.stdin)) if a.g
 check "an apply through the admin API key writes once the OIDC directory is active" \
   "$(printf '%s\n' '{"@type":"upsert","object":"Account","matchOn":["name"],"value":{"acct":{"@type":"User","name":"mailuser","description":"mailuser rig"}}}' |
     stalwart-cli apply --stdin 2>&1 | grep -c '0 failed')" 1
-check "an app password for another account through the admin API key" \
-  "$(jmap_admin "[[\"x:AppPassword/set\", {\"accountId\": \"$mailuser_account\", \"create\": {\"n0\": {\"description\": \"rig\"}}}, \"c0\"]]" |
-    python3 -c 'import json,sys; print(bool(json.load(sys.stdin)["methodResponses"][0][1].get("created")))')" True
+app_password="$(jmap_admin "[[\"x:AppPassword/set\", {\"accountId\": \"$mailuser_account\", \"create\": {\"n0\": {\"description\": \"rig\"}}}, \"c0\"]]" |
+  python3 -c 'import json,sys; print(json.load(sys.stdin)["methodResponses"][0][1]["created"]["n0"]["secret"])')"
+check "an app password for another account through the admin API key" "$([[ -n "$app_password" ]] && echo True)" True
 
 echo "== a Pocket-ID user with no mailbox"
 check "gets a mailbox created on its first token" "$(session "$(mint "$nomail_id" "openid profile")")" 200
@@ -223,6 +223,28 @@ link="$(provision link mailuser)"
 check "link mints a fresh enrollment link" "$(grep -cE '^https://localhost:[0-9]+/lc/[A-Za-z0-9]+$' <<<"$link")" 1
 check "the link's token signs the user in" \
   "$(redeem "${link##*/}" "$work/jar-link")" 200
+
+echo "== Pocket-ID unreachable when Stalwart verifies a token"
+token="$(mint "$mailuser_id" "openid profile")"
+basic() { curl -s -u "mailuser@rig.test:$app_password" "$STALWART_URL/jmap/session" -o /dev/null -w '%{http_code}'; }
+restart_mail() {
+  "$engine" restart "$mail" >/dev/null
+  wait_for "$STALWART_URL/healthz/live" || { echo "Stalwart never restarted" >&2; exit 1; }
+}
+start_idp() {
+  "$engine" start "$idp" >/dev/null
+  wait_for "$issuer/.well-known/openid-configuration" || { echo "Pocket-ID never came back" >&2; exit 1; }
+}
+"$engine" stop "$idp" >/dev/null
+restart_mail
+check "a token is refused while the issuer is down" "$(session "$token" | cut -d' ' -f1)" 401
+check "the admin API key still authenticates while the issuer is down" \
+  "$(curl_authed -s "$STALWART_URL/api/account" -o /dev/null -w '%{http_code}')" 200
+check "an app password still authenticates while the issuer is down" "$(basic)" 200
+start_idp
+check "the token stays refused after the issuer returns, until Stalwart restarts" "$(session "$token" | cut -d' ' -f1)" 401
+restart_mail
+check "the token is accepted after a restart with the issuer up" "$(session "$token")" 200
 
 [[ $fail -eq 0 ]] || { "$engine" logs "$mail" 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E 'auth\.|http\.' | tail -10; }
 exit "$fail"

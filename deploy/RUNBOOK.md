@@ -253,11 +253,15 @@ the mail user. The deploy scripts authenticate with an admin API key (`STALWART_
 refuses the admin password once the OIDC directory is active. App passwords for IMAP and SMTP are
 unaffected.
 
+New devices sign in with the phone's passkey through the browser's own cross-device prompt;
+Pocket-ID's own device login is closed at Caddy.
+
 A lost or broken key, or an expired link, needs a new link, minted on the host:
 
     /opt/corvid/deploy/idp.sh link <mail_user>
 
-If `idp.sh` itself is unusable, Pocket-ID's own CLI does the same inside the container:
+If `idp.sh` itself is unusable, Pocket-ID's own CLI mints one inside the container (the binary
+path and `--help` are checked against the pinned image; the command itself was not run):
 
     podman exec corvid-idp /app/pocket-id one-time-access-token <username>
 

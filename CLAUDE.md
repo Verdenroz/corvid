@@ -228,8 +228,19 @@ web tier is not on 443.
   provisions everything through `STATIC_API_KEY`. Pocket-ID's port is not published, so `idp.sh`
   runs the host's curl in the `corvid-idp` network namespace (`nsenter`), which needs neither a
   certificate nor a new image; the container's own busybox `wget` cannot send `PUT`.
-- **Pocket-ID rate-limits one-time token redemption** (`429` after a handful in a minute), and
-  caps a one-time token's `ttl` at 24 hours (`7d` is a 400). A test minting many tokens waits.
+- **Pocket-ID rate-limits one-time token redemption.** A rig minting seven tokens in under a
+  minute hit a `429`, so a test that mints many waits and retries. A token's `ttl` is a Go
+  duration: `168h` works, `7d` is a 400.
+- **Pocket-ID's device login is closed at Caddy** (`/login/alternative/device`,
+  `/api/device-login/*`), since it lets any signed-in session approve a new device as itself. A
+  new device signs in with the phone's passkey through the browser's own cross-device prompt.
+- **A token Stalwart verifies while the issuer is unreachable stays refused until Stalwart
+  restarts.** Measured in `deploy/tests/oidc.test.sh`: with Pocket-ID stopped, a restarted
+  Stalwart answers a bearer token `401 Failed to decode token` while the admin API key and app
+  passwords still authenticate, and the token is still refused after Pocket-ID returns. One run
+  that restarted Stalwart with the issuer down and asked nothing until it returned was accepted;
+  another stayed refused for two minutes, so a restart with the issuer down is not safe.
+  `deploy.sh` waits for the issuer through Caddy before the restart that loads the directory.
 - **Stalwart's OIDC directory demands the `email` scope by default**, and Pocket-ID's access token
   is an RFC 9068 JWT with no `preferred_username` or `email` claim, only the scopes the client
   asked for. `requireScopes` defaults to `openid` and `email`, so a client asking `openid profile`
