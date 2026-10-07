@@ -408,7 +408,7 @@ cat <<EOF
   Server name            $hostname$([[ $create_a == 1 ]] && echo " (A record to $server_ip will be created)")
   Web address            https://$hostname:$web_port
   Identity provider      $idp_hostname$([[ $idp_create_a == 1 ]] && echo " (A record to $server_ip will be created)")
-  App sign-in record     _corvid._tcp.$domain$([[ $srv_create == 1 ]] && echo " (SRV to $hostname port $web_port will be created)")
+  App sign-in record     _corvid._tcp.$domain$(case "$srv_action" in create) echo " (SRV to $hostname port $web_port will be created)" ;; update) echo " (SRV port $srv_old_port -> $web_port will be updated)" ;; esac)
   Mail apps from         $(case "$client_access" in anywhere) echo "anywhere" ;; host) echo "this server only, such as its VPN" ;; *) echo "$client_access" ;; esac)
   Certificate notices    $acme_contact
   Cloudflare token       $([[ -n "$token" ]] && echo "new" || echo "unchanged")
@@ -433,9 +433,12 @@ if (( idp_create_a )); then
   idp_dns_create "$token" "$domain_zone_id" "$idp_hostname" "$server_ip"
 fi
 
-if (( srv_create )); then
+if [[ "$srv_action" == create ]]; then
   step "creating the app sign-in record"
   srv_dns_create "$token" "$domain_zone_id" "$domain" "$hostname" "$web_port"
+elif [[ "$srv_action" == update ]]; then
+  step "updating the app sign-in record"
+  srv_dns_update "$token" "$domain_zone_id" "$domain" "$hostname" "$web_port" "$srv_record_id"
 fi
 
 if (( enable_dnssec )); then

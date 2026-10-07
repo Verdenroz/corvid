@@ -172,7 +172,7 @@ from its domain. `install.sh` publishes what that needs, in the mail domain's zo
 - `/.well-known/corvid` on the web tier, served by Caddy with no credential:
   `{"version":1,"server":"https://<hostname>:<web_port>","issuer":"https://<idp_hostname>:<web_port>"}`.
 
-Without the SRV record the app tries `https://<domain>/.well-known/corvid` on 443, which only
+A changed `server.web_port` updates the record's port on the next install. Without the SRV record the app tries `https://<domain>/.well-known/corvid` on 443, which only
 works when the web tier is there. A record that already points elsewhere stops `install.sh` before
 anything changes; fix it and rerun. When Cloudflare refuses to create the record, `install.sh` warns
 with it and carries on, since mail works without discovery. Add it by hand:

@@ -7,6 +7,7 @@
     cloudflare.py srv-records ZONE NAME  one line per SRV record: ID PORT TARGET
     cloudflare.py create-srv ZONE NAME PORT TARGET   adds an SRV record, priority 0 weight 5
     cloudflare.py create-txt ZONE NAME CONTENT [COMMENT]   adds a TXT record
+    cloudflare.py update-srv ZONE ID PORT TARGET   repoints an SRV record, priority 0 weight 5
     cloudflare.py update-record ZONE ID CONTENT  replaces a record's content
     cloudflare.py records ZONE NAME TYPE one line per record: ID CONTENT
     cloudflare.py delete ZONE ID         removes one record
@@ -135,6 +136,10 @@ def main():
         if len(args) > 3:
             record["comment"] = args[3]
         call(token, f"zones/{zone}/dns_records", record)
+    elif command == "update-srv":
+        zone, record, port, target = args
+        call(token, f"zones/{zone}/dns_records/{record}",
+             {"data": {"priority": 0, "weight": 5, "port": int(port), "target": target}}, method="PATCH")
     elif command == "update-record":
         zone, record, content = args
         call(token, f"zones/{zone}/dns_records/{record}", {"content": content}, method="PATCH")

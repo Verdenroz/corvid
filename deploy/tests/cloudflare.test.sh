@@ -73,6 +73,11 @@ cf create-srv z1 _corvid._tcp.example.com 4443 mail.example.com
 check "the SRV record reads back as port and target" '[[ "$(cf srv-records z1 _corvid._tcp.example.com | cut -d" " -f2-)" == "4443 mail.example.com" ]]'
 check "the record is priority 0 weight 5" \
   '[[ "$(curl -s "${CORVID_CLOUDFLARE_API}zones/z1/dns_records?type=SRV" | python3 -c "import json, sys; d = json.load(sys.stdin)[\"result\"][0][\"data\"]; print(d[\"priority\"], d[\"weight\"])")" == "0 5" ]]'
+id="$(cf srv-records z1 _corvid._tcp.example.com | cut -d" " -f1)"
+cf update-srv z1 "$id" 8443 mail.example.com
+check "update-srv repoints the same record" '[[ "$(cf srv-records z1 _corvid._tcp.example.com)" == "$id 8443 mail.example.com" ]]'
+check "update-srv keeps priority 0 weight 5" \
+  '[[ "$(curl -s "${CORVID_CLOUDFLARE_API}zones/z1/dns_records?type=SRV" | python3 -c "import json, sys; d = json.load(sys.stdin)[\"result\"][0][\"data\"]; print(d[\"priority\"], d[\"weight\"])")" == "0 5" ]]'
 
 [[ $fail -eq 0 ]] || echo "--- last output: $out"
 exit "$fail"
