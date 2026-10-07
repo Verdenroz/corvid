@@ -14,15 +14,16 @@ IDP_ENV="${CORVID_IDP_ENV:-$CORVID_DIR/idp.env}"
 API_KEY="$(sed -n 's/^STATIC_API_KEY=//p' "$IDP_ENV" 2>/dev/null || true)"
 [[ -n "$API_KEY" ]] || { echo "STATIC_API_KEY is not set in $IDP_ENV; install.sh generates it" >&2; exit 78; }
 
-# The API is only on the pod's loopback: the host cannot reach it, and Caddy answers only once it
-# holds a certificate. Running the host's curl inside the container's network namespace needs
-# neither, and skips Caddy's block on the setup routes.
+# The API listens only on the pod's loopback and Caddy may not have a certificate yet, so curl
+# runs in the container's network namespace.
 if [[ -n "${CORVID_IDP_URL:-}" ]]; then
   IDP_URL="$CORVID_IDP_URL"
   in_idp=()
 else
   IDP_URL=http://127.0.0.1:1411
-  in_idp=(nsenter "--net=/proc/$(podman inspect -f '{{.State.Pid}}' corvid-idp)/ns/net")
+  idp_pid="$(podman inspect -f '{{.State.Pid}}' corvid-idp 2>/dev/null || echo 0)"
+  (( idp_pid > 0 )) || { echo "corvid-idp is not running; check: systemctl status corvid-idp" >&2; exit 69; }
+  in_idp=(nsenter "--net=/proc/$idp_pid/ns/net")
 fi
 
 CLIENT_ID=corvid
@@ -89,21 +90,31 @@ print(json.dumps(ids if sys.argv[1] in ids else ids + [sys.argv[1]]))' "$1")"
   api PUT "user-groups/$GROUP_ID/users" "{\"userIds\":$ids}" >/dev/null
 }
 
-# Created restricted, so the client admits nobody until its group is attached.
+# Created restricted, so the client admits nobody until its group is attached. A client registered
+# by hand is restricted in place, keeping its other settings.
 ensure_client() {
-  if api GET "oidc/clients/$CLIENT_ID" >/dev/null 2>&1; then
+  local client ids
+  if client="$(api GET "oidc/clients/$CLIENT_ID" 2>/dev/null)"; then
     echo "  client $CLIENT_ID exists" >&2
+    if [[ "$(field isGroupRestricted <<<"$client")" != True ]]; then
+      api PUT "oidc/clients/$CLIENT_ID" "$(python3 -c '
+import json, sys
+keep = ("name", "callbackURLs", "logoutCallbackURLs", "isPublic", "pkceEnabled", "skipConsent", "requiresReauthentication")
+client = json.load(sys.stdin)
+print(json.dumps({**{k: client[k] for k in keep}, "isGroupRestricted": True}))' <<<"$client")" >/dev/null
+      echo "  client $CLIENT_ID restricted to group $GROUP" >&2
+    fi
   else
     api POST oidc/clients '{"id":"corvid","name":"corvid","isPublic":true,"pkceEnabled":true,
       "callbackURLs":["http://127.0.0.1/callback","com.verdenroz.corvid:/oauth2redirect"],
       "isGroupRestricted":true}' >/dev/null
     echo "  client $CLIENT_ID created" >&2
+    client="$(api GET "oidc/clients/$CLIENT_ID")"
   fi
-  local ids
-  ids="$(api GET "oidc/clients/$CLIENT_ID" | python3 -c '
+  ids="$(python3 -c '
 import json, sys
 ids = [g["id"] for g in json.load(sys.stdin)["allowedUserGroups"]]
-print(json.dumps(ids if sys.argv[1] in ids else ids + [sys.argv[1]]))' "$GROUP_ID")"
+print(json.dumps(ids if sys.argv[1] in ids else ids + [sys.argv[1]]))' "$GROUP_ID" <<<"$client")"
   api PUT "oidc/clients/$CLIENT_ID/allowed-user-groups" "{\"userGroupIds\":$ids}" >/dev/null
 }
 

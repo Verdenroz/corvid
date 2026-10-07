@@ -96,6 +96,7 @@ provision() {
   CORVID_DIR="$work" CORVID_CONFIG_CMD="$work/shell" CORVID_IDP_URL="$issuer" bash "$here/idp.sh" "$@"
 }
 snapshot() { idp_api users; idp_api user-groups; idp_api oidc/clients; }
+idp_api oidc/clients -d '{"id":"corvid","name":"corvid","isPublic":true,"pkceEnabled":true,"callbackURLs":["http://127.0.0.1/callback"]}' >/dev/null
 first_run="$(provision provision 2>/dev/null)" || { echo "idp.sh provision failed" >&2; exit 1; }
 after_first="$(snapshot)"
 second_run="$(provision provision 2>/dev/null)" || { echo "the second idp.sh provision failed" >&2; exit 1; }
