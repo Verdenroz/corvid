@@ -59,7 +59,7 @@ redeem() {
 # client does it minus the passkey and the browser. Prints the access token. Pocket-ID skips the
 # consent step when the user already consented to the scopes, so the interaction is optional.
 mint() {
-  local user_id="$1" scope="$2" jar="$work/jar-$1" verifier challenge ott location code
+  local user_id="$1" scope="$2" client="${3:-corvid}" jar="$work/jar-$1-${3:-corvid}" verifier challenge ott location code
   verifier="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
   challenge="$(printf %s "$verifier" | python3 -c '
 import base64, hashlib, sys
@@ -68,7 +68,7 @@ print(base64.urlsafe_b64encode(hashlib.sha256(sys.stdin.buffer.read()).digest())
   [[ -n "$ott" ]] || { echo "mint: no one-time access token" >&2; return 1; }
   [[ "$(redeem "$ott" "$jar")" == 200 ]] || { echo "mint: the one-time access token was refused" >&2; return 1; }
   location="$(curl -s -b "$jar" -o /dev/null -w '%{redirect_url}' -G "$issuer/authorize" \
-    --data-urlencode client_id=corvid --data-urlencode response_type=code \
+    --data-urlencode "client_id=$client" --data-urlencode response_type=code \
     --data-urlencode redirect_uri=http://127.0.0.1/callback --data-urlencode "scope=$scope" \
     --data-urlencode "code_challenge=$challenge" --data-urlencode code_challenge_method=S256 \
     --data-urlencode state=rig-state-0123)"
@@ -81,7 +81,7 @@ print(base64.urlsafe_b64encode(hashlib.sha256(sys.stdin.buffer.read()).digest())
   fi
   [[ "$location" == *code=* ]] || { echo "mint: no authorization code in '$location'" >&2; return 1; }
   code="$(sed 's/.*[?&]code=\([^&]*\).*/\1/' <<<"$location")"
-  curl -sf "$issuer/api/oidc/token" -d grant_type=authorization_code -d client_id=corvid \
+  curl -sf "$issuer/api/oidc/token" -d grant_type=authorization_code -d "client_id=$client" \
     -d "code=$code" -d redirect_uri=http://127.0.0.1/callback -d "code_verifier=$verifier" \
     | json access_token
 }
@@ -224,6 +224,45 @@ link="$(provision link mailuser)"
 check "link mints a fresh enrollment link" "$(grep -cE '^https://localhost:[0-9]+/lc/[A-Za-z0-9]+$' <<<"$link")" 1
 check "the link's token signs the user in" \
   "$(redeem "${link##*/}" "$work/jar-link")" 200
+
+echo "== the approval client"
+client_flags() {
+  idp_api "oidc/clients/$1" | python3 -c '
+import json, sys
+c = json.load(sys.stdin)
+print(c["requiresReauthentication"], c["isGroupRestricted"], sorted(g["name"] for g in c["allowedUserGroups"]))'
+}
+check "corvid-admin is restricted to the admins group and demands reauthentication" \
+  "$(client_flags corvid-admin)" "True True ['admins']"
+check "corvid is restricted to the mail group and does not" "$(client_flags corvid)" "False True ['mail']"
+admins_id="$(idp_api 'user-groups?search=admins' | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"][0]["id"])')"
+check "the admins group holds only the admin user" \
+  "$(idp_api "user-groups/$admins_id" | python3 -c '
+import json, sys
+print(sorted(u["username"] for u in json.load(sys.stdin)["users"]))')" "['mailuser-admin']"
+check "the mail user gets no code from corvid-admin" \
+  "$(mint "$mailuser_id" "openid profile" corvid-admin 2>&1 | grep -o "$denied" | head -1)" "$denied"
+# The passkey step cannot be completed from a one-time link session, which is the point.
+admin_interaction() {
+  local ott location
+  ott="$(idp_api "users/$admin_id/one-time-access-token" -d '{"ttl":"5m"}' | json token)"
+  redeem "$ott" "$work/jar-admin-step" >/dev/null
+  location="$(curl -s -b "$work/jar-admin-step" -o /dev/null -w '%{redirect_url}' -G "$issuer/authorize" \
+    --data-urlencode client_id=corvid-admin --data-urlencode response_type=code \
+    --data-urlencode redirect_uri=http://127.0.0.1/callback --data-urlencode "scope=openid profile" \
+    --data-urlencode code_challenge=rig-challenge-0123456789-rig-challenge-0123456 \
+    --data-urlencode code_challenge_method=S256 --data-urlencode state=rig-state-0123)"
+  ADMIN_INTERACTION="${location##*interaction=}"
+}
+admin_interaction
+check "the admin's authorization to corvid-admin waits on a passkey" \
+  "$(curl -s -b "$work/jar-admin-step" "$issuer/api/oidc/interactions/$ADMIN_INTERACTION" | json currentStep)" reauthenticate
+check "the consent step is refused before the passkey step" \
+  "$(curl -s -b "$work/jar-admin-step" -H 'content-type: application/json' -d '{"step":"consent"}' \
+    "$issuer/api/oidc/interactions/$ADMIN_INTERACTION/complete" | json code)" validation_failed
+check "the passkey step is refused without a reauthentication token" \
+  "$(curl -s -b "$work/jar-admin-step" -H 'content-type: application/json' -d '{"step":"reauthenticate"}' \
+    "$issuer/api/oidc/interactions/$ADMIN_INTERACTION/complete" | json code)" validation_failed
 
 echo "== device keys owned by another account"
 account_of() {
