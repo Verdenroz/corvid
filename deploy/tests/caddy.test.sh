@@ -65,7 +65,7 @@ done
 check "everything else goes to Stalwart" "$(fetch "$url/jmap/session")" "200 stalwart"
 idp="https://idp.localhost:$port"
 check "the identity provider's site reaches Pocket-ID" "$(fetch "$idp/api/users")" "200 idp"
-for path in /setup /api/signup/setup; do
+for path in /setup /setup/ /api/signup/setup /api/signup/setup/; do
   check "$path on the identity provider's site is a 404" "$(fetch "$idp$path")" "404 "
   check "$path POST on the identity provider's site is a 404" "$(fetch -X POST -d '{}' "$idp$path")" "404 "
 done

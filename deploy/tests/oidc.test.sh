@@ -92,8 +92,12 @@ set -a; . "$work/corvid.env"; set +a
 admin_user="$STALWART_USER"; admin_pw="$STALWART_PASSWORD"
 "$engine" restart "$mail" >/dev/null
 wait_for http://127.0.0.1:8080/healthz/live || { echo "Stalwart never restarted" >&2; exit 1; }
-CORVID_DIR="$work" . "$here/lib.sh"
+export CORVID_DIR="$work"; . "$here/lib.sh"
 create_admin_api_key "$work/corvid.env" || { echo "the admin API key was not created" >&2; exit 1; }
+set -a; . "$work/corvid.env"; set +a
+prefer_token
+first_token="$STALWART_TOKEN"
+create_admin_api_key "$work/corvid.env" || { echo "the admin API key was not recreated" >&2; exit 1; }
 set -a; . "$work/corvid.env"; set +a
 prefer_token
 
@@ -148,12 +152,28 @@ check "a token without the profile scope" "$(session "$(mint "$mailuser_id" open
   "401 Missing required scope 'profile', present scopes: [\"openid\"]"
 status="$(curl -s -u "$admin_user:$admin_pw" "$STALWART_URL/jmap/session" -o /dev/null -w '%{http_code}')"
 check "the admin password once the OIDC directory is active" "$status" 401
+check "a second key replaces the first rather than adding to it" \
+  "$(jmap_admin '[["x:ApiKey/get", {"ids": null}, "c0"]]' | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["methodResponses"][0][1]["list"]))')" 1
+check "the replaced key no longer authenticates" \
+  "$(curl -s -H "Authorization: Bearer $first_token" "$STALWART_URL/api/account" -o /dev/null -w '%{http_code}')" 401
+check "corvid.env keeps one token line and its mode" \
+  "$(grep -c '^STALWART_TOKEN=' "$work/corvid.env") $(stat -c %a "$work/corvid.env")" "1 600"
 check "the admin API key once the OIDC directory is active" \
   "$(curl_authed -s "$STALWART_URL/api/account" -o /dev/null -w '%{http_code}')" 200
 check "stalwart-cli with the admin API key once the OIDC directory is active" \
   "$(stalwart-cli query Account --json 2>&1 | grep -c '"emailAddress":"admin@rig.test"')" 1
 check "stalwart-cli with the admin password once the OIDC directory is active" \
   "$( (unset STALWART_TOKEN; stalwart-cli --user "$admin_user" --password "$admin_pw" query Account --json 2>&1) | grep -c '"emailAddress"')" 0
+
+mailuser_account="$(stalwart-cli query Account --json | python3 -c '
+import json, sys
+print(next(a["id"] for a in map(json.loads, filter(str.strip, sys.stdin)) if a.get("emailAddress") == "mailuser@rig.test"))')"
+check "an apply through the admin API key writes once the OIDC directory is active" \
+  "$(printf '%s\n' '{"@type":"upsert","object":"Account","matchOn":["name"],"value":{"acct":{"@type":"User","name":"mailuser","description":"mailuser rig"}}}' |
+    stalwart-cli apply --stdin 2>&1 | grep -c '0 failed')" 1
+check "an app password for another account through the admin API key" \
+  "$(jmap_admin "[[\"x:AppPassword/set\", {\"accountId\": \"$mailuser_account\", \"create\": {\"n0\": {\"description\": \"rig\"}}}, \"c0\"]]" |
+    python3 -c 'import json,sys; print(bool(json.load(sys.stdin)["methodResponses"][0][1].get("created")))')" True
 
 echo "== a Pocket-ID user with no mailbox"
 check "gets a mailbox created on its first token" "$(session "$(mint "$nomail_id" "openid profile")")" 200

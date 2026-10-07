@@ -29,7 +29,7 @@
 # Pocket-ID refuses an APP_URL with a path, so it gets its own site on the same port. Its setup
 # page hands the admin account to the first visitor; deploy.sh provisions users through the API.
 {$CORVID_IDP_HOSTNAME}:{$CORVID_WEB_PORT} {
-	@setup path /setup /api/signup/setup
+	@setup path /setup /setup/* /api/signup/setup /api/signup/setup/*
 	respond @setup 404
 	reverse_proxy 127.0.0.1:1411
 }

@@ -33,13 +33,21 @@ curl_authed() {
   curl --config <(printf 'user = "%s:%s"\n' "$user" "$pass") "$@"
 }
 
+jmap_admin() {
+  curl_authed -fsS -H 'Content-Type: application/json' "$STALWART_URL/jmap" \
+    -d "{\"using\": [\"urn:ietf:params:jmap:core\", \"urn:stalwart:jmap\"], \"methodCalls\": $1}"
+}
+
 # Creates an admin API key and records it in ENV_FILE as STALWART_TOKEN. A Bearer key is tried
 # before any directory, so it keeps working once an external directory refuses the admin password.
+# Keys an earlier run left behind when its token was lost are destroyed first, to spare the quota.
 create_admin_api_key() {
-  local env_file="$1" token
-  token="$(curl_authed -fsS -H 'Content-Type: application/json' "$STALWART_URL/jmap" -d '{
-    "using": ["urn:ietf:params:jmap:core", "urn:stalwart:jmap"],
-    "methodCalls": [["x:ApiKey/set", {"create": {"n0": {"description": "corvid-deploy"}}}, "c0"]]}' |
+  local env_file="$1" stale token
+  stale="$(jmap_admin '[["x:ApiKey/get", {"ids": null}, "c0"]]' | python3 -c '
+import json, sys
+rows = json.load(sys.stdin)["methodResponses"][0][1]["list"]
+print(json.dumps([r["id"] for r in rows if r.get("description") == "corvid-deploy"]))')" || return 1
+  token="$(jmap_admin "[[\"x:ApiKey/set\", {\"destroy\": $stale, \"create\": {\"n0\": {\"description\": \"corvid-deploy\"}}}, \"c0\"]]" |
     python3 -c '
 import json, sys
 result = json.load(sys.stdin)["methodResponses"][0][1]
@@ -47,9 +55,7 @@ created = result.get("created", {}).get("n0")
 if not created:
     sys.exit(json.dumps(result.get("notCreated", result)))
 print(created["secret"])')" || return 1
-  sed -i '/^STALWART_TOKEN=/d' "$env_file"
-  printf 'STALWART_TOKEN=%s\n' "$token" >> "$env_file"
-  chmod 600 "$env_file"
+  atomic_write "$env_file" "$(grep -v '^STALWART_TOKEN=' "$env_file"; printf 'STALWART_TOKEN=%s' "$token")" 600
 }
 
 account_id() {
@@ -86,7 +92,7 @@ atomic_write() {
   local dest="$1" tmp
   tmp="$(mktemp "$CORVID_DIR/.write.XXXXXX")"
   printf '%s\n' "$2" >"$tmp"
-  chmod 644 "$tmp"
+  chmod "${3:-644}" "$tmp"
   mv "$tmp" "$dest"
 }
 

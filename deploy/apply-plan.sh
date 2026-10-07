@@ -24,7 +24,7 @@ TOKEN="$CORVID_DIR/secrets/cloudflare.token"
 
 command -v "$STALWART_CLI" >/dev/null 2>&1 || {
   echo "stalwart-cli not found. Set STALWART_CLI, or use the container image:" >&2
-  echo "  STALWART_CLI='podman run --rm -i --network=host -e STALWART_URL -e STALWART_USER -e STALWART_PASSWORD ghcr.io/stalwartlabs/cli'" >&2
+  echo "  STALWART_CLI='podman run --rm -i --network=host -e STALWART_URL -e STALWART_USER -e STALWART_PASSWORD -e STALWART_TOKEN ghcr.io/stalwartlabs/cli'" >&2
   exit 69
 }
 
