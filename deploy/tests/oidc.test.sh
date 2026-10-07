@@ -232,11 +232,12 @@ client_flags() {
   idp_api "oidc/clients/$1" | python3 -c '
 import json, sys
 c = json.load(sys.stdin)
-print(c["requiresReauthentication"], c["isGroupRestricted"], sorted(g["name"] for g in c["allowedUserGroups"]))'
+print(c["requiresReauthentication"], c["isGroupRestricted"], sorted(g["name"] for g in c["allowedUserGroups"]),
+      c["accessTokenDurationMinutes"], c["refreshTokenDurationMinutes"])'
 }
-check "corvid-admin is restricted to the admins group and demands reauthentication" \
-  "$(client_flags corvid-admin)" "True True ['admins']"
-check "corvid is restricted to the mail group and does not" "$(client_flags corvid)" "False True ['mail']"
+check "corvid-admin is restricted to the admins group, demands reauthentication and refreshes for a minute" \
+  "$(client_flags corvid-admin)" "True True ['admins'] 5 1"
+check "corvid is restricted to the mail group and keeps the default lifetimes" "$(client_flags corvid)" "False True ['mail'] 60 43200"
 admins_id="$(idp_api 'user-groups?search=admins' | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"][0]["id"])')"
 check "the admins group holds only the admin user" \
   "$(idp_api "user-groups/$admins_id" | python3 -c '
