@@ -79,18 +79,6 @@ wait_healthy() {
   echo "Stalwart did not become healthy at $STALWART_URL; check: journalctl -u corvid-mail" >&2; return 1
 }
 
-# A token Stalwart checks while the issuer is unreachable is refused until Stalwart restarts, so the
-# restart that loads the OIDC directory waits for Caddy to hold a certificate and Pocket-ID to answer.
-wait_for_issuer() {
-  for _ in $(seq 1 60); do
-    curl -sf -o /dev/null --max-time 5 --resolve "$IDP_HOSTNAME:$WEB_PORT:127.0.0.1" \
-      "https://$IDP_HOSTNAME:$WEB_PORT/.well-known/openid-configuration" && return 0
-    sleep 5
-  done
-  echo "https://$IDP_HOSTNAME:$WEB_PORT does not answer; Stalwart is not restarted. Check: journalctl -u corvid-caddy -u corvid-idp, then rerun" >&2
-  return 1
-}
-
 # Each marker holds a fingerprint of what the running service last started with, so a rerun
 # restarts only what changed, and a run that died before its restart is caught by the next.
 POD_MARKER="$CORVID_DIR/.live-pod"
@@ -160,6 +148,7 @@ systemctl start corvid-idp.service
 enrollment="$("$HERE/idp.sh" provision)"
 step "switching sign-in to Pocket-ID"
 CORVID_SKIP_RELOAD=1 PLAN="$HERE/oidc.plan.ndjson" "$HERE/apply-plan.sh"
+touch "$CORVID_DIR/.oidc-active"
 
 config="$(config_state)" || config="unknown"
 if [[ "$config" == "$(cat "$CONFIG_MARKER" 2>/dev/null)" ]]; then
@@ -168,7 +157,7 @@ else
   step "waiting for queued tasks"
   wait_for_due_tasks
   step "waiting for Pocket-ID behind Caddy"
-  wait_for_issuer
+  "$HERE/wait-issuer.sh" 300 || { echo "Stalwart is not restarted; check: journalctl -u corvid-caddy -u corvid-idp, then rerun" >&2; exit 1; }
   step "restart to make the configuration live"
   systemctl restart corvid-mail.service
   wait_healthy

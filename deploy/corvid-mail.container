@@ -24,6 +24,9 @@ Volume=/opt/corvid/secrets/cloudflare.token:/run/secrets/cloudflare.token:ro
 [Service]
 Restart=always
 TimeoutStartSec=300
+# Stalwart refuses tokens until it restarts if Pocket-ID is down when it first checks one. The
+# wait is bounded and its exit status ignored, so mail starts either way.
+ExecStartPre=-/opt/corvid/deploy/wait-issuer.sh 60 --if-oidc
 # A RocksDB compaction without a ceiling can OOM-kill whatever shares the box.
 MemoryHigh=550M
 MemoryMax=650M

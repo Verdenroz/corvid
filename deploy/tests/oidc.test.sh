@@ -246,5 +246,30 @@ check "the token stays refused after the issuer returns, until Stalwart restarts
 restart_mail
 check "the token is accepted after a restart with the issuer up" "$(session "$token")" 200
 
+echo "== the bounded wait before Stalwart starts (the script the unit runs, not the unit)"
+printf 'CORVID_IDP_HOSTNAME=localhost\n' > "$work/server.env"
+wait_issuer() { CORVID_DIR="$work" CORVID_ISSUER_URL="$issuer" bash "$here/wait-issuer.sh" "$@" 2>/dev/null; }
+"$engine" stop "$idp" >/dev/null
+"$engine" stop "$mail" >/dev/null
+SECONDS=0
+wait_issuer 30 --if-oidc; status=$?
+check "it does nothing until the OIDC plan is applied" "$status $((SECONDS < 3))" "0 1"
+touch "$work/.oidc-active"
+SECONDS=0
+wait_issuer 4 --if-oidc; status=$?
+check "it gives up at its bound with Pocket-ID down" "$status $((SECONDS >= 4 && SECONDS < 15))" "1 1"
+"$engine" start "$mail" >/dev/null
+wait_for "$STALWART_URL/healthz/live" || { echo "Stalwart did not start with Pocket-ID down" >&2; exit 1; }
+check "Stalwart is up and an app password works after the wait expired" "$(basic)" 200
+check "the admin API key works after the wait expired" \
+  "$(curl_authed -s "$STALWART_URL/api/account" -o /dev/null -w '%{http_code}')" 200
+"$engine" stop "$mail" >/dev/null
+( sleep 5; "$engine" start "$idp" >/dev/null ) &
+wait_issuer 60 --if-oidc; status=$?
+check "it returns as soon as Pocket-ID answers within the bound" "$status" 0
+"$engine" start "$mail" >/dev/null
+wait_for "$STALWART_URL/healthz/live" || { echo "Stalwart did not start" >&2; exit 1; }
+check "a token is accepted on Stalwart's first start after the wait, with no second restart" "$(session "$token")" 200
+
 [[ $fail -eq 0 ]] || { "$engine" logs "$mail" 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E 'auth\.|http\.' | tail -10; }
 exit "$fail"
