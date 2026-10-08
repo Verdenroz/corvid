@@ -216,12 +216,16 @@ class FiltersViewModelTest {
     @Test
     fun `saving the draft while another save is in flight keeps the editor open`() =
         runViewModelTest {
-            val vm = viewModel(FakeJmapServer())
+            val fake = FakeJmapServer()
+            val vm = viewModel(fake)
+            val release = CompletableDeferred<Unit>()
+            fake.gate = release
             vm.save(null, rule("first"))
 
             vm.startEdit(null)
             vm.changeDraft(rule("second"))
             vm.saveDraft()
+            release.complete(Unit)
 
             assertEquals(RuleDraft(null, rule("second")), vm.ready().editing)
         }
