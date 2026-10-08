@@ -89,6 +89,14 @@ impl Stalwart {
         self.files.lock().unwrap().blobs[node.blob.as_ref().unwrap()].clone()
     }
 
+    pub fn remove(&self, name: &str) {
+        self.files
+            .lock()
+            .unwrap()
+            .nodes
+            .retain(|node| node.name != name);
+    }
+
     pub fn plant_folder(&self, name: &str) -> Node {
         let mut files = self.files.lock().unwrap();
         files.next += 1;
@@ -152,17 +160,46 @@ async fn jmap(
         return Err(StatusCode::UNAUTHORIZED);
     }
     shared.calls.fetch_add(1, Ordering::SeqCst);
-    let [method, arguments, id] = &request["methodCalls"][0].as_array().unwrap()[..] else {
-        panic!("one method call expected");
-    };
-    let answer = match method.as_str().unwrap() {
-        "x:Account/query" => query_account(arguments),
-        "x:Account/get" => get_accounts(arguments),
-        "FileNode/get" => get_nodes(&shared, arguments),
-        "FileNode/set" => set_nodes(&shared, arguments),
-        other => panic!("unexpected method {other}"),
-    };
-    Ok(Json(json!({"methodResponses": [[method, answer, id]]})))
+    let mut responses: Vec<Value> = Vec::new();
+    for call in request["methodCalls"].as_array().unwrap() {
+        let [method, arguments, id] = &call.as_array().unwrap()[..] else {
+            panic!("a method call is a name, arguments and an id");
+        };
+        let arguments = resolve(arguments, &responses);
+        let answer = match method.as_str().unwrap() {
+            "x:Account/query" => query_account(&arguments),
+            "x:Account/get" => get_accounts(&arguments),
+            "FileNode/query" => query_nodes(&shared, &arguments),
+            "FileNode/get" => get_nodes(&shared, &arguments),
+            "FileNode/set" => set_nodes(&shared, &arguments),
+            other => panic!("unexpected method {other}"),
+        };
+        responses.push(json!([method, answer, id]));
+    }
+    Ok(Json(json!({"methodResponses": responses})))
+}
+
+/// Replaces a `#ids` back-reference with the value it points at in an earlier answer.
+fn resolve(arguments: &Value, responses: &[Value]) -> Value {
+    let mut arguments = arguments.clone();
+    if let Some(reference) = arguments.as_object_mut().unwrap().remove("#ids") {
+        let earlier = responses
+            .iter()
+            .find(|response| {
+                response[2] == reference["resultOf"] && response[0] == reference["name"]
+            })
+            .expect("a reference names an earlier call");
+        let path = reference["path"].as_str().unwrap();
+        arguments["ids"] = if path == "/ids" {
+            earlier[1]["ids"].clone()
+        } else {
+            let id = earlier[1]
+                .pointer(path)
+                .expect("the referenced value exists");
+            json!([id])
+        };
+    }
+    arguments
 }
 
 /// The mail domain also holds an account named like the keys account, as a Pocket-ID user of that
@@ -198,6 +235,18 @@ fn describe(node: &Node) -> Value {
            "shareWith": node.share})
 }
 
+fn query_nodes(shared: &Shared, arguments: &Value) -> Value {
+    let name = arguments["filter"]["name"].as_str().unwrap();
+    let files = shared.files.lock().unwrap();
+    let ids: Vec<&str> = files
+        .nodes
+        .iter()
+        .filter(|node| node.name == name)
+        .map(|node| node.id.as_str())
+        .collect();
+    json!({"ids": ids})
+}
+
 fn get_nodes(shared: &Shared, arguments: &Value) -> Value {
     let files = shared.files.lock().unwrap();
     let wanted: Option<Vec<&str>> = arguments["ids"]
@@ -222,6 +271,11 @@ fn set_nodes(shared: &Shared, arguments: &Value) -> Value {
     for (key, create) in arguments["create"].as_object().into_iter().flatten() {
         if shared.refuse_creates.load(Ordering::SeqCst) {
             answer["notCreated"][key] = json!({"type": "serverFail"});
+            continue;
+        }
+        let parent = create["parentId"].as_str();
+        if parent.is_some_and(|parent| files.nodes.iter().all(|node| node.id != parent)) {
+            answer["notCreated"][key] = json!({"type": "notFound"});
             continue;
         }
         files.next += 1;

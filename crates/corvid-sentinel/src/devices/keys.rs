@@ -1,8 +1,9 @@
 use std::fmt;
+use std::sync::{Mutex, PoisonError};
 
-use ring::rand::{SecureRandom, SystemRandom};
 use serde_json::{Value, json};
 
+use super::random_bytes;
 use super::state::Approved;
 
 const FOLDER: &str = "corvid-devices";
@@ -37,6 +38,14 @@ pub struct Keys {
     token: String,
     keys_address: String,
     mail_address: String,
+    target: Mutex<Option<Target>>,
+}
+
+/// The ids a key is written under, which do not change once the folder exists.
+#[derive(Clone)]
+struct Target {
+    account: String,
+    folder: String,
 }
 
 impl Keys {
@@ -47,50 +56,30 @@ impl Keys {
             token,
             keys_address,
             mail_address,
+            target: Mutex::default(),
         }
     }
 
-    /// Creates the key file for a device with fresh random content and returns where it is.
+    /// Creates the key file for a device with fresh random content and returns where it is. A
+    /// failure on remembered ids looks them up again before it counts.
     pub async fn enroll(&self, device: &str) -> Result<Approved, Error> {
-        let keys = self.account(&self.keys_address).await?;
+        let remembered = self
+            .target
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
+        if let Some(target) = remembered
+            && let Ok(approved) = self.create(device, &target).await
+        {
+            return Ok(approved);
+        }
+        let account = self.account(&self.keys_address).await?;
         let mail = self.account(&self.mail_address).await?;
-        let folder = self.folder(&keys, &mail).await?;
-        let mut content = vec![KEY_VERSION; KEY_LENGTH + 1];
-        SystemRandom::new()
-            .fill(&mut content[1..])
-            .map_err(|_| Error("no randomness".to_owned()))?;
-        let blob = self.upload(&keys, content).await?;
-        let created = self
-            .call(
-                "FileNode/set",
-                json!({"accountId": keys, "create": {"n": {
-                    "name": format!("{device}.key"), "parentId": folder, "blobId": blob}}}),
-            )
-            .await?;
-        let node_id = created["created"]["n"]["id"]
-            .as_str()
-            .ok_or_else(|| {
-                Error(format!(
-                    "the key was not created: {}",
-                    created["notCreated"]
-                ))
-            })?
-            .to_owned();
-        let node = self
-            .call(
-                "FileNode/get",
-                json!({"accountId": keys, "ids": [node_id], "properties": ["blobId"]}),
-            )
-            .await?;
-        let blob_id = node["list"][0]["blobId"]
-            .as_str()
-            .ok_or_else(|| Error("the created key has no blob".to_owned()))?
-            .to_owned();
-        Ok(Approved {
-            account_id: keys,
-            node_id,
-            blob_id,
-        })
+        let folder = self.folder(&account, &mail).await?;
+        let target = Target { account, folder };
+        let approved = self.create(device, &target).await?;
+        *self.target.lock().unwrap_or_else(PoisonError::into_inner) = Some(target);
+        Ok(approved)
     }
 
     /// Destroys a key file. A node that is already gone counts as destroyed.
@@ -109,20 +98,60 @@ impl Keys {
         }
     }
 
+    async fn create(&self, device: &str, target: &Target) -> Result<Approved, Error> {
+        let content = [&[KEY_VERSION][..], &random_bytes::<KEY_LENGTH>()].concat();
+        let blob = self.upload(&target.account, content).await?;
+        let answers = self
+            .batch(&[
+                (
+                    "FileNode/set",
+                    json!({"accountId": target.account, "create": {"n": {
+                        "name": format!("{device}.key"), "parentId": target.folder,
+                        "blobId": blob}}}),
+                ),
+                (
+                    "FileNode/get",
+                    json!({"accountId": target.account, "properties": ["blobId"],
+                           "#ids": back("FileNode/set", "/created/n/id")}),
+                ),
+            ])
+            .await?;
+        let created = checked("FileNode/set", &answers[0])?;
+        let node_id = created["created"]["n"]["id"]
+            .as_str()
+            .ok_or_else(|| {
+                Error(format!(
+                    "the key was not created: {}",
+                    created["notCreated"]
+                ))
+            })?
+            .to_owned();
+        let blob_id = checked("FileNode/get", &answers[1])?["list"][0]["blobId"]
+            .as_str()
+            .ok_or_else(|| Error("the created key has no blob".to_owned()))?
+            .to_owned();
+        Ok(Approved {
+            account_id: target.account.clone(),
+            node_id,
+            blob_id,
+        })
+    }
+
     /// Looks accounts up by address, since a Pocket-ID user of the same name in the mail domain
     /// gets an account of its own with the same local part.
     async fn account(&self, address: &str) -> Result<String, Error> {
         let local = address.split('@').next().unwrap_or_default();
-        let found = self
-            .call("x:Account/query", json!({"filter": {"name": local}}))
+        let answers = self
+            .batch(&[
+                ("x:Account/query", json!({"filter": {"name": local}})),
+                (
+                    "x:Account/get",
+                    json!({"properties": ["emailAddress"],
+                           "#ids": back("x:Account/query", "/ids")}),
+                ),
+            ])
             .await?;
-        let accounts = self
-            .call(
-                "x:Account/get",
-                json!({"ids": found["ids"], "properties": ["emailAddress"]}),
-            )
-            .await?;
-        accounts["list"]
+        checked("x:Account/get", &answers[1])?["list"]
             .as_array()
             .into_iter()
             .flatten()
@@ -134,14 +163,22 @@ impl Keys {
 
     /// The top-level folder, created on first use, shared read-only with the mailbox.
     async fn folder(&self, keys: &str, mail: &str) -> Result<String, Error> {
-        let listing = self
-            .call(
-                "FileNode/get",
-                json!({"accountId": keys, "ids": null, "properties": ["id", "name", "parentId", "shareWith"]}),
-            )
+        let answers = self
+            .batch(&[
+                (
+                    "FileNode/query",
+                    json!({"accountId": keys, "filter": {"name": FOLDER}}),
+                ),
+                (
+                    "FileNode/get",
+                    json!({"accountId": keys,
+                           "properties": ["id", "name", "parentId", "shareWith"],
+                           "#ids": back("FileNode/query", "/ids")}),
+                ),
+            ])
             .await?;
         let share = json!({(mail): {"mayRead": true}});
-        let existing = listing["list"]
+        let existing = checked("FileNode/get", &answers[1])?["list"]
             .as_array()
             .into_iter()
             .flatten()
@@ -202,20 +239,43 @@ impl Keys {
     /// One method call, answered with its arguments. Account-scoped methods carry their own
     /// `accountId`; `x:Account/query` runs as the admin account the key belongs to.
     async fn call(&self, method: &str, arguments: Value) -> Result<Value, Error> {
-        let body = json!({"using": USING, "methodCalls": [[method, arguments, "c0"]]});
+        let answers = self.batch(&[(method, arguments)]).await?;
+        checked(method, &answers[0]).cloned()
+    }
+
+    /// Method calls in one request, named `c0`, `c1`, and so on. The answers come back as sent,
+    /// errors included, so a refusal is read before the answer to the call that depended on it.
+    async fn batch(&self, calls: &[(&str, Value)]) -> Result<Vec<Value>, Error> {
+        let calls: Vec<Value> = calls
+            .iter()
+            .enumerate()
+            .map(|(index, (method, arguments))| json!([method, arguments, format!("c{index}")]))
+            .collect();
         let response = self
             .http
             .post(format!("{}/jmap", self.url))
             .bearer_auth(&self.token)
-            .json(&body)
+            .json(&json!({"using": USING, "methodCalls": calls}))
             .send()
             .await?
             .error_for_status()?;
         let mut answer: Value = response.json().await?;
-        let result = answer["methodResponses"][0].take();
-        if result[0] == "error" {
-            return Err(Error(format!("{method} failed: {}", result[1])));
-        }
-        Ok(result[1].clone())
+        Ok(answer["methodResponses"]
+            .take()
+            .as_array()
+            .cloned()
+            .unwrap_or_default())
     }
+}
+
+/// A reference to `path` in the answer of the first call of a batch.
+fn back(method: &str, path: &str) -> Value {
+    json!({"resultOf": "c0", "name": method, "path": path})
+}
+
+fn checked<'a>(method: &str, answer: &'a Value) -> Result<&'a Value, Error> {
+    if answer[0] == "error" {
+        return Err(Error(format!("{method} failed: {}", answer[1])));
+    }
+    Ok(&answer[1])
 }

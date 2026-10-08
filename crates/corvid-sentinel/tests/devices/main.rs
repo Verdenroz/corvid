@@ -251,6 +251,31 @@ async fn a_second_approval_reuses_the_folder() {
 }
 
 #[tokio::test]
+async fn a_second_approval_costs_one_jmap_request() {
+    let rig = rig().await;
+    rig.approved("phone").await;
+    let before = rig.stalwart.calls();
+
+    rig.approved("tablet").await;
+
+    assert_eq!(rig.stalwart.calls() - before, 1);
+}
+
+#[tokio::test]
+async fn a_folder_removed_since_the_last_approval_is_made_again() {
+    let rig = rig().await;
+    rig.approved("phone").await;
+    rig.stalwart.remove("corvid-devices");
+
+    let approved = rig.approved("tablet").await;
+
+    let folder = rig.stalwart.node("corvid-devices").unwrap();
+    let key = rig.stalwart.node("tablet.key").unwrap();
+    assert_eq!(key.parent, Some(folder.id));
+    assert_eq!(key.id, approved.node_id);
+}
+
+#[tokio::test]
 async fn an_existing_folder_that_lost_its_share_is_shared_again() {
     let rig = rig().await;
     let folder = rig.stalwart.plant_folder("corvid-devices");
