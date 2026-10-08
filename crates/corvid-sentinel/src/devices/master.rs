@@ -230,6 +230,28 @@ mod tests {
         Master::new(String::new(), url, String::new())
     }
 
+    fn signed_in_at(iat: i64) -> Claims {
+        serde_json::from_value(json!({
+            "iss": "issuer", "sub": "admin", "aud": [CLIENT_ID], "exp": 1_000_000, "iat": iat
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn a_token_whose_sign_in_is_over_five_minutes_old_is_refused_however_long_it_is_valid() {
+        let master = Master::new("issuer".to_owned(), String::new(), String::new());
+        let now = 10_000;
+
+        assert_eq!(
+            master.check_claims(&signed_in_at(now - MAX_AGE_SECONDS), now),
+            Ok(())
+        );
+        assert_eq!(
+            master.check_claims(&signed_in_at(now - MAX_AGE_SECONDS - 1), now),
+            Err(Refusal::Invalid("signed in too long ago"))
+        );
+    }
+
     fn set(kid: &str) -> Value {
         json!({"keys": [{"kty": "RSA", "kid": kid, "n": "AQAB", "e": "AQAB"}]})
     }
