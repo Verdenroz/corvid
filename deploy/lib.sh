@@ -12,14 +12,50 @@ server_ip() {
   curl -4 -s --max-time 10 https://1.1.1.1/cdn-cgi/trace | sed -n 's/^ip=//p'
 }
 
+# stalwart-cli refuses a token alongside a user, so a token replaces the password pair in the
+# environment. Call it after every source of corvid.env.
+prefer_token() {
+  [[ -z "${STALWART_TOKEN:-}" ]] || unset STALWART_USER STALWART_PASSWORD
+}
+prefer_token
+
 # curl -u puts the password in argv, readable in /proc by any local user for the call's
 # lifetime. --config on a process substitution keeps it off the command line. Its quoted value
 # needs its own backslashes and quotes escaped, or a password carrying either breaks the parse.
 curl_authed() {
+  if [[ -n "${STALWART_TOKEN:-}" ]]; then
+    curl --config <(printf 'header = "Authorization: Bearer %s"\n' "$STALWART_TOKEN") "$@"
+    return
+  fi
   local user="$STALWART_USER" pass="$STALWART_PASSWORD"
   user="${user//\\/\\\\}"; user="${user//\"/\\\"}"
   pass="${pass//\\/\\\\}"; pass="${pass//\"/\\\"}"
   curl --config <(printf 'user = "%s:%s"\n' "$user" "$pass") "$@"
+}
+
+jmap_admin() {
+  curl_authed -fsS -H 'Content-Type: application/json' "$STALWART_URL/jmap" \
+    -d "{\"using\": [\"urn:ietf:params:jmap:core\", \"urn:stalwart:jmap\"], \"methodCalls\": $1}"
+}
+
+# Creates an admin API key and records it in ENV_FILE as STALWART_TOKEN. A Bearer key is tried
+# before any directory, so it keeps working once an external directory refuses the admin password.
+# Keys an earlier run left behind when its token was lost are destroyed first, to spare the quota.
+create_admin_api_key() {
+  local env_file="$1" stale token
+  stale="$(jmap_admin '[["x:ApiKey/get", {"ids": null}, "c0"]]' | python3 -c '
+import json, sys
+rows = json.load(sys.stdin)["methodResponses"][0][1]["list"]
+print(json.dumps([r["id"] for r in rows if r.get("description") == "corvid-deploy"]))')" || return 1
+  token="$(jmap_admin "[[\"x:ApiKey/set\", {\"destroy\": $stale, \"create\": {\"n0\": {\"description\": \"corvid-deploy\"}}}, \"c0\"]]" |
+    python3 -c '
+import json, sys
+result = json.load(sys.stdin)["methodResponses"][0][1]
+created = result.get("created", {}).get("n0")
+if not created:
+    sys.exit(json.dumps(result.get("notCreated", result)))
+print(created["secret"])')" || return 1
+  atomic_write "$env_file" "$(grep -v '^STALWART_TOKEN=' "$env_file"; printf 'STALWART_TOKEN=%s' "$token")" 600
 }
 
 account_id() {
@@ -56,7 +92,7 @@ atomic_write() {
   local dest="$1" tmp
   tmp="$(mktemp "$CORVID_DIR/.write.XXXXXX")"
   printf '%s\n' "$2" >"$tmp"
-  chmod 644 "$tmp"
+  chmod "${3:-644}" "$tmp"
   mv "$tmp" "$dest"
 }
 

@@ -37,6 +37,17 @@ STALWART_USER=admin@example.com STALWART_PASSWORD="$tricky" WORK="$work" \
 check "the quote and backslash are escaped for curl's config syntax" \
   'grep -qF '\''p@ss\"w\\ord'\'' "$work/config-content"'
 
+echo "== a token set beside a password"
+: > "$work/argv"; : > "$work/config-content"
+STALWART_TOKEN=API_tokenQx7Lp2Vn STALWART_USER=admin@example.com STALWART_PASSWORD=SuperSecretQx7Lp2Vn WORK="$work" \
+  PATH="$work/bin:$PATH" bash -c ". \"$here/lib.sh\"; curl_authed -fsS https://example.test/"
+check "the token never appears in curl's argv" '! grep -qF API_tokenQx7Lp2Vn "$work/argv"'
+check "the token reaches curl as a Bearer header through the config file" \
+  'grep -qF "Authorization: Bearer API_tokenQx7Lp2Vn" "$work/config-content"'
+check "the password is not sent" '! grep -qF SuperSecretQx7Lp2Vn "$work/config-content"'
+check "prefer_token drops the password pair from the environment" \
+  '[[ -z "$(STALWART_TOKEN=t STALWART_USER=u STALWART_PASSWORD=p bash -c ". \"$here/lib.sh\"; echo \"\${STALWART_USER:-}\${STALWART_PASSWORD:-}\"")" ]]'
+
 echo "== no other script embeds the password in curl's argv"
 hits="$(grep -l 'curl.*-u.*STALWART_PASSWORD' "$here"/*.sh 2>/dev/null | grep -v '/lib\.sh$' || true)"
 check "grep finds no such call site" '[[ -z "$hits" ]]'

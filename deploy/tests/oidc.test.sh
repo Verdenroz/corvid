@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Runs the pinned Stalwart and Pocket-ID side by side with oidc.plan.ndjson applied, mints a real
 # Pocket-ID access token for a user without a passkey or browser, and checks what Stalwart makes
-# of it over JMAP. Pocket-ID is driven only through STATIC_API_KEY and its REST API. Needs
-# stalwart-cli, curl, python3 and docker or podman; bootstrap mode needs port 8080 free.
+# of it over JMAP. idp.sh provisions Pocket-ID, and the rig drives the rest only through
+# STATIC_API_KEY and its REST API. Needs stalwart-cli, curl, python3 and docker or podman;
+# bootstrap mode needs port 8080 free.
 set -uo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 image() { awk -F= '$1=="Image"{print $2}' "$here/$1.container"; }
@@ -42,6 +43,18 @@ idp_api() {
 }
 json() { python3 -c 'import json,sys; print(json.load(sys.stdin)[sys.argv[1]])' "$1"; }
 
+# Prints the status of redeeming a one-time token into cookie jar $2. Pocket-ID rate-limits
+# redemption, so a 429 waits for the window to reopen.
+redeem() {
+  local status
+  for _ in $(seq 1 12); do
+    status="$(curl -s -c "$2" -o /dev/null -w '%{http_code}' -X POST "$issuer/api/one-time-access-token/$1")"
+    [[ "$status" == 429 ]] || break
+    sleep 5
+  done
+  echo "$status"
+}
+
 # One-time access token, then a session, then the authorization-code flow with PKCE, the way the
 # client does it minus the passkey and the browser. Prints the access token. Pocket-ID skips the
 # consent step when the user already consented to the scopes, so the interaction is optional.
@@ -53,8 +66,7 @@ import base64, hashlib, sys
 print(base64.urlsafe_b64encode(hashlib.sha256(sys.stdin.buffer.read()).digest()).decode().rstrip("="))')"
   ott="$(idp_api "users/$user_id/one-time-access-token" -d '{"ttl":"5m"}' | json token)"
   [[ -n "$ott" ]] || { echo "mint: no one-time access token" >&2; return 1; }
-  curl -sf -c "$jar" -o /dev/null -X POST "$issuer/api/one-time-access-token/$ott" \
-    || { echo "mint: the one-time access token was refused" >&2; return 1; }
+  [[ "$(redeem "$ott" "$jar")" == 200 ]] || { echo "mint: the one-time access token was refused" >&2; return 1; }
   location="$(curl -s -b "$jar" -o /dev/null -w '%{redirect_url}' -G "$issuer/authorize" \
     --data-urlencode client_id=corvid --data-urlencode response_type=code \
     --data-urlencode redirect_uri=http://127.0.0.1/callback --data-urlencode "scope=$scope" \
@@ -74,23 +86,48 @@ print(base64.urlsafe_b64encode(hashlib.sha256(sys.stdin.buffer.read()).digest())
     | json access_token
 }
 
-idp_api oidc/clients -d '{"id":"corvid","name":"corvid","isPublic":true,"pkceEnabled":true,"callbackURLs":["http://127.0.0.1/callback"]}' >/dev/null
-nomail_id="$(idp_api users -d '{"username":"nomail","email":"nomail@rig.test","firstName":"No","lastName":"Mail","isAdmin":false}' | json id)"
-outsider_id="$(idp_api users -d '{"username":"outsider","email":"outsider@rig.test","firstName":"Out","lastName":"Sider","isAdmin":false}' | json id)"
-mailuser_id="$(idp_api users -d '{"username":"mailuser","email":"mailuser@rig.test","firstName":"Mailuser","lastName":"Rig","isAdmin":false}' | json id)"
-
 cat > "$work/shell" <<SH
 #!/bin/sh
-printf 'MAIL_DOMAIN=rig.test\nMAIL_HOSTNAME=mail.rig.test\nMAIL_USER=mailuser\nACME_CONTACT=ops@rig.test\nWEB_PORT=$idp_port\n'
+printf 'MAIL_DOMAIN=rig.test\nMAIL_HOSTNAME=mail.rig.test\nMAIL_USER=mailuser\nACME_CONTACT=ops@rig.test\nWEB_PORT=$idp_port\nIDP_HOSTNAME=localhost\n'
 SH
 chmod +x "$work/shell"
+printf 'STATIC_API_KEY=%s\n' "$api_key" > "$work/idp.env"
+provision() {
+  CORVID_DIR="$work" CORVID_CONFIG_CMD="$work/shell" CORVID_IDP_URL="$issuer" bash "$here/idp.sh" "$@"
+}
+snapshot() { idp_api users; idp_api user-groups; idp_api oidc/clients; }
+idp_api oidc/clients -d '{"id":"corvid","name":"corvid","isPublic":true,"pkceEnabled":true,"callbackURLs":["http://127.0.0.1/callback"]}' >/dev/null
+first_run="$(provision provision 2>/dev/null)" || { echo "idp.sh provision failed" >&2; exit 1; }
+after_first="$(snapshot)"
+second_run="$(provision provision 2>/dev/null)" || { echo "the second idp.sh provision failed" >&2; exit 1; }
+after_second="$(snapshot)"
+user_id() {
+  idp_api "users?search=$1" | python3 -c '
+import json, sys
+print(next(u["id"] for u in json.load(sys.stdin)["data"] if u["username"] == sys.argv[1]))' "$1"
+}
+mailuser_id="$(user_id mailuser)"
+admin_id="$(user_id mailuser-admin)"
+nomail_id="$(idp_api users -d '{"username":"nomail","email":"nomail@rig.test","firstName":"No","lastName":"Mail","isAdmin":false}' | json id)"
+outsider_id="$(idp_api users -d '{"username":"outsider","email":"outsider@rig.test","firstName":"Out","lastName":"Sider","isAdmin":false}' | json id)"
+group_id="$(idp_api 'user-groups?search=mail' | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"][0]["id"])')"
+idp_api "user-groups/$group_id/users" -X PUT -d "{\"userIds\":[\"$mailuser_id\",\"$nomail_id\"]}" >/dev/null
 printf 'STALWART_URL=http://127.0.0.1:8080\nRECOVERY_ADMIN_USER=recovery\nRECOVERY_ADMIN_PASSWORD=%s\n' \
   "$recovery_pw" > "$work/corvid.env"
 CORVID_DIR="$work" CORVID_ENV="$work/corvid.env" CORVID_CONFIG_CMD="$work/shell" \
   bash "$here/bootstrap-server.sh" >/dev/null || { echo "bootstrap-server.sh failed" >&2; exit 1; }
 set -a; . "$work/corvid.env"; set +a
+admin_user="$STALWART_USER"; admin_pw="$STALWART_PASSWORD"
 "$engine" restart "$mail" >/dev/null
 wait_for http://127.0.0.1:8080/healthz/live || { echo "Stalwart never restarted" >&2; exit 1; }
+export CORVID_DIR="$work"; . "$here/lib.sh"
+create_admin_api_key "$work/corvid.env" || { echo "the admin API key was not created" >&2; exit 1; }
+set -a; . "$work/corvid.env"; set +a
+prefer_token
+first_token="$STALWART_TOKEN"
+create_admin_api_key "$work/corvid.env" || { echo "the admin API key was not recreated" >&2; exit 1; }
+set -a; . "$work/corvid.env"; set +a
+prefer_token
 
 domain_id="$(stalwart-cli query Domain --json | python3 -c '
 import json, sys
@@ -141,21 +178,98 @@ check "the session's mail account is the user's mailbox" "$(mailbox_of 2>/dev/nu
 echo "== tokens and credentials Stalwart must refuse"
 check "a token without the profile scope" "$(session "$(mint "$mailuser_id" openid)")" \
   "401 Missing required scope 'profile', present scopes: [\"openid\"]"
-status="$(curl -s -u "$STALWART_USER:$STALWART_PASSWORD" "$STALWART_URL/jmap/session" -o /dev/null -w '%{http_code}')"
+status="$(curl -s -u "$admin_user:$admin_pw" "$STALWART_URL/jmap/session" -o /dev/null -w '%{http_code}')"
 check "the admin password once the OIDC directory is active" "$status" 401
+check "a second key replaces the first rather than adding to it" \
+  "$(jmap_admin '[["x:ApiKey/get", {"ids": null}, "c0"]]' | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["methodResponses"][0][1]["list"]))')" 1
+check "the replaced key no longer authenticates" \
+  "$(curl -s -H "Authorization: Bearer $first_token" "$STALWART_URL/api/account" -o /dev/null -w '%{http_code}')" 401
+check "corvid.env keeps one token line and its mode" \
+  "$(grep -c '^STALWART_TOKEN=' "$work/corvid.env") $(stat -c %a "$work/corvid.env")" "1 600"
+check "the admin API key once the OIDC directory is active" \
+  "$(curl_authed -s "$STALWART_URL/api/account" -o /dev/null -w '%{http_code}')" 200
+check "stalwart-cli with the admin API key once the OIDC directory is active" \
+  "$(stalwart-cli query Account --json 2>&1 | grep -c '"emailAddress":"admin@rig.test"')" 1
+check "stalwart-cli with the admin password once the OIDC directory is active" \
+  "$( (unset STALWART_TOKEN; stalwart-cli --user "$admin_user" --password "$admin_pw" query Account --json 2>&1) | grep -c '"emailAddress"')" 0
+
+mailuser_account="$(stalwart-cli query Account --json | python3 -c '
+import json, sys
+print(next(a["id"] for a in map(json.loads, filter(str.strip, sys.stdin)) if a.get("emailAddress") == "mailuser@rig.test"))')"
+check "an apply through the admin API key writes once the OIDC directory is active" \
+  "$(printf '%s\n' '{"@type":"upsert","object":"Account","matchOn":["name"],"value":{"acct":{"@type":"User","name":"mailuser","description":"mailuser rig"}}}' |
+    stalwart-cli apply --stdin 2>&1 | grep -c '0 failed')" 1
+app_password="$(jmap_admin "[[\"x:AppPassword/set\", {\"accountId\": \"$mailuser_account\", \"create\": {\"n0\": {\"description\": \"rig\"}}}, \"c0\"]]" |
+  python3 -c 'import json,sys; print(json.load(sys.stdin)["methodResponses"][0][1]["created"]["n0"]["secret"])')"
+check "an app password for another account through the admin API key" "$([[ -n "$app_password" ]] && echo True)" True
 
 echo "== a Pocket-ID user with no mailbox"
 check "gets a mailbox created on its first token" "$(session "$(mint "$nomail_id" "openid profile")")" 200
-accounts="$(STALWART_USER=recovery STALWART_PASSWORD="$recovery_pw" stalwart-cli query Account --json)"
+accounts="$(stalwart-cli query Account --json)"
 check "the new account is nomail@rig.test" "$(grep -c '"emailAddress":"nomail@rig.test"' <<<"$accounts")" 1
-group_id="$(idp_api user-groups -d '{"name":"mail","friendlyName":"mail"}' | json id)"
-idp_api "user-groups/$group_id/users" -X PUT -d "{\"userIds\":[\"$mailuser_id\"]}" >/dev/null
-idp_api oidc/clients/corvid/allowed-user-groups -X PUT -d "{\"userGroupIds\":[\"$group_id\"]}" >/dev/null
-idp_api oidc/clients/corvid -X PUT \
-  -d '{"name":"corvid","isPublic":true,"pkceEnabled":true,"callbackURLs":["http://127.0.0.1/callback"],"isGroupRestricted":true}' >/dev/null
-check "a group-restricted client issues no code to a user outside the group" \
-  "$(mint "$outsider_id" "openid profile" 2>&1 | grep -o 'not+allowed+to+access+this+service' | head -1)" not+allowed+to+access+this+service
-check "a group member still gets a working token" "$(session "$(mint "$mailuser_id" "openid profile")")" 200
+
+echo "== the provisioned client and users"
+denied=not+allowed+to+access+this+service
+check "a user outside the mail group gets no code" \
+  "$(mint "$outsider_id" "openid profile" 2>&1 | grep -o "$denied" | head -1)" "$denied"
+check "the admin user gets no code" \
+  "$(mint "$admin_id" "openid profile" 2>&1 | grep -o "$denied" | head -1)" "$denied"
+check "the mail user gets a working token" "$(session "$(mint "$mailuser_id" "openid profile")")" 200
+check "the first provision prints a link for the admin and the mail user" \
+  "$(sed -E 's#^(\S+) https://localhost:[0-9]+/lc/\S+$#\1#' <<<"$first_run" | sort | tr '\n' ' ')" "mailuser mailuser-admin "
+check "the second provision prints nothing" "$second_run" ""
+check "the second provision changes nothing in Pocket-ID" "$([[ "$after_first" == "$after_second" ]] && echo same)" same
+link="$(provision link mailuser)"
+check "link mints a fresh enrollment link" "$(grep -cE '^https://localhost:[0-9]+/lc/[A-Za-z0-9]+$' <<<"$link")" 1
+check "the link's token signs the user in" \
+  "$(redeem "${link##*/}" "$work/jar-link")" 200
+
+echo "== Pocket-ID unreachable when Stalwart verifies a token"
+token="$(mint "$mailuser_id" "openid profile")"
+basic() { curl -s -u "mailuser@rig.test:$app_password" "$STALWART_URL/jmap/session" -o /dev/null -w '%{http_code}'; }
+restart_mail() {
+  "$engine" restart "$mail" >/dev/null
+  wait_for "$STALWART_URL/healthz/live" || { echo "Stalwart never restarted" >&2; exit 1; }
+}
+start_idp() {
+  "$engine" start "$idp" >/dev/null
+  wait_for "$issuer/.well-known/openid-configuration" || { echo "Pocket-ID never came back" >&2; exit 1; }
+}
+"$engine" stop "$idp" >/dev/null
+restart_mail
+check "a token is refused while the issuer is down" "$(session "$token" | cut -d' ' -f1)" 401
+check "the admin API key still authenticates while the issuer is down" \
+  "$(curl_authed -s "$STALWART_URL/api/account" -o /dev/null -w '%{http_code}')" 200
+check "an app password still authenticates while the issuer is down" "$(basic)" 200
+start_idp
+check "the token stays refused after the issuer returns, until Stalwart restarts" "$(session "$token" | cut -d' ' -f1)" 401
+restart_mail
+check "the token is accepted after a restart with the issuer up" "$(session "$token")" 200
+
+echo "== the bounded wait before Stalwart starts (the script the unit runs, not the unit)"
+printf 'CORVID_IDP_HOSTNAME=localhost\n' > "$work/server.env"
+wait_issuer() { CORVID_DIR="$work" CORVID_ISSUER_URL="$issuer" bash "$here/wait-issuer.sh" "$@" 2>/dev/null; }
+"$engine" stop "$idp" >/dev/null
+"$engine" stop "$mail" >/dev/null
+SECONDS=0
+wait_issuer 30 --if-oidc; status=$?
+check "it does nothing until the OIDC plan is applied" "$status $((SECONDS < 3))" "0 1"
+touch "$work/.oidc-active"
+SECONDS=0
+wait_issuer 4 --if-oidc; status=$?
+check "it gives up at its bound with Pocket-ID down" "$status $((SECONDS >= 4 && SECONDS < 15))" "1 1"
+"$engine" start "$mail" >/dev/null
+wait_for "$STALWART_URL/healthz/live" || { echo "Stalwart did not start with Pocket-ID down" >&2; exit 1; }
+check "Stalwart is up and an app password works after the wait expired" "$(basic)" 200
+check "the admin API key works after the wait expired" \
+  "$(curl_authed -s "$STALWART_URL/api/account" -o /dev/null -w '%{http_code}')" 200
+"$engine" stop "$mail" >/dev/null
+( sleep 5; "$engine" start "$idp" >/dev/null ) &
+wait_issuer 60 --if-oidc; status=$?
+check "it returns as soon as Pocket-ID answers within the bound" "$status" 0
+"$engine" start "$mail" >/dev/null
+wait_for "$STALWART_URL/healthz/live" || { echo "Stalwart did not start" >&2; exit 1; }
+check "a token is accepted on Stalwart's first start after the wait, with no second restart" "$(session "$token")" 200
 
 [[ $fail -eq 0 ]] || { "$engine" logs "$mail" 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E 'auth\.|http\.' | tail -10; }
 exit "$fail"

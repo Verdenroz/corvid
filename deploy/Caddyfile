@@ -26,7 +26,11 @@
 	}
 }
 
-# Pocket-ID refuses an APP_URL with a path, so it gets its own site on the same port.
+# Pocket-ID refuses an APP_URL with a path, so it gets its own site on the same port. Its setup
+# page hands the admin account to the first visitor, and its device login lets any signed-in
+# session approve a new device as itself; deploy.sh provisions users through the API.
 {$CORVID_IDP_HOSTNAME}:{$CORVID_WEB_PORT} {
+	@closed path /setup /setup/* /api/signup/setup /api/signup/setup/* /login/alternative/device /login/alternative/device/* /api/device-login/*
+	respond @closed 404
 	reverse_proxy 127.0.0.1:1411
 }

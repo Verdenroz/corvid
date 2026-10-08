@@ -40,6 +40,11 @@ if grep -q '^APP_URL=' "$CORVID_DIR/idp.env" 2>/dev/null; then
   exit 78
 fi
 
+grep -q '^STATIC_API_KEY=.' "$CORVID_DIR/idp.env" 2>/dev/null || {
+  echo "$CORVID_DIR/idp.env has no STATIC_API_KEY; install.sh generates it, or set one: openssl rand -hex 32" >&2
+  exit 78
+}
+
 step() { echo; echo "== $* =="; }
 
 # bootstrap.sh masks the pod while another container holds the mail ports. Starting the pod
@@ -78,9 +83,9 @@ wait_healthy() {
 # restarts only what changed, and a run that died before its restart is caught by the next.
 POD_MARKER="$CORVID_DIR/.live-pod"
 CONFIG_MARKER="$CORVID_DIR/.live-config"
-mapfile -t PLAN_OBJECTS < <(grep -oh '"object":"[A-Za-z]*"' "$HERE"/stalwart*.ndjson | cut -d'"' -f4 | sort -u)
+mapfile -t PLAN_OBJECTS < <(grep -oh '"object":"[A-Za-z]*"' "$HERE"/stalwart*.ndjson "$HERE/oidc.plan.ndjson" | cut -d'"' -f4 | sort -u)
 pod_inputs() {
-  { cat /etc/containers/systemd/corvid* "$CORVID_DIR"/{server.env,Caddyfile,unbound.conf}
+  { cat /etc/containers/systemd/corvid* "$CORVID_DIR"/{server.env,idp.env,Caddyfile,unbound.conf}
     podman image inspect -f '{{.Id}}' "$CORVID_IMAGE"; } | sha256sum
 }
 # Snapshots list object keys in a different order each call, so they are sorted before hashing.
@@ -118,12 +123,32 @@ fi
 
 # A parse can succeed on the wrong string, so prove the credential before anything uses it.
 set -a; . "$ENV_FILE"; set +a
+prefer_token
 curl_authed -fsS -o /dev/null "$STALWART_URL/api/account" \
-  || { echo "the admin credential in $ENV_FILE does not log in; check STALWART_USER and STALWART_PASSWORD" >&2; exit 1; }
+  || { echo "the admin credential in $ENV_FILE does not log in; check STALWART_USER and STALWART_PASSWORD, or STALWART_TOKEN" >&2; exit 1; }
 echo "  credential verified"
+
+if [[ -z "${STALWART_TOKEN:-}" ]]; then
+  step "creating the admin API key"
+  create_admin_api_key "$ENV_FILE"
+  set -a; . "$ENV_FILE"; set +a
+  prefer_token
+  curl_authed -fsS -o /dev/null "$STALWART_URL/api/account" \
+    || { echo "the new API key in $ENV_FILE does not log in" >&2; exit 1; }
+  echo "  API key verified"
+fi
 
 step "applying configuration"
 CORVID_SKIP_RELOAD=1 "$HERE/apply-plan.sh"
+
+# Account passwords stop working once the OIDC plan applies, so the users must exist first; the
+# deploy scripts use the API key.
+step "configuring Pocket-ID"
+systemctl start corvid-idp.service
+enrollment="$("$HERE/idp.sh" provision)"
+step "switching sign-in to Pocket-ID"
+CORVID_SKIP_RELOAD=1 PLAN="$HERE/oidc.plan.ndjson" "$HERE/apply-plan.sh"
+touch "$CORVID_DIR/.oidc-active"
 
 config="$(config_state)" || config="unknown"
 if [[ "$config" == "$(cat "$CONFIG_MARKER" 2>/dev/null)" ]]; then
@@ -131,10 +156,18 @@ if [[ "$config" == "$(cat "$CONFIG_MARKER" 2>/dev/null)" ]]; then
 else
   step "waiting for queued tasks"
   wait_for_due_tasks
+  step "waiting for Pocket-ID behind Caddy"
+  "$HERE/wait-issuer.sh" 300 || { echo "Stalwart is not restarted; check: journalctl -u corvid-caddy -u corvid-idp, then rerun" >&2; exit 1; }
   step "restart to make the configuration live"
   systemctl restart corvid-mail.service
   wait_healthy
   [[ "$config" == unknown ]] || printf '%s\n' "$config" > "$CONFIG_MARKER"
+fi
+
+if [[ -n "$enrollment" ]]; then
+  step "enrollment links"
+  echo "Open each link once within 24 hours and add a passkey; deploy/idp.sh link USERNAME mints another."
+  echo "$enrollment"
 fi
 
 # install.sh verifies once certificates are in, so a second run here would repeat it.

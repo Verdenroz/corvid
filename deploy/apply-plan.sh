@@ -12,24 +12,27 @@ set -a; . "$ENV_FILE"; set +a
 . "$HERE/lib.sh"
 load_server
 
-for v in STALWART_URL STALWART_USER STALWART_PASSWORD; do
-  [[ -n "${!v:-}" ]] || { echo "missing required variable: $v" >&2; exit 78; }
-done
+[[ -n "${STALWART_URL:-}" ]] || { echo "missing required variable: STALWART_URL" >&2; exit 78; }
+if [[ -z "${STALWART_TOKEN:-}" ]]; then
+  for v in STALWART_USER STALWART_PASSWORD; do
+    [[ -n "${!v:-}" ]] || { echo "missing required variable: $v (or STALWART_TOKEN)" >&2; exit 78; }
+  done
+fi
 
 TOKEN="$CORVID_DIR/secrets/cloudflare.token"
 [[ -s "$TOKEN" ]] || { echo "$TOKEN is empty; write the Cloudflare API token to it" >&2; exit 78; }
 
 command -v "$STALWART_CLI" >/dev/null 2>&1 || {
   echo "stalwart-cli not found. Set STALWART_CLI, or use the container image:" >&2
-  echo "  STALWART_CLI='podman run --rm -i --network=host -e STALWART_URL -e STALWART_USER -e STALWART_PASSWORD ghcr.io/stalwartlabs/cli'" >&2
+  echo "  STALWART_CLI='podman run --rm -i --network=host -e STALWART_URL -e STALWART_USER -e STALWART_PASSWORD -e STALWART_TOKEN ghcr.io/stalwartlabs/cli'" >&2
   exit 69
 }
 
 curl_authed -fsS -o /dev/null "$STALWART_URL/api/account" \
   || { echo "credentials in $ENV_FILE do not authenticate against $STALWART_URL" >&2; exit 1; }
 
-# Passkeys are applied separately: oidc.plan.ndjson points Authentication at an external
-# directory, and until someone is enrolled in it nobody can log in. See RUNBOOK.md.
+# deploy.sh applies oidc.plan.ndjson, which points Authentication at an external directory, only
+# after idp.sh has provisioned the users; until someone is enrolled nobody can log in.
 PLAN="${PLAN:-$HERE/stalwart.plan.ndjson}"
 [[ -r "$PLAN" ]] || { echo "no such plan: $PLAN" >&2; exit 66; }
 
@@ -107,4 +110,4 @@ fi
 # A plan can lock the admin out of the interface that would fix it, or fail partway on a
 # required field --dry-run cannot see. This notices while a shell is still open.
 curl_authed -fsS -o /dev/null "$STALWART_URL/api/account" \
-  || { echo "$STALWART_USER can no longer log in after this plan; fix it before closing this shell" >&2; exit 1; }
+  || { echo "the admin credential can no longer log in after this plan; fix it before closing this shell" >&2; exit 1; }
