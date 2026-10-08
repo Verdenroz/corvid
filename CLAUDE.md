@@ -96,6 +96,14 @@ wires them through the lock gate (`AppLockState`).
 `androidApp` and `desktopApp` are thin per-platform shells. Its gates are the three Gradle
 commands above; it is not part of the Cargo workspace.
 
+**The app never makes a device key.** A device with none asks `/corvid/devices/requests`, a master
+device approves with a fresh `corvid-admin` passkey sign-in whose token goes to that one request
+and is never adopted, and every device reads its key only by the record `/corvid/devices/<name>`
+returns. The approve route's own 401 (a bad master token) carries no `WWW-Authenticate`, while the
+forward-auth gate's 401 does, so only the second signs the session out (`JmapClient.webSend`).
+qrose 1.2 and later need Kotlin 2.4 and Compose 1.12 by their published metadata, so the QR is
+drawn from zxing's module matrix instead.
+
 **Keyword provenance keeps the labeler from training on its own output.** Nothing in JMAP
 records who set a keyword, so everything the labeler writes is prefixed `corvid-`, and model
 output goes under `corvid-llm-`. Every other keyword is the user's, and only user keywords
