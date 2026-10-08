@@ -1,10 +1,10 @@
 package com.verdenroz.corvid.feature.settings
 
 import android.util.Size
-import androidx.camera.core.ImageAnalysis.COORDINATE_SYSTEM_ORIGINAL
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
-import androidx.camera.mlkit.vision.MlKitAnalyzer
 import androidx.camera.view.CameraController.IMAGE_ANALYSIS
 import androidx.camera.view.LifecycleCameraController
 import androidx.camera.view.PreviewView
@@ -18,12 +18,21 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.google.mlkit.vision.barcode.BarcodeScannerOptions
-import com.google.mlkit.vision.barcode.BarcodeScanning
-import com.google.mlkit.vision.barcode.common.Barcode
+import java.util.concurrent.Executors
 
 // CameraX's 640x480 default leaves a code under three pixels per module once it stops filling the viewfinder.
 private val ANALYSIS_RESOLUTION = Size(1920, 1080)
+
+/** Decodes the luminance plane of each frame it is handed; CameraX drops frames that arrive while one is being decoded. */
+private class QrAnalyzer(private val onDecoded: (String) -> Unit) : ImageAnalysis.Analyzer {
+    override fun analyze(image: ImageProxy) {
+        image.use {
+            val plane = it.planes[0]
+            val luminance = ByteArray(plane.buffer.remaining()).also(plane.buffer::get)
+            decodeQr(luminance, plane.rowStride, it.width, it.height)?.let(onDecoded)
+        }
+    }
+}
 
 /** A full-bleed camera preview that reports the first QR code it decodes. */
 @Composable
@@ -34,9 +43,6 @@ internal fun QrScanCamera(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val currentOnDecoded by rememberUpdatedState(onDecoded)
-
-    val scanner = remember { BarcodeScanning.getClient(BarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build()) }
-    DisposableEffect(scanner) { onDispose { scanner.close() } }
 
     val controller =
         remember {
@@ -52,16 +58,17 @@ internal fun QrScanCamera(
         }
 
     DisposableEffect(controller, lifecycleOwner) {
-        val executor = ContextCompat.getMainExecutor(context)
+        val decoding = Executors.newSingleThreadExecutor()
+        val main = ContextCompat.getMainExecutor(context)
         var decoded = false
         controller.setImageAnalysisAnalyzer(
-            executor,
-            MlKitAnalyzer(listOf(scanner), COORDINATE_SYSTEM_ORIGINAL, executor) { result ->
-                if (decoded) return@MlKitAnalyzer
-                val value = result.getValue(scanner)?.firstNotNullOfOrNull { it.rawValue }
-                if (value != null) {
-                    decoded = true
-                    currentOnDecoded(value)
+            decoding,
+            QrAnalyzer { text ->
+                main.execute {
+                    if (!decoded) {
+                        decoded = true
+                        currentOnDecoded(text)
+                    }
                 }
             },
         )
@@ -69,6 +76,7 @@ internal fun QrScanCamera(
         onDispose {
             controller.clearImageAnalysisAnalyzer()
             controller.unbind()
+            decoding.shutdown()
         }
     }
 
