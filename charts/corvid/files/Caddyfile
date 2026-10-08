@@ -16,7 +16,7 @@
 	}
 	# Stalwart answers a credential-less /jmap/session with 200, which forward_auth would pass.
 	@corvid {
-		path /corvid/update /corvid/notices
+		path /corvid/update /corvid/notices /corvid/devices/*
 		header Authorization *
 	}
 	handle @corvid {

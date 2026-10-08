@@ -57,6 +57,10 @@ def multipart(fields):
     return f"multipart/form-data; boundary={boundary}", bytes(body)
 
 
+def srv_data(port, target):
+    return {"priority": 0, "weight": 5, "port": int(port), "target": target}
+
+
 def call(token, path, body=None, method=None, content_type="application/json", missing_permission=None):
     if content_type == "application/json":
         data = None if body is None else json.dumps(body).encode()
@@ -128,8 +132,7 @@ def main():
     elif command == "create-srv":
         zone, name, port, target = args
         call(token, f"zones/{zone}/dns_records",
-             {"type": "SRV", "name": name, "ttl": 1,
-              "data": {"priority": 0, "weight": 5, "port": int(port), "target": target}})
+             {"type": "SRV", "name": name, "ttl": 1, "data": srv_data(port, target)})
     elif command == "create-txt":
         zone, name, content = args[:3]
         record = {"type": "TXT", "name": name, "content": content, "ttl": 1}
@@ -138,8 +141,7 @@ def main():
         call(token, f"zones/{zone}/dns_records", record)
     elif command == "update-srv":
         zone, record, port, target = args
-        call(token, f"zones/{zone}/dns_records/{record}",
-             {"data": {"priority": 0, "weight": 5, "port": int(port), "target": target}}, method="PATCH")
+        call(token, f"zones/{zone}/dns_records/{record}", {"data": srv_data(port, target)}, method="PATCH")
     elif command == "update-record":
         zone, record, content = args
         call(token, f"zones/{zone}/dns_records/{record}", {"content": content}, method="PATCH")

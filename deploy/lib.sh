@@ -12,12 +12,31 @@ server_ip() {
   curl -4 -s --max-time 10 https://1.1.1.1/cdn-cgi/trace | sed -n 's/^ip=//p'
 }
 
+# Runs a command in the network namespace of the pod container NAME, whose services listen on the
+# pod's loopback and publish nothing. CORVID_HOST_NET runs it as is, for a rig whose services sit
+# on the host's network.
+in_pod() {
+  local name="$1" pid
+  shift
+  if [[ -z "${CORVID_HOST_NET:-}" ]]; then
+    pid="$(podman inspect -f '{{.State.Pid}}' "$name" 2>/dev/null || echo 0)"
+    (( pid > 0 )) || { echo "$name is not running; check: systemctl status $name" >&2; exit 69; }
+    set -- nsenter "--net=/proc/$pid/ns/net" "$@"
+  fi
+  "$@"
+}
+
 # stalwart-cli refuses a token alongside a user, so a token replaces the password pair in the
-# environment. Call it after every source of corvid.env.
+# environment. load_env calls it after every source of corvid.env.
 prefer_token() {
   [[ -z "${STALWART_TOKEN:-}" ]] || unset STALWART_USER STALWART_PASSWORD
 }
-prefer_token
+
+# Sources FILE into the environment, then lets a token in it win over a password pair.
+load_env() {
+  set -a; . "$1"; set +a
+  prefer_token
+}
 
 # curl -u puts the password in argv, readable in /proc by any local user for the call's
 # lifetime. --config on a process substitution keeps it off the command line. Its quoted value
@@ -33,29 +52,49 @@ curl_authed() {
   curl --config <(printf 'user = "%s:%s"\n' "$user" "$pass") "$@"
 }
 
-jmap_admin() {
-  curl_authed -fsS -H 'Content-Type: application/json' "$STALWART_URL/jmap" \
-    -d "{\"using\": [\"urn:ietf:params:jmap:core\", \"urn:stalwart:jmap\"], \"methodCalls\": $1}"
+# Reads a JMAP request from stdin and prints the response. With EXPECT, refuses a response
+# answering for a different account, so a wrong id can never act on another account silently.
+jmap_call() {
+  local expect="${1:-}"
+  curl_authed -fsS -H 'Content-Type: application/json' -d @- "$STALWART_URL/jmap" |
+    python3 -c '
+import json, sys
+expect, body = sys.argv[1], sys.stdin.read()
+for _, args, _ in json.loads(body).get("methodResponses", []):
+    got = args.get("accountId")
+    if expect and got not in (None, expect):
+        sys.exit(f"jmap response accountId {got!r} does not match requested {expect!r}")
+sys.stdout.write(body)' "$expect"
 }
 
-# Creates an admin API key and records it in ENV_FILE as STALWART_TOKEN. A Bearer key is tried
-# before any directory, so it keeps working once an external directory refuses the admin password.
-# Keys an earlier run left behind when its token was lost are destroyed first, to spare the quota.
-create_admin_api_key() {
-  local env_file="$1" stale token
-  stale="$(jmap_admin '[["x:ApiKey/get", {"ids": null}, "c0"]]' | python3 -c '
-import json, sys
-rows = json.load(sys.stdin)["methodResponses"][0][1]["list"]
-print(json.dumps([r["id"] for r in rows if r.get("description") == "corvid-deploy"]))')" || return 1
-  token="$(jmap_admin "[[\"x:ApiKey/set\", {\"destroy\": $stale, \"create\": {\"n0\": {\"description\": \"corvid-deploy\"}}}, \"c0\"]]" |
-    python3 -c '
+jmap_admin() {
+  printf '{"using": ["urn:ietf:params:jmap:core", "urn:stalwart:jmap"], "methodCalls": %s}' "$1" | jmap_call ""
+}
+
+# Prints the secret of the object a Foo/set response on stdin created as n0, or fails with why not.
+created_secret() {
+  python3 -c '
 import json, sys
 result = json.load(sys.stdin)["methodResponses"][0][1]
 created = result.get("created", {}).get("n0")
 if not created:
     sys.exit(json.dumps(result.get("notCreated", result)))
-print(created["secret"])')" || return 1
-  atomic_write "$env_file" "$(grep -v '^STALWART_TOKEN=' "$env_file"; printf 'STALWART_TOKEN=%s' "$token")" 600
+print(created["secret"])'
+}
+
+# Creates an admin API key and records it in ENV_FILE as STALWART_TOKEN, or as $3 under the
+# description $2. A Bearer key is tried before any directory, so it keeps working once an external
+# directory refuses the admin password. Keys an earlier run left behind when its token was lost
+# are destroyed first, to spare the quota.
+create_admin_api_key() {
+  local env_file="$1" description="${2:-corvid-deploy}" variable="${3:-STALWART_TOKEN}" stale token
+  stale="$(jmap_admin '[["x:ApiKey/get", {"ids": null}, "c0"]]' | python3 -c '
+import json, sys
+rows = json.load(sys.stdin)["methodResponses"][0][1]["list"]
+print(json.dumps([r["id"] for r in rows if r.get("description") == sys.argv[1]]))' "$description")" || return 1
+  token="$(jmap_admin "[[\"x:ApiKey/set\", {\"destroy\": $stale, \"create\": {\"n0\": {\"description\": \"$description\"}}}, \"c0\"]]" |
+    created_secret)" || return 1
+  atomic_write "$env_file" "$(grep -v "^$variable=" "$env_file"; printf '%s=%s' "$variable" "$token")" 600
 }
 
 account_id() {
@@ -99,8 +138,9 @@ atomic_write() {
 unit_masked() { [[ "$(systemctl is-enabled "$1" 2>/dev/null)" == masked ]]; }
 
 # Sets and exports MAIL_DOMAIN, MAIL_HOSTNAME, MAIL_USER, ACME_CONTACT, WEB_PORT, HOST_ZONE,
-# IDP_HOSTNAME, PUBLISH_MTA_STS, PUBLISH_TLSA, MTA_STS_MODE, CLIENT_SOURCES and UPDATE_AUTO from
-# config.yaml. Tests set CORVID_CONFIG_CMD to run it without the container.
+# IDP_HOSTNAME, IDP_URL, SENTINEL_URL, ADMIN_USER, PUBLISH_MTA_STS, PUBLISH_TLSA, MTA_STS_MODE,
+# CLIENT_SOURCES and UPDATE_AUTO from config.yaml. Tests set CORVID_CONFIG_CMD to run it without
+# the container.
 load_server() {
   local out key value
   if [[ -n "${CORVID_CONFIG_CMD:-}" ]]; then
@@ -112,7 +152,7 @@ load_server() {
   fi
   while IFS='=' read -r key value; do
     case "$key" in
-      MAIL_DOMAIN|MAIL_HOSTNAME|MAIL_USER|ACME_CONTACT|WEB_PORT|HOST_ZONE|IDP_HOSTNAME|PUBLISH_MTA_STS|PUBLISH_TLSA|MTA_STS_MODE|CLIENT_SOURCES|UPDATE_AUTO)
+      MAIL_DOMAIN|MAIL_HOSTNAME|MAIL_USER|ACME_CONTACT|WEB_PORT|HOST_ZONE|IDP_HOSTNAME|IDP_URL|SENTINEL_URL|ADMIN_USER|PUBLISH_MTA_STS|PUBLISH_TLSA|MTA_STS_MODE|CLIENT_SOURCES|UPDATE_AUTO)
         printf -v "$key" '%s' "$value"
         export "${key?}"
         ;;

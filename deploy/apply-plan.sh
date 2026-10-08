@@ -8,8 +8,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 STALWART_CLI="${STALWART_CLI:-stalwart-cli}"
 
 [[ -r "$ENV_FILE" ]] || { echo "env file not readable: $ENV_FILE" >&2; exit 66; }
-set -a; . "$ENV_FILE"; set +a
 . "$HERE/lib.sh"
+load_env "$ENV_FILE"
 load_server
 
 [[ -n "${STALWART_URL:-}" ]] || { echo "missing required variable: STALWART_URL" >&2; exit 78; }

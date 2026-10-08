@@ -81,7 +81,8 @@ check "Stalwart's own MtaSts singleton is set to testing" '[[ "$(mta_sts_mode)" 
 echo "== without one"
 run ""
 check "exits 0" '[[ $status -eq 0 ]]'
-check "no host-zone Domain" '[[ $(grep -c "\"object\":\"Domain\"" "$work/applied") -eq 1 ]]'
+check "no host-zone Domain" '[[ $(grep "\"object\":\"Domain\"" "$work/applied" | grep -vc "keys\.corvid\.example") -eq 1 ]]'
+check "the keys account's domain is applied disabled" 'grep "keys.corvid.example" "$work/applied" | grep -q "\"isEnabled\":false"'
 check "the mail domain publishes TLSA" 'mail_records | grep -q "\"tlsa\": true"'
 
 echo "== with the web tier on 443"

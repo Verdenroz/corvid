@@ -45,8 +45,9 @@ check "the token never appears in curl's argv" '! grep -qF API_tokenQx7Lp2Vn "$w
 check "the token reaches curl as a Bearer header through the config file" \
   'grep -qF "Authorization: Bearer API_tokenQx7Lp2Vn" "$work/config-content"'
 check "the password is not sent" '! grep -qF SuperSecretQx7Lp2Vn "$work/config-content"'
-check "prefer_token drops the password pair from the environment" \
-  '[[ -z "$(STALWART_TOKEN=t STALWART_USER=u STALWART_PASSWORD=p bash -c ". \"$here/lib.sh\"; echo \"\${STALWART_USER:-}\${STALWART_PASSWORD:-}\"")" ]]'
+printf 'STALWART_TOKEN=t\nSTALWART_USER=u\nSTALWART_PASSWORD=p\n' > "$work/corvid.env"
+check "load_env drops the password pair when the file holds a token" \
+  '[[ "$(bash -c ". \"$here/lib.sh\"; load_env \"$work/corvid.env\"; echo \"\$STALWART_TOKEN\${STALWART_USER:-}\${STALWART_PASSWORD:-}\"")" == t ]]'
 
 echo "== no other script embeds the password in curl's argv"
 hits="$(grep -l 'curl.*-u.*STALWART_PASSWORD' "$here"/*.sh 2>/dev/null | grep -v '/lib\.sh$' || true)"

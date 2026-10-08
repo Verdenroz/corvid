@@ -12,8 +12,8 @@ set -euo pipefail
 
 ENV_FILE="${CORVID_ENV:-/opt/corvid/corvid.env}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
-set -a; . "$ENV_FILE"; set +a
 . "$HERE/lib.sh"
+load_env "$ENV_FILE"
 load_server
 
 NAME_RE='^[a-z0-9-]{1,32}$'
@@ -22,21 +22,6 @@ DEVICES_FOLDER=corvid-devices
 usage() {
   echo "usage: $(basename "$0") add [--local] NAME | list | revoke NAME" >&2
   exit 64
-}
-
-# Refuses a response answering for a different account than requested, so a wrong id can never
-# act on another account silently.
-jmap_call() {
-  local expect="$1"
-  curl_authed -fsS -H 'Content-Type: application/json' -d @- "$STALWART_URL/jmap" |
-    python3 -c '
-import json, sys
-expect, body = sys.argv[1], sys.stdin.read()
-for _, args, _ in json.loads(body).get("methodResponses", []):
-    got = args.get("accountId")
-    if got not in (None, expect):
-        sys.exit(f"jmap response accountId {got!r} does not match requested {expect!r}")
-sys.stdout.write(body)' "$expect"
 }
 
 app_passwords() {
@@ -92,13 +77,7 @@ print(json.dumps({
         "create": {"n0": {"description": name, "allowedIps": allowed_ips}}}, "c0"]],
 }))' "$name" "$allowed_ips" "$id")"
 
-  secret="$(printf '%s' "$request" | jmap_call "$id" | python3 -c '
-import json, sys
-result = json.load(sys.stdin)["methodResponses"][0][1]
-created = result.get("created", {}).get("n0")
-if not created:
-    sys.exit(json.dumps(result.get("notCreated", result)))
-print(created["secret"])')"
+  secret="$(printf '%s' "$request" | jmap_call "$id" | created_secret)"
   echo "$secret"
   echo "  device $name added, $restriction" >&2
 }
@@ -185,14 +164,33 @@ if found:
     print(f"{file_id}\t{blob_id}")'
 }
 
-# Not one atomic step, so a rerun after a partial failure must still make progress: only
-# neither the credential nor the key file existing counts as "no such device".
+# Asks the sentinel to destroy the key file it approved for NAME and forget it, and prints 204,
+# or 404 when it recorded none. The route is not served through Caddy, so it runs inside the pod,
+# and it takes an HMAC of the request under the sentinel's webhook secret.
+sentinel_revoke() {
+  local status signature
+  signature="$(python3 -c '
+import base64, hashlib, hmac, sys
+secret = next(l.split("=", 1)[1].strip() for l in open(sys.argv[1]) if l.startswith("CORVID_SENTINEL_SECRET="))
+print(base64.b64encode(hmac.new(secret.encode(), f"revoke {sys.argv[2]}".encode(), hashlib.sha256).digest()).decode())' \
+    "$CORVID_DIR/sentinel-webhook.env" "$1")"
+  in_pod corvid-sentinel true
+  status="$(in_pod corvid-sentinel curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "X-Signature: $signature" \
+    "$SENTINEL_URL/internal/devices/$1" || true)"
+  [[ "$status" == 204 || "$status" == 404 ]] || { echo "the sentinel answered $status revoking $1's approved key" >&2; exit 1; }
+  echo "$status"
+}
+
+# Not one atomic step, so a rerun after a partial failure must still make progress: only none of
+# the credential, a key file and an approved key existing counts as "no such device".
 cmd_revoke() {
-  local name="$1" id="$2" credential_id found file_id blob_id status
+  local name="$1" id="$2" credential_id found approved file_id blob_id status
 
   credential_id="$(credential_id_for "$id" "$name")"
   found="$(find_key_file "$id" "$name")"
-  [[ -n "$credential_id" || -n "$found" ]] || { echo "no such device: $name" >&2; exit 65; }
+  approved="$(sentinel_revoke "$name")"
+  [[ -n "$credential_id" || -n "$found" || "$approved" == 204 ]] || { echo "no such device: $name" >&2; exit 65; }
+  [[ "$approved" != 204 ]] || echo "  approved key revoked"
 
   if [[ -n "$credential_id" ]]; then
     python3 -c '

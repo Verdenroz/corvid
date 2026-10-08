@@ -33,10 +33,18 @@ pub fn seconds(created_at: &str) -> Option<i64> {
 /// The current time as a Stalwart-style UTC timestamp, for a notice that carries no event
 /// timestamp of its own.
 pub fn rfc3339_now() -> String {
-    let secs = std::time::SystemTime::now()
+    rfc3339(now_secs())
+}
+
+pub fn now_secs() -> i64 {
+    std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
+        .unwrap_or(0)
+}
+
+/// A Stalwart-style UTC timestamp for `secs` since the epoch.
+pub fn rfc3339(secs: i64) -> String {
     let (days, remainder) = (secs.div_euclid(86400), secs.rem_euclid(86400));
     let (year, month, day) = civil_from_days(days);
     format!(

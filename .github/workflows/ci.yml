@@ -19,10 +19,30 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
 
-  deploy:
+  sentinel:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.98"
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build -p corvid-sentinel --locked
+      - uses: actions/upload-artifact@v4
+        with:
+          name: corvid-sentinel
+          path: target/debug/corvid-sentinel
+          retention-days: 1
+
+  deploy:
+    needs: sentinel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: corvid-sentinel
+          path: sentinel
       - run: shellcheck -S warning deploy/*.sh deploy/tests/*.sh scripts/*.sh
       - run: bash deploy/tests/bootstrap-server.test.sh
       - run: bash deploy/tests/apply-plan.test.sh
@@ -45,7 +65,10 @@ jobs:
           echo "76fcd7250a10c7bee704dc4a08000b3faca6b5a22895d41831c0c37efd95acce  cli.tar.xz" | sha256sum -c --quiet
           tar -xJf cli.tar.xz
           sudo install -m 755 stalwart-cli-x86_64-unknown-linux-musl/stalwart-cli /usr/local/bin/stalwart-cli
+      - run: chmod +x sentinel/corvid-sentinel
       - run: bash deploy/tests/oidc.test.sh
+        env:
+          CORVID_SENTINEL_BIN: ${{ github.workspace }}/sentinel/corvid-sentinel
       - run: cat deploy/stalwart.plan.ndjson deploy/stalwart.host-zone.ndjson > combined.ndjson && ./deploy/check-plan.py combined.ndjson
       - run: ./deploy/check-plan.py
       - run: ./deploy/check-env.sh

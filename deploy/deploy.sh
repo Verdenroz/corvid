@@ -8,8 +8,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 
 [[ $EUID -eq 0 ]] || { echo "must run as root" >&2; exit 1; }
 [[ -r "$ENV_FILE" ]] || { echo "env file not readable: $ENV_FILE" >&2; exit 66; }
-set -a; . "$ENV_FILE"; set +a
 . "$HERE/lib.sh"
+load_env "$ENV_FILE"
 
 [[ -r "$CORVID_DIR/config.yaml" ]] || { echo "$CORVID_DIR/config.yaml is missing; bootstrap.sh installs it" >&2; exit 78; }
 # The milter writes the proxy base into every delivered message, so a template value is permanent.
@@ -122,8 +122,7 @@ if [[ -z "${STALWART_PASSWORD:-}" ]]; then
 fi
 
 # A parse can succeed on the wrong string, so prove the credential before anything uses it.
-set -a; . "$ENV_FILE"; set +a
-prefer_token
+load_env "$ENV_FILE"
 curl_authed -fsS -o /dev/null "$STALWART_URL/api/account" \
   || { echo "the admin credential in $ENV_FILE does not log in; check STALWART_USER and STALWART_PASSWORD, or STALWART_TOKEN" >&2; exit 1; }
 echo "  credential verified"
@@ -131,11 +130,18 @@ echo "  credential verified"
 if [[ -z "${STALWART_TOKEN:-}" ]]; then
   step "creating the admin API key"
   create_admin_api_key "$ENV_FILE"
-  set -a; . "$ENV_FILE"; set +a
-  prefer_token
+  load_env "$ENV_FILE"
   curl_authed -fsS -o /dev/null "$STALWART_URL/api/account" \
     || { echo "the new API key in $ENV_FILE does not log in" >&2; exit 1; }
   echo "  API key verified"
+fi
+
+# The sentinel writes device keys as admin and gets a key of its own, so replacing either key
+# leaves the other working.
+if ! grep -q '^CORVID_STALWART_TOKEN=.' "$CORVID_DIR/sentinel-devices.env" 2>/dev/null; then
+  step "creating the sentinel's admin API key"
+  create_admin_api_key "$CORVID_DIR/sentinel-devices.env" corvid-sentinel CORVID_STALWART_TOKEN
+  systemctl restart corvid-sentinel.service
 fi
 
 step "applying configuration"
@@ -148,7 +154,6 @@ systemctl start corvid-idp.service
 enrollment="$("$HERE/idp.sh" provision)"
 step "switching sign-in to Pocket-ID"
 CORVID_SKIP_RELOAD=1 PLAN="$HERE/oidc.plan.ndjson" "$HERE/apply-plan.sh"
-touch "$CORVID_DIR/.oidc-active"
 
 config="$(config_state)" || config="unknown"
 if [[ "$config" == "$(cat "$CONFIG_MARKER" 2>/dev/null)" ]]; then

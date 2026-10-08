@@ -63,6 +63,13 @@ for path in /corvid/update /corvid/notices; do
   check "$path with a refused credential gets Stalwart's 401" "$(fetch -u bad:bad "$url$path")" "401 stalwart"
   check "$path with an accepted credential reaches the sentinel" "$(fetch -u good:good "$url$path")" "200 sentinel"
 done
+for path in /corvid/devices/requests /corvid/devices/requests/abc /corvid/devices/requests/abc/approve /corvid/devices/phone; do
+  check "$path without a credential stays with Stalwart" "$(fetch -X POST -d '{}' "$url$path")" "404 stalwart"
+  check "$path with a refused credential gets Stalwart's 401" "$(fetch -X POST -d '{}' -u bad:bad "$url$path")" "401 stalwart"
+  check "$path with an accepted credential reaches the sentinel" "$(fetch -X POST -d '{}' -u good:good "$url$path")" "200 sentinel"
+done
+check "the host-only revoke route is never routed to the sentinel" \
+  "$(fetch -X POST -d '{}' -u good:good "$url/internal/devices/phone")" "404 stalwart"
 doc='{"version":1,"server":"https://localhost:'"$port"'","issuer":"https://idp.localhost:'"$port"'"}'
 check "the discovery document names the web tier and the issuer" "$(fetch "$url/.well-known/corvid")" "200 $doc"
 check "the discovery document ignores a credential" "$(fetch -u bad:bad "$url/.well-known/corvid")" "200 $doc"

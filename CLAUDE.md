@@ -49,8 +49,8 @@ namespace, so services reach each other on `127.0.0.1`:
 | `corvid-milter` | `corvid-milter` binary, called by Stalwart at DATA | 11332 |
 | `corvid-imgproxy` | serves the images the milter rewrote | 8081 |
 | `corvid-labeler` | polls JMAP, writes labels as keywords | none |
-| `corvid-sentinel` | the pod's authenticated side door: the alert feed from Stalwart webhooks and update status, and update requests | 11333 loopback |
-| `corvid-caddy` | the web tier: JMAP, `/i/*` to imgproxy, `/corvid/update` and `/corvid/notices` to the sentinel behind `forward_auth`; a second site proxies `server.idp_hostname` to Pocket-ID | `server.web_port`, 4443 by default |
+| `corvid-sentinel` | the pod's authenticated side door: the alert feed from Stalwart webhooks and update status, update requests, and master-approved device keys | 11333 loopback |
+| `corvid-caddy` | the web tier: JMAP, `/i/*` to imgproxy, `/corvid/update`, `/corvid/notices` and `/corvid/devices/*` to the sentinel behind `forward_auth`; a second site proxies `server.idp_hostname` to Pocket-ID | `server.web_port`, 4443 by default |
 | `corvid-idp` | Pocket-ID, OIDC passkeys; provisioned by `idp.sh`, switched on by `oidc.plan.ndjson` | 1411 |
 
 `corvid-mirror` is the exception: a systemd timer on a separate machine that pulls over JMAP.
@@ -249,11 +249,12 @@ Caddyfile built from the same env vars as everything else. `core/discovery` hold
   that restarted Stalwart with the issuer down and asked nothing until it returned was accepted;
   another stayed refused for two minutes, so a restart with the issuer down is not safe.
   `deploy.sh` waits for the issuer through Caddy before the restart that loads the directory, and
-  `corvid-mail` runs `wait-issuer.sh 60 --if-oidc` as an `ExecStartPre` whose exit status the unit
-  ignores, so a boot or update restart delays Stalwart by at most 60 seconds and never stops it.
-  The wait is skipped until `deploy.sh` has applied the OIDC plan (`.oidc-active`). Pocket-ID
-  down longer than that at boot still needs one `systemctl restart corvid-mail` once it is back.
-  The rig tests the script, not the unit's `ExecStartPre`.
+  `corvid-mail` runs `wait-issuer.sh 60` as an `ExecStartPre` whose exit status the unit ignores,
+  so a boot or update restart delays Stalwart by at most 60 seconds and never stops it. The unit
+  orders itself after `corvid-idp` and `corvid-caddy` without requiring them, so the first probe
+  usually passes. Pocket-ID down longer than that at boot still needs one `systemctl restart
+  corvid-mail` once it is back. The rig tests the script, not the unit's `ExecStartPre`, and
+  reaches Pocket-ID directly, since it runs no Caddy.
 - **Stalwart's OIDC directory demands the `email` scope by default**, and Pocket-ID's access token
   is an RFC 9068 JWT with no `preferred_username` or `email` claim, only the scopes the client
   asked for. `requireScopes` defaults to `openid` and `email`, so a client asking `openid profile`
@@ -397,6 +398,32 @@ Caddyfile built from the same env vars as everything else. `core/discovery` hold
   items will not be archived and will be permanently deleted immediately"). Querying `ArchivedItem`
   on Community fails outright (`forbidden: Enterprise edition`). Verified: a destroyed FileNode's
   blob 404s on the next download.
+- **A read-only `FileNode` share does not stop the sharee creating children.** With
+  `shareWith: {<id>: {mayRead: true}}`, the sharee reads the nodes and is refused update, destroy and
+  a `shareWith` change, but `FileNode/set create` under any existing folder of that account is
+  accepted, even a folder it cannot see. Only a top-level create is refused. Measured on the rig with
+  a real Pocket-ID token. So a shared folder proves what the owner wrote only if readers look up
+  nodes by the id the owner recorded, never by name.
+- **An account that must take no mail needs more than a permission.** Disabling `emailReceive`
+  on an account, or `isEnabled` on its domain, still answers `250` to `RCPT TO`. What refuses it is
+  an `MtaStageRcpt.script` naming a Sieve script that `reject`s on `rcpt_domain`, which is how
+  `corvid-keys` is closed, in a `keys.<domain>` domain of its own. Disabling `authenticate` is what
+  refuses its credentials (`403`).
+- **An account name is not unique across domains.** A Pocket-ID user called `corvid-keys` gets its
+  own auto-created `corvid-keys@<mail domain>`, so `x:Account/query` by `name` returns two
+  accounts. The sentinel matches on `emailAddress`. The namesake gets a session of its own and
+  `forbidden` on the keys account.
+- **Pocket-ID's `requiresReauthentication` stops the authorization at a `reauthenticate` step**
+  that only a passkey assertion completes (`reauthenticationToken` is required), so a one-time
+  link session cannot mint a `corvid-admin` token. The rig switches the flag off to mint one and
+  `idp.sh provision` puts it back.
+- **A Pocket-ID refresh keeps the access token's `iat`.** A refresh grant needs no passkey, hands
+  out a rotated refresh token each time (so a chain never expires) and extends `exp`, but the new
+  access token carries the original `iat`. The sentinel's five minute window runs on `iat`, so a
+  chain of refreshes never renews it. The rig refreshes once and checks `iat` is unchanged, `exp`
+  moved and the sentinel still approves with it; the sentinel's own tests refuse an `iat` older
+  than five minutes. Pocket-ID issues a refresh token even without `offline_access`, and one minute is
+  the shortest refresh lifetime it accepts, which `idp.sh` sets on `corvid-admin`.
 - **A default 5-app-password-per-account quota exists**, reported as `overQuota` in `notCreated`
   rather than failing the request outright. `stalwart.plan.ndjson` raises it to 20 via
   `Account.quotas/maxAppPasswords`; verified by creating a 6th after applying.

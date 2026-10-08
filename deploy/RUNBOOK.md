@@ -30,8 +30,9 @@ the host as root:
 
 The secret prints once, only in that terminal: not to a file, a log, or anywhere else. `add`
 refuses a name already in use; `revoke` also removes the device's storage key file (the Corvid app's, at
-`corvid-devices/<name>.key` in the account's own JMAP file storage) if one exists, and reminds
-you to revoke the device's VPN access too, if it has any.
+`corvid-devices/<name>.key` in the account's own JMAP file storage) if one exists, and the key
+the sentinel approved for it (below), and reminds you to revoke the device's VPN access too, if it
+has any.
 
 `--local` scopes `allowedIps` to `127.0.0.1` and `::1` instead of `server.client_access`, for a
 service that calls JMAP from inside the pod rather than from a mail app. It ignores
@@ -261,6 +262,8 @@ set it, and `deploy.sh` applies `oidc.plan.ndjson` only after provisioning has c
   address at the mail domain; the admin's has no mailbox and nothing mails it.
 - a `mail` group holding only the mail user, and the `corvid` client (public, PKCE) restricted to
   that group, so the admin and any other Pocket-ID user get no sign-in code for the client.
+- an `admins` group holding only the admin user, and the `corvid-admin` client restricted to it,
+  which demands a fresh passkey on every authorization. It approves new devices (below).
 
 It checks what exists before creating anything, so a rerun changes nothing and prints no links. A
 `corvid` client registered by hand is restricted in place. Pocket-ID's setup routes
@@ -291,6 +294,43 @@ and the link is `https://<idp_hostname>:<web_port>/lc/<token>`. A host that alre
 data from the setup page keeps its users: `provision` finds them by username and prints no link
 for them, so use `idp.sh link` for each. A half-finished setup that left a stray user is cleared
 by stopping `corvid-idp` and removing `/opt/corvid/idp/pocket-id.db*` before the deploy.
+
+## Approving a new device
+
+A Corvid device's storage key is made only by a request the admin approves with a passkey, so a
+stolen daily session cannot enroll a device. The key is a file in the `corvid-keys` account, which
+has its own disabled `keys.<domain>` domain, takes no mail and cannot sign in. The mailbox account
+holds a read share on the folder, so it can read a key and not replace or remove one.
+
+The flow, over the web tier and all behind the same credential check as `/corvid/notices`:
+
+1. The new device, signed in as the mail user, posts `{"name": ...}` to
+   `/corvid/devices/requests` and shows the `id` and six digit `code` it gets back. A name is
+   `[a-z0-9-]{1,32}`, and `requests` is refused.
+2. A master device signs in to the `corvid-admin` client with the admin's passkey and posts
+   `{"code": ...}` to `/corvid/devices/requests/<id>/approve` with its access token in
+   `X-Corvid-Master`. The sentinel checks the token's signature, issuer, audience, expiry and that
+   it was issued in the last five minutes, then asks Pocket-ID's userinfo that it names
+   `<mail_user>-admin`. A request lives ten minutes, is spent by the first correct code, and dies
+   after five wrong ones.
+3. The new device polls `/corvid/devices/requests/<id>` for `approved`, then reads
+   `/corvid/devices/<name>`, which names the key's `accountId`, `nodeId` and `blobId`. It downloads
+   that blob from the keys account and never looks a key up by name.
+
+An approve answers 401 for a token that proves nothing, 403 for a wrong code or a token that is not
+the admin's, 410 for a request that is gone, spent or expired, and 502 when Pocket-ID or Stalwart
+could not be reached or the key could not be written. After a 502 the request is spent and the
+device must ask again.
+
+Needs `sentinel.devices` in `config.yaml` and `CORVID_STALWART_TOKEN` in
+`/opt/corvid/sentinel-devices.env`, which `deploy.sh` creates as a second admin API key. A host
+whose `config.yaml` lacks `devices` serves no `/corvid/devices` routes. `device.sh revoke NAME`
+also destroys the approved key file and drops its record, through a route the web tier never
+serves.
+
+Keys the Corvid app made for itself under `corvid-devices` in the mailbox account are not
+migrated: they are read only by the old client. The client change that reads the approved record
+re-enrolls each device through this flow, and `device.sh revoke` still removes the old file.
 
 ## `server.mail_user` is a local part, not an address
 

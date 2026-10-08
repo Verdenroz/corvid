@@ -36,3 +36,6 @@ self-consistent one.
   webhook delivery, once the same login's second request supplies the right code to
   `POST /api/auth`. `auth.mfa-required` and this `auth.success` never appear in the same
   delivery; Stalwart posts them as two separate requests, not a single request-response pair.
+
+`rsa-test.der` is a throwaway RSA key made for the device approval tests, which sign tokens
+with it and serve its public half as the fake issuer's key set. It protects nothing.

@@ -4,8 +4,8 @@ set -euo pipefail
 
 ENV_FILE="${CORVID_ENV:-/opt/corvid/corvid.env}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
-set -a; . "$ENV_FILE"; set +a
 . "$HERE/lib.sh"
+load_env "$ENV_FILE"
 load_server
 
 usage() { echo "usage: $(basename "$0") enable [--force] | disable | status" >&2; exit 64; }

@@ -32,6 +32,19 @@ class H(http.server.BaseHTTPRequestHandler):
         self.send_response(int(status))
         self.send_header("Content-Length", "0")
         self.end_headers()
+    def do_DELETE(self):
+        import base64, hashlib, hmac
+        name = self.path.rsplit("/", 1)[1]
+        open(work + "/sentinel_requests", "a").write(self.path + "\n")
+        secret = open(work + "/sentinel-webhook.env").read().split("=", 1)[1].strip()
+        expected = base64.b64encode(hmac.new(secret.encode(), ("revoke " + name).encode(), hashlib.sha256).digest()).decode()
+        if self.headers.get("X-Signature") != expected:
+            status = 401
+        else:
+            status = int(open(work + "/sentinel_status").read().strip()) if os.path.exists(work + "/sentinel_status") else 404
+        self.send_response(status)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
     def log_message(self, *a): pass
 s = socketserver.TCPServer(("127.0.0.1", 0), H)
 open(work + "/port", "w").write(str(s.server_address[1]))
@@ -65,21 +78,23 @@ case "\$*" in *cdn-cgi/trace*) echo ip=203.0.113.9 ;; *) exec $(command -v curl)
 SH
 chmod +x "$work/bin/stalwart-cli" "$work/bin/curl"
 
-cat > "$work/shell" <<'SH'
+cat > "$work/shell" <<SH
 #!/bin/sh
-printf 'MAIL_DOMAIN=example.com\nMAIL_HOSTNAME=mail.example.com\nMAIL_USER=alice\nACME_CONTACT=ops@elsewhere.example\nWEB_PORT=4443\n'
+printf 'MAIL_DOMAIN=example.com\nMAIL_HOSTNAME=mail.example.com\nMAIL_USER=alice\nACME_CONTACT=ops@elsewhere.example\nWEB_PORT=4443\nSENTINEL_URL=http://127.0.0.1:$(cat "$work/port")\n'
 SH
 chmod +x "$work/shell"
 printf 'STALWART_URL=http://127.0.0.1:%s\nSTALWART_USER=admin\nSTALWART_PASSWORD=p\n' "$(cat "$work/port")" > "$work/corvid.env"
 echo '{"credentials":{}}' > "$work/credentials"
+printf 'CORVID_SENTINEL_SECRET=sentinel-test-secret\n' > "$work/sentinel-webhook.env"
 
 fail=0
 check() { if eval "$2"; then echo "  ok    $1"; else echo "  FAIL  $1"; fail=1; fi; }
 # run CLIENT_SOURCES ARGS...
 run() {
   local sources="$1"; shift
-  rm -f "$work/requests" "$work/served" "$work/get_account_calls"
+  rm -f "$work/requests" "$work/served" "$work/get_account_calls" "$work/sentinel_requests"
   PATH="$work/bin:$PATH" CORVID_DIR="$work" CORVID_ENV="$work/corvid.env" CORVID_CONFIG_CMD="$work/shell" \
+    CORVID_HOST_NET=1 \
     CLIENT_SOURCES="$sources" bash "$here/device.sh" "$@" > "$work/out" 2> "$work/err"
   # shellcheck disable=SC2034  # read inside the eval'd checks
   status=$?
@@ -300,6 +315,35 @@ printf '%s\n' "$ambiguous_folders" > "$work/responses"
 run any revoke phone
 check "exits nonzero" '[[ $status -ne 0 ]]'
 check "says why" 'grep -q "refusing to guess" "$work/err"'
+
+echo "== revoke a device whose key the sentinel approved"
+rm -f "$work/credentials-after"
+echo "$without_credential" > "$work/credentials"
+echo 204 > "$work/sentinel_status"
+printf '%s\n' "$no_folder" > "$work/responses"
+run any revoke phone
+check "exits 0 with nothing else to remove" '[[ $status -eq 0 ]]'
+check "asks the sentinel with a signed request for that device" '[[ "$(cat "$work/sentinel_requests")" == /internal/devices/phone ]]'
+check "reports the approved key revoked" 'grep -q "approved key revoked" "$work/out"'
+
+echo "== revoke removes the credential and the approved key together"
+echo "$with_credential" > "$work/credentials"
+echo "$without_credential" > "$work/credentials-after"
+printf '%s\n' "$no_folder" "$cred_destroyed" > "$work/responses"
+run any revoke phone
+check "exits 0" '[[ $status -eq 0 ]]'
+check "reports both" 'grep -q "approved key revoked" "$work/out" && grep -q "credential revoked" "$work/out"'
+
+echo "== revoke refuses when the sentinel does not honour it"
+echo "$with_credential" > "$work/credentials"
+rm -f "$work/credentials-after"
+echo 502 > "$work/sentinel_status"
+printf '%s\n' "$no_folder" > "$work/responses"
+run any revoke phone
+check "exits 1" '[[ $status -eq 1 ]]'
+check "names the status" 'grep -q "the sentinel answered 502" "$work/err"'
+check "revokes nothing else" '[[ $(wc -l < "$work/requests") -eq 1 ]]'
+rm -f "$work/sentinel_status"
 
 [[ $fail -eq 0 ]] || { echo "--- last output:"; cat "$work/out"; echo "--- stderr:"; cat "$work/err"; }
 exit "$fail"

@@ -9,8 +9,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 STALWART_CLI="${STALWART_CLI:-stalwart-cli}"
 
 [[ -r "$ENV_FILE" ]] || { echo "env file not readable: $ENV_FILE" >&2; exit 66; }
-set -a; . "$ENV_FILE"; set +a
 . "$HERE/lib.sh"
+load_env "$ENV_FILE"
 load_server
 
 for v in STALWART_URL RECOVERY_ADMIN_USER RECOVERY_ADMIN_PASSWORD; do

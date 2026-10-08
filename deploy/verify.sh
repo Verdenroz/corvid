@@ -10,9 +10,9 @@ HOST="${2:-}"
 HOST="${HOST:-$(dig +short MX "$DOMAIN" | awk '{print $2}' | sed 's/\.$//' | head -1)}"
 
 ENV_FILE="${CORVID_ENV:-/opt/corvid/corvid.env}"
-[[ -r "$ENV_FILE" ]] && { set -a; . "$ENV_FILE"; set +a; }
 HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/lib.sh"
+[[ ! -r "$ENV_FILE" ]] || load_env "$ENV_FILE"
 load_server
 STALWART_CLI="${STALWART_CLI:-stalwart-cli}"
 
@@ -49,14 +49,14 @@ milter_negotiates() {
   exec 3<&- 3>&-
   [[ "${reply:8:2}" == "4f" ]]
 }
-# The milter and image proxy listen on the pod's loopback, which the host cannot reach.
-in_pod() { nsenter -t "$(podman inspect -f '{{.State.Pid}}' corvid-mail)" -n "$@"; }
-if in_pod bash -c "$(declare -f milter_negotiates); milter_negotiates" 2>/dev/null; then
+# The milter and image proxy listen on the pod's loopback, which the host cannot reach. A
+# subshell keeps in_pod's exit from ending the report.
+if (in_pod corvid-mail bash -c "$(declare -f milter_negotiates); milter_negotiates") 2>/dev/null; then
   ok "milter negotiates"
 else
   bad "milter does not negotiate; every message will defer with 451"
 fi
-in_pod curl -sf -o /dev/null --max-time 4 http://127.0.0.1:8081/healthz \
+(in_pod corvid-mail curl -sf -o /dev/null --max-time 4 http://127.0.0.1:8081/healthz) 2>/dev/null \
   && ok "image proxy healthy" || bad "image proxy not responding"
 if systemctl show -p Restart --value corvid-milter.service 2>/dev/null | grep -q always; then
   ok "milter restarts on failure"
