@@ -32,6 +32,9 @@ sealed interface Route {
     @Serializable
     data object Notices : Route
 
+    @Serializable
+    data object ApproveDevice : Route
+
     /** The card for one sender; a side sheet when wide, a page when narrow. */
     @Serializable
     data class Sender(val address: String) : Route

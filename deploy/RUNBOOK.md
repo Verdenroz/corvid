@@ -329,8 +329,17 @@ also destroys the approved key file and drops its record, through a route the we
 serves.
 
 Keys the Corvid app made for itself under `corvid-devices` in the mailbox account are not
-migrated: they are read only by the old client. The client change that reads the approved record
-re-enrolls each device through this flow, and `device.sh revoke` still removes the old file.
+migrated: the app no longer reads them, so each device asks once through this flow, and
+`device.sh revoke` still removes the old file.
+
+In the app, a device with no key shows a QR code (`corvid-approve:<id>?code=<code>`, which names no
+server), the request id and the code, and polls every three seconds while it is on screen. A
+master device opens Settings, Approve a device, scans the code (Android with a camera) or types the
+id and code, and signs in to `corvid-admin` with the admin passkey. That sign-in happens for every
+approval and its token is spent on the one request. The master device sends its own daily bearer
+too, so it must be signed in as the mail user. `corvid-admin` needs the same callbacks as
+`corvid`, `http://127.0.0.1/callback` for desktop and `com.verdenroz.corvid:/oauth2redirect` for
+Android.
 
 ## `server.mail_user` is a local part, not an address
 

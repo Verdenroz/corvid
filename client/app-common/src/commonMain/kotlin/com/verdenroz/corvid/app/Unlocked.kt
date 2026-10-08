@@ -280,6 +280,7 @@ private fun Page(
         is Route.Compose -> ComposeScreen(remember(scope) { scope.get<ComposeRepository>() }, route.intent, onClose = navigator::back)
         is Route.Filters -> FiltersScreen(remember(scope) { scope.get<FiltersRepository>() }, onBack = navigator::back)
         is Route.Settings -> SettingsPage(scope, session, navigator, models, entryKey)
+        is Route.ApproveDevice -> ApproveDevicePage(scope, navigator, models, entryKey)
         is Route.Notices -> {
             val viewModel = models.of(entryKey, NoticesViewModel::class) { NoticesViewModel(scope.get<NoticeRepository>()) }
             NoticesScreen(viewModel, onBack = navigator::back)

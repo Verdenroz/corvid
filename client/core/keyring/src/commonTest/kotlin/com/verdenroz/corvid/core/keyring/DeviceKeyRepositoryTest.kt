@@ -8,9 +8,7 @@ import com.verdenroz.corvid.core.testing.FakeJmapServer
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
-import kotlin.test.assertNotEquals
 
 private const val BASE_URL = "http://127.0.0.1:9999"
 
@@ -24,112 +22,66 @@ class DeviceKeyRepositoryTest {
         }
 
     @Test
-    fun `enrollment creates a key that fetch then finds`() =
+    fun `an approved key is read through the record the server returns`() =
         runTest {
             val fake = FakeJmapServer()
-            val repository = repository(fake)
+            val approved = fake.devices.enroll("laptop-1")
 
-            val enrolled = repository.enroll("laptop-1")
-            val fetched = repository.fetch("laptop-1")
+            val found = assertIs<DeviceKeyLookup.Found>(repository(fake).fetch("laptop-1"))
 
-            assertEquals(32, enrolled.size)
-            val found = assertIs<DeviceKeyLookup.Found>(fetched)
-            assertEquals(enrolled.toList(), found.key.toList())
+            assertEquals(approved.toList(), found.key.toList())
         }
 
     @Test
-    fun `re-enrolling never adopts the old file, it destroys and recreates`() =
+    fun `a file planted under the device name in the mailbox account is never read`() =
         runTest {
             val fake = FakeJmapServer()
-            val repository = repository(fake)
+            fake.blobs["planted"] = byteArrayOf(1) + ByteArray(32) { 7 }
+            fake.fileNodes += FakeFileNode("d1", null, "corvid-devices", "directory")
+            fake.fileNodes += FakeFileNode("f1", "d1", "laptop-1.key", "file", "planted")
 
-            val first = repository.enroll("laptop-1")
-            val second = repository.enroll("laptop-1")
-
-            val devicesFolderChildren = fake.fileNodes.filter { it.parentId != null }
-            assertEquals(1, devicesFolderChildren.size)
-            assertNotEquals(first.toList(), second.toList())
+            assertIs<DeviceKeyLookup.Missing>(repository(fake).fetch("laptop-1"))
         }
 
     @Test
-    fun `a file of the wrong size is damaged, not silently replaced`() =
+    fun `a revoked device reads as missing again`() =
         runTest {
             val fake = FakeJmapServer()
-            val repository = repository(fake)
-            repository.enroll("laptop-1")
-            val fileNode = fake.fileNodes.first { it.name == "laptop-1.key" }
-            fake.blobs[fileNode.blobId!!] = ByteArray(10)
+            fake.devices.enroll("laptop-1")
+            fake.devices.revoke("laptop-1")
 
-            assertIs<DeviceKeyLookup.Damaged>(repository.fetch("laptop-1"))
-            assertEquals(1, fake.fileNodes.count { it.name == "laptop-1.key" })
+            assertIs<DeviceKeyLookup.Missing>(repository(fake).fetch("laptop-1"))
+        }
+
+    @Test
+    fun `a file of the wrong size is damaged, not missing`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.devices.enroll("laptop-1")
+            fake.blobs[fake.devices.blobIdOf("laptop-1")] = ByteArray(10)
+
+            assertIs<DeviceKeyLookup.Damaged>(repository(fake).fetch("laptop-1"))
         }
 
     @Test
     fun `a file with the wrong version byte is damaged`() =
         runTest {
             val fake = FakeJmapServer()
-            val repository = repository(fake)
-            repository.enroll("laptop-1")
-            val fileNode = fake.fileNodes.first { it.name == "laptop-1.key" }
-            fake.blobs[fileNode.blobId!!] = ByteArray(33) { 9 }
+            fake.devices.enroll("laptop-1")
+            fake.blobs[fake.devices.blobIdOf("laptop-1")] = ByteArray(33) { 9 }
 
-            assertIs<DeviceKeyLookup.Damaged>(repository.fetch("laptop-1"))
+            assertIs<DeviceKeyLookup.Damaged>(repository(fake).fetch("laptop-1"))
         }
 
     @Test
     fun `an unreachable lookup is not mistaken for a missing device key`() =
         runTest {
             val fake = FakeJmapServer()
+            fake.devices.enroll("laptop-1")
             val repository = repository(fake)
-            repository.enroll("laptop-1")
             fake.unreachable = true
 
             assertIs<DeviceKeyLookup.Unreachable>(repository.fetch("laptop-1"))
-        }
-
-    @Test
-    fun `a refused destroy of the old key fails enrollment instead of leaving two files`() =
-        runTest {
-            val fake = FakeJmapServer()
-            val repository = repository(fake)
-            repository.enroll("laptop-1")
-            val fileNode = fake.fileNodes.first { it.name == "laptop-1.key" }
-            fake.refuseDestroy += fileNode.id
-
-            assertFailsWith<DeviceKeyConflict.DestroyFailed> { repository.enroll("laptop-1") }
-            assertEquals(1, fake.fileNodes.count { it.name == "laptop-1.key" })
-        }
-
-    @Test
-    fun `a refused create fails typed rather than a bare lookup exception`() =
-        runTest {
-            val fake = FakeJmapServer()
-            val repository = repository(fake)
-            fake.refuseCreate = true
-
-            assertFailsWith<DeviceKeyConflict.CreateFailed> { repository.enroll("laptop-1") }
-        }
-
-    @Test
-    fun `two root corvid-devices folders read as ambiguous, never as a guess`() =
-        runTest {
-            val fake = FakeJmapServer()
-            val repository = repository(fake)
-            fake.fileNodes += FakeFileNode("d1", null, "corvid-devices", "directory")
-            fake.fileNodes += FakeFileNode("d2", null, "corvid-devices", "directory")
-
-            assertIs<DeviceKeyLookup.Ambiguous>(repository.fetch("laptop-1"))
-        }
-
-    @Test
-    fun `enrolling into an ambiguous folder set fails typed instead of picking one`() =
-        runTest {
-            val fake = FakeJmapServer()
-            val repository = repository(fake)
-            fake.fileNodes += FakeFileNode("d1", null, "corvid-devices", "directory")
-            fake.fileNodes += FakeFileNode("d2", null, "corvid-devices", "directory")
-
-            assertFailsWith<DeviceKeyConflict.AmbiguousRootFolder> { repository.enroll("laptop-1") }
         }
 
     private suspend fun repository(fake: FakeJmapServer): DeviceKeyRepository {

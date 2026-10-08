@@ -13,7 +13,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.time.Clock
 
-private val fakeRedirectUriProvider =
+internal val fakeRedirectUriProvider =
     object : RedirectUriProvider {
         override fun redirectUri() = "http://127.0.0.1:0/callback"
     }

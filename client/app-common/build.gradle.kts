@@ -20,6 +20,10 @@ val generateBuildInfo by tasks.registering {
 
 kotlin {
     sourceSets {
+        val jvmShared by creating { dependsOn(commonMain.get()) }
+        androidMain.get().dependsOn(jvmShared)
+        getByName("desktopMain").dependsOn(jvmShared)
+
         commonMain { kotlin.srcDir(generateBuildInfo.map { it.outputs.files }) }
         commonMain.dependencies {
             api(projects.core.designsystem)
@@ -49,6 +53,10 @@ kotlin {
             implementation(libs.compose.foundation)
             implementation(libs.compose.material3)
             implementation(libs.navigationevent.compose)
+            implementation(libs.jetbrains.lifecycle.runtime.compose)
+        }
+        jvmShared.dependencies {
+            implementation(libs.zxing.core)
         }
         commonTest.dependencies {
             implementation(projects.core.testing)
@@ -57,6 +65,7 @@ kotlin {
         val desktopTest by getting {
             dependencies {
                 implementation(libs.compose.ui.test)
+                implementation(libs.kotlinx.coroutines.swing)
             }
         }
     }

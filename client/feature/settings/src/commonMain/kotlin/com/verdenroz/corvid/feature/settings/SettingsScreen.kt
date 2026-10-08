@@ -27,6 +27,8 @@ import com.verdenroz.corvid.feature.settings.resources.Res
 import com.verdenroz.corvid.feature.settings.resources.settings_account
 import com.verdenroz.corvid.feature.settings.resources.settings_address
 import com.verdenroz.corvid.feature.settings.resources.settings_appearance
+import com.verdenroz.corvid.feature.settings.resources.settings_approve_detail
+import com.verdenroz.corvid.feature.settings.resources.settings_approve_row
 import com.verdenroz.corvid.feature.settings.resources.settings_auto_lock
 import com.verdenroz.corvid.feature.settings.resources.settings_auto_lock_detail
 import com.verdenroz.corvid.feature.settings.resources.settings_auto_lock_option
@@ -69,6 +71,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onOpenFilters: () -> Unit,
     onOpenNotices: () -> Unit,
+    onOpenApproveDevice: () -> Unit,
 ) {
     val state by viewModel.state.collectAsState()
     val aboutState by about.state.collectAsState()
@@ -102,6 +105,11 @@ fun SettingsScreen(
                     Row(Modifier.padding(vertical = 14.dp)) {
                         PillButton(stringResource(Res.string.settings_lock_now), CorvidIcons.Lock, viewModel::lockNow)
                     }
+                    LinkRow(
+                        title = stringResource(Res.string.settings_approve_row),
+                        detail = stringResource(Res.string.settings_approve_detail),
+                        onClick = onOpenApproveDevice,
+                    )
                 }
                 SettingsSection(stringResource(Res.string.settings_filters)) {
                     LinkRow(

@@ -3,12 +3,10 @@ package com.verdenroz.corvid.app
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.appcommon.resources.Res
-import com.verdenroz.corvid.appcommon.resources.unreachable_enroll_offline
-import com.verdenroz.corvid.appcommon.resources.unreachable_enroll_refused
-import com.verdenroz.corvid.appcommon.resources.unreachable_folders_ambiguous
 import com.verdenroz.corvid.appcommon.resources.unreachable_heartbeat
 import com.verdenroz.corvid.appcommon.resources.unreachable_key_damaged
 import com.verdenroz.corvid.appcommon.resources.unreachable_key_unreachable
+import com.verdenroz.corvid.appcommon.resources.unreachable_request_failed
 import com.verdenroz.corvid.appcommon.resources.unreachable_server
 import com.verdenroz.corvid.appcommon.resources.unreachable_session
 import com.verdenroz.corvid.core.auth.AuthState
@@ -19,11 +17,14 @@ import com.verdenroz.corvid.core.jmap.JmapClient
 import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.jmap.JmapSessionException
 import com.verdenroz.corvid.core.jmap.ReconnectPolicy
-import com.verdenroz.corvid.core.keyring.DeviceKeyConflict
+import com.verdenroz.corvid.core.keyring.DeviceApprovalRepository
 import com.verdenroz.corvid.core.keyring.DeviceKeyLookup
 import com.verdenroz.corvid.core.keyring.DeviceKeyRepository
 import com.verdenroz.corvid.core.keyring.KeyHolder
 import com.verdenroz.corvid.core.keyring.KeyState
+import com.verdenroz.corvid.core.keyring.OpenOutcome
+import com.verdenroz.corvid.core.keyring.RequestStatus
+import com.verdenroz.corvid.core.model.hostOf
 import com.verdenroz.corvid.core.text.uiText
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.Dispatchers
@@ -38,6 +39,7 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 private val HEARTBEAT_INTERVAL = 60.seconds
+private val APPROVAL_POLL_INTERVAL = 3.seconds
 
 /**
  * Drives [AppLockState] from [TokenSource], [KeyHolder] and a device key
@@ -59,8 +61,9 @@ class AppLockViewModel(
     private val reconnectPolicy = ReconnectPolicy()
     private var jmapClient: JmapClient? = null
     private var deviceKeyRepository: DeviceKeyRepository? = null
+    private var deviceApprovalRepository: DeviceApprovalRepository? = null
     private var deviceName: String? = null
-    private var enrolledThisSession = false
+    private var hadKeyThisSession = false
     private var heartbeatJob: Job? = null
 
     init {
@@ -75,7 +78,7 @@ class AppLockViewModel(
 
     /** What the locked screen can say for certain: whichever of these this session knows. */
     val lockFacts: LockFacts
-        get() = LockFacts((tokenSource.state.value as? AuthState.SignedIn)?.server?.baseUrl?.let(::host), deviceName, lockedAt)
+        get() = LockFacts((tokenSource.state.value as? AuthState.SignedIn)?.server?.baseUrl?.let(::hostOf), deviceName, lockedAt)
 
     private var lockedAt: Instant? = null
 
@@ -88,12 +91,6 @@ class AppLockViewModel(
         deviceName?.let { name -> viewModelScope.launch { resolveKey(name) } }
     }
 
-    fun confirmEnroll() {
-        val needsEnrollment = _state.value as? AppLockState.NeedsEnrollment ?: return
-        val repository = deviceKeyRepository ?: return
-        viewModelScope.launch { enroll(repository, needsEnrollment.deviceName) }
-    }
-
     fun lock() = keyHolder.drop()
 
     fun signOut() = tokenSource.signOut()
@@ -101,7 +98,7 @@ class AppLockViewModel(
     private val accountHosts: AccountHosts?
         get() =
             (tokenSource.state.value as? AuthState.SignedIn)?.let { signedIn ->
-                AccountHosts(host(signedIn.server.baseUrl), tokenSource.issuerUrl?.let(::host))
+                AccountHosts(hostOf(signedIn.server.baseUrl), tokenSource.issuerUrl?.let(::hostOf))
             }
 
     /** Throttled by [reconnectPolicy], the same policy an automatic reconnect would use. */
@@ -123,8 +120,9 @@ class AppLockViewModel(
                 heartbeatJob?.cancel()
                 jmapClient = null
                 deviceKeyRepository = null
+                deviceApprovalRepository = null
                 deviceName = null
-                enrolledThisSession = false
+                hadKeyThisSession = false
                 reconnectPolicy.reset()
                 keyHolder.drop()
                 // Revoked is a dead end by design: only relaunching the app, not
@@ -145,6 +143,7 @@ class AppLockViewModel(
                 JmapClient.connect(httpClient, authLatch, signedIn.server.baseUrl, bearerToken = tokenSource::currentBearerToken)
             jmapClient = client
             deviceKeyRepository = DeviceKeyRepository(client)
+            deviceApprovalRepository = DeviceApprovalRepository(client)
             val name = deviceName
             if (name != null) resolveKey(name) else _state.value = AppLockState.Connecting(needsDeviceName = true)
         } catch (e: JmapException) {
@@ -158,33 +157,72 @@ class AppLockViewModel(
         _state.value = AppLockState.Connecting(needsDeviceName = false)
         val repository = deviceKeyRepository ?: return
         when (val lookup = repository.fetch(name)) {
-            is DeviceKeyLookup.Found -> keyHolder.unlock(lookup.key)
+            is DeviceKeyLookup.Found -> {
+                hadKeyThisSession = true
+                keyHolder.unlock(lookup.key)
+            }
             is DeviceKeyLookup.Missing ->
-                if (enrolledThisSession) {
+                if (hadKeyThisSession) {
                     keyHolder.drop()
                     tokenSource.signOut()
                     _state.value = AppLockState.Revoked
                 } else {
-                    _state.value = AppLockState.NeedsEnrollment(name)
+                    askForKey(name)
                 }
             is DeviceKeyLookup.Damaged -> _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_key_damaged))
-            is DeviceKeyLookup.Ambiguous -> _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_folders_ambiguous))
             is DeviceKeyLookup.Unreachable -> _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_key_unreachable))
         }
     }
 
-    private suspend fun enroll(
-        repository: DeviceKeyRepository,
-        name: String,
-    ) {
+    /** Asks the server for a request a master can approve; the key arrives only by that approval. */
+    private suspend fun askForKey(name: String) {
+        val repository = deviceApprovalRepository ?: return
+        _state.value = AppLockState.NeedsEnrollment(name, EnrollmentRequest.Opening)
         try {
-            val key = repository.enroll(name)
-            enrolledThisSession = true
-            keyHolder.unlock(key)
+            val request =
+                when (val outcome = repository.open(name)) {
+                    is OpenOutcome.Opened -> EnrollmentRequest.Open(outcome.request)
+                    is OpenOutcome.TooManyOpen -> EnrollmentRequest.TooManyOpen
+                }
+            _state.value = AppLockState.NeedsEnrollment(name, request)
         } catch (e: JmapException) {
-            _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_enroll_offline))
-        } catch (e: DeviceKeyConflict) {
-            _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_enroll_refused))
+            _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_request_failed))
+        }
+    }
+
+    fun askAgain() {
+        val name = deviceName ?: return
+        viewModelScope.launch { askForKey(name) }
+    }
+
+    /**
+     * Polls the open request while the caller stays in it, so a screen that is not visible stops asking.
+     * An approval reads the key on [viewModelScope], which outlives that caller.
+     */
+    suspend fun watchRequest() {
+        val repository = deviceApprovalRepository ?: return
+        while (true) {
+            val waiting = _state.value as? AppLockState.NeedsEnrollment ?: return
+            val open = waiting.request as? EnrollmentRequest.Open ?: return
+            delay(APPROVAL_POLL_INTERVAL)
+            if (_state.value != waiting) continue
+            val status =
+                try {
+                    repository.status(open.request.id)
+                } catch (e: JmapException) {
+                    continue
+                }
+            when (status) {
+                RequestStatus.Pending -> Unit
+                RequestStatus.Approved -> {
+                    viewModelScope.launch { resolveKey(waiting.deviceName) }
+                    return
+                }
+                RequestStatus.Expired -> {
+                    _state.value = waiting.copy(request = EnrollmentRequest.Expired)
+                    return
+                }
+            }
         }
     }
 

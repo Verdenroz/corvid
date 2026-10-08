@@ -1,5 +1,6 @@
 package com.verdenroz.corvid.app
 
+import com.verdenroz.corvid.core.keyring.DeviceRequest
 import com.verdenroz.corvid.core.text.UiText
 
 /** What the lock gate swaps every route for. */
@@ -12,15 +13,26 @@ sealed interface AppLockState {
     /** Repositories live in the unlocked Koin scope, not here; [hosts] are the servers this session signed in to. */
     data class Unlocked(val hosts: AccountHosts) : AppLockState
 
-    /** Covers a network failure, a damaged key file, and an ambiguous folder set: none
-     *  of the three wipes anything or reads as Revoked, so they share one pane. */
+    /** Covers a network failure and a damaged key file: neither wipes anything or reads as
+     *  Revoked, so they share one pane. */
     data class Unreachable(val reason: UiText) : AppLockState
 
     data object Locked : AppLockState
 
     data object Revoked : AppLockState
 
-    /** No key exists for [deviceName] yet: could be its first sign-in, or a revoke.
-     *  Enrolling needs an explicit tap, never an automatic call. */
-    data class NeedsEnrollment(val deviceName: String) : AppLockState
+    /** The server holds no key for [deviceName]: its first sign-in, or a revoke. A master device must approve one. */
+    data class NeedsEnrollment(val deviceName: String, val request: EnrollmentRequest) : AppLockState
+}
+
+/** Where this device's ask for a key stands. */
+sealed interface EnrollmentRequest {
+    data object Opening : EnrollmentRequest
+
+    /** Waiting for a master to approve [request]. */
+    data class Open(val request: DeviceRequest) : EnrollmentRequest
+
+    data object Expired : EnrollmentRequest
+
+    data object TooManyOpen : EnrollmentRequest
 }
