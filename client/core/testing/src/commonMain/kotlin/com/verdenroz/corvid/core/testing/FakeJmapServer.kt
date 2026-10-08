@@ -13,6 +13,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.OutgoingContent
 import io.ktor.http.headersOf
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -113,6 +114,9 @@ class FakeJmapServer {
     /** Fails every EmailSubmission `create` with `notCreated`, as a rejected sender or recipient would. */
     var refuseSubmission: Boolean = false
 
+    /** While set, a JMAP API request waits on it before it is answered, as a slow server would. */
+    var gate: CompletableDeferred<Unit>? = null
+
     /** `/corvid/update`, the server's release report. */
     val update = FakeWebEndpoint()
 
@@ -133,7 +137,10 @@ class FakeJmapServer {
         val path = request.url.encodedPath
         return when {
             path.endsWith("/jmap/session") -> sessionResponse()
-            path.endsWith("/jmap/api/") -> apiResponse(request)
+            path.endsWith("/jmap/api/") -> {
+                gate?.await()
+                apiResponse(request)
+            }
             path.startsWith("/jmap/upload/") -> uploadResponse(request)
             path.startsWith("/jmap/download/") -> downloadResponse(path)
             path.startsWith("/i/") -> imageResponse(request, path)
