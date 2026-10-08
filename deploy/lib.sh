@@ -68,7 +68,7 @@ sys.stdout.write(body)' "$expect"
 }
 
 jmap_admin() {
-  printf '{"using": ["urn:ietf:params:jmap:core", "urn:stalwart:jmap"], "methodCalls": %s}' "$1" | jmap_call
+  printf '{"using": ["urn:ietf:params:jmap:core", "urn:stalwart:jmap"], "methodCalls": %s}' "$1" | jmap_call ""
 }
 
 # Prints the secret of the object a Foo/set response on stdin created as n0, or fails with why not.
