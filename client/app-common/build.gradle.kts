@@ -49,6 +49,8 @@ kotlin {
             implementation(libs.compose.foundation)
             implementation(libs.compose.material3)
             implementation(libs.navigationevent.compose)
+            implementation(libs.jetbrains.lifecycle.runtime.compose)
+            implementation(libs.qrose)
         }
         commonTest.dependencies {
             implementation(projects.core.testing)
@@ -57,6 +59,7 @@ kotlin {
         val desktopTest by getting {
             dependencies {
                 implementation(libs.compose.ui.test)
+                implementation(libs.kotlinx.coroutines.swing)
             }
         }
     }

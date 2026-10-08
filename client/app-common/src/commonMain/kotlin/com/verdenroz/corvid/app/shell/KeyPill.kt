@@ -100,7 +100,7 @@ private fun KeyStatus(
 }
 
 @Composable
-private fun countdown(remaining: Duration): String =
+internal fun countdown(remaining: Duration): String =
     remaining.toComponents {
             minutes,
             seconds,

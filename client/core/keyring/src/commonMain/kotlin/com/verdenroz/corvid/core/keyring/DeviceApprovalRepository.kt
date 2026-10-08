@@ -9,7 +9,7 @@ import kotlinx.serialization.json.put
 import kotlin.time.Instant
 
 /** A request the server holds open for a new device until a master approves it by [id] and [code]. */
-class DeviceRequest(val id: String, val code: String, val expiresAt: Instant)
+data class DeviceRequest(val id: String, val code: String, val expiresAt: Instant)
 
 sealed interface OpenOutcome {
     class Opened(val request: DeviceRequest) : OpenOutcome

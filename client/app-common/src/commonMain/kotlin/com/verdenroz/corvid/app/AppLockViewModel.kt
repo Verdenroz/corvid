@@ -6,6 +6,7 @@ import com.verdenroz.corvid.appcommon.resources.Res
 import com.verdenroz.corvid.appcommon.resources.unreachable_heartbeat
 import com.verdenroz.corvid.appcommon.resources.unreachable_key_damaged
 import com.verdenroz.corvid.appcommon.resources.unreachable_key_unreachable
+import com.verdenroz.corvid.appcommon.resources.unreachable_request_failed
 import com.verdenroz.corvid.appcommon.resources.unreachable_server
 import com.verdenroz.corvid.appcommon.resources.unreachable_session
 import com.verdenroz.corvid.core.auth.AuthState
@@ -16,10 +17,13 @@ import com.verdenroz.corvid.core.jmap.JmapClient
 import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.jmap.JmapSessionException
 import com.verdenroz.corvid.core.jmap.ReconnectPolicy
+import com.verdenroz.corvid.core.keyring.DeviceApprovalRepository
 import com.verdenroz.corvid.core.keyring.DeviceKeyLookup
 import com.verdenroz.corvid.core.keyring.DeviceKeyRepository
 import com.verdenroz.corvid.core.keyring.KeyHolder
 import com.verdenroz.corvid.core.keyring.KeyState
+import com.verdenroz.corvid.core.keyring.OpenOutcome
+import com.verdenroz.corvid.core.keyring.RequestStatus
 import com.verdenroz.corvid.core.text.uiText
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.Dispatchers
@@ -34,6 +38,7 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 private val HEARTBEAT_INTERVAL = 60.seconds
+private val APPROVAL_POLL_INTERVAL = 3.seconds
 
 /**
  * Drives [AppLockState] from [TokenSource], [KeyHolder] and a device key
@@ -55,6 +60,7 @@ class AppLockViewModel(
     private val reconnectPolicy = ReconnectPolicy()
     private var jmapClient: JmapClient? = null
     private var deviceKeyRepository: DeviceKeyRepository? = null
+    private var deviceApprovalRepository: DeviceApprovalRepository? = null
     private var deviceName: String? = null
     private var hadKeyThisSession = false
     private var heartbeatJob: Job? = null
@@ -113,6 +119,7 @@ class AppLockViewModel(
                 heartbeatJob?.cancel()
                 jmapClient = null
                 deviceKeyRepository = null
+                deviceApprovalRepository = null
                 deviceName = null
                 hadKeyThisSession = false
                 reconnectPolicy.reset()
@@ -135,6 +142,7 @@ class AppLockViewModel(
                 JmapClient.connect(httpClient, authLatch, signedIn.server.baseUrl, bearerToken = tokenSource::currentBearerToken)
             jmapClient = client
             deviceKeyRepository = DeviceKeyRepository(client)
+            deviceApprovalRepository = DeviceApprovalRepository(client)
             val name = deviceName
             if (name != null) resolveKey(name) else _state.value = AppLockState.Connecting(needsDeviceName = true)
         } catch (e: JmapException) {
@@ -158,10 +166,62 @@ class AppLockViewModel(
                     tokenSource.signOut()
                     _state.value = AppLockState.Revoked
                 } else {
-                    _state.value = AppLockState.NeedsEnrollment(name)
+                    askForKey(name)
                 }
             is DeviceKeyLookup.Damaged -> _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_key_damaged))
             is DeviceKeyLookup.Unreachable -> _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_key_unreachable))
+        }
+    }
+
+    /** Asks the server for a request a master can approve; the key arrives only by that approval. */
+    private suspend fun askForKey(name: String) {
+        val repository = deviceApprovalRepository ?: return
+        _state.value = AppLockState.NeedsEnrollment(name, EnrollmentRequest.Opening)
+        try {
+            val request =
+                when (val outcome = repository.open(name)) {
+                    is OpenOutcome.Opened -> EnrollmentRequest.Open(outcome.request)
+                    is OpenOutcome.TooManyOpen -> EnrollmentRequest.TooManyOpen
+                }
+            _state.value = AppLockState.NeedsEnrollment(name, request)
+        } catch (e: JmapException) {
+            _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_request_failed))
+        }
+    }
+
+    fun askAgain() {
+        val name = deviceName ?: return
+        viewModelScope.launch { askForKey(name) }
+    }
+
+    /**
+     * Polls the open request while the caller stays in it, so a screen that is not visible stops asking.
+     * An approval reads the key on [viewModelScope], which outlives that caller.
+     */
+    suspend fun watchRequest() {
+        val repository = deviceApprovalRepository ?: return
+        while (true) {
+            val waiting = _state.value as? AppLockState.NeedsEnrollment ?: return
+            val open = waiting.request as? EnrollmentRequest.Open ?: return
+            delay(APPROVAL_POLL_INTERVAL)
+            if (_state.value != waiting) continue
+            val status =
+                try {
+                    repository.status(open.request.id)
+                } catch (e: JmapException) {
+                    continue
+                }
+            when (status) {
+                RequestStatus.Pending -> Unit
+                RequestStatus.Approved -> {
+                    viewModelScope.launch { resolveKey(waiting.deviceName) }
+                    return
+                }
+                RequestStatus.Expired -> {
+                    _state.value = waiting.copy(request = EnrollmentRequest.Expired)
+                    return
+                }
+            }
         }
     }
 

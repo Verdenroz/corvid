@@ -1,5 +1,6 @@
 package com.verdenroz.corvid.app
 
+import com.verdenroz.corvid.core.keyring.DeviceRequest
 import com.verdenroz.corvid.core.text.UiText
 
 /** What the lock gate swaps every route for. */
@@ -21,5 +22,17 @@ sealed interface AppLockState {
     data object Revoked : AppLockState
 
     /** The server holds no key for [deviceName]: its first sign-in, or a revoke. A master device must approve one. */
-    data class NeedsEnrollment(val deviceName: String) : AppLockState
+    data class NeedsEnrollment(val deviceName: String, val request: EnrollmentRequest) : AppLockState
+}
+
+/** Where this device's ask for a key stands. */
+sealed interface EnrollmentRequest {
+    data object Opening : EnrollmentRequest
+
+    /** Waiting for a master to approve [request]. */
+    data class Open(val request: DeviceRequest) : EnrollmentRequest
+
+    data object Expired : EnrollmentRequest
+
+    data object TooManyOpen : EnrollmentRequest
 }
