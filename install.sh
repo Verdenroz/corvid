@@ -433,12 +433,9 @@ if (( idp_create_a )); then
   idp_dns_create "$token" "$domain_zone_id" "$idp_hostname" "$server_ip"
 fi
 
-if [[ "$srv_action" == create ]]; then
-  step "creating the app sign-in record"
-  srv_dns_create "$token" "$domain_zone_id" "$domain" "$hostname" "$web_port"
-elif [[ "$srv_action" == update ]]; then
-  step "updating the app sign-in record"
-  srv_dns_update "$token" "$domain_zone_id" "$domain" "$hostname" "$web_port" "$srv_record_id"
+if [[ "$srv_action" != none ]]; then
+  step "$([[ "$srv_action" == create ]] && echo creating || echo updating) the app sign-in record"
+  srv_dns_apply "$srv_action" "$token" "$domain_zone_id" "$domain" "$hostname" "$web_port" "$srv_record_id"
 fi
 
 if (( enable_dnssec )); then
