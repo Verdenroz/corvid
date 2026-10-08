@@ -187,14 +187,11 @@ fn resolve(arguments: &Value, responses: &[Value]) -> Value {
             })
             .expect("a reference names an earlier call");
         let path = reference["path"].as_str().unwrap();
-        arguments["ids"] = if path == "/ids" {
-            earlier[1]["ids"].clone()
-        } else {
-            let id = earlier[1]
-                .pointer(path)
-                .expect("the referenced value exists");
-            json!([id])
-        };
+        assert_eq!(
+            path, "/ids",
+            "Stalwart resolves references into query results only"
+        );
+        arguments["ids"] = earlier[1]["ids"].clone();
     }
     arguments
 }

@@ -101,18 +101,23 @@ impl Keys {
     async fn create(&self, device: &str, target: &Target) -> Result<Approved, Error> {
         let content = [&[KEY_VERSION][..], &random_bytes::<KEY_LENGTH>()].concat();
         let blob = self.upload(&target.account, content).await?;
+        let name = format!("{device}.key");
         let answers = self
             .batch(&[
                 (
                     "FileNode/set",
                     json!({"accountId": target.account, "create": {"n": {
-                        "name": format!("{device}.key"), "parentId": target.folder,
+                        "name": name, "parentId": target.folder,
                         "blobId": blob}}}),
                 ),
                 (
+                    "FileNode/query",
+                    json!({"accountId": target.account, "filter": {"name": name}}),
+                ),
+                (
                     "FileNode/get",
-                    json!({"accountId": target.account, "properties": ["blobId"],
-                           "#ids": back("FileNode/set", "/created/n/id")}),
+                    json!({"accountId": target.account, "properties": ["id", "blobId"],
+                           "#ids": back("c1", "FileNode/query", "/ids")}),
                 ),
             ])
             .await?;
@@ -126,8 +131,12 @@ impl Keys {
                 ))
             })?
             .to_owned();
-        let blob_id = checked("FileNode/get", &answers[1])?["list"][0]["blobId"]
-            .as_str()
+        let blob_id = checked("FileNode/get", &answers[2])?["list"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|node| node["id"] == node_id.as_str())
+            .and_then(|node| node["blobId"].as_str())
             .ok_or_else(|| Error("the created key has no blob".to_owned()))?
             .to_owned();
         Ok(Approved {
@@ -147,7 +156,7 @@ impl Keys {
                 (
                     "x:Account/get",
                     json!({"properties": ["emailAddress"],
-                           "#ids": back("x:Account/query", "/ids")}),
+                           "#ids": back("c0", "x:Account/query", "/ids")}),
                 ),
             ])
             .await?;
@@ -173,7 +182,7 @@ impl Keys {
                     "FileNode/get",
                     json!({"accountId": keys,
                            "properties": ["id", "name", "parentId", "shareWith"],
-                           "#ids": back("FileNode/query", "/ids")}),
+                           "#ids": back("c0", "FileNode/query", "/ids")}),
                 ),
             ])
             .await?;
@@ -268,9 +277,10 @@ impl Keys {
     }
 }
 
-/// A reference to `path` in the answer of the first call of a batch.
-fn back(method: &str, path: &str) -> Value {
-    json!({"resultOf": "c0", "name": method, "path": path})
+/// A reference to `path` in the answer of call `call` of the same batch. Stalwart resolves
+/// these into query results only, not into the `created` of a set.
+fn back(call: &str, method: &str, path: &str) -> Value {
+    json!({"resultOf": call, "name": method, "path": path})
 }
 
 fn checked<'a>(method: &str, answer: &'a Value) -> Result<&'a Value, Error> {
