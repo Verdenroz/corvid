@@ -13,11 +13,17 @@ server_ip() {
 }
 
 # stalwart-cli refuses a token alongside a user, so a token replaces the password pair in the
-# environment. Call it after every source of corvid.env.
+# environment. load_env calls it after every source of corvid.env.
 prefer_token() {
   [[ -z "${STALWART_TOKEN:-}" ]] || unset STALWART_USER STALWART_PASSWORD
 }
 prefer_token
+
+# Sources FILE into the environment, then lets a token in it win over a password pair.
+load_env() {
+  set -a; . "$1"; set +a
+  prefer_token
+}
 
 # curl -u puts the password in argv, readable in /proc by any local user for the call's
 # lifetime. --config on a process substitution keeps it off the command line. Its quoted value

@@ -10,9 +10,9 @@ HOST="${2:-}"
 HOST="${HOST:-$(dig +short MX "$DOMAIN" | awk '{print $2}' | sed 's/\.$//' | head -1)}"
 
 ENV_FILE="${CORVID_ENV:-/opt/corvid/corvid.env}"
-[[ -r "$ENV_FILE" ]] && { set -a; . "$ENV_FILE"; set +a; }
 HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/lib.sh"
+[[ ! -r "$ENV_FILE" ]] || load_env "$ENV_FILE"
 load_server
 STALWART_CLI="${STALWART_CLI:-stalwart-cli}"
 

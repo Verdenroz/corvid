@@ -116,22 +116,20 @@ nomail_id="$(idp_api users -d '{"username":"nomail","email":"nomail@rig.test","f
 outsider_id="$(idp_api users -d '{"username":"outsider","email":"outsider@rig.test","firstName":"Out","lastName":"Sider","isAdmin":false}' | json id)"
 group_id="$(idp_api 'user-groups?search=mail' | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"][0]["id"])')"
 idp_api "user-groups/$group_id/users" -X PUT -d "{\"userIds\":[\"$mailuser_id\",\"$nomail_id\"]}" >/dev/null
+export CORVID_DIR="$work"; . "$here/lib.sh"
 printf 'STALWART_URL=http://127.0.0.1:8080\nRECOVERY_ADMIN_USER=recovery\nRECOVERY_ADMIN_PASSWORD=%s\n' \
   "$recovery_pw" > "$work/corvid.env"
 CORVID_DIR="$work" CORVID_ENV="$work/corvid.env" CORVID_CONFIG_CMD="$work/shell" \
   bash "$here/bootstrap-server.sh" >/dev/null || { echo "bootstrap-server.sh failed" >&2; exit 1; }
-set -a; . "$work/corvid.env"; set +a
+load_env "$work/corvid.env"
 admin_user="$STALWART_USER"; admin_pw="$STALWART_PASSWORD"
 "$engine" restart "$mail" >/dev/null
 wait_for http://127.0.0.1:8080/healthz/live || { echo "Stalwart never restarted" >&2; exit 1; }
-export CORVID_DIR="$work"; . "$here/lib.sh"
 create_admin_api_key "$work/corvid.env" || { echo "the admin API key was not created" >&2; exit 1; }
-set -a; . "$work/corvid.env"; set +a
-prefer_token
+load_env "$work/corvid.env"
 first_token="$STALWART_TOKEN"
 create_admin_api_key "$work/corvid.env" || { echo "the admin API key was not recreated" >&2; exit 1; }
-set -a; . "$work/corvid.env"; set +a
-prefer_token
+load_env "$work/corvid.env"
 
 domain_id="$(stalwart-cli query Domain --json | python3 -c '
 import json, sys
