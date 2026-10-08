@@ -92,6 +92,9 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
     val sieveScripts: MutableList<FakeSieveScript> = mutableListOf()
     val blobs: MutableMap<String, ByteArray> = mutableMapOf()
 
+    /** `/corvid/devices`, the sentinel's device approval, and the keys account it fills. */
+    val devices = FakeDevices(blobs)
+
     /** Bodies served under `/i/`, as the image proxy serves them, keyed by the path after it. */
     val proxiedImages: MutableMap<String, ByteArray> = mutableMapOf()
 
@@ -153,6 +156,7 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
             }
             path.startsWith("/jmap/upload/") -> uploadResponse(request)
             path.startsWith("/jmap/download/") -> downloadResponse(path)
+            path.startsWith("/corvid/devices") -> devices.handle(this, request)
             path.startsWith("/i/") -> imageResponse(request, path)
             else -> webTier[path]?.handle(this, request) ?: respond("not found", HttpStatusCode.NotFound)
         }
@@ -183,7 +187,10 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
     }
 
     private fun MockRequestHandleScope.downloadResponse(path: String): HttpResponseData {
-        val blobId = path.removePrefix("/jmap/download/").split("/").getOrNull(1)
+        val (accountId, blobId) = path.removePrefix("/jmap/download/").split("/").let { it.getOrNull(0) to it.getOrNull(1) }
+        if ((blobId in devices.keyBlobIds) != (accountId == devices.keysAccountId)) {
+            return respond("blob not found", HttpStatusCode.NotFound)
+        }
         val bytes = blobs[blobId] ?: return respond("blob not found", HttpStatusCode.NotFound)
         return respond(bytes, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, listOf("application/octet-stream")))
     }
@@ -612,7 +619,14 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
                 putJsonObject("primaryAccounts") {}
                 put("username", "")
             } else {
-                putJsonObject("accounts") { putJsonObject(ACCOUNT_ID) { put("name", "verde") } }
+                putJsonObject("accounts") {
+                    putJsonObject(ACCOUNT_ID) { put("name", "verde") }
+                    putJsonObject(devices.keysAccountId) {
+                        put("name", "corvid-keys")
+                        put("isPersonal", false)
+                        put("isReadOnly", true)
+                    }
+                }
                 putJsonObject("primaryAccounts") { put(MAIL_CAPABILITY, ACCOUNT_ID) }
                 put("username", "verde")
             }

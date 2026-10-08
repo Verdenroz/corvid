@@ -3,9 +3,6 @@ package com.verdenroz.corvid.app
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.appcommon.resources.Res
-import com.verdenroz.corvid.appcommon.resources.unreachable_enroll_offline
-import com.verdenroz.corvid.appcommon.resources.unreachable_enroll_refused
-import com.verdenroz.corvid.appcommon.resources.unreachable_folders_ambiguous
 import com.verdenroz.corvid.appcommon.resources.unreachable_heartbeat
 import com.verdenroz.corvid.appcommon.resources.unreachable_key_damaged
 import com.verdenroz.corvid.appcommon.resources.unreachable_key_unreachable
@@ -19,7 +16,6 @@ import com.verdenroz.corvid.core.jmap.JmapClient
 import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.jmap.JmapSessionException
 import com.verdenroz.corvid.core.jmap.ReconnectPolicy
-import com.verdenroz.corvid.core.keyring.DeviceKeyConflict
 import com.verdenroz.corvid.core.keyring.DeviceKeyLookup
 import com.verdenroz.corvid.core.keyring.DeviceKeyRepository
 import com.verdenroz.corvid.core.keyring.KeyHolder
@@ -60,7 +56,7 @@ class AppLockViewModel(
     private var jmapClient: JmapClient? = null
     private var deviceKeyRepository: DeviceKeyRepository? = null
     private var deviceName: String? = null
-    private var enrolledThisSession = false
+    private var hadKeyThisSession = false
     private var heartbeatJob: Job? = null
 
     init {
@@ -86,12 +82,6 @@ class AppLockViewModel(
 
     fun unlock() {
         deviceName?.let { name -> viewModelScope.launch { resolveKey(name) } }
-    }
-
-    fun confirmEnroll() {
-        val needsEnrollment = _state.value as? AppLockState.NeedsEnrollment ?: return
-        val repository = deviceKeyRepository ?: return
-        viewModelScope.launch { enroll(repository, needsEnrollment.deviceName) }
     }
 
     fun lock() = keyHolder.drop()
@@ -124,7 +114,7 @@ class AppLockViewModel(
                 jmapClient = null
                 deviceKeyRepository = null
                 deviceName = null
-                enrolledThisSession = false
+                hadKeyThisSession = false
                 reconnectPolicy.reset()
                 keyHolder.drop()
                 // Revoked is a dead end by design: only relaunching the app, not
@@ -158,9 +148,12 @@ class AppLockViewModel(
         _state.value = AppLockState.Connecting(needsDeviceName = false)
         val repository = deviceKeyRepository ?: return
         when (val lookup = repository.fetch(name)) {
-            is DeviceKeyLookup.Found -> keyHolder.unlock(lookup.key)
+            is DeviceKeyLookup.Found -> {
+                hadKeyThisSession = true
+                keyHolder.unlock(lookup.key)
+            }
             is DeviceKeyLookup.Missing ->
-                if (enrolledThisSession) {
+                if (hadKeyThisSession) {
                     keyHolder.drop()
                     tokenSource.signOut()
                     _state.value = AppLockState.Revoked
@@ -168,23 +161,7 @@ class AppLockViewModel(
                     _state.value = AppLockState.NeedsEnrollment(name)
                 }
             is DeviceKeyLookup.Damaged -> _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_key_damaged))
-            is DeviceKeyLookup.Ambiguous -> _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_folders_ambiguous))
             is DeviceKeyLookup.Unreachable -> _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_key_unreachable))
-        }
-    }
-
-    private suspend fun enroll(
-        repository: DeviceKeyRepository,
-        name: String,
-    ) {
-        try {
-            val key = repository.enroll(name)
-            enrolledThisSession = true
-            keyHolder.unlock(key)
-        } catch (e: JmapException) {
-            _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_enroll_offline))
-        } catch (e: DeviceKeyConflict) {
-            _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_enroll_refused))
         }
     }
 

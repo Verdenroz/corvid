@@ -29,6 +29,8 @@ const val SUBMISSION_CAPABILITY = "urn:ietf:params:jmap:submission"
 const val FILENODE_CAPABILITY = "urn:ietf:params:jmap:filenode"
 const val SIEVE_CAPABILITY = "urn:ietf:params:jmap:sieve"
 
+class WebReply(val status: HttpStatusCode, val body: JsonObject?)
+
 /**
  * A session against a rebased JMAP endpoint. [connect] discovers it; [call]
  * reuses the same [AuthLatch]-guarded request path and refetches the
@@ -121,38 +123,52 @@ class JmapClient private constructor(
      * A 404 is null, not a failure: it means the server does not offer the path.
      */
     suspend fun webGet(path: String): JsonObject? {
-        val response = webCall(HttpMethod.Get, path, null)
-        if (response.status != HttpStatusCode.OK) return null
-        return try {
-            response.body<JsonObject>()
-        } catch (e: NoTransformationFoundException) {
-            throw JmapException(JmapError.Request(type = "notJSON", detail = e.message))
-        } catch (e: SerializationException) {
-            throw JmapException(JmapError.Request(type = "notJSON", detail = e.message))
-        }
+        val reply = webSend(HttpMethod.Get, path)
+        return if (reply.status == HttpStatusCode.OK) reply.body else null
     }
 
     suspend fun webPost(
         path: String,
         body: JsonObject,
     ) {
-        webCall(HttpMethod.Post, path, body)
+        webSend(HttpMethod.Post, path, body)
     }
 
-    private suspend fun webCall(
+    /**
+     * Any web tier call, answered with whatever status came back. A status in [passThrough] is
+     * returned instead of thrown and never trips the auth latch, so a path's own 401 is not the
+     * session's. A 200 or 201 body is read as JSON.
+     */
+    suspend fun webSend(
         method: HttpMethod,
         path: String,
-        body: JsonObject?,
-    ): HttpResponse =
-        guarded(authLatch, passThrough = setOf(HttpStatusCode.NotFound)) {
-            httpClient.request("$baseUrl$path") {
-                this.method = method
-                bearerToken()?.let { header(HttpHeaders.Authorization, "Bearer $it") }
-                body?.let {
-                    contentType(ContentType.Application.Json)
-                    setBody(it)
+        body: JsonObject? = null,
+        headers: Map<String, String> = emptyMap(),
+        passThrough: Set<HttpStatusCode> = setOf(HttpStatusCode.NotFound),
+    ): WebReply {
+        val response =
+            guarded(authLatch, passThrough) {
+                httpClient.request("$baseUrl$path") {
+                    this.method = method
+                    bearerToken()?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+                    headers.forEach { (name, value) -> header(name, value) }
+                    body?.let {
+                        contentType(ContentType.Application.Json)
+                        setBody(it)
+                    }
                 }
             }
+        val hasBody = response.status == HttpStatusCode.OK || response.status == HttpStatusCode.Created
+        return WebReply(response.status, if (hasBody) response.json() else null)
+    }
+
+    private suspend fun HttpResponse.json(): JsonObject =
+        try {
+            body<JsonObject>()
+        } catch (e: NoTransformationFoundException) {
+            throw JmapException(JmapError.Request(type = "notJSON", detail = e.message))
+        } catch (e: SerializationException) {
+            throw JmapException(JmapError.Request(type = "notJSON", detail = e.message))
         }
 
     /** The address the client dialled, which the web tier's own paths hang off. */
@@ -176,10 +192,11 @@ class JmapClient private constructor(
         blobId: String,
         name: String,
         type: String,
+        accountId: String? = session.accountId,
     ): ByteArray {
         val url =
             session.downloadUrl
-                .replace("{accountId}", session.accountId.orEmpty())
+                .replace("{accountId}", accountId.orEmpty())
                 .replace("{blobId}", blobId)
                 .replace("{name}", name)
                 .replace("{type}", type)
@@ -275,6 +292,7 @@ private suspend fun guarded(
         } catch (e: IOException) {
             throw JmapException(JmapError.Unreachable(e))
         }
+    if (response.status in passThrough) return response
     when (response.status) {
         HttpStatusCode.Unauthorized -> {
             authLatch.trip()
@@ -286,7 +304,6 @@ private suspend fun guarded(
             throw JmapException(JmapError.RateLimited(retryAfter))
         }
     }
-    if (response.status in passThrough) return response
     // Every other 4xx is an RFC 7807 problem body (unknownCapability, notJSON, notRequest,
     // limit, ...): the request itself was rejected, so it must never be retried like a Server.
     if (response.status.value in 400..499) {

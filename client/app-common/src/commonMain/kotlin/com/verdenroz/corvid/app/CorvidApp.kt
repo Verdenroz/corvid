@@ -62,7 +62,7 @@ fun CorvidApp(
                     LockedPane(facts.server, facts.device, facts.lockedAt?.let { droppedAt(it) }, onUnlock = viewModel::unlock)
                 }
                 is AppLockState.Revoked -> RevokedPane()
-                is AppLockState.NeedsEnrollment -> EnrollmentPrompt(deviceName = current.deviceName, onConfirm = viewModel::confirmEnroll)
+                is AppLockState.NeedsEnrollment -> EnrollmentPrompt(deviceName = current.deviceName)
             }
         }
     }
