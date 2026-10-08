@@ -4,7 +4,7 @@
 # of it over JMAP. idp.sh provisions Pocket-ID, and the rig drives the rest only through
 # STATIC_API_KEY and its REST API. The sentinel, built with cargo unless CORVID_SENTINEL_BIN names
 # one, then approves a device end to end. Needs stalwart-cli, curl, python3 and docker or podman;
-# bootstrap mode needs port 8080 free, and a run takes about six minutes, most of it a refresh chain.
+# bootstrap mode needs port 8080 free, and a run takes a few minutes.
 set -uo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 image() { awk -F= '$1=="Image"{print $2}' "$here/$1.container"; }
@@ -59,23 +59,31 @@ redeem() {
   echo "$status"
 }
 
-# One-time access token, then a session, then the authorization-code flow with PKCE, the way the
-# client does it minus the passkey and the browser. Prints the access token. Pocket-ID skips the
-# consent step when the user already consented to the scopes, so the interaction is optional.
-mint() {
-  local user_id="$1" scope="$2" client="${3:-corvid}" jar="$work/jar-$1-${3:-corvid}" verifier challenge ott location code
+# One-time access token, then a session, then the authorization request with PKCE, the way the
+# client does it minus the passkey and the browser. Prints Pocket-ID's redirect location, and keeps
+# the PKCE verifier beside the session's cookie jar for the token exchange.
+authorize() {
+  local jar="$work/jar-$1-$2" verifier challenge ott
   verifier="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+  printf %s "$verifier" > "$jar.verifier"
   challenge="$(printf %s "$verifier" | python3 -c '
 import base64, hashlib, sys
 print(base64.urlsafe_b64encode(hashlib.sha256(sys.stdin.buffer.read()).digest()).decode().rstrip("="))')"
-  ott="$(idp_api "users/$user_id/one-time-access-token" -d '{"ttl":"5m"}' | json token)"
-  [[ -n "$ott" ]] || { echo "mint: no one-time access token" >&2; return 1; }
-  [[ "$(redeem "$ott" "$jar")" == 200 ]] || { echo "mint: the one-time access token was refused" >&2; return 1; }
-  location="$(curl -s -b "$jar" -o /dev/null -w '%{redirect_url}' -G "$issuer/authorize" \
-    --data-urlencode "client_id=$client" --data-urlencode response_type=code \
-    --data-urlencode redirect_uri=http://127.0.0.1/callback --data-urlencode "scope=$scope" \
+  ott="$(idp_api "users/$1/one-time-access-token" -d '{"ttl":"5m"}' | json token)"
+  [[ -n "$ott" ]] || { echo "authorize: no one-time access token" >&2; return 1; }
+  [[ "$(redeem "$ott" "$jar")" == 200 ]] || { echo "authorize: the one-time access token was refused" >&2; return 1; }
+  curl -s -b "$jar" -o /dev/null -w '%{redirect_url}' -G "$issuer/authorize" \
+    --data-urlencode "client_id=$2" --data-urlencode response_type=code \
+    --data-urlencode redirect_uri=http://127.0.0.1/callback --data-urlencode "scope=${3:-openid profile}" \
     --data-urlencode "code_challenge=$challenge" --data-urlencode code_challenge_method=S256 \
-    --data-urlencode state=rig-state-0123)"
+    --data-urlencode state=rig-state-0123
+}
+
+# Authorizes, then exchanges the code for tokens and prints the access token. Pocket-ID skips the
+# consent step when the user already consented to the scopes, so the interaction is optional.
+mint() {
+  local user_id="$1" scope="$2" client="${3:-corvid}" jar="$work/jar-$1-${3:-corvid}" location code
+  location="$(authorize "$user_id" "$client" "$scope")" || return 1
   if [[ "$location" == *interaction=* ]]; then
     location="${location##*interaction=}"
     curl -sf -b "$jar" -o /dev/null -H 'content-type: application/json' \
@@ -86,8 +94,22 @@ print(base64.urlsafe_b64encode(hashlib.sha256(sys.stdin.buffer.read()).digest())
   [[ "$location" == *code=* ]] || { echo "mint: no authorization code in '$location'" >&2; return 1; }
   code="$(sed 's/.*[?&]code=\([^&]*\).*/\1/' <<<"$location")"
   curl -sf "$issuer/api/oidc/token" -d grant_type=authorization_code -d "client_id=$client" \
-    -d "code=$code" -d redirect_uri=http://127.0.0.1/callback -d "code_verifier=$verifier" \
+    -d "code=$code" -d redirect_uri=http://127.0.0.1/callback -d "code_verifier=$(< "$jar.verifier")" \
     | tee "$work/last-token.json" | json access_token
+}
+
+# The id of the first object of KIND whose FIELD equals VALUE.
+stalwart_id() {
+  stalwart-cli query "$1" --json | python3 -c '
+import json, sys
+print(next(o["id"] for o in map(json.loads, filter(str.strip, sys.stdin)) if o.get(sys.argv[1]) == sys.argv[2]))' "$2" "$3"
+}
+account_of() { stalwart_id Account emailAddress "$1"; }
+app_password_for() {
+  jmap_admin "[[\"x:AppPassword/set\", {\"accountId\": \"$1\", \"create\": {\"n0\": {\"description\": \"rig\"}}}, \"c0\"]]" | created_secret
+}
+group_id() {
+  idp_api "user-groups?search=$1" | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"][0]["id"])'
 }
 
 cat > "$work/shell" <<SH
@@ -114,8 +136,8 @@ mailuser_id="$(user_id mailuser)"
 admin_id="$(user_id mailuser-admin)"
 nomail_id="$(idp_api users -d '{"username":"nomail","email":"nomail@rig.test","firstName":"No","lastName":"Mail","isAdmin":false}' | json id)"
 outsider_id="$(idp_api users -d '{"username":"outsider","email":"outsider@rig.test","firstName":"Out","lastName":"Sider","isAdmin":false}' | json id)"
-group_id="$(idp_api 'user-groups?search=mail' | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"][0]["id"])')"
-idp_api "user-groups/$group_id/users" -X PUT -d "{\"userIds\":[\"$mailuser_id\",\"$nomail_id\"]}" >/dev/null
+mail_group_id="$(group_id mail)"
+idp_api "user-groups/$mail_group_id/users" -X PUT -d "{\"userIds\":[\"$mailuser_id\",\"$nomail_id\"]}" >/dev/null
 export CORVID_DIR="$work"; . "$here/lib.sh"
 printf 'STALWART_URL=http://127.0.0.1:8080\nRECOVERY_ADMIN_USER=recovery\nRECOVERY_ADMIN_PASSWORD=%s\n' \
   "$recovery_pw" > "$work/corvid.env"
@@ -131,9 +153,7 @@ first_token="$STALWART_TOKEN"
 create_admin_api_key "$work/corvid.env" || { echo "the admin API key was not recreated" >&2; exit 1; }
 load_env "$work/corvid.env"
 
-domain_id="$(stalwart-cli query Domain --json | python3 -c '
-import json, sys
-print(next(d["id"] for d in map(json.loads, filter(str.strip, sys.stdin)) if d["name"] == "rig.test"))')"
+domain_id="$(stalwart_id Domain name rig.test)"
 # Pocket-ID here is plain http on a loopback port; the plan's issuer is https on the web port.
 {
   cat <<JSON
@@ -148,19 +168,20 @@ JSON
 } | stalwart-cli apply --stdin >/dev/null
 "$engine" restart "$mail" >/dev/null
 export STALWART_URL="http://127.0.0.1:$mail_port"
+sed -i "s#^STALWART_URL=.*#STALWART_URL=$STALWART_URL#" "$work/corvid.env"
 wait_for "$STALWART_URL/healthz/live" || { echo "Stalwart never listened on $mail_port" >&2; exit 1; }
 
 fail=0
 check() { if [[ "$2" == "$3" ]]; then echo "  ok    $1"; else echo "  FAIL  $1 (got '$2')"; fail=1; fi; }
-auth_failures() { "$engine" logs "$mail" 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E 'auth\.(failed|error)'; }
 # Prints the status and, when Stalwart logged a failure for the request, its reason.
 session() {
-  local before after status
-  before="$(auth_failures | wc -l)"
+  local since status failure
+  since="$(date -u +%Y-%m-%dT%H:%M:%S.%NZ)"
   status="$(curl -s -o "$work/body" -w '%{http_code}' -H "Authorization: Bearer $1" "$STALWART_URL/jmap/session")"
-  after="$(auth_failures | wc -l)"
+  failure="$("$engine" logs --since "$since" "$mail" 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E 'auth\.(failed|error)' |
+    tail -1 | sed -E 's/.*(reason|details) = "(.*)", causedBy.*/\2/')"
   printf '%s' "$status"
-  [[ "$after" -gt "$before" ]] && printf ' %s' "$(auth_failures | tail -1 | sed -E 's/.*(reason|details) = "(.*)", causedBy.*/\2/')"
+  [[ -z "$failure" ]] || printf ' %s' "$failure"
   echo
 }
 mailbox_of() {
@@ -197,14 +218,11 @@ check "stalwart-cli with the admin API key once the OIDC directory is active" \
 check "stalwart-cli with the admin password once the OIDC directory is active" \
   "$( (unset STALWART_TOKEN; stalwart-cli --user "$admin_user" --password "$admin_pw" query Account --json 2>&1) | grep -c '"emailAddress"')" 0
 
-mailuser_account="$(stalwart-cli query Account --json | python3 -c '
-import json, sys
-print(next(a["id"] for a in map(json.loads, filter(str.strip, sys.stdin)) if a.get("emailAddress") == "mailuser@rig.test"))')"
+mailuser_account="$(account_of mailuser@rig.test)"
 check "an apply through the admin API key writes once the OIDC directory is active" \
   "$(printf '%s\n' '{"@type":"upsert","object":"Account","matchOn":["name"],"value":{"acct":{"@type":"User","name":"mailuser","description":"mailuser rig"}}}' |
     stalwart-cli apply --stdin 2>&1 | grep -c '0 failed')" 1
-app_password="$(jmap_admin "[[\"x:AppPassword/set\", {\"accountId\": \"$mailuser_account\", \"create\": {\"n0\": {\"description\": \"rig\"}}}, \"c0\"]]" |
-  python3 -c 'import json,sys; print(json.load(sys.stdin)["methodResponses"][0][1]["created"]["n0"]["secret"])')"
+app_password="$(app_password_for "$mailuser_account")"
 check "an app password for another account through the admin API key" "$([[ -n "$app_password" ]] && echo True)" True
 
 echo "== a Pocket-ID user with no mailbox"
@@ -239,7 +257,7 @@ print(c["requiresReauthentication"], c["isGroupRestricted"], sorted(g["name"] fo
 check "corvid-admin is restricted to the admins group, demands reauthentication and refreshes for a minute" \
   "$(client_flags corvid-admin)" "True True ['admins'] 5 1"
 check "corvid is restricted to the mail group and keeps the default lifetimes" "$(client_flags corvid)" "False True ['mail'] 60 43200"
-admins_id="$(idp_api 'user-groups?search=admins' | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"][0]["id"])')"
+admins_id="$(group_id admins)"
 check "the admins group holds only the admin user" \
   "$(idp_api "user-groups/$admins_id" | python3 -c '
 import json, sys
@@ -247,33 +265,19 @@ print(sorted(u["username"] for u in json.load(sys.stdin)["users"]))')" "['mailus
 check "the mail user gets no code from corvid-admin" \
   "$(mint "$mailuser_id" "openid profile" corvid-admin 2>&1 | grep -o "$denied" | head -1)" "$denied"
 # The passkey step cannot be completed from a one-time link session, which is the point.
-admin_interaction() {
-  local ott location
-  ott="$(idp_api "users/$admin_id/one-time-access-token" -d '{"ttl":"5m"}' | json token)"
-  redeem "$ott" "$work/jar-admin-step" >/dev/null
-  location="$(curl -s -b "$work/jar-admin-step" -o /dev/null -w '%{redirect_url}' -G "$issuer/authorize" \
-    --data-urlencode client_id=corvid-admin --data-urlencode response_type=code \
-    --data-urlencode redirect_uri=http://127.0.0.1/callback --data-urlencode "scope=openid profile" \
-    --data-urlencode code_challenge=rig-challenge-0123456789-rig-challenge-0123456 \
-    --data-urlencode code_challenge_method=S256 --data-urlencode state=rig-state-0123)"
-  ADMIN_INTERACTION="${location##*interaction=}"
-}
-admin_interaction
+admin_location="$(authorize "$admin_id" corvid-admin)"
+admin_interaction="${admin_location##*interaction=}"
+admin_jar="$work/jar-$admin_id-corvid-admin"
 check "the admin's authorization to corvid-admin waits on a passkey" \
-  "$(curl -s -b "$work/jar-admin-step" "$issuer/api/oidc/interactions/$ADMIN_INTERACTION" | json currentStep)" reauthenticate
+  "$(curl -s -b "$admin_jar" "$issuer/api/oidc/interactions/$admin_interaction" | json currentStep)" reauthenticate
 check "the consent step is refused before the passkey step" \
-  "$(curl -s -b "$work/jar-admin-step" -H 'content-type: application/json' -d '{"step":"consent"}' \
-    "$issuer/api/oidc/interactions/$ADMIN_INTERACTION/complete" | json code)" validation_failed
+  "$(curl -s -b "$admin_jar" -H 'content-type: application/json' -d '{"step":"consent"}' \
+    "$issuer/api/oidc/interactions/$admin_interaction/complete" | json code)" validation_failed
 check "the passkey step is refused without a reauthentication token" \
-  "$(curl -s -b "$work/jar-admin-step" -H 'content-type: application/json' -d '{"step":"reauthenticate"}' \
-    "$issuer/api/oidc/interactions/$ADMIN_INTERACTION/complete" | json code)" validation_failed
+  "$(curl -s -b "$admin_jar" -H 'content-type: application/json' -d '{"step":"reauthenticate"}' \
+    "$issuer/api/oidc/interactions/$admin_interaction/complete" | json code)" validation_failed
 
 echo "== device keys owned by another account"
-account_of() {
-  stalwart-cli query Account --json | python3 -c '
-import json, sys
-print(next(a["id"] for a in map(json.loads, filter(str.strip, sys.stdin)) if a.get("emailAddress") == sys.argv[1]))' "$1"
-}
 keys_account="$(account_of corvid-keys@keys.rig.test)"
 # Speaks SMTP politely and prints the reply code to RCPT TO, since a malformed command bans the address.
 rcpt_code() {
@@ -287,14 +291,13 @@ smtp.quit()' "$smtp_port" "$1"
 }
 check "the mailbox accepts mail" "$(rcpt_code mailuser@rig.test)" 250
 check "the keys account refuses mail" "$(rcpt_code corvid-keys@keys.rig.test)" 550
-keys_secret="$(jmap_admin "[[\"x:AppPassword/set\", {\"accountId\": \"$keys_account\", \"create\": {\"n0\": {\"description\": \"rig\"}}}, \"c0\"]]" |
-  python3 -c 'import json,sys; print(json.load(sys.stdin)["methodResponses"][0][1]["created"]["n0"]["secret"])')"
+keys_secret="$(app_password_for "$keys_account")"
 check "the mailbox signs in with an app password" \
   "$(curl -s -u "mailuser@rig.test:$app_password" "$STALWART_URL/jmap/session" -o /dev/null -w '%{http_code}')" 200
 check "the keys account cannot sign in even with a credential" \
   "$(curl -s -u "corvid-keys@keys.rig.test:$keys_secret" "$STALWART_URL/jmap/session" -o /dev/null -w '%{http_code}')" 403
 keys_user_id="$(idp_api users -d '{"username":"corvid-keys","email":"corvid-keys@keys.rig.test","firstName":"Corvid","lastName":"Keys","isAdmin":false}' | json id)"
-idp_api "user-groups/$group_id/users" -X PUT \
+idp_api "user-groups/$mail_group_id/users" -X PUT \
   -d "{\"userIds\":[\"$mailuser_id\",\"$nomail_id\",\"$keys_user_id\"]}" >/dev/null
 namesake_token="$(mint "$keys_user_id" "openid profile")" || exit 1
 check "a Pocket-ID user named for the keys account gets a mailbox of its own" \
@@ -378,15 +381,7 @@ check "the original key's bytes are unchanged after every write" "$(cmp -s "$key
 echo "== approving a device end to end"
 # One-time link sessions cannot pass the passkey step, so the admin client stops asking for it
 # while a token is minted and provision puts it back.
-set_admin_reauth() {
-  idp_api oidc/clients/corvid-admin | python3 -c '
-import json, sys
-keep = ("name", "callbackURLs", "logoutCallbackURLs", "isPublic", "pkceEnabled", "skipConsent", "isGroupRestricted",
-        "accessTokenDurationMinutes", "refreshTokenDurationMinutes")
-client = json.load(sys.stdin)
-print(json.dumps({**{k: client[k] for k in keep}, "requiresReauthentication": sys.argv[1] == "true"}))' "$1" |
-    idp_api oidc/clients/corvid-admin -X PUT -d @- >/dev/null
-}
+set_admin_reauth() { provision client corvid-admin "{\"requiresReauthentication\": $1}"; }
 set_admin_reauth false
 admin_token="$(mint "$admin_id" "openid profile" corvid-admin)" || exit 1
 jwt_claim() {
@@ -396,18 +391,7 @@ s = sys.stdin.read().strip()
 print(json.loads(base64.urlsafe_b64decode(s + "=" * (-len(s) % 4)))[sys.argv[1]])' "$2"
 }
 admin_iat="$(jwt_claim "$admin_token" iat)"
-# Refreshes every 45 seconds for just over the five minutes the sentinel allows, each time with
-# the refresh token the previous grant rotated in, which keeps the chain inside its one minute.
-(
-  refresh="$(json refresh_token < "$work/last-token.json")"
-  for _ in $(seq 1 7); do
-    sleep 45
-    curl -s "$issuer/api/oidc/token" -d grant_type=refresh_token -d client_id=corvid-admin \
-      -d "refresh_token=$refresh" > "$work/chained.json"
-    refresh="$(json refresh_token < "$work/chained.json")"
-  done
-) &
-chain_pid=$!
+admin_refresh="$(json refresh_token < "$work/last-token.json")"
 provision provision >/dev/null 2>&1
 check "provision puts the passkey requirement back" "$(client_flags corvid-admin)" "True True ['admins'] 5 1"
 check "an admin token is not a mailbox credential" "$(session "$admin_token" | cut -d' ' -f1)" 401
@@ -418,6 +402,7 @@ if [[ -z "$sentinel_bin" ]]; then
   sentinel_bin="${CARGO_TARGET_DIR:-$here/../target}/debug/corvid-sentinel"
 fi
 sentinel_secret=rig-sentinel-secret-0123456789
+printf 'CORVID_SENTINEL_SECRET=%s\n' "$sentinel_secret" > "$work/sentinel-webhook.env"
 cat > "$work/sentinel.yaml" <<YAML
 server: {domain: rig.test, hostname: mail.rig.test, mail_user: mailuser, acme_contact: ops@rig.test}
 sentinel:
@@ -439,15 +424,21 @@ sentinel() {
 check "a device asks for a key" "$(sentinel POST /corvid/devices/requests -d '{"name":"rig-phone"}')" 201
 request_id="$(json id < "$work/sbody")"
 request_code="$(json code < "$work/sbody")"
+request_status() { sentinel GET "/corvid/devices/requests/$1" >/dev/null; json status < "$work/sbody"; }
 approve() { sentinel POST "/corvid/devices/requests/$request_id/approve" -H "X-Corvid-Master: $1" -d "{\"code\":\"$2\"}"; }
-check "the request reads as pending" "$(sentinel GET "/corvid/devices/requests/$request_id" >/dev/null; json status < "$work/sbody")" pending
+check "the request reads as pending" "$(request_status "$request_id")" pending
 check "a daily token cannot approve it" "$(approve "$mailuser_token" "$request_code")" 401
 check "the admin token with a wrong code is refused" "$(approve "$admin_token" 000000)" 403
 check "the admin token with the code approves it" "$(approve "$admin_token" "$request_code")" 200
 approved_node="$(json nodeId < "$work/sbody")"
 approved_blob="$(json blobId < "$work/sbody")"
+refreshed_token="$(curl -s "$issuer/api/oidc/token" -d grant_type=refresh_token -d client_id=corvid-admin \
+  -d "refresh_token=$admin_refresh" | json access_token)"
+check "a refreshed token keeps the issue time of the passkey authorization" \
+  "$(jwt_claim "$refreshed_token" iat)" "$admin_iat"
+check "while its expiry moves on" "$([[ "$(jwt_claim "$refreshed_token" exp)" -gt "$(jwt_claim "$admin_token" exp)" ]] && echo later)" later
 check "the approval is for the keys account" "$(json accountId < "$work/sbody")" "$keys_account"
-check "the request reads as approved" "$(sentinel GET "/corvid/devices/requests/$request_id" >/dev/null; json status < "$work/sbody")" approved
+check "the request reads as approved" "$(request_status "$request_id")" approved
 check "the mail user is given the record by device name" \
   "$(sentinel GET /corvid/devices/rig-phone >/dev/null; json nodeId < "$work/sbody")" "$approved_node"
 read_key() {
@@ -464,15 +455,15 @@ check "a planted name has no record" "$(sentinel GET /corvid/devices/planted)" 4
 check "the approved record still names the approved node" \
   "$(sentinel GET /corvid/devices/rig-phone >/dev/null; json nodeId < "$work/sbody")" "$approved_node"
 check "the approved key's bytes are unchanged" "$(read_key)" "$key_before"
-check "the same request cannot be approved twice" "$(approve "$admin_token" "$request_code")" 410
-revoke_signature() {
-  python3 -c '
-import base64, hashlib, hmac, sys
-print(base64.b64encode(hmac.new(sys.argv[1].encode(), f"revoke {sys.argv[2]}".encode(), hashlib.sha256).digest()).decode())' "$sentinel_secret" "$1"
-}
+check "the same request cannot be approved twice" "$(approve "$refreshed_token" "$request_code")" 410
+check "a device asks for another key" "$(sentinel POST /corvid/devices/requests -d '{"name":"rig-tablet"}')" 201
+request_id="$(json id < "$work/sbody")"
+request_code="$(json code < "$work/sbody")"
+check "a refreshed token approves it inside the window" "$(approve "$refreshed_token" "$request_code")" 200
 check "a revoke without the secret is refused" "$(sentinel DELETE /internal/devices/rig-phone)" 401
-check "a signed revoke removes the key" \
-  "$(sentinel DELETE /internal/devices/rig-phone -H "X-Signature: $(revoke_signature rig-phone)")" 204
+check "device.sh revoke has the sentinel remove the key" \
+  "$(CORVID_HOST_NET=1 CORVID_ENV="$work/corvid.env" CORVID_CONFIG_CMD="$work/shell" bash "$here/device.sh" revoke rig-phone 2>/dev/null |
+    grep -c 'approved key revoked')" 1
 check "the revoked device has no record" "$(sentinel GET /corvid/devices/rig-phone)" 404
 check "the revoked key file is gone from the keys account" \
   "$(files_as admin FileNode/get '{"ids":null}' | node_names | tr ' ' '\n' | grep -c '^rig-phone.key$')" 0
@@ -519,19 +510,6 @@ check "it returns as soon as Pocket-ID answers within the bound" "$status" 0
 "$engine" start "$mail" >/dev/null
 wait_for "$STALWART_URL/healthz/live" || { echo "Stalwart did not start" >&2; exit 1; }
 check "a token is accepted on Stalwart's first start after the wait, with no second restart" "$(session "$token")" 200
-
-echo "== a refresh chain cannot renew an approval token"
-wait "$chain_pid"
-chained_token="$(json access_token < "$work/chained.json")"
-check "a refreshed token keeps the issue time of the passkey authorization" \
-  "$(jwt_claim "$chained_token" iat)" "$admin_iat"
-check "while its expiry moves on" "$([[ "$(jwt_claim "$chained_token" exp)" -gt "$(jwt_claim "$admin_token" exp)" ]] && echo later)" later
-check "a device asks for another key" "$(sentinel POST /corvid/devices/requests -d '{"name":"rig-tablet"}')" 201
-request_id="$(json id < "$work/sbody")"
-request_code="$(json code < "$work/sbody")"
-check "the last token of the chain is refused five minutes after the passkey" \
-  "$(approve "$chained_token" "$request_code")" 401
-check "and the request is still pending" "$(sentinel GET "/corvid/devices/requests/$request_id" >/dev/null; json status < "$work/sbody")" pending
 
 [[ $fail -eq 0 ]] || { [[ ! -s "$work/sentinel.log" ]] || tail -5 "$work/sentinel.log"; "$engine" logs "$mail" 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E 'auth\.|http\.' | tail -10; }
 exit "$fail"
