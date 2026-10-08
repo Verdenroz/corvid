@@ -19,6 +19,7 @@ import com.verdenroz.corvid.core.text.uiText
 import com.verdenroz.corvid.feature.filters.resources.Res
 import com.verdenroz.corvid.feature.filters.resources.filters_another_active
 import com.verdenroz.corvid.feature.filters.resources.filters_not_saved
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.first
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -215,12 +216,16 @@ class FiltersViewModelTest {
     @Test
     fun `saving the draft while another save is in flight keeps the editor open`() =
         runViewModelTest {
-            val vm = viewModel(FakeJmapServer())
+            val fake = FakeJmapServer()
+            val vm = viewModel(fake)
+            val release = CompletableDeferred<Unit>()
+            fake.gate = release
             vm.save(null, rule("first"))
 
             vm.startEdit(null)
             vm.changeDraft(rule("second"))
             vm.saveDraft()
+            release.complete(Unit)
 
             assertEquals(RuleDraft(null, rule("second")), vm.ready().editing)
         }
@@ -228,10 +233,14 @@ class FiltersViewModelTest {
     @Test
     fun `an edit issued while a save is in flight is ignored`() =
         runViewModelTest {
-            val vm = viewModel(FakeJmapServer())
+            val fake = FakeJmapServer()
+            val vm = viewModel(fake)
+            val release = CompletableDeferred<Unit>()
+            fake.gate = release
 
             vm.save(null, rule("first"))
             vm.save(null, rule("second"))
+            release.complete(Unit)
 
             assertEquals(listOf("first"), vm.ready().rules.map { it.name })
         }

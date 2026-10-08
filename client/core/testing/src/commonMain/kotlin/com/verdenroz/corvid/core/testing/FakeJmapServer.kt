@@ -5,6 +5,7 @@ import com.verdenroz.corvid.core.jmap.JmapJson
 import com.verdenroz.corvid.core.jmap.MAIL_CAPABILITY
 import com.verdenroz.corvid.core.jmap.REQUIRED_CAPABILITIES
 import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.MockEngineConfig
 import io.ktor.client.engine.mock.MockRequestHandleScope
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.request.HttpRequestData
@@ -13,6 +14,8 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.OutgoingContent
 import io.ktor.http.headersOf
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -39,9 +42,11 @@ private const val ACCOUNT_ID = "u1"
 /**
  * Interprets JMAP against an in-memory mailbox, advertising
  * `https://mail.corvid.test/jmap/...` with no port, the way a real Stalwart
- * deployment does before the caller rebases it.
+ * deployment does before the caller rebases it. [dispatcher] runs the engine's
+ * handler: a test that polls on virtual time passes its own, so no answer
+ * lands from another thread.
  */
-class FakeJmapServer {
+class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
     var unauthorized: Boolean = false
     var unreachable: Boolean = false
     var tlsFailure: Boolean = false
@@ -113,6 +118,9 @@ class FakeJmapServer {
     /** Fails every EmailSubmission `create` with `notCreated`, as a rejected sender or recipient would. */
     var refuseSubmission: Boolean = false
 
+    /** While set, a JMAP API request waits on it before it is answered, as a slow server would. */
+    var gate: CompletableDeferred<Unit>? = null
+
     /** `/corvid/update`, the server's release report. */
     val update = FakeWebEndpoint()
 
@@ -124,7 +132,13 @@ class FakeJmapServer {
     var requestCount: Int = 0
         private set
 
-    val engine: MockEngine = MockEngine { request -> handle(request) }
+    val engine: MockEngine =
+        MockEngine(
+            MockEngineConfig().apply {
+                this@FakeJmapServer.dispatcher?.let { dispatcher = it }
+                addHandler { request -> handle(request) }
+            },
+        )
 
     private suspend fun MockRequestHandleScope.handle(request: HttpRequestData): HttpResponseData {
         requestCount++
@@ -133,7 +147,10 @@ class FakeJmapServer {
         val path = request.url.encodedPath
         return when {
             path.endsWith("/jmap/session") -> sessionResponse()
-            path.endsWith("/jmap/api/") -> apiResponse(request)
+            path.endsWith("/jmap/api/") -> {
+                gate?.await()
+                apiResponse(request)
+            }
             path.startsWith("/jmap/upload/") -> uploadResponse(request)
             path.startsWith("/jmap/download/") -> downloadResponse(path)
             path.startsWith("/i/") -> imageResponse(request, path)

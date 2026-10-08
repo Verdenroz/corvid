@@ -214,7 +214,24 @@ web tier is not on 443.
 - **`Authentication.directoryId` is a cutover, not an addition.** Null means the internal
   directory; setting it to an OIDC directory means Stalwart stops consulting its own account
   store. On a live mailbox with nobody enrolled in the IdP that is a login outage, so passkeys
-  live in `oidc.plan.ndjson` and are applied deliberately, after mail works.
+  live in `oidc.plan.ndjson` and are applied deliberately, after mail works. Measured: once active, the admin's own password gets a 401 on JMAP.
+- **Stalwart's OIDC directory demands the `email` scope by default**, and Pocket-ID's access token
+  is an RFC 9068 JWT with no `preferred_username` or `email` claim, only the scopes the client
+  asked for. `requireScopes` defaults to `openid` and `email`, so a client asking `openid profile`
+  is refused with 401 before Stalwart ever calls Pocket-ID's userinfo. `oidc.plan.ndjson` sets it
+  to `openid` and `profile`, and the client requests exactly that: `profile` is what makes
+  userinfo return `preferred_username`. Measured by `deploy/tests/oidc.test.sh`, which mints real
+  tokens non-interactively against the pinned Stalwart and Pocket-ID.
+- **The scope refusal is logged as `auth.failed`, which the plan's `info` tracer never prints.**
+  At `info` a refused bearer is a bare 401 with nothing in `journalctl -u corvid-mail`; at `debug`
+  it reads `Missing required scope 'email', present scopes: ["openid", "profile"]`. Raise the
+  Tracer to `debug` before concluding Stalwart ignores a token.
+- **Stalwart creates a mailbox for any valid OIDC token whose username has no account.** A second
+  Pocket-ID user with no mailbox got a 200 and a new `nomail@<domain>` account on its first
+  token, so every Pocket-ID user who can reach the `corvid` client becomes a mailbox. Restricting
+  the client to a group stops it at Pocket-ID: with `isGroupRestricted` and the allowed group set,
+  `/authorize` redirects a non-member to `/interaction/error` and no code is issued. A member's
+  token still works.
 - **A new NetworkListener needs a restart**, not just `ReloadSettings`; the port stays closed.
 - **`systemctl disable` does not stick on a quadlet unit; `mask` does.** The generator rebuilds
   the unit on every `daemon-reload`, so a removed enable symlink comes straight back and
@@ -258,7 +275,7 @@ web tier is not on 443.
 - **A credential-less `/jmap/session` is `200`, so `forward_auth` alone guards nothing.**
   v0.16.21 answers it with an empty session (no accounts), which `forward_auth` passes. The
   Caddyfile sends `/corvid/*` to the auth call only when `Authorization` is present; without
-  it the request falls through to Stalwart's `404`. Measured on n1: the matcher without the
+  it the request falls through to Stalwart's `404`. Measured on a live host: the matcher without the
   header check served notices and accepted update requests from anyone.
 - **A single SMTP session delivers at most 10 messages** (`MtaStageData.maxMessages`), and the
   inbound throttle is 25/hour per sender domain plus recipient. Bulk-loading a test mailbox
