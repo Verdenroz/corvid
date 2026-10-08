@@ -259,6 +259,11 @@ impl Server {
         format!("{}-admin", self.mail_user.0)
     }
 
+    /// The account that holds device keys, in the key-only domain the plan creates.
+    pub fn keys_address(&self) -> String {
+        format!("corvid-keys@keys.{}", self.domain.as_str())
+    }
+
     pub fn mail_user(&self) -> &str {
         &self.mail_user.0
     }
@@ -745,6 +750,7 @@ mod server_tests {
 
         assert_eq!(server.idp_issuer(), "https://passkeys.example.com:9443");
         assert_eq!(server.admin_user(), "alice-admin");
+        assert_eq!(server.keys_address(), "corvid-keys@keys.example.com");
     }
 
     #[test]
