@@ -39,12 +39,16 @@ private const val CORE_AND_FILENODE = "urn:ietf:params:jmap:core"
 private const val FILENODE = "urn:ietf:params:jmap:filenode"
 
 /**
- * Settles FileNode's real property names against a throwaway Stalwart
+ * Settles FileNode's real property names and blob ids against a throwaway Stalwart
  * v0.16.21 rig (container `corvid-rig-client`, a loopback port in
  * 48000-48999), never n1. `CORVID_RIG_PASSWORD` is the admin password
  * `stalwart-cli update Bootstrap` printed for that container.
  *
- * Ignored by default: DeviceKeyRepository itself is bearer-only, and this
+ * A key file is made server-side and [DeviceKeyRepository] only downloads the blob a device's
+ * record names, so this checks the part the client relies on: the blob id `FileNode/get`
+ * returns downloads the bytes that were uploaded.
+ *
+ * Ignored by default: DeviceKeyRepository is bearer-only, and this
  * rig has no OIDC issuer to mint one from, so this test
  * speaks basic auth directly rather than through JmapClient. It exists to
  * have run once against the real capability, not to run in CI.
@@ -76,7 +80,7 @@ class DeviceKeyRepositoryLiveTest {
     }
 
     @Test
-    fun `FileNode create, get and blob round trip match what DeviceKeyRepository expects`() =
+    fun `the blob id FileNode get returns downloads the uploaded key bytes`() =
         runTest {
             val session = client.get("$RIG_BASE_URL/jmap/session").body<JsonObject>()
             val accountId = session.getValue("primaryAccounts").jsonObject.getValue(FILENODE).jsonPrimitive.content
