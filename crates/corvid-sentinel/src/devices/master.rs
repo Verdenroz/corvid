@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::sync::{PoisonError, RwLock};
+
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ring::signature::{self, RsaPublicKeyComponents};
@@ -22,7 +25,10 @@ pub struct Master {
     issuer: String,
     idp_url: String,
     admin_user: String,
+    keys: RwLock<HashMap<Option<String>, Modulus>>,
 }
+
+type Modulus = (Vec<u8>, Vec<u8>);
 
 #[derive(Deserialize)]
 struct Header {
@@ -64,6 +70,7 @@ impl Master {
             issuer,
             idp_url,
             admin_user,
+            keys: RwLock::default(),
         }
     }
 
@@ -81,11 +88,7 @@ impl Master {
         if header.alg != "RS256" || header.typ.as_deref() != Some("at+jwt") {
             return Err(Refusal::Invalid("not an RS256 access token"));
         }
-        let keys = self
-            .get(&format!("{}/.well-known/jwks.json", self.idp_url), None)
-            .await?;
-        let (n, e) =
-            rsa_key(&keys, header.kid.as_deref()).ok_or(Refusal::Invalid("unknown key"))?;
+        let (n, e) = self.key(header.kid.as_deref()).await?;
         let signature = URL_SAFE_NO_PAD
             .decode(signature)
             .map_err(|_| Refusal::Invalid("bad signature encoding"))?;
@@ -110,6 +113,28 @@ impl Master {
         } else {
             Err(Refusal::NotMaster)
         }
+    }
+
+    /// The signing key for `kid`. The key set is fetched only for a kid not in the last one
+    /// fetched, which is how a rotated key is picked up.
+    async fn key(&self, kid: Option<&str>) -> Result<Modulus, Refusal> {
+        let kid = kid.map(str::to_owned);
+        if let Some(key) = self.cached(&kid) {
+            return Ok(key);
+        }
+        let fetched = self
+            .get(&format!("{}/.well-known/jwks.json", self.idp_url), None)
+            .await?;
+        let mut keys = self.keys.write().unwrap_or_else(PoisonError::into_inner);
+        *keys = rsa_keys(&fetched);
+        keys.get(&kid)
+            .cloned()
+            .ok_or(Refusal::Invalid("unknown key"))
+    }
+
+    fn cached(&self, kid: &Option<String>) -> Option<Modulus> {
+        let keys = self.keys.read().unwrap_or_else(PoisonError::into_inner);
+        keys.get(kid).cloned()
     }
 
     fn check_claims(&self, claims: &Claims, now: i64) -> Result<(), Refusal> {
@@ -156,11 +181,15 @@ fn decode<T: for<'de> Deserialize<'de>>(part: &str) -> Result<T, Refusal> {
     serde_json::from_slice(&bytes).map_err(|_| Refusal::Invalid("bad JSON"))
 }
 
-fn rsa_key(keys: &Value, kid: Option<&str>) -> Option<(Vec<u8>, Vec<u8>)> {
-    let key = keys.get("keys")?.as_array()?.iter().find(|key| {
-        key.get("kty").and_then(Value::as_str) == Some("RSA")
-            && key.get("kid").and_then(Value::as_str) == kid
-    })?;
-    let part = |name| URL_SAFE_NO_PAD.decode(key.get(name)?.as_str()?).ok();
-    Some((part("n")?, part("e")?))
+fn rsa_keys(keys: &Value) -> HashMap<Option<String>, Modulus> {
+    let list = keys.get("keys").and_then(Value::as_array);
+    list.into_iter()
+        .flatten()
+        .filter(|key| key.get("kty").and_then(Value::as_str) == Some("RSA"))
+        .filter_map(|key| {
+            let part = |name| URL_SAFE_NO_PAD.decode(key.get(name)?.as_str()?).ok();
+            let kid = key.get("kid").and_then(Value::as_str).map(str::to_owned);
+            Some((kid, (part("n")?, part("e")?)))
+        })
+        .collect()
 }
