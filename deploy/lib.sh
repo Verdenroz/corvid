@@ -31,7 +31,6 @@ in_pod() {
 prefer_token() {
   [[ -z "${STALWART_TOKEN:-}" ]] || unset STALWART_USER STALWART_PASSWORD
 }
-prefer_token
 
 # Sources FILE into the environment, then lets a token in it win over a password pair.
 load_env() {
@@ -53,9 +52,34 @@ curl_authed() {
   curl --config <(printf 'user = "%s:%s"\n' "$user" "$pass") "$@"
 }
 
+# Reads a JMAP request from stdin and prints the response. With EXPECT, refuses a response
+# answering for a different account, so a wrong id can never act on another account silently.
+jmap_call() {
+  local expect="${1:-}"
+  curl_authed -fsS -H 'Content-Type: application/json' -d @- "$STALWART_URL/jmap" |
+    python3 -c '
+import json, sys
+expect, body = sys.argv[1], sys.stdin.read()
+for _, args, _ in json.loads(body).get("methodResponses", []):
+    got = args.get("accountId")
+    if expect and got not in (None, expect):
+        sys.exit(f"jmap response accountId {got!r} does not match requested {expect!r}")
+sys.stdout.write(body)' "$expect"
+}
+
 jmap_admin() {
-  curl_authed -fsS -H 'Content-Type: application/json' "$STALWART_URL/jmap" \
-    -d "{\"using\": [\"urn:ietf:params:jmap:core\", \"urn:stalwart:jmap\"], \"methodCalls\": $1}"
+  printf '{"using": ["urn:ietf:params:jmap:core", "urn:stalwart:jmap"], "methodCalls": %s}' "$1" | jmap_call
+}
+
+# Prints the secret of the object a Foo/set response on stdin created as n0, or fails with why not.
+created_secret() {
+  python3 -c '
+import json, sys
+result = json.load(sys.stdin)["methodResponses"][0][1]
+created = result.get("created", {}).get("n0")
+if not created:
+    sys.exit(json.dumps(result.get("notCreated", result)))
+print(created["secret"])'
 }
 
 # Creates an admin API key and records it in ENV_FILE as STALWART_TOKEN, or as $3 under the
@@ -69,13 +93,7 @@ import json, sys
 rows = json.load(sys.stdin)["methodResponses"][0][1]["list"]
 print(json.dumps([r["id"] for r in rows if r.get("description") == sys.argv[1]]))' "$description")" || return 1
   token="$(jmap_admin "[[\"x:ApiKey/set\", {\"destroy\": $stale, \"create\": {\"n0\": {\"description\": \"$description\"}}}, \"c0\"]]" |
-    python3 -c '
-import json, sys
-result = json.load(sys.stdin)["methodResponses"][0][1]
-created = result.get("created", {}).get("n0")
-if not created:
-    sys.exit(json.dumps(result.get("notCreated", result)))
-print(created["secret"])')" || return 1
+    created_secret)" || return 1
   atomic_write "$env_file" "$(grep -v "^$variable=" "$env_file"; printf '%s=%s' "$variable" "$token")" 600
 }
 

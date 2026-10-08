@@ -24,21 +24,6 @@ usage() {
   exit 64
 }
 
-# Refuses a response answering for a different account than requested, so a wrong id can never
-# act on another account silently.
-jmap_call() {
-  local expect="$1"
-  curl_authed -fsS -H 'Content-Type: application/json' -d @- "$STALWART_URL/jmap" |
-    python3 -c '
-import json, sys
-expect, body = sys.argv[1], sys.stdin.read()
-for _, args, _ in json.loads(body).get("methodResponses", []):
-    got = args.get("accountId")
-    if got not in (None, expect):
-        sys.exit(f"jmap response accountId {got!r} does not match requested {expect!r}")
-sys.stdout.write(body)' "$expect"
-}
-
 app_passwords() {
   stalwart-cli get Account "$1" --fields credentials --json | python3 -c '
 import json, sys
@@ -92,13 +77,7 @@ print(json.dumps({
         "create": {"n0": {"description": name, "allowedIps": allowed_ips}}}, "c0"]],
 }))' "$name" "$allowed_ips" "$id")"
 
-  secret="$(printf '%s' "$request" | jmap_call "$id" | python3 -c '
-import json, sys
-result = json.load(sys.stdin)["methodResponses"][0][1]
-created = result.get("created", {}).get("n0")
-if not created:
-    sys.exit(json.dumps(result.get("notCreated", result)))
-print(created["secret"])')"
+  secret="$(printf '%s' "$request" | jmap_call "$id" | created_secret)"
   echo "$secret"
   echo "  device $name added, $restriction" >&2
 }
