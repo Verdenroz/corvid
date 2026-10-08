@@ -24,6 +24,7 @@ import com.verdenroz.corvid.core.keyring.KeyHolder
 import com.verdenroz.corvid.core.keyring.KeyState
 import com.verdenroz.corvid.core.keyring.OpenOutcome
 import com.verdenroz.corvid.core.keyring.RequestStatus
+import com.verdenroz.corvid.core.model.hostOf
 import com.verdenroz.corvid.core.text.uiText
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.Dispatchers
@@ -77,7 +78,7 @@ class AppLockViewModel(
 
     /** What the locked screen can say for certain: whichever of these this session knows. */
     val lockFacts: LockFacts
-        get() = LockFacts((tokenSource.state.value as? AuthState.SignedIn)?.server?.baseUrl?.let(::host), deviceName, lockedAt)
+        get() = LockFacts((tokenSource.state.value as? AuthState.SignedIn)?.server?.baseUrl?.let(::hostOf), deviceName, lockedAt)
 
     private var lockedAt: Instant? = null
 
@@ -97,7 +98,7 @@ class AppLockViewModel(
     private val accountHosts: AccountHosts?
         get() =
             (tokenSource.state.value as? AuthState.SignedIn)?.let { signedIn ->
-                AccountHosts(host(signedIn.server.baseUrl), tokenSource.issuerUrl?.let(::host))
+                AccountHosts(hostOf(signedIn.server.baseUrl), tokenSource.issuerUrl?.let(::hostOf))
             }
 
     /** Throttled by [reconnectPolicy], the same policy an automatic reconnect would use. */

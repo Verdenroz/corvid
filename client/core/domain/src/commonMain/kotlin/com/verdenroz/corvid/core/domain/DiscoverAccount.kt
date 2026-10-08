@@ -1,6 +1,7 @@
 package com.verdenroz.corvid.core.domain
 
 import com.verdenroz.corvid.core.model.ServerAddress
+import com.verdenroz.corvid.core.model.hostOf
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
@@ -53,5 +54,3 @@ class DiscoverAccount(
         return Discovery(ServerAddress(document.server.trimEnd('/')), document.issuer.trimEnd('/'))
     }
 }
-
-private fun hostOf(url: String): String = url.substringAfter("://").substringBefore('/').substringBefore(':')

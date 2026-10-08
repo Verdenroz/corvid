@@ -9,3 +9,6 @@ import kotlin.jvm.JvmInline
  */
 @JvmInline
 value class ServerAddress(val baseUrl: String)
+
+/** The hostname of a base URL, without scheme, port or path. */
+fun hostOf(url: String): String = url.substringAfter("://").substringBefore('/').substringBefore(':')
