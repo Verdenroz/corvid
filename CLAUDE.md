@@ -420,8 +420,9 @@ Caddyfile built from the same env vars as everything else. `core/discovery` hold
 - **A Pocket-ID refresh keeps the access token's `iat`.** A refresh grant needs no passkey, hands
   out a rotated refresh token each time (so a chain never expires) and extends `exp`, but the new
   access token carries the original `iat`. The sentinel's five minute window runs on `iat`, so a
-  chain of refreshes never renews it; the rig refreshes for over five minutes and the last token
-  is refused. Pocket-ID issues a refresh token even without `offline_access`, and one minute is
+  chain of refreshes never renews it. The rig refreshes once and checks `iat` is unchanged, `exp`
+  moved and the sentinel still approves with it; the sentinel's own tests refuse an `iat` older
+  than five minutes. Pocket-ID issues a refresh token even without `offline_access`, and one minute is
   the shortest refresh lifetime it accepts, which `idp.sh` sets on `corvid-admin`.
 - **A default 5-app-password-per-account quota exists**, reported as `overQuota` in `notCreated`
   rather than failing the request outright. `stalwart.plan.ndjson` raises it to 20 via
