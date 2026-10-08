@@ -8,8 +8,7 @@ mod state;
 
 use std::io;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, PoisonError};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::Arc;
 
 use axum::Json;
 use axum::Router;
@@ -21,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
 
 use crate::dates;
+use crate::persisted::Persisted;
 use keys::Keys;
 use master::{Master, Refusal};
 pub use state::{Approved, Devices, Request, Stage, open};
@@ -44,40 +44,28 @@ pub struct Config {
 
 struct DeviceState {
     secret: Vec<u8>,
-    path: PathBuf,
-    devices: Mutex<Devices>,
+    devices: Persisted<Devices>,
     master: Master,
     keys: Keys,
 }
 
-impl DeviceState {
-    fn snapshot(&self) -> Devices {
-        self.devices
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone()
-    }
-
-    /// Applies `change` to the current state and persists the result before it becomes current.
-    /// `change` answers with the next state, or `None` for nothing to commit, and a result.
-    fn commit<T>(&self, change: impl FnOnce(&Devices) -> (Option<Devices>, T)) -> io::Result<T> {
-        let mut devices = self.devices.lock().unwrap_or_else(PoisonError::into_inner);
-        let (next, result) = change(&devices);
-        if let Some(next) = next {
-            save(&self.path, &next)?;
-            *devices = next;
-        }
-        Ok(result)
-    }
-}
-
 type Shared = Arc<DeviceState>;
+
+/// Runs a state change off the async threads, since it writes the state file.
+async fn commit<T: Send + 'static>(
+    state: Shared,
+    change: impl FnOnce(&Devices) -> (Option<Devices>, T) + Send + 'static,
+) -> Result<T, StatusCode> {
+    tokio::task::spawn_blocking(move || state.devices.commit(change))
+        .await
+        .expect("the blocking task panicked")
+        .map_err(|error| unrecorded(&error))
+}
 
 pub fn routes(config: Config) -> Router {
     let state = Arc::new(DeviceState {
         secret: config.secret,
-        path: config.state_path,
-        devices: Mutex::new(config.devices),
+        devices: Persisted::new(config.state_path, config.devices, save),
         master: Master::new(config.issuer, config.idp_url, config.admin_user),
         keys: Keys::new(
             config.stalwart_url,
@@ -94,12 +82,6 @@ pub fn routes(config: Config) -> Router {
         .route("/internal/devices/{name}", delete(revoke))
         .layer(DefaultBodyLimit::max(REQUEST_BODY_LIMIT))
         .with_state(state)
-}
-
-fn now() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |elapsed| elapsed.as_secs() as i64)
 }
 
 /// `requests` is refused because it is the path segment the request routes live under.
@@ -133,11 +115,6 @@ struct Created {
     expires_at: String,
 }
 
-enum Opened {
-    Full,
-    Created(Created),
-}
-
 async fn create(
     State(state): State<Shared>,
     Json(new): Json<NewRequest>,
@@ -145,44 +122,39 @@ async fn create(
     if !valid_name(&new.name) {
         return Err(StatusCode::BAD_REQUEST);
     }
-    let opened = tokio::task::spawn_blocking(move || {
-        state.commit(|devices| {
-            let now = now();
-            let mut next = devices.without_expired_requests(now);
-            if next.open_requests(now) >= MAX_OPEN {
-                return (None, Opened::Full);
-            }
-            let id = hex::encode(random_bytes::<16>());
-            let code = format!("{:06}", u32::from_be_bytes(random_bytes()) % 1_000_000);
-            let expires_at = now + LIFETIME_SECONDS;
-            next.requests.insert(
-                id.clone(),
-                Request {
-                    name: new.name,
-                    code: code.clone(),
-                    expires_at,
-                    attempts: 0,
-                    stage: Stage::Open,
-                },
-            );
-            let expires_at = dates::rfc3339(expires_at);
-            (
-                Some(next),
-                Opened::Created(Created {
-                    id,
-                    code,
-                    expires_at,
-                }),
-            )
-        })
+    let created = commit(state, |devices| {
+        let now = dates::now_secs();
+        let mut next = devices.without_expired_requests(now);
+        if next.open_requests(now) >= MAX_OPEN {
+            return (None, None);
+        }
+        let id = hex::encode(random_bytes::<16>());
+        let code = format!("{:06}", u32::from_be_bytes(random_bytes()) % 1_000_000);
+        let expires_at = now + LIFETIME_SECONDS;
+        next.requests.insert(
+            id.clone(),
+            Request {
+                name: new.name,
+                code: code.clone(),
+                expires_at,
+                attempts: 0,
+                stage: Stage::Open,
+            },
+        );
+        let expires_at = dates::rfc3339(expires_at);
+        (
+            Some(next),
+            Some(Created {
+                id,
+                code,
+                expires_at,
+            }),
+        )
     })
-    .await
-    .expect("the blocking task panicked");
-    match opened {
-        Ok(Opened::Created(created)) => Ok((StatusCode::CREATED, Json(created))),
-        Ok(Opened::Full) => Err(StatusCode::TOO_MANY_REQUESTS),
-        Err(error) => Err(unrecorded(&error)),
-    }
+    .await?;
+    created
+        .map(|created| (StatusCode::CREATED, Json(created)))
+        .ok_or(StatusCode::TOO_MANY_REQUESTS)
 }
 
 fn unrecorded(error: &io::Error) -> StatusCode {
@@ -197,12 +169,14 @@ struct Status {
 
 /// An id that is unknown, spent or past its lifetime all read as `expired`.
 async fn status(State(state): State<Shared>, Path(id): Path<String>) -> Json<Status> {
-    let now = now();
-    let status = match state.snapshot().requests.get(&id) {
-        Some(request) if request.stage == Stage::Approved => "approved",
-        Some(request) if request.is_live(now) => "pending",
-        _ => "expired",
-    };
+    let now = dates::now_secs();
+    let status = state
+        .devices
+        .read(|devices| match devices.requests.get(&id) {
+            Some(request) if request.stage == Stage::Approved => "approved",
+            Some(request) if request.is_live(now) => "pending",
+            _ => "expired",
+        });
     Json(Status { status })
 }
 
@@ -228,17 +202,17 @@ async fn approve(
         .get("X-Corvid-Master")
         .and_then(|value| value.to_str().ok())
         .ok_or(StatusCode::UNAUTHORIZED)?;
-    let live = state
-        .snapshot()
-        .requests
-        .get(&id)
-        .is_some_and(|request| request.stage == Stage::Open && request.is_live(now()));
+    let live = state.devices.read(|devices| {
+        devices.requests.get(&id).is_some_and(|request| {
+            request.stage == Stage::Open && request.is_live(dates::now_secs())
+        })
+    });
     if !live {
         return Err(StatusCode::GONE);
     }
     state
         .master
-        .verify(token, now())
+        .verify(token, dates::now_secs())
         .await
         .map_err(|refusal| match refusal {
             Refusal::Invalid(reason) => {
@@ -271,38 +245,37 @@ async fn approve(
 /// Spends the request on the first correct code, so the key is made once however many approvals
 /// race. A wrong code counts against the request's attempts.
 async fn claim(state: Shared, id: String, code: String) -> Result<Claim, StatusCode> {
-    tokio::task::spawn_blocking(move || {
-        state.commit(|devices| {
-            let now = now();
-            let Some(request) = devices.requests.get(&id) else {
-                return (None, Claim::Gone);
-            };
-            if request.stage != Stage::Open || !request.is_live(now) {
-                return (None, Claim::Gone);
-            }
-            let right = bool::from(request.code.as_bytes().ct_eq(code.as_bytes()));
-            let mut next = devices.clone();
-            let entry = next
-                .requests
-                .get_mut(&id)
-                .expect("the request was just read");
-            if right {
-                entry.stage = Stage::Claimed;
-                (Some(next), Claim::Claimed(request.clone()))
-            } else {
-                entry.attempts += 1;
-                (Some(next), Claim::Wrong)
-            }
-        })
+    commit(state, move |devices| {
+        let now = dates::now_secs();
+        let Some(request) = devices.requests.get(&id) else {
+            return (None, Claim::Gone);
+        };
+        if request.stage != Stage::Open || !request.is_live(now) {
+            return (None, Claim::Gone);
+        }
+        let right = bool::from(request.code.as_bytes().ct_eq(code.as_bytes()));
+        let mut next = devices.clone();
+        let entry = next
+            .requests
+            .get_mut(&id)
+            .expect("the request was just read");
+        if right {
+            entry.stage = Stage::Claimed;
+            (Some(next), Claim::Claimed(request.clone()))
+        } else {
+            entry.attempts += 1;
+            (Some(next), Claim::Wrong)
+        }
     })
     .await
-    .expect("the blocking task panicked")
-    .map_err(|error| unrecorded(&error))
 }
 
 async fn enroll(state: &DeviceState, request: &Request) -> Result<Approved, keys::Error> {
-    if let Some(old) = state.snapshot().approved.get(&request.name) {
-        state.keys.destroy(old).await?;
+    let old = state
+        .devices
+        .read(|devices| devices.approved.get(&request.name).cloned());
+    if let Some(old) = old {
+        state.keys.destroy(&old).await?;
     }
     state.keys.enroll(&request.name).await
 }
@@ -313,32 +286,24 @@ async fn record(
     name: String,
     approved: Approved,
 ) -> Result<(), StatusCode> {
-    tokio::task::spawn_blocking(move || {
-        state.commit(|devices| {
-            let mut next = devices.clone();
-            if let Some(request) = next.requests.get_mut(&id) {
-                request.stage = Stage::Approved;
-            }
-            next.approved.insert(name, approved);
-            (Some(next), ())
-        })
+    commit(state, move |devices| {
+        let mut next = devices.clone();
+        if let Some(request) = next.requests.get_mut(&id) {
+            request.stage = Stage::Approved;
+        }
+        next.approved.insert(name, approved);
+        (Some(next), ())
     })
     .await
-    .expect("the blocking task panicked")
-    .map_err(|error| unrecorded(&error))
 }
 
 async fn forget(state: Shared, id: String) -> Result<(), StatusCode> {
-    tokio::task::spawn_blocking(move || {
-        state.commit(|devices| {
-            let mut next = devices.clone();
-            next.requests.remove(&id);
-            (Some(next), ())
-        })
+    commit(state, move |devices| {
+        let mut next = devices.clone();
+        next.requests.remove(&id);
+        (Some(next), ())
     })
     .await
-    .expect("the blocking task panicked")
-    .map_err(|error| unrecorded(&error))
 }
 
 async fn read(
@@ -346,10 +311,8 @@ async fn read(
     Path(name): Path<String>,
 ) -> Result<Json<Approved>, StatusCode> {
     state
-        .snapshot()
-        .approved
-        .get(&name)
-        .cloned()
+        .devices
+        .read(|devices| devices.approved.get(&name).cloned())
         .map(Json)
         .ok_or(StatusCode::NOT_FOUND)
 }
@@ -372,24 +335,18 @@ async fn revoke(
         return Err(StatusCode::UNAUTHORIZED);
     }
     let approved = state
-        .snapshot()
-        .approved
-        .get(&name)
-        .cloned()
+        .devices
+        .read(|devices| devices.approved.get(&name).cloned())
         .ok_or(StatusCode::NOT_FOUND)?;
     state.keys.destroy(&approved).await.map_err(|error| {
         tracing::warn!(%error, "a device key could not be destroyed");
         StatusCode::BAD_GATEWAY
     })?;
-    tokio::task::spawn_blocking(move || {
-        state.commit(|devices| {
-            let mut next = devices.clone();
-            next.approved.remove(&name);
-            (Some(next), ())
-        })
+    commit(state, move |devices| {
+        let mut next = devices.clone();
+        next.approved.remove(&name);
+        (Some(next), ())
     })
-    .await
-    .expect("the blocking task panicked")
-    .map_err(|error| unrecorded(&error))?;
+    .await?;
     Ok(StatusCode::NO_CONTENT)
 }

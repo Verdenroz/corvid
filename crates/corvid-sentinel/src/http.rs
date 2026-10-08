@@ -1,6 +1,6 @@
 use std::io;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Json;
@@ -11,6 +11,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use serde::{Deserialize, Serialize};
 
+use crate::persisted::Persisted;
 use crate::state::{Notice, NoticeKind, Seen, save};
 use crate::{dates, devices, handle, notice, parse, update, verify, watch};
 
@@ -25,30 +26,13 @@ pub struct Config {
 
 pub(crate) struct AppState {
     secret: Vec<u8>,
-    state_path: PathBuf,
-    seen: Mutex<Seen>,
+    seen: Persisted<Seen>,
 }
 
 impl AppState {
-    // A poisoned lock means a prior request panicked mid-decision; the state it left behind is
-    // still whatever the last successful commit wrote, so it is safe to keep using.
-    fn lock(&self) -> MutexGuard<'_, Seen> {
-        self.seen
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-    }
-
-    /// Applies `change` to the current state and persists the result before it becomes
-    /// current, so a failed save leaves the state, and so a retried batch, as it was. `None`
-    /// from `change` means nothing to commit.
+    /// `None` from `change` means nothing to commit.
     pub(crate) fn commit(&self, change: impl FnOnce(&Seen) -> Option<Seen>) -> io::Result<()> {
-        let mut seen = self.lock();
-        let Some(next) = change(&seen) else {
-            return Ok(());
-        };
-        save(&self.state_path, &next)?;
-        *seen = next;
-        Ok(())
+        self.seen.commit(|seen| (change(seen), ()))
     }
 }
 
@@ -56,8 +40,7 @@ impl AppState {
 pub fn build(config: Config) -> (Router, impl Future<Output = ()> + Send + 'static) {
     let state = Arc::new(AppState {
         secret: config.secret,
-        state_path: config.state_path,
-        seen: Mutex::new(config.seen),
+        seen: Persisted::new(config.state_path, config.seen, save),
     });
     let watcher = watch::updates(state.clone(), config.update_dir.clone(), config.update_poll);
     let router = Router::new()
@@ -84,13 +67,13 @@ struct Feed {
 
 async fn notices(State(state): State<Arc<AppState>>, Query(query): Query<After>) -> Json<Feed> {
     let after = query.after.unwrap_or(0);
-    let notices = state
-        .lock()
-        .notices
-        .iter()
-        .filter(|notice| notice.id > after)
-        .cloned()
-        .collect();
+    let notices = state.seen.read(|seen| {
+        seen.notices
+            .iter()
+            .filter(|notice| notice.id > after)
+            .cloned()
+            .collect()
+    });
     Json(Feed { notices })
 }
 

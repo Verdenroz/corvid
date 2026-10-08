@@ -3,6 +3,7 @@ mod decide;
 pub mod devices;
 mod http;
 mod notice;
+mod persisted;
 mod service;
 mod signature;
 mod state;
