@@ -92,12 +92,12 @@ print(base64.urlsafe_b64encode(hashlib.sha256(sys.stdin.buffer.read()).digest())
 
 cat > "$work/shell" <<SH
 #!/bin/sh
-printf 'MAIL_DOMAIN=rig.test\nMAIL_HOSTNAME=mail.rig.test\nMAIL_USER=mailuser\nACME_CONTACT=ops@rig.test\nWEB_PORT=$idp_port\nIDP_HOSTNAME=localhost\n'
+printf 'MAIL_DOMAIN=rig.test\nMAIL_HOSTNAME=mail.rig.test\nMAIL_USER=mailuser\nACME_CONTACT=ops@rig.test\nWEB_PORT=$idp_port\nIDP_HOSTNAME=localhost\nADMIN_USER=mailuser-admin\nIDP_URL=$issuer\nSENTINEL_URL=http://127.0.0.1:$sentinel_port\n'
 SH
 chmod +x "$work/shell"
 printf 'STATIC_API_KEY=%s\n' "$api_key" > "$work/idp.env"
 provision() {
-  CORVID_DIR="$work" CORVID_CONFIG_CMD="$work/shell" CORVID_IDP_URL="$issuer" bash "$here/idp.sh" "$@"
+  CORVID_DIR="$work" CORVID_CONFIG_CMD="$work/shell" CORVID_HOST_NET=1 bash "$here/idp.sh" "$@"
 }
 snapshot() { idp_api users; idp_api user-groups; idp_api oidc/clients; }
 idp_api oidc/clients -d '{"id":"corvid","name":"corvid","isPublic":true,"pkceEnabled":true,"callbackURLs":["http://127.0.0.1/callback"]}' >/dev/null
@@ -500,8 +500,8 @@ restart_mail
 check "the token is accepted after a restart with the issuer up" "$(session "$token")" 200
 
 echo "== the bounded wait before Stalwart starts (the script the unit runs, not the unit)"
-printf 'CORVID_IDP_HOSTNAME=localhost\n' > "$work/server.env"
-wait_issuer() { CORVID_DIR="$work" CORVID_ISSUER_URL="$issuer" bash "$here/wait-issuer.sh" "$@" 2>/dev/null; }
+printf 'APP_URL=%s\n' "$issuer" > "$work/server.env"
+wait_issuer() { CORVID_DIR="$work" bash "$here/wait-issuer.sh" "$@" 2>/dev/null; }
 "$engine" stop "$idp" >/dev/null
 "$engine" stop "$mail" >/dev/null
 SECONDS=0

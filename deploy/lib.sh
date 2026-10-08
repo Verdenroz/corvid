@@ -12,6 +12,20 @@ server_ip() {
   curl -4 -s --max-time 10 https://1.1.1.1/cdn-cgi/trace | sed -n 's/^ip=//p'
 }
 
+# Runs a command in the network namespace of the pod container NAME, whose services listen on the
+# pod's loopback and publish nothing. CORVID_HOST_NET runs it as is, for a rig whose services sit
+# on the host's network.
+in_pod() {
+  local name="$1" pid
+  shift
+  if [[ -z "${CORVID_HOST_NET:-}" ]]; then
+    pid="$(podman inspect -f '{{.State.Pid}}' "$name" 2>/dev/null || echo 0)"
+    (( pid > 0 )) || { echo "$name is not running; check: systemctl status $name" >&2; exit 69; }
+    set -- nsenter "--net=/proc/$pid/ns/net" "$@"
+  fi
+  "$@"
+}
+
 # stalwart-cli refuses a token alongside a user, so a token replaces the password pair in the
 # environment. load_env calls it after every source of corvid.env.
 prefer_token() {
@@ -106,8 +120,9 @@ atomic_write() {
 unit_masked() { [[ "$(systemctl is-enabled "$1" 2>/dev/null)" == masked ]]; }
 
 # Sets and exports MAIL_DOMAIN, MAIL_HOSTNAME, MAIL_USER, ACME_CONTACT, WEB_PORT, HOST_ZONE,
-# IDP_HOSTNAME, PUBLISH_MTA_STS, PUBLISH_TLSA, MTA_STS_MODE, CLIENT_SOURCES and UPDATE_AUTO from
-# config.yaml. Tests set CORVID_CONFIG_CMD to run it without the container.
+# IDP_HOSTNAME, IDP_URL, SENTINEL_URL, ADMIN_USER, PUBLISH_MTA_STS, PUBLISH_TLSA, MTA_STS_MODE,
+# CLIENT_SOURCES and UPDATE_AUTO from config.yaml. Tests set CORVID_CONFIG_CMD to run it without
+# the container.
 load_server() {
   local out key value
   if [[ -n "${CORVID_CONFIG_CMD:-}" ]]; then
@@ -119,7 +134,7 @@ load_server() {
   fi
   while IFS='=' read -r key value; do
     case "$key" in
-      MAIL_DOMAIN|MAIL_HOSTNAME|MAIL_USER|ACME_CONTACT|WEB_PORT|HOST_ZONE|IDP_HOSTNAME|PUBLISH_MTA_STS|PUBLISH_TLSA|MTA_STS_MODE|CLIENT_SOURCES|UPDATE_AUTO)
+      MAIL_DOMAIN|MAIL_HOSTNAME|MAIL_USER|ACME_CONTACT|WEB_PORT|HOST_ZONE|IDP_HOSTNAME|IDP_URL|SENTINEL_URL|ADMIN_USER|PUBLISH_MTA_STS|PUBLISH_TLSA|MTA_STS_MODE|CLIENT_SOURCES|UPDATE_AUTO)
         printf -v "$key" '%s' "$value"
         export "${key?}"
         ;;

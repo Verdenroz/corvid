@@ -514,10 +514,15 @@ impl Config {
     /// `host_zone` domain publishes the TLSA records, because they live in the hostname's zone.
     pub fn shell(&self) -> Result<String, Error> {
         let server = section(self.server.as_ref(), "server")?;
+        let sentinel = self.sentinel.as_ref();
+        let idp_loopback = sentinel
+            .and_then(|sentinel| sentinel.devices.as_ref())
+            .map_or_else(idp_url, |devices| devices.idp_url.clone());
+        let sentinel_addr = sentinel.map_or_else(sentinel_bind, |sentinel| sentinel.bind.clone());
         Ok(format!(
             "MAIL_DOMAIN={}\nMAIL_HOSTNAME={}\nMAIL_USER={}\nACME_CONTACT={}\nWEB_PORT={}\nHOST_ZONE={}\n\
-             IDP_HOSTNAME={}\nPUBLISH_MTA_STS={}\nPUBLISH_TLSA={}\nMTA_STS_MODE={}\nMTA_STS_ID={}\n\
-             CLIENT_SOURCES={}\nUPDATE_AUTO={}\n",
+             IDP_HOSTNAME={}\nADMIN_USER={}\nIDP_URL={}\nSENTINEL_URL=http://{}\nPUBLISH_MTA_STS={}\n\
+             PUBLISH_TLSA={}\nMTA_STS_MODE={}\nMTA_STS_ID={}\nCLIENT_SOURCES={}\nUPDATE_AUTO={}\n",
             server.domain.0,
             server.hostname.0,
             server.mail_user.0,
@@ -525,6 +530,9 @@ impl Config {
             server.web_port.0,
             server.host_zone.as_ref().map_or("", |zone| zone.as_str()),
             server.idp_hostname(),
+            server.admin_user(),
+            idp_loopback,
+            sentinel_addr,
             server.web_port.0 == 443,
             server.host_zone.is_none(),
             server.mta_sts_mode.as_str(),
@@ -712,8 +720,9 @@ mod server_tests {
             format!(
                 "MAIL_DOMAIN=example.com\nMAIL_HOSTNAME=mail.example.com\nMAIL_USER=alice\n\
                  ACME_CONTACT=you@elsewhere.example\nWEB_PORT=4443\nHOST_ZONE=\n\
-                 IDP_HOSTNAME=idp.example.com\nPUBLISH_MTA_STS=false\nPUBLISH_TLSA=true\n\
-                 MTA_STS_MODE=testing\nMTA_STS_ID={id}\nCLIENT_SOURCES=any\nUPDATE_AUTO=true\n"
+                 IDP_HOSTNAME=idp.example.com\nADMIN_USER=alice-admin\n\
+                 IDP_URL=http://127.0.0.1:1411\nSENTINEL_URL=http://127.0.0.1:11333\n\
+                 PUBLISH_MTA_STS=false\nPUBLISH_TLSA=true\nMTA_STS_MODE=testing\nMTA_STS_ID={id}\nCLIENT_SOURCES=any\nUPDATE_AUTO=true\n"
             )
         );
     }
@@ -758,6 +767,23 @@ mod server_tests {
         let shell = Config::parse(SERVER).unwrap().shell().unwrap();
         assert!(
             shell.lines().any(|l| l == "IDP_HOSTNAME=idp.example.com"),
+            "{shell}"
+        );
+    }
+
+    #[test]
+    fn the_sentinel_and_identity_provider_urls_follow_their_sections() {
+        let text = SERVER.to_owned()
+            + "sentinel:\n  state: /s\n  bind: 127.0.0.1:12000\n  devices:\n    state: /d\n    idp_url: http://127.0.0.1:2000\n";
+        let shell = Config::parse(&text).unwrap().shell().unwrap();
+        assert!(
+            shell.lines().any(|l| l == "IDP_URL=http://127.0.0.1:2000"),
+            "{shell}"
+        );
+        assert!(
+            shell
+                .lines()
+                .any(|l| l == "SENTINEL_URL=http://127.0.0.1:12000"),
             "{shell}"
         );
     }

@@ -17,16 +17,8 @@ API_KEY="$(sed -n 's/^STATIC_API_KEY=//p' "$IDP_ENV" 2>/dev/null || true)"
 [[ -n "$API_KEY" ]] || { echo "STATIC_API_KEY is not set in $IDP_ENV; install.sh generates it" >&2; exit 78; }
 
 # The API listens only on the pod's loopback and Caddy may not have a certificate yet, so curl
-# runs in the container's network namespace.
-if [[ -n "${CORVID_IDP_URL:-}" ]]; then
-  IDP_URL="$CORVID_IDP_URL"
-  in_idp=()
-else
-  IDP_URL=http://127.0.0.1:1411
-  idp_pid="$(podman inspect -f '{{.State.Pid}}' corvid-idp 2>/dev/null || echo 0)"
-  (( idp_pid > 0 )) || { echo "corvid-idp is not running; check: systemctl status corvid-idp" >&2; exit 69; }
-  in_idp=(nsenter "--net=/proc/$idp_pid/ns/net")
-fi
+# runs in the container's network namespace. The first call fails fast, outside any substitution.
+in_pod corvid-idp true
 
 CLIENT_ID=corvid
 MAIL_GROUP=mail
@@ -35,11 +27,10 @@ ADMIN_GROUP=admins
 # A refresh grant mints a token with a new issue time and no passkey, so this client's refresh
 # token lives one minute, the shortest Pocket-ID accepts.
 ADMIN_CLIENT='{"requiresReauthentication": true, "accessTokenDurationMinutes": 5, "refreshTokenDurationMinutes": 1}'
-ADMIN_USER="$MAIL_USER-admin"
 
 api() {
   local method="$1" path="$2"
-  "${in_idp[@]}" curl -fsS -X "$method" -H 'Content-Type: application/json' \
+  in_pod corvid-idp curl -fsS -X "$method" -H 'Content-Type: application/json' \
     --config <(printf 'header = "X-API-Key: %s"\n' "$API_KEY") \
     ${3:+-d "$3"} "$IDP_URL/api/$path"
 }

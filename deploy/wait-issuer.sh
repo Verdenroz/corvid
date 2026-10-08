@@ -11,12 +11,11 @@ budget="${1:?usage: wait-issuer.sh SECONDS [--if-oidc]}"
 [[ "${2:-}" != --if-oidc || -e "$CORVID_DIR/.oidc-active" ]] || exit 0
 
 . "$CORVID_DIR/server.env"
-issuer="${CORVID_ISSUER_URL:-https://$CORVID_IDP_HOSTNAME:$CORVID_WEB_PORT}"
-resolve=()
-[[ -n "${CORVID_ISSUER_URL:-}" ]] || resolve=(--resolve "$CORVID_IDP_HOSTNAME:$CORVID_WEB_PORT:127.0.0.1")
+# Pinned to the host's own loopback, where Caddy answers.
+resolve=(--resolve "${APP_URL#*://}:127.0.0.1")
 
 deadline=$((SECONDS + budget))
-until curl -sf -o /dev/null --max-time 5 "${resolve[@]}" "$issuer/.well-known/openid-configuration"; do
-  (( SECONDS < deadline )) || { echo "$issuer does not answer within ${budget}s" >&2; exit 1; }
+until curl -sf -o /dev/null --max-time 5 "${resolve[@]}" "$APP_URL/.well-known/openid-configuration"; do
+  (( SECONDS < deadline )) || { echo "$APP_URL does not answer within ${budget}s" >&2; exit 1; }
   sleep 2
 done
