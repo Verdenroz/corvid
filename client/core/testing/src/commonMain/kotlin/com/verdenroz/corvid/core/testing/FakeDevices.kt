@@ -49,9 +49,6 @@ class FakeDevices(private val blobs: MutableMap<String, ByteArray>) {
     val opened: MutableList<String> = mutableListOf()
     val approvals: MutableList<FakeApproval> = mutableListOf()
 
-    /** The Authorization header of each request that reached any path, null where there was none. */
-    val authorizations: MutableList<String?> = mutableListOf()
-
     private class Request(val name: String, val code: String, var status: String)
 
     private val requests = mutableMapOf<String, Request>()
@@ -61,8 +58,6 @@ class FakeDevices(private val blobs: MutableMap<String, ByteArray>) {
 
     /** The code shown on the new device for [id]. */
     fun codeOf(id: String): String = requests.getValue(id).code
-
-    fun statusOf(id: String): String = requests.getValue(id).status
 
     /** Ends [id] as a lifetime running out does; the server then calls it expired. */
     fun expire(id: String) {
@@ -101,7 +96,6 @@ class FakeDevices(private val blobs: MutableMap<String, ByteArray>) {
         scope: MockRequestHandleScope,
         request: HttpRequestData,
     ): HttpResponseData {
-        authorizations += request.headers[HttpHeaders.Authorization]
         if (dailyRejected) {
             return scope.respond(
                 "",
