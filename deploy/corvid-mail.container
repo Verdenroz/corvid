@@ -1,7 +1,7 @@
 [Unit]
 Description=Corvid mail server (Stalwart)
 Documentation=https://stalw.art/docs
-After=network-online.target corvid-unbound.service
+After=network-online.target corvid-unbound.service corvid-idp.service corvid-caddy.service
 Wants=network-online.target corvid-unbound.service
 
 [Container]
@@ -26,7 +26,7 @@ Restart=always
 TimeoutStartSec=300
 # Stalwart refuses tokens until it restarts if Pocket-ID is down when it first checks one. The
 # wait is bounded and its exit status ignored, so mail starts either way.
-ExecStartPre=-/opt/corvid/deploy/wait-issuer.sh 60 --if-oidc
+ExecStartPre=-/opt/corvid/deploy/wait-issuer.sh 60
 # A RocksDB compaction without a ceiling can OOM-kill whatever shares the box.
 MemoryHigh=550M
 MemoryMax=650M

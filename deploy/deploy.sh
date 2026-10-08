@@ -154,7 +154,6 @@ systemctl start corvid-idp.service
 enrollment="$("$HERE/idp.sh" provision)"
 step "switching sign-in to Pocket-ID"
 CORVID_SKIP_RELOAD=1 PLAN="$HERE/oidc.plan.ndjson" "$HERE/apply-plan.sh"
-touch "$CORVID_DIR/.oidc-active"
 
 config="$(config_state)" || config="unknown"
 if [[ "$config" == "$(cat "$CONFIG_MARKER" 2>/dev/null)" ]]; then

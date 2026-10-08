@@ -249,11 +249,12 @@ Caddyfile built from the same env vars as everything else. `core/discovery` hold
   that restarted Stalwart with the issuer down and asked nothing until it returned was accepted;
   another stayed refused for two minutes, so a restart with the issuer down is not safe.
   `deploy.sh` waits for the issuer through Caddy before the restart that loads the directory, and
-  `corvid-mail` runs `wait-issuer.sh 60 --if-oidc` as an `ExecStartPre` whose exit status the unit
-  ignores, so a boot or update restart delays Stalwart by at most 60 seconds and never stops it.
-  The wait is skipped until `deploy.sh` has applied the OIDC plan (`.oidc-active`). Pocket-ID
-  down longer than that at boot still needs one `systemctl restart corvid-mail` once it is back.
-  The rig tests the script, not the unit's `ExecStartPre`.
+  `corvid-mail` runs `wait-issuer.sh 60` as an `ExecStartPre` whose exit status the unit ignores,
+  so a boot or update restart delays Stalwart by at most 60 seconds and never stops it. The unit
+  orders itself after `corvid-idp` and `corvid-caddy` without requiring them, so the first probe
+  usually passes. Pocket-ID down longer than that at boot still needs one `systemctl restart
+  corvid-mail` once it is back. The rig tests the script, not the unit's `ExecStartPre`, and
+  reaches Pocket-ID directly, since it runs no Caddy.
 - **Stalwart's OIDC directory demands the `email` scope by default**, and Pocket-ID's access token
   is an RFC 9068 JWT with no `preferred_username` or `email` claim, only the scopes the client
   asked for. `requireScopes` defaults to `openid` and `email`, so a client asking `openid profile`

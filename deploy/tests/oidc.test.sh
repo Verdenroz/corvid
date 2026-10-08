@@ -505,11 +505,7 @@ wait_issuer() { CORVID_DIR="$work" bash "$here/wait-issuer.sh" "$@" 2>/dev/null;
 "$engine" stop "$idp" >/dev/null
 "$engine" stop "$mail" >/dev/null
 SECONDS=0
-wait_issuer 30 --if-oidc; status=$?
-check "it does nothing until the OIDC plan is applied" "$status $((SECONDS < 3))" "0 1"
-touch "$work/.oidc-active"
-SECONDS=0
-wait_issuer 4 --if-oidc; status=$?
+wait_issuer 4; status=$?
 check "it gives up at its bound with Pocket-ID down" "$status $((SECONDS >= 4 && SECONDS < 15))" "1 1"
 "$engine" start "$mail" >/dev/null
 wait_for "$STALWART_URL/healthz/live" || { echo "Stalwart did not start with Pocket-ID down" >&2; exit 1; }
@@ -518,7 +514,7 @@ check "the admin API key works after the wait expired" \
   "$(curl_authed -s "$STALWART_URL/api/account" -o /dev/null -w '%{http_code}')" 200
 "$engine" stop "$mail" >/dev/null
 ( sleep 5; "$engine" start "$idp" >/dev/null ) &
-wait_issuer 60 --if-oidc; status=$?
+wait_issuer 60; status=$?
 check "it returns as soon as Pocket-ID answers within the bound" "$status" 0
 "$engine" start "$mail" >/dev/null
 wait_for "$STALWART_URL/healthz/live" || { echo "Stalwart did not start" >&2; exit 1; }
