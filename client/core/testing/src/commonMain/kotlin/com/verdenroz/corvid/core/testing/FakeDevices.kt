@@ -38,6 +38,9 @@ class FakeDevices(private val blobs: MutableMap<String, ByteArray>) {
     /** Answers an approval that passes every check with 502, as a failed key creation does. */
     var upstreamFails: Boolean = false
 
+    /** Refuses every request the way the forward-auth gate refuses a daily bearer Stalwart does not accept. */
+    var dailyRejected: Boolean = false
+
     var expiresAt: String = "2030-01-01T00:00:00Z"
 
     /** Ids of blobs that live in the keys account and download from no other. */
@@ -99,6 +102,13 @@ class FakeDevices(private val blobs: MutableMap<String, ByteArray>) {
         request: HttpRequestData,
     ): HttpResponseData {
         authorizations += request.headers[HttpHeaders.Authorization]
+        if (dailyRejected) {
+            return scope.respond(
+                "",
+                HttpStatusCode.Unauthorized,
+                headersOf(HttpHeaders.WWWAuthenticate, listOf("Bearer realm=\"Stalwart Server\"")),
+            )
+        }
         val segments = request.url.encodedPath.removePrefix("/corvid/devices").trim('/').split("/").filter { it.isNotEmpty() }
         return when {
             segments == listOf("requests") && request.method == HttpMethod.Post -> open(scope, request)

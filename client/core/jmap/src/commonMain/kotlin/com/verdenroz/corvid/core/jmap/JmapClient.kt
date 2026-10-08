@@ -136,7 +136,7 @@ class JmapClient private constructor(
 
     /**
      * Any web tier call, answered with whatever status came back. A status in [passThrough] is
-     * returned instead of thrown and never trips the auth latch, so a path's own 401 is not the
+     * returned instead of thrown and does not trip the auth latch, so a path's own 401 is not the
      * session's. A 200 or 201 body is read as JSON.
      */
     suspend fun webSend(
@@ -158,6 +158,11 @@ class JmapClient private constructor(
                     }
                 }
             }
+        // Only the forward-auth gate challenges; a path's own 401 carries no WWW-Authenticate.
+        if (response.status == HttpStatusCode.Unauthorized && HttpHeaders.WWWAuthenticate in response.headers) {
+            authLatch.trip()
+            throw JmapException(JmapError.Unauthorized)
+        }
         val hasBody = response.status == HttpStatusCode.OK || response.status == HttpStatusCode.Created
         return WebReply(response.status, if (hasBody) response.json() else null)
     }

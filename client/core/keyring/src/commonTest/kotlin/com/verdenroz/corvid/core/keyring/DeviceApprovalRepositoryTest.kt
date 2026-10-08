@@ -2,14 +2,17 @@ package com.verdenroz.corvid.core.keyring
 
 import com.verdenroz.corvid.core.jmap.AuthLatch
 import com.verdenroz.corvid.core.jmap.JmapClient
+import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.jmap.createJmapHttpClient
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlin.time.Instant
 
 private const val BASE_URL = "http://127.0.0.1:9999"
@@ -82,6 +85,17 @@ class DeviceApprovalRepositoryTest {
 
             assertIs<ApproveOutcome.NotAccepted>(repository.approve(request.id, request.code, "stale"))
             assertFalse(latch.tripped.value)
+        }
+
+    @Test
+    fun `a daily bearer the gate refuses signs the session out instead of reading as a master refusal`() =
+        runTest {
+            val repository = repository()
+            val request = opened(repository)
+            fake.devices.dailyRejected = true
+
+            assertFailsWith<JmapException> { repository.approve(request.id, request.code, "master-token") }
+            assertTrue(latch.tripped.value)
         }
 
     @Test
