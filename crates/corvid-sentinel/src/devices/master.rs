@@ -10,6 +10,7 @@ use serde_json::Value;
 const CLIENT_ID: &str = "corvid-admin";
 const MAX_AGE_SECONDS: i64 = 300;
 const CLOCK_SKEW_SECONDS: i64 = 60;
+const KEY_SET_SECONDS: i64 = 3600;
 
 /// Why a master token was not accepted. `Invalid` is for a token that proves nothing, `NotMaster`
 /// for a genuine token of someone who is not the admin, `Unreachable` for Pocket-ID not answering.
@@ -25,10 +26,16 @@ pub struct Master {
     issuer: String,
     idp_url: String,
     admin_user: String,
-    keys: RwLock<HashMap<Option<String>, Modulus>>,
+    keys: RwLock<KeySet>,
 }
 
-type Modulus = (Vec<u8>, Vec<u8>);
+type RsaParts = (Vec<u8>, Vec<u8>);
+
+#[derive(Default)]
+struct KeySet {
+    fetched_at: i64,
+    keys: HashMap<Option<String>, RsaParts>,
+}
 
 #[derive(Deserialize)]
 struct Header {
@@ -88,7 +95,7 @@ impl Master {
         if header.alg != "RS256" || header.typ.as_deref() != Some("at+jwt") {
             return Err(Refusal::Invalid("not an RS256 access token"));
         }
-        let (n, e) = self.key(header.kid.as_deref()).await?;
+        let (n, e) = self.key(header.kid.as_deref(), now).await?;
         let signature = URL_SAFE_NO_PAD
             .decode(signature)
             .map_err(|_| Refusal::Invalid("bad signature encoding"))?;
@@ -115,26 +122,33 @@ impl Master {
         }
     }
 
-    /// The signing key for `kid`. The key set is fetched only for a kid not in the last one
-    /// fetched, which is how a rotated key is picked up.
-    async fn key(&self, kid: Option<&str>) -> Result<Modulus, Refusal> {
+    /// The signing key for `kid`. The key set is fetched again when it is an hour old or lacks
+    /// `kid`, so a rotated-out key stops verifying and a new one is picked up.
+    async fn key(&self, kid: Option<&str>, now: i64) -> Result<RsaParts, Refusal> {
         let kid = kid.map(str::to_owned);
-        if let Some(key) = self.cached(&kid) {
+        if let Some(key) = self.cached(&kid, now) {
             return Ok(key);
         }
         let fetched = self
             .get(&format!("{}/.well-known/jwks.json", self.idp_url), None)
             .await?;
-        let mut keys = self.keys.write().unwrap_or_else(PoisonError::into_inner);
-        *keys = rsa_keys(&fetched);
-        keys.get(&kid)
+        let mut set = self.keys.write().unwrap_or_else(PoisonError::into_inner);
+        *set = KeySet {
+            fetched_at: now,
+            keys: rsa_keys(&fetched),
+        };
+        set.keys
+            .get(&kid)
             .cloned()
             .ok_or(Refusal::Invalid("unknown key"))
     }
 
-    fn cached(&self, kid: &Option<String>) -> Option<Modulus> {
-        let keys = self.keys.read().unwrap_or_else(PoisonError::into_inner);
-        keys.get(kid).cloned()
+    fn cached(&self, kid: &Option<String>, now: i64) -> Option<RsaParts> {
+        let set = self.keys.read().unwrap_or_else(PoisonError::into_inner);
+        if now - set.fetched_at >= KEY_SET_SECONDS {
+            return None;
+        }
+        set.keys.get(kid).cloned()
     }
 
     fn check_claims(&self, claims: &Claims, now: i64) -> Result<(), Refusal> {
@@ -181,7 +195,7 @@ fn decode<T: for<'de> Deserialize<'de>>(part: &str) -> Result<T, Refusal> {
     serde_json::from_slice(&bytes).map_err(|_| Refusal::Invalid("bad JSON"))
 }
 
-fn rsa_keys(keys: &Value) -> HashMap<Option<String>, Modulus> {
+fn rsa_keys(keys: &Value) -> HashMap<Option<String>, RsaParts> {
     let list = keys.get("keys").and_then(Value::as_array);
     list.into_iter()
         .flatten()
@@ -192,4 +206,46 @@ fn rsa_keys(keys: &Value) -> HashMap<Option<String>, Modulus> {
             Some((kid, (part("n")?, part("e")?)))
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use axum::routing::get;
+    use axum::{Json, Router};
+    use serde_json::json;
+    use tokio::net::TcpListener;
+
+    use super::*;
+
+    async fn serving(published: Arc<Mutex<Value>>) -> Master {
+        let app = Router::new().route(
+            "/.well-known/jwks.json",
+            get(move || async move { Json(published.lock().unwrap().clone()) }),
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        Master::new(String::new(), url, String::new())
+    }
+
+    fn set(kid: &str) -> Value {
+        json!({"keys": [{"kty": "RSA", "kid": kid, "n": "AQAB", "e": "AQAB"}]})
+    }
+
+    #[tokio::test]
+    async fn a_key_rotated_out_stops_verifying_once_the_cached_set_is_an_hour_old() {
+        let published = Arc::new(Mutex::new(set("k1")));
+        let master = serving(published.clone()).await;
+        assert!(master.key(Some("k1"), 0).await.is_ok());
+
+        *published.lock().unwrap() = set("k2");
+        assert!(master.key(Some("k1"), KEY_SET_SECONDS - 1).await.is_ok());
+        assert_eq!(
+            master.key(Some("k1"), KEY_SET_SECONDS).await,
+            Err(Refusal::Invalid("unknown key"))
+        );
+        assert!(master.key(Some("k2"), KEY_SET_SECONDS).await.is_ok());
+    }
 }
