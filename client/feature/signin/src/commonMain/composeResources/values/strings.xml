@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="signin_email">Email address</string>
+    <string name="signin_continue">Continue</string>
+    <string name="signin_discovering">Looking up your server…</string>
+    <string name="signin_confirm">Signing in to %1$s through %2$s</string>
+    <string name="signin_change">Use a different address</string>
+    <string name="signin_advanced">Advanced</string>
+    <string name="signin_use_email">Use my email address</string>
     <string name="signin_server">Server</string>
     <string name="signin_issuer">Identity provider</string>
     <string name="signin_submit">Sign in</string>
@@ -7,5 +14,10 @@
     <string name="signin_issuer_not_https">The identity provider must be an https:// address.</string>
     <string name="signin_failed">Sign-in failed: %1$s</string>
     <string name="signin_title">Sign in</string>
-    <string name="signin_detail">Your mail server, and the identity provider that vouches for you.</string>
+    <string name="signin_detail">Your email address. Corvid finds your mail server and the identity provider that vouches for you from it.</string>
+    <string name="signin_discovery_no_address">Enter your full email address, such as you@example.com.</string>
+    <string name="signin_discovery_unreachable">Could not reach a Corvid server for %1$s. Check the address, or enter the server under Advanced.</string>
+    <string name="signin_discovery_malformed">The server\'s sign-in details could not be read. Enter them under Advanced.</string>
+    <string name="signin_discovery_version">The server\'s sign-in details are from a newer Corvid. Update the app, or enter them under Advanced.</string>
+    <string name="signin_discovery_not_https">The server or identity provider is not an https:// address. Check them under Advanced.</string>
 </resources>

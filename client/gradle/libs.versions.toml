@@ -24,8 +24,10 @@ ksoup = "0.2.6"
 datastore = "1.2.1"
 ktlint = "1.5.0"
 ktlintGradle = "12.1.2"
+dnsjava = "3.6.3"
 
 [libraries]
+dnsjava = { group = "dnsjava", name = "dnsjava", version.ref = "dnsjava" }
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-coroutines-swing = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-swing", version.ref = "coroutines" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }

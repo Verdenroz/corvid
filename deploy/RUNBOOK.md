@@ -161,6 +161,28 @@ itself.
 mail delivery before switching it to `enforce`; senders that see enforce and cannot complete a
 TLS handshake to a listed MX drop the message rather than deliver it unencrypted.
 
+### Signing in from an email address
+
+The app takes an address such as `mailuser@example.com` and finds the server and identity provider
+from its domain. `install.sh` publishes what that needs, in the mail domain's zone:
+
+- an SRV record, `_corvid._tcp.<domain>` at `<server.hostname>` port `<server.web_port>`. Stalwart
+  publishes its own `_jmap._tcp` on 443 and manages it; this is a different name, and nothing
+  edits Stalwart's.
+- `/.well-known/corvid` on the web tier, served by Caddy with no credential:
+  `{"version":1,"server":"https://<hostname>:<web_port>","issuer":"https://<idp_hostname>:<web_port>"}`.
+
+A changed `server.web_port` updates the record's port on the next install. Without the SRV record the app tries `https://<domain>/.well-known/corvid` on 443, which only
+works when the web tier is there. A record that already points elsewhere stops `install.sh` before
+anything changes; fix it and rerun. When Cloudflare refuses to create the record, `install.sh` warns
+with it and carries on, since mail works without discovery. Add it by hand:
+
+    _corvid._tcp.<domain>.  SRV  0 5 <web_port> <server.hostname>.
+
+Check it from anywhere with `dig +short SRV _corvid._tcp.<domain>` and
+`curl https://<server.hostname>:<web_port>/.well-known/corvid`. The app shows the two hostnames it
+found before it signs in; "Advanced" takes both addresses by hand.
+
 ### The labeler's model
 
 `labeler.model` is optional. Without it the labeler still labels mail from the per-sender prior

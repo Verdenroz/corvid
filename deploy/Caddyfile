@@ -10,6 +10,10 @@
 	handle /i/* {
 		reverse_proxy 127.0.0.1:8081
 	}
+	handle /.well-known/corvid {
+		header Content-Type application/json
+		respond `{"version":1,"server":"https://{$CORVID_WEB_HOSTNAME}:{$CORVID_WEB_PORT}","issuer":"https://{$CORVID_IDP_HOSTNAME}:{$CORVID_WEB_PORT}"}` 200
+	}
 	# Stalwart answers a credential-less /jmap/session with 200, which forward_auth would pass.
 	@corvid {
 		path /corvid/update /corvid/notices

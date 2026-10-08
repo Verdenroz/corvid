@@ -8,6 +8,13 @@ import com.verdenroz.corvid.core.model.ServerAddress
 import org.publicvalue.multiplatform.oidc.ExperimentalOpenIdConnect
 import org.publicvalue.multiplatform.oidc.flows.CodeAuthFlowFactory
 
+fun interface SignIn {
+    suspend operator fun invoke(
+        server: ServerAddress,
+        issuer: String,
+    )
+}
+
 /**
  * Runs the PKCE authorization-code flow against Pocket-ID and hands the
  * resulting tokens to [TokenSource]. Never touches disk: the tokens live in
@@ -24,8 +31,8 @@ class SignInUseCase(
     private val redirectUriProvider: RedirectUriProvider,
     private val tokenSource: TokenSource,
     private val authLatch: AuthLatch,
-) {
-    suspend operator fun invoke(
+) : SignIn {
+    override suspend operator fun invoke(
         server: ServerAddress,
         issuer: String,
     ) {
