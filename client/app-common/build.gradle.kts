@@ -50,7 +50,12 @@ kotlin {
             implementation(libs.compose.material3)
             implementation(libs.navigationevent.compose)
             implementation(libs.jetbrains.lifecycle.runtime.compose)
-            implementation(libs.qrose)
+        }
+        androidMain.dependencies {
+            implementation(libs.zxing.core)
+        }
+        desktopMain.dependencies {
+            implementation(libs.zxing.core)
         }
         commonTest.dependencies {
             implementation(projects.core.testing)

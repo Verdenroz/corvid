@@ -1,16 +1,12 @@
 package com.verdenroz.corvid.app
 
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -33,7 +29,6 @@ import com.verdenroz.corvid.core.designsystem.component.PrimaryButton
 import com.verdenroz.corvid.core.keyring.DeviceRequest
 import com.verdenroz.corvid.core.keyring.approvalLink
 import com.verdenroz.corvid.core.ui.StatePane
-import io.github.alexzhirkevich.qrose.rememberQrCodePainter
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -63,11 +58,7 @@ fun EnrollmentPrompt(
 @Composable
 private fun OpenRequest(request: DeviceRequest) {
     val colors = CorvidTheme.colors
-    Image(
-        painter = rememberQrCodePainter(request.approvalLink()),
-        contentDescription = stringResource(Res.string.enroll_qr),
-        modifier = Modifier.size(216.dp).background(Color.White).padding(12.dp),
-    )
+    QrCode(request.approvalLink(), stringResource(Res.string.enroll_qr), Modifier.size(232.dp))
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(stringResource(Res.string.enroll_request_id), style = CorvidTheme.type.meta, color = colors.inkMuted)
         Text(request.id, style = CorvidTheme.type.metaNumeric, color = colors.ink)
