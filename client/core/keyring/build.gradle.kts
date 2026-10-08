@@ -9,6 +9,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(projects.core.jmap)
+            implementation(projects.core.common)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.koin.core)
         }
