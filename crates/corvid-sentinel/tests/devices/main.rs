@@ -121,6 +121,12 @@ impl Rig {
     }
 }
 
+fn with_header(field: &str, value: Value) -> String {
+    let mut header = header();
+    header[field] = value;
+    sign(&header, &claims())
+}
+
 fn expired_request(name: &str, code: &str) -> Devices {
     let mut devices = Devices::default();
     devices.requests.insert(
@@ -241,12 +247,7 @@ async fn a_second_approval_reuses_the_folder() {
 
     rig.approved("tablet").await;
 
-    let folders: Vec<_> = rig
-        .stalwart
-        .nodes()
-        .into_iter()
-        .filter(|node| node.name == "corvid-devices")
-        .collect();
+    let folders = rig.stalwart.nodes_named("corvid-devices");
     assert_eq!(folders, [folder]);
 }
 
@@ -282,12 +283,7 @@ async fn an_existing_folder_that_lost_its_share_is_shared_again() {
 
     rig.approved("phone").await;
 
-    let folders: Vec<_> = rig
-        .stalwart
-        .nodes()
-        .into_iter()
-        .filter(|node| node.name == "corvid-devices")
-        .collect();
+    let folders = rig.stalwart.nodes_named("corvid-devices");
     assert_eq!(folders.len(), 1);
     assert_eq!(folders[0].id, folder.id);
     assert_eq!(folders[0].share, json!({MAIL_ACCOUNT: {"mayRead": true}}));
@@ -375,34 +371,10 @@ async fn a_token_that_does_not_prove_a_fresh_admin_sign_in_is_refused() {
                 c.as_object_mut().unwrap().remove("iat");
             }),
         ),
-        (
-            "an id token",
-            sign(
-                &json!({"alg": "RS256", "typ": "JWT", "kid": "k1"}),
-                &claims(),
-            ),
-        ),
-        (
-            "an unsigned token",
-            sign(
-                &json!({"alg": "none", "typ": "at+jwt", "kid": "k1"}),
-                &claims(),
-            ),
-        ),
-        (
-            "an HMAC token",
-            sign(
-                &json!({"alg": "HS256", "typ": "at+jwt", "kid": "k1"}),
-                &claims(),
-            ),
-        ),
-        (
-            "an unknown key",
-            sign(
-                &json!({"alg": "RS256", "typ": "at+jwt", "kid": "k2"}),
-                &claims(),
-            ),
-        ),
+        ("an id token", with_header("typ", json!("JWT"))),
+        ("an unsigned token", with_header("alg", json!("none"))),
+        ("an HMAC token", with_header("alg", json!("HS256"))),
+        ("an unknown key", with_header("kid", json!("k2"))),
         ("altered claims", tampered),
         ("not a token", "garbage".to_owned()),
     ];
@@ -467,13 +439,7 @@ async fn approving_a_name_again_replaces_its_key() {
     let second = rig.approved("phone").await;
 
     assert_ne!(first.node_id, second.node_id);
-    let names: Vec<_> = rig
-        .stalwart
-        .nodes()
-        .into_iter()
-        .map(|node| node.name)
-        .collect();
-    assert_eq!(names.iter().filter(|name| *name == "phone.key").count(), 1);
+    assert_eq!(rig.stalwart.nodes_named("phone.key").len(), 1);
     let record: Approved = rig.record("phone").await.json().await.unwrap();
     assert_eq!(record, second);
 }

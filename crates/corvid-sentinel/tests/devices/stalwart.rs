@@ -35,9 +35,7 @@ struct Files {
 /// accepts the admin key alone, and node blobs are named apart from uploads as Stalwart's are.
 pub struct Stalwart {
     pub url: String,
-    files: Arc<Mutex<Files>>,
-    refuse_creates: Arc<AtomicBool>,
-    calls: Arc<AtomicU64>,
+    shared: Shared,
 }
 
 #[derive(Clone)]
@@ -61,36 +59,38 @@ impl Stalwart {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        Self {
-            url,
-            files: shared.files,
-            refuse_creates: shared.refuse_creates,
-            calls: shared.calls,
-        }
+        Self { url, shared }
     }
 
     pub fn refuse_creates(&self) {
-        self.refuse_creates.store(true, Ordering::SeqCst);
+        self.shared.refuse_creates.store(true, Ordering::SeqCst);
     }
 
     pub fn calls(&self) -> u64 {
-        self.calls.load(Ordering::SeqCst)
+        self.shared.calls.load(Ordering::SeqCst)
     }
 
     pub fn nodes(&self) -> Vec<Node> {
-        self.files.lock().unwrap().nodes.clone()
+        self.shared.files.lock().unwrap().nodes.clone()
+    }
+
+    pub fn nodes_named(&self, name: &str) -> Vec<Node> {
+        let mut nodes = self.nodes();
+        nodes.retain(|node| node.name == name);
+        nodes
     }
 
     pub fn node(&self, name: &str) -> Option<Node> {
-        self.nodes().into_iter().find(|node| node.name == name)
+        self.nodes_named(name).into_iter().next()
     }
 
     pub fn content(&self, node: &Node) -> Vec<u8> {
-        self.files.lock().unwrap().blobs[node.blob.as_ref().unwrap()].clone()
+        self.shared.files.lock().unwrap().blobs[node.blob.as_ref().unwrap()].clone()
     }
 
     pub fn remove(&self, name: &str) {
-        self.files
+        self.shared
+            .files
             .lock()
             .unwrap()
             .nodes
@@ -98,30 +98,27 @@ impl Stalwart {
     }
 
     pub fn plant_folder(&self, name: &str) -> Node {
-        let mut files = self.files.lock().unwrap();
-        files.next += 1;
-        let node = Node {
-            id: format!("n{}", files.next),
-            name: name.to_owned(),
-            parent: None,
-            blob: None,
-            share: Value::Null,
-        };
-        files.nodes.push(node.clone());
-        node
+        self.push(name, None, None)
     }
 
     /// What a sharee with any access to the account can do: add a file under any folder.
     pub fn plant(&self, name: &str, parent: &str, content: &[u8]) -> Node {
-        let mut files = self.files.lock().unwrap();
+        self.push(name, Some(parent), Some(content))
+    }
+
+    fn push(&self, name: &str, parent: Option<&str>, content: Option<&[u8]>) -> Node {
+        let mut files = self.shared.files.lock().unwrap();
         files.next += 1;
-        let blob = format!("planted-{}", files.next);
-        files.blobs.insert(blob.clone(), content.to_vec());
+        let blob = content.map(|content| {
+            let blob = format!("planted-{}", files.next);
+            files.blobs.insert(blob.clone(), content.to_vec());
+            blob
+        });
         let node = Node {
             id: format!("n{}", files.next),
             name: name.to_owned(),
-            parent: Some(parent.to_owned()),
-            blob: Some(blob),
+            parent: parent.map(str::to_owned),
+            blob,
             share: Value::Null,
         };
         files.nodes.push(node.clone());
