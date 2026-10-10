@@ -3,6 +3,7 @@ package com.verdenroz.corvid.core.jmap
 import io.ktor.client.HttpClient
 import io.ktor.client.call.NoTransformationFoundException
 import io.ktor.client.call.body
+import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -123,7 +124,7 @@ class JmapClient private constructor(
         val response =
             guarded(authLatch) {
                 httpClient.post(url) {
-                    bearerToken()?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+                    bearer(bearerToken)
                     contentType(ContentType.parse(contentType))
                     setBody(bytes)
                 }
@@ -151,7 +152,7 @@ class JmapClient private constructor(
     ) {
         transport(authLatch) {
             httpClient.prepareGet("$baseUrl$path") {
-                bearerToken()?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+                bearer(bearerToken)
             }.execute { response ->
                 rejectFailure(authLatch, response)
                 val channel = response.bodyAsChannel()
@@ -192,7 +193,7 @@ class JmapClient private constructor(
             guarded(authLatch, passThrough) {
                 httpClient.request("$baseUrl$path") {
                     this.method = method
-                    bearerToken()?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+                    bearer(bearerToken)
                     headers.forEach { (name, value) -> header(name, value) }
                     body?.let {
                         contentType(ContentType.Application.Json)
@@ -267,7 +268,7 @@ class JmapClient private constructor(
         val response =
             guarded(authLatch) {
                 httpClient.get(url) {
-                    bearerToken()?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+                    bearer(bearerToken)
                 }
             }
         return response.body()
@@ -316,7 +317,7 @@ internal suspend fun guardedGet(
 ): HttpResponse =
     guarded(authLatch) {
         httpClient.get(url) {
-            bearerToken()?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+            bearer(bearerToken)
         }
     }
 
@@ -329,7 +330,7 @@ private suspend fun guardedPost(
 ): HttpResponse =
     guarded(authLatch) {
         httpClient.post(url) {
-            bearerToken()?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+            bearer(bearerToken)
             contentType(ContentType.Application.Json)
             setBody(body)
         }
@@ -440,4 +441,8 @@ private fun parseSession(
         maxCallsInRequest = core["maxCallsInRequest"]?.jsonPrimitive?.contentOrNull?.toIntOrNull(),
         maxObjectsInGet = core["maxObjectsInGet"]?.jsonPrimitive?.contentOrNull?.toIntOrNull(),
     )
+}
+
+private suspend fun HttpRequestBuilder.bearer(token: suspend () -> String?) {
+    token()?.let { header(HttpHeaders.Authorization, "Bearer $it") }
 }

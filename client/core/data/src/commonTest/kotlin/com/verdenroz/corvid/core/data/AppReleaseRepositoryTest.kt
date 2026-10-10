@@ -1,11 +1,11 @@
 package com.verdenroz.corvid.core.data
 
+import com.verdenroz.corvid.core.common.sha256Hex
 import com.verdenroz.corvid.core.jmap.JmapError
 import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.model.AppPlatform
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.client
-import com.verdenroz.corvid.core.testing.sha256Hex
 import kotlinx.coroutines.test.runTest
 import java.io.File
 import kotlin.io.path.createTempDirectory

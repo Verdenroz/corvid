@@ -1,5 +1,6 @@
 package com.verdenroz.corvid.app
 
+import com.verdenroz.corvid.core.common.sha256Hex
 import com.verdenroz.corvid.core.data.AppInstaller
 import com.verdenroz.corvid.core.data.AppReleaseRepository
 import com.verdenroz.corvid.core.data.AppUpdateState
@@ -8,7 +9,6 @@ import com.verdenroz.corvid.core.model.AppPlatform
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.KeyedTextResolver
 import com.verdenroz.corvid.core.testing.client
-import com.verdenroz.corvid.core.testing.sha256Hex
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel

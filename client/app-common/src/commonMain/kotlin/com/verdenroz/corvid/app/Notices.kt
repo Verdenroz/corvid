@@ -10,13 +10,9 @@ import com.verdenroz.corvid.core.text.SystemTextResolver
 import com.verdenroz.corvid.core.text.TextResolver
 import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.uiText
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.launch
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -56,26 +52,7 @@ class Notices(
         _banner.value = null
     }
 
-    /**
-     * Polls on entry, again as soon as [foreground] has emitted or [pollEvery] has passed since the last poll began;
-     * ends when the caller's scope does.
-     */
-    suspend fun run(foreground: Flow<Unit>) {
-        coroutineScope {
-            val due = Channel<Unit>(Channel.CONFLATED)
-            launch { foreground.collect { due.trySend(Unit) } }
-            launch {
-                while (true) {
-                    delay(pollEvery)
-                    due.trySend(Unit)
-                }
-            }
-            while (true) {
-                poll()
-                due.receive()
-            }
-        }
-    }
+    suspend fun run(foreground: Flow<Unit>) = pollWhileForegrounded(foreground, pollEvery) { poll() }
 
     private suspend fun poll() {
         val fresh =

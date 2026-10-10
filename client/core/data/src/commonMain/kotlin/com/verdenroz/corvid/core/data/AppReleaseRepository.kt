@@ -1,5 +1,6 @@
 package com.verdenroz.corvid.core.data
 
+import com.verdenroz.corvid.core.common.toHex
 import com.verdenroz.corvid.core.jmap.JmapClient
 import com.verdenroz.corvid.core.model.AppArtifact
 import com.verdenroz.corvid.core.model.AppPlatform
@@ -82,7 +83,7 @@ private fun File.sha256(): String {
             digest.update(buffer, 0, read)
         }
     }
-    return digest.digest().joinToString("") { "%02x".format(it) }
+    return digest.digest().toHex()
 }
 
 private fun WireManifest.toRelease(): AppRelease {
