@@ -12,12 +12,15 @@ fail=0
 check() { if eval "$2"; then echo "  ok    $1"; else echo "  FAIL  $1"; fail=1; fi; }
 
 "$here/app-manifest.py" "$work" 1234
+# shellcheck disable=SC2034  # read inside the eval'd checks
 status=$?
 check "the script exits 0" '[ "$status" -eq 0 ]'
 
 apk_sha="$(sha256sum "$work/corvid.apk" | cut -d' ' -f1)"
 tar_sha="$(sha256sum "$work/corvid-linux-x64.tar.gz" | cut -d' ' -f1)"
+# shellcheck disable=SC2034  # read inside the eval'd checks
 expected="$(printf '{"version":1,"versionCode":1234,"versionName":"0.1.1234","android":{"path":"corvid.apk","sha256":"%s","size":9},"linux":{"path":"corvid-linux-x64.tar.gz","sha256":"%s","size":33}}' "$apk_sha" "$tar_sha")"
+# shellcheck disable=SC2034  # read inside the eval'd checks
 actual="$(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1])), separators=(",", ":")))' "$work/manifest.json")"
 
 check "the manifest has exactly the documented shape and values" '[ "$actual" = "$expected" ]'
