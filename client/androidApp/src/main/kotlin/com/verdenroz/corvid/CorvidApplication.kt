@@ -10,6 +10,7 @@ import android.net.Network
 import com.verdenroz.corvid.app.NoticeNotifier
 import com.verdenroz.corvid.app.di.appModules
 import com.verdenroz.corvid.core.auth.platformAuthModule
+import com.verdenroz.corvid.core.data.AppInstaller
 import com.verdenroz.corvid.core.discovery.platformDiscoveryModule
 import com.verdenroz.corvid.core.keyring.KeyHolder
 import com.verdenroz.corvid.core.prefs.platformPreferencesModule
@@ -21,7 +22,11 @@ import org.koin.dsl.module
 class CorvidApplication : Application() {
     override fun onCreate() {
         super.onCreate()
-        val notices = module { single<NoticeNotifier> { AndroidNoticeNotifier(androidContext()) } }
+        val notices =
+            module {
+                single<NoticeNotifier> { AndroidNoticeNotifier(androidContext()) }
+                single<AppInstaller> { AndroidAppInstaller() }
+            }
         val koin =
             startKoin {
                 androidLogger()

@@ -17,6 +17,7 @@ import com.verdenroz.corvid.app.NoticeNotifier
 import com.verdenroz.corvid.app.di.appModules
 import com.verdenroz.corvid.core.auth.InMemoryPreferencesFactory
 import com.verdenroz.corvid.core.auth.platformAuthModule
+import com.verdenroz.corvid.core.data.AppInstaller
 import com.verdenroz.corvid.core.discovery.platformDiscoveryModule
 import com.verdenroz.corvid.core.prefs.platformPreferencesModule
 import kotlinx.coroutines.runBlocking
@@ -30,7 +31,11 @@ fun main() {
     // before any sign-in starts, or its flow state lands in a file in $HOME.
     runBlocking { InMemoryPreferencesFactory.seed() }
     val notifier = TrayNoticeNotifier()
-    val notices = module { single<NoticeNotifier> { notifier } }
+    val notices =
+        module {
+            single<NoticeNotifier> { notifier }
+            single<AppInstaller> { DesktopAppInstaller() }
+        }
     startKoin { modules(appModules + platformAuthModule + platformDiscoveryModule + platformPreferencesModule + notices) }
     application {
         val windowState = rememberWindowState()
