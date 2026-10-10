@@ -9,6 +9,7 @@ import com.verdenroz.corvid.core.model.Identity
 import com.verdenroz.corvid.core.prefs.DevicePreferences
 import com.verdenroz.corvid.feature.settings.AboutViewModel
 import com.verdenroz.corvid.feature.settings.AccountFacts
+import com.verdenroz.corvid.feature.settings.AppUpdateControl
 import com.verdenroz.corvid.feature.settings.ApproveDeviceScreen
 import com.verdenroz.corvid.feature.settings.ApproveDeviceViewModel
 import com.verdenroz.corvid.feature.settings.SettingsScreen
@@ -19,6 +20,7 @@ import org.koin.core.scope.Scope
 internal class SettingsSession(
     val hosts: AccountHosts,
     val identity: Identity?,
+    val updates: AppUpdates,
     val onLock: () -> Unit,
     val onSignOut: () -> Unit,
 )
@@ -46,6 +48,7 @@ internal fun SettingsPage(
         viewModel,
         about,
         APP_VERSION,
+        AppUpdateControl(session.updates.state, session.updates::update),
         account,
         onBack = navigator::back,
         onOpenFilters = { navigator.push(Route.Filters) },

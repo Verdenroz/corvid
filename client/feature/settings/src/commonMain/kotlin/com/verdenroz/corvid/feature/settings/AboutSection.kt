@@ -2,13 +2,17 @@ package com.verdenroz.corvid.feature.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.verdenroz.corvid.core.data.AppUpdateState
 import com.verdenroz.corvid.core.data.stamp
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.PillButton
@@ -32,6 +36,13 @@ import com.verdenroz.corvid.feature.settings.resources.settings_about_server_ver
 import com.verdenroz.corvid.feature.settings.resources.settings_about_unsupported
 import com.verdenroz.corvid.feature.settings.resources.settings_about_update_now
 import com.verdenroz.corvid.feature.settings.resources.settings_about_updating
+import com.verdenroz.corvid.feature.settings.resources.settings_app_update
+import com.verdenroz.corvid.feature.settings.resources.settings_app_update_action
+import com.verdenroz.corvid.feature.settings.resources.settings_app_update_available
+import com.verdenroz.corvid.feature.settings.resources.settings_app_update_current
+import com.verdenroz.corvid.feature.settings.resources.settings_app_update_downloading
+import com.verdenroz.corvid.feature.settings.resources.settings_app_update_ready
+import com.verdenroz.corvid.feature.settings.resources.settings_app_update_retry
 import com.verdenroz.corvid.feature.settings.resources.settings_result_current
 import com.verdenroz.corvid.feature.settings.resources.settings_result_detail
 import com.verdenroz.corvid.feature.settings.resources.settings_result_failed
@@ -46,16 +57,41 @@ import kotlin.time.Clock
 @Composable
 internal fun AboutSection(
     appVersion: String,
+    appUpdate: AppUpdateControl,
     state: AboutState,
     viewModel: AboutViewModel,
 ) {
     SettingsSection(stringResource(Res.string.settings_about)) {
         FactRow(stringResource(Res.string.settings_about_app_version), appVersion)
+        AppUpdateRows(appUpdate)
         when (state) {
             is AboutState.Loading -> Unit
             is AboutState.Unsupported -> Note(stringResource(Res.string.settings_about_unsupported))
             is AboutState.Failed -> Note(state.message.asString(), CorvidTheme.colors.danger)
             is AboutState.Ready -> ServerRows(state, viewModel)
+        }
+    }
+}
+
+@Composable
+private fun AppUpdateRows(control: AppUpdateControl) {
+    val state by control.state.collectAsState()
+    val value =
+        when (val current = state) {
+            is AppUpdateState.UpToDate -> stringResource(Res.string.settings_app_update_current)
+            is AppUpdateState.Available -> stringResource(Res.string.settings_app_update_available, current.release.versionName)
+            is AppUpdateState.Failed -> stringResource(Res.string.settings_app_update_available, current.release.versionName)
+            is AppUpdateState.Downloading ->
+                stringResource(Res.string.settings_app_update_downloading, (current.progress * 100).toInt())
+            is AppUpdateState.Ready -> stringResource(Res.string.settings_app_update_ready)
+        }
+    FactRow(stringResource(Res.string.settings_app_update), value)
+    (state as? AppUpdateState.Failed)?.let { Note(it.message.asString(), CorvidTheme.colors.danger) }
+    val retry = state is AppUpdateState.Failed
+    if (state is AppUpdateState.Available || retry) {
+        Row(Modifier.padding(vertical = 14.dp)) {
+            val action = if (retry) Res.string.settings_app_update_retry else Res.string.settings_app_update_action
+            PrimaryButton(stringResource(action), control.onUpdate)
         }
     }
 }

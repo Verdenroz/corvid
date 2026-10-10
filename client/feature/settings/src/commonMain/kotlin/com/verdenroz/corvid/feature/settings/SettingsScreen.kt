@@ -71,6 +71,7 @@ fun SettingsScreen(
     viewModel: SettingsViewModel,
     about: AboutViewModel,
     appVersion: String,
+    appUpdate: AppUpdateControl,
     account: AccountFacts,
     onBack: () -> Unit,
     onOpenFilters: () -> Unit,
@@ -129,7 +130,7 @@ fun SettingsScreen(
                         onClick = onOpenNotices,
                     )
                 }
-                AboutSection(appVersion, aboutState, about)
+                AboutSection(appVersion, appUpdate, aboutState, about)
             }
         }
     }

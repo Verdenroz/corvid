@@ -95,6 +95,7 @@ internal fun UnlockedContent(
     val repository = remember(scope) { scope.get<MailboxRepository>() }
     val shell = remember(scope) { ShellViewModel(repository) }
     val notices = rememberNotices(scope)
+    val updates = rememberAppUpdates(scope)
     val ledgers = remember(repository) { Ledgers(repository) }
     DisposableEffect(ledgers) { onDispose { ledgers.clear() } }
     LaunchedEffect(scope) {
@@ -130,7 +131,7 @@ internal fun UnlockedContent(
     val shellFocus = remember { FocusRequester() }
 
     val shellState by shell.state.collectAsState()
-    val session = SettingsSession(hosts, shellState.identity, onLock, onSignOut)
+    val session = SettingsSession(hosts, shellState.identity, updates, onLock, onSignOut)
     val key = remember(hosts, autoLock, onLock) { KeyState(hosts.short, idleTimeout.locksAt, autoLock, onLock) }
     BoxWithConstraints(
         Modifier.fillMaxSize().pointerInput(Unit) {
@@ -151,6 +152,7 @@ internal fun UnlockedContent(
                 },
             ) {
                 NoticesBanner(notices, navigator)
+                AppUpdatesBanner(updates)
                 if (wide) {
                     WideTopBar(
                         key,
