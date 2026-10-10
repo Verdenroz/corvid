@@ -217,18 +217,20 @@ class AppLockViewModel(
         viewModelScope.launch {
             val ended =
                 try {
-                    when (repository.approve(open.request.id, open.request.code, masterSignIn())) {
-                        ApproveOutcome.Approved -> return@launch
-                        ApproveOutcome.Gone -> EnrollmentRequest.Expired
-                        ApproveOutcome.NotAccepted -> open.failed(uiText(Res.string.enroll_self_failed_not_accepted))
-                        ApproveOutcome.Refused -> open.failed(uiText(Res.string.enroll_self_failed_refused))
-                        ApproveOutcome.UpstreamFailed -> open.failed(uiText(Res.string.enroll_self_failed_upstream))
+                    masterSignIn.withAdminToken { token ->
+                        when (repository.approve(open.request.id, open.request.code, token)) {
+                            ApproveOutcome.Approved -> null
+                            ApproveOutcome.Gone -> EnrollmentRequest.Expired
+                            ApproveOutcome.NotAccepted -> open.failed(uiText(Res.string.enroll_self_failed_not_accepted))
+                            ApproveOutcome.Refused -> open.failed(uiText(Res.string.enroll_self_failed_refused))
+                            ApproveOutcome.UpstreamFailed -> open.failed(uiText(Res.string.enroll_self_failed_upstream))
+                        }
                     }
                 } catch (e: OpenIdConnectException) {
                     open.failed(uiText(Res.string.enroll_self_failed_signin))
                 } catch (e: JmapException) {
                     open.failed(e.userMessage())
-                }
+                } ?: return@launch
             val (current, still) = openEnrollment() ?: return@launch
             if (still.request == open.request) _state.value = current.copy(request = ended)
         }

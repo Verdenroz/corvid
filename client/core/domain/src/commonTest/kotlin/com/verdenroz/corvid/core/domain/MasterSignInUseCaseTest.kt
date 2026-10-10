@@ -5,7 +5,6 @@ import com.verdenroz.corvid.core.auth.TokenSource
 import com.verdenroz.corvid.core.auth.createOidcClient
 import com.verdenroz.corvid.core.jmap.AuthLatch
 import com.verdenroz.corvid.core.model.ServerAddress
-import io.ktor.http.URLBuilder
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import org.publicvalue.multiplatform.oidc.OpenIdConnectClient
@@ -39,7 +38,6 @@ private fun token(
 
 private class RecordingFactory(
     private val flow: CodeAuthFlow,
-    private val endSession: (clientId: String, idToken: String?) -> Unit = { _, _ -> },
 ) : CodeAuthFlowFactory {
     val events = mutableListOf<String>()
     var client: OpenIdConnectClient? = null
@@ -50,25 +48,10 @@ private class RecordingFactory(
         return flow
     }
 
-    override fun createEndSessionFlow(client: OpenIdConnectClient): EndSessionFlow =
-        object : EndSessionFlow {
-            override suspend fun endSession(
-                idToken: String?,
-                configureEndSessionUrl: (URLBuilder.() -> Unit)?,
-            ) {
-                events += "end-session ${client.config.clientId} $idToken"
-                endSession(client.config.clientId!!, idToken)
-            }
-
-            override suspend fun startLogout(
-                idToken: String?,
-                configureEndSessionUrl: (URLBuilder.() -> Unit)?,
-            ) = TODO("endSession is overridden")
-
-            override suspend fun canContinueLogout(): Boolean = TODO("endSession is overridden")
-
-            override suspend fun continueLogout() = TODO("endSession is overridden")
-        }
+    override fun createEndSessionFlow(client: OpenIdConnectClient): EndSessionFlow {
+        events += "end-session ${client.config.clientId}"
+        throw OpenIdConnectException.AuthenticationCancelled("no session is ever ended")
+    }
 }
 
 class MasterSignInUseCaseTest {
@@ -81,7 +64,7 @@ class MasterSignInUseCaseTest {
             val useCase =
                 MasterSignInUseCase(RecordingFactory(FakeCodeAuthFlow { token("admin-at") }), fakeRedirectUriProvider, tokenSource)
 
-            val admin = useCase()
+            val admin = useCase.withAdminToken { it }
 
             assertEquals("admin-at", admin)
             assertEquals(AuthState.SignedIn("daily-at", server), tokenSource.state.value)
@@ -89,49 +72,26 @@ class MasterSignInUseCaseTest {
         }
 
     @Test
-    fun `the browser session ends first and the admin session ends after its token arrives`() =
+    fun `only the admin authorization runs and no session is ended`() =
         runTest {
             val factory = RecordingFactory(FakeCodeAuthFlow { token("admin-at", idToken = "admin-id") })
 
-            MasterSignInUseCase(factory, fakeRedirectUriProvider, signedIn())()
+            MasterSignInUseCase(factory, fakeRedirectUriProvider, signedIn()).withAdminToken { factory.events += "use $it" }
 
-            assertEquals(
-                listOf("end-session corvid daily-id", "authorize corvid-admin", "end-session corvid-admin admin-id"),
-                factory.events,
-            )
+            assertEquals(listOf("authorize corvid-admin", "use admin-at"), factory.events)
         }
 
     @Test
-    fun `a cancelled first sign-out throws and never authorizes`() =
+    fun `the block's exception surfaces`() =
         runTest {
-            val factory =
-                RecordingFactory(FakeCodeAuthFlow { token("admin-at") }, endSession = {
-                        _,
-                        _,
-                    ->
-                    throw OpenIdConnectException.AuthenticationCancelled("cancelled")
-                })
+            val factory = RecordingFactory(FakeCodeAuthFlow { token("admin-at") })
 
-            assertFailsWith<OpenIdConnectException> { MasterSignInUseCase(factory, fakeRedirectUriProvider, signedIn())() }
+            val failure =
+                assertFailsWith<IllegalStateException> {
+                    MasterSignInUseCase(factory, fakeRedirectUriProvider, signedIn()).withAdminToken<Unit> { error("refused") }
+                }
 
-            assertEquals(listOf("end-session corvid daily-id"), factory.events)
-        }
-
-    @Test
-    fun `a failed second sign-out still returns the token`() =
-        runTest {
-            val factory =
-                RecordingFactory(
-                    FakeCodeAuthFlow { token("admin-at") },
-                    endSession = {
-                            clientId,
-                            _,
-                        ->
-                        if (clientId == "corvid-admin") throw OpenIdConnectException.AuthenticationCancelled("cancelled")
-                    },
-                )
-
-            assertEquals("admin-at", MasterSignInUseCase(factory, fakeRedirectUriProvider, signedIn())())
+            assertEquals("refused", failure.message)
         }
 
     @Test
@@ -139,7 +99,7 @@ class MasterSignInUseCaseTest {
         runTest {
             val factory = RecordingFactory(FakeCodeAuthFlow { token("admin-at") })
 
-            MasterSignInUseCase(factory, fakeRedirectUriProvider, signedIn())()
+            MasterSignInUseCase(factory, fakeRedirectUriProvider, signedIn()).withAdminToken { }
 
             val config = factory.client!!.config
             assertEquals("corvid-admin", config.clientId)
@@ -154,7 +114,7 @@ class MasterSignInUseCaseTest {
             val useCase =
                 MasterSignInUseCase(RecordingFactory(FakeCodeAuthFlow { error("cancelled") }), fakeRedirectUriProvider, tokenSource)
 
-            assertFailsWith<IllegalStateException> { useCase() }
+            assertFailsWith<IllegalStateException> { useCase.withAdminToken { } }
 
             assertFalse(latch.tripped.value)
             assertEquals(AuthState.SignedIn("daily-at", server), tokenSource.state.value)
@@ -170,7 +130,7 @@ class MasterSignInUseCaseTest {
                     TokenSource(latch, backgroundScope),
                 )
 
-            assertFailsWith<IllegalStateException> { useCase() }
+            assertFailsWith<IllegalStateException> { useCase.withAdminToken { } }
         }
 
     private fun TestScope.signedIn(): TokenSource =
