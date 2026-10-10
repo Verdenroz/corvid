@@ -1,4 +1,7 @@
 import com.android.build.api.dsl.ApplicationExtension
+import com.android.build.api.variant.HasHostTestsBuilder
+import com.android.build.api.variant.HostTestBuilder
+import com.android.build.api.variant.ApplicationAndroidComponentsExtension
 import org.gradle.api.JavaVersion
 import org.gradle.api.Plugin
 import org.gradle.api.Project
@@ -66,6 +69,10 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
                         "OldTargetApi",
                     )
             }
+        }
+
+        extensions.configure<ApplicationAndroidComponentsExtension> {
+            beforeVariants(selector().withBuildType("release")) { (it as HasHostTestsBuilder).hostTests.getValue(HostTestBuilder.UNIT_TEST_TYPE).enable = false }
         }
 
         extensions.configure<KotlinAndroidProjectExtension> {
