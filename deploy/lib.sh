@@ -38,8 +38,8 @@ load_env() {
   prefer_token
 }
 
-# True once corvid.env holds an admin credential. load_env drops the password pair when a token exists, so the
-# password alone cannot say so.
+# True once corvid.env holds an admin credential. load_env drops the password pair when a
+# token exists, so the password alone cannot say so.
 server_set_up() {
   [[ -n "${STALWART_PASSWORD:-}" || -n "${STALWART_TOKEN:-}" ]]
 }
