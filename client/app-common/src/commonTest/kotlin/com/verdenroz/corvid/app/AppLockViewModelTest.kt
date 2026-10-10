@@ -17,7 +17,10 @@ import com.verdenroz.corvid.core.keyring.DeviceRequest
 import com.verdenroz.corvid.core.keyring.KeyHolder
 import com.verdenroz.corvid.core.keyring.KeyState
 import com.verdenroz.corvid.core.model.ServerAddress
+import com.verdenroz.corvid.core.prefs.DevicePreferences
+import com.verdenroz.corvid.core.prefs.DeviceSettings
 import com.verdenroz.corvid.core.testing.FakeJmapServer
+import com.verdenroz.corvid.core.testing.InMemoryPreferencesStore
 import com.verdenroz.corvid.core.text.uiText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -78,7 +81,9 @@ private class Harness(
     scope: CoroutineScope,
     fake: FakeJmapServer,
     masterSignIn: MasterSignIn,
+    store: InMemoryPreferencesStore = InMemoryPreferencesStore(),
 ) {
+    val devicePreferences = DevicePreferences(store, scope, DeviceSettings())
     val authLatch = AuthLatch()
     val tokenSource = TokenSource(authLatch, scope)
     val keyHolder = KeyHolder()
@@ -90,6 +95,7 @@ private class Harness(
             httpClient = createJmapHttpClient(fake.engine),
             unlockedScopeHolder = UnlockedScopeHolder(koinApplication {}.koin),
             masterSignIn = masterSignIn,
+            devicePreferences = devicePreferences,
         )
 
     fun signIn() = tokenSource.adopt(FakeOidcClient { freshToken() }, freshToken(), ServerAddress(BASE_URL))
@@ -137,7 +143,8 @@ class AppLockViewModelTest {
         scope: CoroutineScope,
         fake: FakeJmapServer,
         masterSignIn: MasterSignIn = fakeMasterSignIn { fake.devices.masterToken },
-    ) = Harness(scope, fake, masterSignIn).also { harness = it }
+        store: InMemoryPreferencesStore = InMemoryPreferencesStore(),
+    ) = Harness(scope, fake, masterSignIn, store).also { harness = it }
 
     private suspend fun Harness.awaitSelfApprovalFailure(): EnrollmentRequest.Open {
         val failed =
@@ -175,6 +182,34 @@ class AppLockViewModelTest {
                     harness.viewModel.state.awaitState { it is AppLockState.Connecting && it.needsDeviceName },
                 )
             assertTrue(connecting.needsDeviceName)
+        }
+
+    @Test
+    fun `a device name given once is not asked for again by a fresh view model`() =
+        runTest(testDispatcher) {
+            val store = InMemoryPreferencesStore()
+            val fake = FakeJmapServer()
+            val master = fakeMasterSignIn { fake.devices.masterToken }
+            Harness(backgroundScope, fake, master, store).also { harness = it }.requestKey("laptop-1")
+
+            val reopened = Harness(backgroundScope, fake, master, store)
+            reopened.signIn()
+            reopened.viewModel.state.awaitState { it is AppLockState.NeedsEnrollment && it.request is EnrollmentRequest.Open }
+
+            assertEquals(listOf("laptop-1", "laptop-1"), fake.devices.opened)
+            reopened.viewModel.viewModelScope.cancel()
+        }
+
+    @Test
+    fun `a stored name belongs to its server, so another server still asks`() =
+        runTest(testDispatcher) {
+            val store = InMemoryPreferencesStore()
+            val fake = FakeJmapServer()
+            val harness = harness(backgroundScope, fake, store = store)
+            harness.devicePreferences.setDeviceName("other.example.com", "laptop-1")
+            harness.signIn()
+
+            harness.viewModel.state.awaitState { it is AppLockState.Connecting && it.needsDeviceName }
         }
 
     @Test

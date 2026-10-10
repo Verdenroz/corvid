@@ -73,6 +73,18 @@ class DevicePreferencesTest {
     }
 
     @Test
+    fun `a device name is kept per server and absent until set`() =
+        runTest {
+            val prefs = preferences()
+            assertEquals(null, prefs.deviceName("mail.example.com"))
+
+            prefs.setDeviceName("mail.example.com", "laptop-1")
+
+            assertEquals("laptop-1", prefs.deviceName("mail.example.com"))
+            assertEquals(null, prefs.deviceName("other.example.com"))
+        }
+
+    @Test
     fun `a stored notice id is read back`() {
         assertEquals(9, decode(preferencesOf(longPreferencesKey("notices_seen") to 9L)).noticesSeen)
     }

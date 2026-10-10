@@ -231,7 +231,14 @@ private fun Home(
     val wide = LocalWideLayout.current
     LaunchedEffect(route.tab) { if (route.tab == HomeTab.Drafts) ledgers.of(LedgerTab.Drafts).refresh() }
     Column {
-        if (!wide) NarrowTopBar(key, onSearch = { navigator.push(Route.Search("")) }, onOpenSettings = { navigator.push(Route.Settings) })
+        if (!wide) {
+            NarrowTopBar(
+                key,
+                shellState.identity,
+                onSearch = { navigator.push(Route.Search("")) },
+                onOpenSettings = { navigator.push(Route.Settings) },
+            )
+        }
         TabsBar(
             current = route.tab,
             inboxUnread = shellState.inboxUnread,

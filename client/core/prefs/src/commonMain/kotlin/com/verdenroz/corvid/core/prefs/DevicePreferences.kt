@@ -9,12 +9,15 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
 private val THEME = stringPreferencesKey("theme")
 private val AUTO_LOCK_MINUTES = intPreferencesKey("auto_lock_minutes")
 private val NOTICES_SEEN = longPreferencesKey("notices_seen")
+
+private fun deviceNameKey(server: String) = stringPreferencesKey("device_name.$server")
 
 /**
  * [settings] starts at [initial], which the platform reads synchronously before the first frame
@@ -37,6 +40,15 @@ class DevicePreferences(
 
     suspend fun setNoticesSeen(id: Long) {
         store.edit { it[NOTICES_SEEN] = id }
+    }
+
+    suspend fun deviceName(server: String): String? = store.data.first()[deviceNameKey(server)]
+
+    suspend fun setDeviceName(
+        server: String,
+        name: String,
+    ) {
+        store.edit { it[deviceNameKey(server)] = name }
     }
 }
 

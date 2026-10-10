@@ -7,3 +7,5 @@ __pycache__/
 *.bundle
 core.[0-9]*
 docs/
+dist/app/*
+!dist/app/.gitkeep
