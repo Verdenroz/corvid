@@ -75,7 +75,7 @@ pub fn routes(config: Config) -> Router {
         ),
     });
     Router::new()
-        .route("/corvid/devices/requests", post(create))
+        .route("/corvid/devices/requests", post(create).get(list))
         .route("/corvid/devices/requests/{id}", get(status))
         .route("/corvid/devices/requests/{id}/approve", post(approve))
         .route("/corvid/devices/{name}", get(read))
@@ -101,7 +101,7 @@ pub fn off() -> Router {
         )
     }
     Router::new()
-        .route("/corvid/devices/requests", post(off))
+        .route("/corvid/devices/requests", post(off).get(off))
         .route("/corvid/devices/requests/{id}", get(off))
         .route("/corvid/devices/requests/{id}/approve", post(off))
         .route("/corvid/devices/{name}", get(off))
@@ -184,6 +184,36 @@ async fn create(
 fn unrecorded(error: &io::Error) -> StatusCode {
     tracing::warn!(%error, "cannot save the device state");
     StatusCode::INTERNAL_SERVER_ERROR
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Pending {
+    id: String,
+    name: String,
+    expires_at: String,
+}
+
+/// The requests an approver can still act on, newest first. The code stays with the device.
+async fn list(State(state): State<Shared>) -> Json<Vec<Pending>> {
+    let now = dates::now_secs();
+    let mut live: Vec<(i64, Pending)> = state.devices.read(|devices| {
+        devices
+            .requests
+            .iter()
+            .filter(|(_, request)| request.stage == Stage::Open && request.is_live(now))
+            .map(|(id, request)| {
+                let pending = Pending {
+                    id: id.clone(),
+                    name: request.name.clone(),
+                    expires_at: dates::rfc3339(request.expires_at),
+                };
+                (request.expires_at, pending)
+            })
+            .collect()
+    });
+    live.sort_by_key(|(expires_at, _)| std::cmp::Reverse(*expires_at));
+    Json(live.into_iter().map(|(_, pending)| pending).collect())
 }
 
 #[derive(Serialize)]

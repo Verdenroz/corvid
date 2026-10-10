@@ -10,6 +10,7 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.OutgoingContent
 import io.ktor.http.headersOf
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -114,6 +115,7 @@ class FakeDevices(private val blobs: MutableMap<String, ByteArray>) {
         val segments = request.url.encodedPath.removePrefix("/corvid/devices").trim('/').split("/").filter { it.isNotEmpty() }
         return when {
             segments == listOf("requests") && request.method == HttpMethod.Post -> open(scope, request)
+            segments == listOf("requests") && request.method == HttpMethod.Get -> pending(scope)
             segments.size == 2 && segments[0] == "requests" && request.method == HttpMethod.Get -> status(scope, segments[1])
             segments.size == 3 && segments[0] == "requests" && segments[2] == "approve" && request.method == HttpMethod.Post ->
                 approve(scope, request, segments[1])
@@ -140,6 +142,22 @@ class FakeDevices(private val blobs: MutableMap<String, ByteArray>) {
                 put("code", code)
                 put("expiresAt", expiresAt)
             },
+        )
+    }
+
+    private fun pending(scope: MockRequestHandleScope): HttpResponseData {
+        val waiting =
+            requests.entries.reversed().filter { it.value.status == "pending" }.map { (id, request) ->
+                buildJsonObject {
+                    put("id", id)
+                    put("name", request.name)
+                    put("expiresAt", expiresAt)
+                }
+            }
+        return scope.respond(
+            JsonArray(waiting).toString(),
+            HttpStatusCode.OK,
+            headersOf(HttpHeaders.ContentType, listOf("application/json")),
         )
     }
 
