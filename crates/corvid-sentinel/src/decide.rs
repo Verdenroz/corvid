@@ -1,5 +1,5 @@
 use crate::dates;
-use crate::state::{CredentialKind, Identity, Seen};
+use crate::state::{ApiKeyIdentity, CredentialKind, Identity, Seen};
 use crate::webhook::{AuthEvent, Kind};
 
 const APP_PASSWORD_DETAILS: &str = "Authenticated with app password";
@@ -19,6 +19,7 @@ pub struct Alert {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Reason {
     NewSignIn(CredentialKind),
+    NewApiKeySignIn,
     /// `details` did not match any known credential kind exactly, and is carried verbatim
     /// rather than guessed at: a reworded string from a Stalwart upgrade must not be silently
     /// read as the primary password.
@@ -70,15 +71,23 @@ fn decide_one(event: &AuthEvent, seen: &mut Seen) -> Option<Alert> {
 
 fn success(event: &AuthEvent, seen: &mut Seen) -> Option<Reason> {
     let kind = match event.details.as_deref() {
-        None => CredentialKind::Primary,
-        Some(APP_PASSWORD_DETAILS) => CredentialKind::AppPassword,
-        Some(API_KEY_DETAILS) => CredentialKind::ApiKey,
+        None => Some(CredentialKind::Primary),
+        Some(APP_PASSWORD_DETAILS) => Some(CredentialKind::AppPassword),
+        Some(API_KEY_DETAILS) => None,
         Some(other) => return Some(Reason::UnrecognisedCredential(other.to_owned())),
     };
     let (Some(account), Some(remote_ip), Some(listener)) =
         (&event.account, &event.remote_ip, &event.listener)
     else {
         return Some(Reason::Incomplete);
+    };
+    let Some(kind) = kind else {
+        let key = ApiKeyIdentity {
+            account: account.clone(),
+            listener: listener.clone(),
+            remote_ip: remote_ip.clone(),
+        };
+        return seen.api_keys.insert(key).then_some(Reason::NewApiKeySignIn);
     };
     let identity = Identity {
         account: account.clone(),
@@ -219,7 +228,7 @@ mod tests {
         let second = step(&[key], &mut seen);
 
         assert_eq!(first.len(), 1);
-        assert_eq!(first[0].reason, Reason::NewSignIn(CredentialKind::ApiKey));
+        assert_eq!(first[0].reason, Reason::NewApiKeySignIn);
         assert!(second.is_empty());
     }
 

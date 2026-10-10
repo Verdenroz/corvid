@@ -12,13 +12,21 @@ const NOTICE_CAP: usize = 200;
 pub enum CredentialKind {
     Primary,
     AppPassword,
-    ApiKey,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Identity {
     pub account: String,
     pub kind: CredentialKind,
+    pub listener: String,
+    pub remote_ip: String,
+}
+
+/// Kept apart from `Identity` so a file holding one still reads under a binary that has no API
+/// key credential kind, which would refuse an unknown `kind` and stop the service.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ApiKeyIdentity {
+    pub account: String,
     pub listener: String,
     pub remote_ip: String,
 }
@@ -44,6 +52,8 @@ pub struct Notice {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Seen {
     pub identities: BTreeSet<Identity>,
+    #[serde(default)]
+    pub api_keys: BTreeSet<ApiKeyIdentity>,
     /// Address to the epoch second a too-many-attempts notice last fired for it. A ban is never
     /// rate-limited, so it needs no entry here.
     pub too_many_attempts_notified: BTreeMap<String, i64>,
@@ -91,6 +101,11 @@ corvid_store::pin_shape!(Identity {
     listener,
     remote_ip
 });
+corvid_store::pin_shape!(ApiKeyIdentity {
+    account,
+    listener,
+    remote_ip
+});
 corvid_store::pin_shape!(Notice {
     id,
     kind,
@@ -100,6 +115,7 @@ corvid_store::pin_shape!(Notice {
 });
 corvid_store::pin_shape!(Seen {
     identities,
+    api_keys,
     too_many_attempts_notified,
     notices,
     last_notice_id,

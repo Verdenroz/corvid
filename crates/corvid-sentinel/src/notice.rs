@@ -34,7 +34,7 @@ pub fn render(alert: &Alert) -> (NoticeKind, &'static str, String) {
                  combination not seen before."
             ),
         ),
-        Reason::NewSignIn(CredentialKind::ApiKey) => (
+        Reason::NewApiKeySignIn => (
             NoticeKind::SignIn,
             "New sign-in",
             format!(
@@ -130,7 +130,7 @@ mod tests {
 
     #[test]
     fn an_api_key_is_named_as_such() {
-        let (kind, _, detail) = render(&alert(Reason::NewSignIn(CredentialKind::ApiKey)));
+        let (kind, _, detail) = render(&alert(Reason::NewApiKeySignIn));
         assert_eq!(kind, NoticeKind::SignIn);
         assert!(detail.contains("signed in with an API key"));
     }

@@ -1,4 +1,4 @@
-use corvid_sentinel::{CredentialKind, Identity, NoticeKind, Seen, open, save};
+use corvid_sentinel::{ApiKeyIdentity, CredentialKind, Identity, NoticeKind, Seen, open, save};
 
 fn scratch() -> (tempfile::TempDir, std::path::PathBuf) {
     let dir = tempfile::tempdir().unwrap();
@@ -100,4 +100,44 @@ fn a_file_from_the_previous_schema_keeps_its_history_and_starts_an_empty_feed() 
     assert_eq!(migrated.too_many_attempts_notified["203.0.113.9"], 100);
     assert!(migrated.notices.is_empty());
     assert_eq!(migrated.last_notice_id, 0);
+}
+
+#[test]
+fn a_file_holding_an_api_key_identity_reads_under_the_previous_binary_shape() {
+    #[derive(serde::Deserialize)]
+    #[allow(dead_code)]
+    struct SeenBefore {
+        identities: std::collections::BTreeSet<Identity>,
+        too_many_attempts_notified: std::collections::BTreeMap<String, i64>,
+        notices: Vec<corvid_sentinel::Notice>,
+        last_notice_id: u64,
+        update_noticed: Option<String>,
+    }
+    let (_dir, path) = scratch();
+    let mut seen = Seen::default();
+    seen.api_keys.insert(ApiKeyIdentity {
+        account: "admin".to_owned(),
+        listener: "http".to_owned(),
+        remote_ip: "10.88.0.1".to_owned(),
+    });
+    save(&path, &seen).unwrap();
+
+    let old: SeenBefore = corvid_store::load(&path, 2).unwrap().unwrap();
+
+    assert!(old.identities.is_empty());
+}
+
+#[test]
+fn a_file_without_api_key_tracking_opens_with_none() {
+    let (_dir, path) = scratch();
+    let before = serde_json::json!({
+        "identities": [],
+        "too_many_attempts_notified": {},
+        "notices": [],
+        "last_notice_id": 0,
+        "update_noticed": null,
+    });
+    corvid_store::save(&path, 2, &before).unwrap();
+
+    assert!(open(&path).unwrap().api_keys.is_empty());
 }
