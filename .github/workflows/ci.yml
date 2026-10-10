@@ -57,6 +57,7 @@ jobs:
       - run: bash deploy/tests/totp.test.sh
       - run: bash deploy/tests/lib.test.sh
       - run: bash deploy/tests/update.test.sh
+      - run: bash deploy/tests/apps.test.sh
       - run: bash deploy/tests/caddy.test.sh
       - name: Install stalwart-cli
         run: |

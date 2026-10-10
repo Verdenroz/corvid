@@ -99,6 +99,9 @@ step "rendering units from config.yaml"
 render_units /etc/containers/systemd "$HERE"
 systemctl daemon-reload
 
+step "installing the app release"
+install_apps
+
 pod="$(pod_inputs)"
 if ! systemctl is-active -q corvid-pod.service; then
   step "starting pod"
