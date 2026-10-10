@@ -139,7 +139,8 @@ install_apps() {
   rm -rf "$apps/.new" "$apps/.old"
   mkdir "$apps/.new"
   ctr="$(podman create "$CORVID_IMAGE")"
-  podman cp "$ctr:/usr/share/corvid/app/." "$apps/.new"
+  # An image built before releases were baked in has no such directory; it serves nothing.
+  podman cp "$ctr:/usr/share/corvid/app/." "$apps/.new" 2>/dev/null || echo "  $CORVID_IMAGE carries no app release"
   podman rm "$ctr" >/dev/null
   [[ -e "$apps/.new/manifest.json" ]] || find "$apps/.new" -mindepth 1 -delete
   chmod -R a+rX "$apps/.new"

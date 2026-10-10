@@ -18,7 +18,7 @@ chmod +x "$work/bin/podman"
 fail=0
 check() { if eval "$2"; then echo "  ok    $1"; else echo "  FAIL  $1"; fail=1; fi; }
 install_apps() {
-  WORK="$work" CORVID_DIR="$work/corvid" PATH="$work/bin:$PATH" bash -c ". \"$here/lib.sh\"; install_apps"
+  WORK="$work" CORVID_DIR="$work/corvid" PATH="$work/bin:$PATH" bash -c "set -euo pipefail; . \"$here/lib.sh\"; install_apps"
 }
 apps="$work/corvid/apps"
 mkdir -p "$apps"
@@ -40,5 +40,14 @@ echo "== an image without a release"
 rm "$work/image/manifest.json"; touch "$work/image/.gitkeep"
 install_apps
 check "current exists and is empty" '[[ -d "$apps/current" && -z "$(ls -A "$apps/current")" ]]'
+
+echo "== an image older than baked releases"
+echo three > "$work/image/manifest.json"
+install_apps
+rm -rf "$work/image"
+install_apps
+status=$?
+check "the install still succeeds" '[[ $status -eq 0 ]]'
+check "current is left empty rather than holding the old release" '[[ -d "$apps/current" && -z "$(ls -A "$apps/current")" ]]'
 
 exit "$fail"
