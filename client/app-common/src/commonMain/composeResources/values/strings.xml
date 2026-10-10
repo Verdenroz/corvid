@@ -11,7 +11,7 @@
     <string name="device_name_continue">Continue</string>
     <string name="unreachable_request_failed">Could not reach the server to ask for a key.</string>
     <string name="enroll_title">Approve "%1$s" from another device</string>
-    <string name="enroll_detail">On a device that already has access, open Settings, choose Approve a device, and scan this code or enter the request id and code.</string>
+    <string name="enroll_detail">On a device that already has access, open Settings, choose Approve a device, and pick this device by name, then type the code below. Or scan the QR code.</string>
     <string name="enroll_qr">QR code for approving this device</string>
     <string name="enroll_request_id">Request id</string>
     <string name="enroll_code">Code</string>
