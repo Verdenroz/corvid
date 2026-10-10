@@ -34,6 +34,14 @@ pub fn render(alert: &Alert) -> (NoticeKind, &'static str, String) {
                  combination not seen before."
             ),
         ),
+        Reason::NewApiKeySignIn => (
+            NoticeKind::SignIn,
+            "New sign-in",
+            format!(
+                "{account} signed in with an API key from {address} via {listener}, a \
+                 combination not seen before."
+            ),
+        ),
         Reason::PasswordAcceptedAwaitingCode => (
             NoticeKind::SignIn,
             "Password entered, code missing",
@@ -118,6 +126,13 @@ mod tests {
         let (kind, _, detail) = render(&alert(Reason::NewSignIn(CredentialKind::AppPassword)));
         assert_eq!(kind, NoticeKind::SignIn);
         assert!(detail.contains("signed in with an app password"));
+    }
+
+    #[test]
+    fn an_api_key_is_named_as_such() {
+        let (kind, _, detail) = render(&alert(Reason::NewApiKeySignIn));
+        assert_eq!(kind, NoticeKind::SignIn);
+        assert!(detail.contains("signed in with an API key"));
     }
 
     #[test]
