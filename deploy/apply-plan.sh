@@ -98,6 +98,19 @@ render | $STALWART_CLI apply --stdin "$@"
 
 case " $* " in *" --dry-run "*) exit 0;; esac
 
+# Stalwart generates keys only for algorithms the Domain lists, so a key from before the list
+# narrowed stays active. Moving it to retiring starts its normal wind-down.
+retire_ed25519() {
+  local keys key type retire_at
+  retire_at="$(date -u -d '+7 days' +%Y-%m-%dT%H:%M:%SZ)"
+  keys="$(active_dkim_keys "$MAIL_DOMAIN")"
+  while read -r key type _; do
+    [[ "$type" == Dkim1Ed25519Sha256 ]] || continue
+    $STALWART_CLI update DkimSignature "$key" --json "{\"stage\":\"retiring\",\"nextTransitionAt\":\"$retire_at\"}"
+  done <<<"$keys"
+}
+[[ "$PLAN" != "$HERE/stalwart.plan.ndjson" ]] || retire_ed25519
+
 # Applied settings sit inert until the server rereads them. A fresh v0.16.21 refuses the reload
 # over spam DNSBL objects it ships and its own validator rejects; a restart loads them anyway.
 if [[ -n "${CORVID_SKIP_RELOAD:-}" ]]; then

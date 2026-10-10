@@ -178,7 +178,16 @@ Caddyfile built from the same env vars as everything else. `core/discovery` hold
   owned by 2000. Root-owned 600 fails at first DNS call.
 - **`dataStore` RocksDb requires `path`** in the Bootstrap payload.
 - **`serverHostname` rejects reserved TLDs**, so `.example` is refused.
-- **Gmail does not validate ed25519 DKIM.** Keep RSA-2048 primary.
+- **Gmail does not validate ed25519 DKIM.** Google's DMARC reports showed RSA passing and ed25519
+  failing on every message, while the message's own Authentication-Results said `dkim=neutral (no
+  key)` for ed25519 even though its record was published, so the DNS is not the thing to chase.
+  The plan now lists only `Dkim1RsaSha256` in the Domain's `dkimManagement.algorithms` and states
+  `SenderAuth.dkimSignDomain` explicitly. A key generated before that stays `active` until
+  `apply-plan.sh` sets it to `retiring`, which is meant to stop it signing; `verify.sh` fails while
+  one is active.
+- **`smtp.dkim-fail` with `result=[]` on a submission is the pre-signing verify, not a missing
+  signature.** Stalwart verifies the message as received, before it signs, and an authenticated
+  submission carries no DKIM header yet. Check the signature on the delivered copy.
 - **A Caddy `respond` body with JSON braces needs backticks, and `{$VAR}` still expands inside
   them.** `/.well-known/corvid` is one such line; `caddy.test.sh` compares the served document
   byte for byte against the env values it started Caddy with.
