@@ -14,7 +14,6 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
             apply("org.jetbrains.kotlin.android")
         }
 
-        val version = providers.gradleProperty("corvid.version").getOrElse("0.1.0")
         val libs = versionCatalog()
         val jvmTarget = JvmTarget.fromTarget(libs.version("jvmTarget"))
 
@@ -23,8 +22,8 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
             defaultConfig {
                 minSdk = libs.intVersion("minSdk")
                 targetSdk = libs.intVersion("targetSdk")
-                versionCode = versionCodeOf(version)
-                versionName = version
+                versionCode = appVersionCode()
+                versionName = appVersionName()
             }
             compileOptions {
                 sourceCompatibility = JavaVersion.toVersion(jvmTarget.target)
@@ -57,13 +56,4 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
             }
         }
     }
-}
-
-/**
- * Android compares builds by version code alone, so it has to rise with the
- * version name. Allows up to 99 minor and 99 patch releases per major.
- */
-private fun versionCodeOf(version: String): Int {
-    val (major, minor, patch) = version.split(".").map(String::toInt)
-    return major * 10_000 + minor * 100 + patch
 }
