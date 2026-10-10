@@ -87,13 +87,12 @@ else
 fi
 
 echo "== devices =="
-# The sentinel checks nothing itself; Caddy guards these routes. An unknown id answers 200
-# whenever the routes exist, and only a missing sentinel.devices makes it 404.
-code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:11333/corvid/devices/requests/probe)"
+# An unknown id answers 200 whenever the routes exist; without sentinel.devices it is a 404.
+code="$( (in_pod corvid-sentinel curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:11333/corvid/devices/requests/probe) 2>/dev/null)"
 case "$code" in
   200) ok "the sentinel serves the device routes" ;;
   404) bad "the sentinel serves no device routes (answers 404); add sentinel.devices (state: /var/lib/corvid/devices.json) to config.yaml and restart corvid-sentinel" ;;
-  *) bad "the sentinel's device routes answer $code, not 200; check: journalctl -u corvid-sentinel" ;;
+  *) bad "the sentinel's device routes answer ${code:-no status}, not 200; check: journalctl -u corvid-sentinel" ;;
 esac
 
 echo "== published ports =="
