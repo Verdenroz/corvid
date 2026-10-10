@@ -3,7 +3,9 @@ package com.verdenroz.corvid.feature.settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -11,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.AppUpdateState
 import com.verdenroz.corvid.core.data.stamp
@@ -90,10 +93,25 @@ private fun AppUpdateRows(
             else -> current.offerText().orEmpty()
         }
     FactRow(stringResource(Res.string.settings_app_update), value)
+    (state as? AppUpdateState.Downloading)?.let { DownloadBar(it.progress) }
     state.problemText()?.let { Note(it, if (state is AppUpdateState.Failed) CorvidTheme.colors.danger else CorvidTheme.colors.inkMuted) }
     state.actionLabel()?.let { action ->
         Row(Modifier.padding(vertical = 14.dp)) { PrimaryButton(stringResource(action), onUpdate) }
     }
+}
+
+@Composable
+private fun DownloadBar(progress: Float) {
+    val colors = CorvidTheme.colors
+    LinearProgressIndicator(
+        progress = { progress },
+        color = colors.accent,
+        trackColor = colors.line,
+        strokeCap = StrokeCap.Round,
+        gapSize = 0.dp,
+        drawStopIndicator = {},
+        modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp),
+    )
 }
 
 @Composable
