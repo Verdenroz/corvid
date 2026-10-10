@@ -6,6 +6,7 @@ import com.verdenroz.corvid.core.keyring.DeviceKeyLookup
 import com.verdenroz.corvid.core.keyring.DeviceKeyRepository
 import com.verdenroz.corvid.core.keyring.DeviceRequest
 import com.verdenroz.corvid.core.keyring.OpenOutcome
+import com.verdenroz.corvid.core.keyring.PendingRequest
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.ViewModelTestScope
 import com.verdenroz.corvid.core.testing.client
@@ -28,6 +29,7 @@ import kotlin.test.assertTrue
 
 private class Setup(
     val fake: FakeJmapServer,
+    val repository: DeviceApprovalRepository,
     val viewModel: ApproveDeviceViewModel,
     val request: DeviceRequest,
     val signIns: () -> Int,
@@ -53,10 +55,12 @@ private suspend fun ViewModelTestScope.setup(
                 },
             ),
         )
-    return Setup(fake, viewModel, request) { signIns }
+    return Setup(fake, repository, viewModel, request) { signIns }
 }
 
 private suspend fun ApproveDeviceViewModel.settled(): ApproveDeviceState = state.first { !it.busy && it.step != ApproveStep.Editing }
+
+private suspend fun ApproveDeviceViewModel.loaded(): PendingList = state.first { it.pending != PendingList.Loading }.pending
 
 private fun ApproveDeviceViewModel.fill(request: DeviceRequest) {
     setId(request.id)
@@ -110,7 +114,10 @@ class ApproveDeviceViewModelTest {
 
             s.viewModel.scanned("corvid-approve:abc123?code=042917")
 
-            assertEquals(ApproveDeviceState(id = "abc123", code = "042917"), s.viewModel.state.value)
+            val state = s.viewModel.state.value
+            assertEquals("abc123", state.id)
+            assertEquals("042917", state.code)
+            assertTrue(state.typingId)
         }
 
     @Test
@@ -194,5 +201,71 @@ class ApproveDeviceViewModelTest {
             s.viewModel.setCode("111111")
 
             assertEquals(ApproveStep.Editing, s.viewModel.state.value.step)
+        }
+
+    @Test
+    fun `the open requests are listed on open`() =
+        runViewModelTest {
+            val s = setup()
+
+            val listed = assertIs<PendingList.Listed>(s.viewModel.loaded())
+            assertEquals(listOf(s.request.id), listed.requests.map { it.id })
+            assertEquals(listOf("laptop-1"), listed.requests.map { it.name })
+        }
+
+    @Test
+    fun `picking a request sets the id and approving sends it with the typed code`() =
+        runViewModelTest {
+            val s = setup()
+            s.viewModel.loaded()
+            val other = assertIs<OpenOutcome.Opened>(s.repository.open("tablet")).request
+            s.viewModel.refresh()
+            val listed = assertIs<PendingList.Listed>(s.viewModel.loaded())
+            assertEquals(listOf(other.id, s.request.id), listed.requests.map { it.id })
+
+            s.viewModel.pick(listed.requests.first { it.name == "tablet" })
+            s.viewModel.setCode(other.code)
+            s.viewModel.approve()
+            s.viewModel.settled()
+
+            assertEquals(listOf(other.id), s.fake.devices.approvals.map { it.id })
+            assertEquals(listOf(other.code), s.fake.devices.approvals.map { it.code })
+        }
+
+    @Test
+    fun `an approved request leaves the list`() =
+        runViewModelTest {
+            val s = setup()
+            s.viewModel.fill(s.request)
+
+            s.viewModel.loaded()
+            s.viewModel.approve()
+            s.viewModel.settled()
+
+            s.viewModel.state.first { it.pending == PendingList.Listed(emptyList()) }
+        }
+
+    @Test
+    fun `no waiting device lists as empty`() =
+        runViewModelTest {
+            val s = setup()
+            s.viewModel.loaded()
+            s.fake.devices.expire(s.request.id)
+
+            s.viewModel.refresh()
+
+            assertEquals(PendingList.Listed(emptyList<PendingRequest>()), s.viewModel.loaded())
+        }
+
+    @Test
+    fun `a server with device approval off lists as off`() =
+        runViewModelTest {
+            val s = setup()
+            s.viewModel.loaded()
+            s.fake.devices.off = true
+
+            s.viewModel.refresh()
+
+            assertEquals(PendingList.Off, s.viewModel.loaded())
         }
 }

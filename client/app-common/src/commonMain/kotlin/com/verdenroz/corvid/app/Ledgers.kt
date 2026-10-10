@@ -8,8 +8,15 @@ import com.verdenroz.corvid.feature.mailbox.LedgerViewModel
 /** One ledger per tab while the mailbox is unlocked, so a tab keeps its loaded pages behind a reader or another tab. */
 internal class Ledgers(private val repository: MailboxRepository) {
     private val store = ViewModelStore()
+    private val opened = mutableMapOf<LedgerTab, LedgerViewModel>()
 
-    fun of(tab: LedgerTab): LedgerViewModel = store.model(tab.name, LedgerViewModel::class) { LedgerViewModel(repository, tab) }
+    fun of(tab: LedgerTab): LedgerViewModel =
+        opened.getOrPut(tab) { store.model(tab.name, LedgerViewModel::class) { LedgerViewModel(repository, tab) } }
 
-    fun clear() = store.clear()
+    fun refreshAll() = opened.values.forEach(LedgerViewModel::refresh)
+
+    fun clear() {
+        store.clear()
+        opened.clear()
+    }
 }

@@ -31,7 +31,14 @@
     <string name="settings_approve_row">Approve a device</string>
     <string name="settings_approve_detail">Let a new device read its key, with your admin passkey.</string>
     <string name="approve_title">Approve a device</string>
-    <string name="approve_detail">Scan the QR code on the new device, or enter its request id and code. You will be asked for your admin passkey.</string>
+    <string name="approve_detail">Pick the device that is waiting, then type the code it shows. You will be asked for your admin passkey.</string>
+    <string name="approve_waiting">Devices waiting</string>
+    <string name="approve_loading">Looking for devices that asked.</string>
+    <string name="approve_none">No device is waiting. On the new device, open Corvid and sign in; it shows a code and asks to be approved.</string>
+    <string name="approve_off">Device approval is switched off on this server.</string>
+    <string name="approve_refresh">Refresh</string>
+    <string name="approve_expires_in">Expires in %1$d min</string>
+    <string name="approve_enter_id">Enter a request id instead</string>
     <string name="approve_scan">Scan the QR code</string>
     <string name="approve_id">Request id</string>
     <string name="approve_code">Code</string>

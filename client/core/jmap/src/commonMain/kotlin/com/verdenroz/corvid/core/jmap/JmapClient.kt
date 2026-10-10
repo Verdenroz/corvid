@@ -16,7 +16,10 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.serialization.ContentConvertException
+import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -30,7 +33,10 @@ const val SUBMISSION_CAPABILITY = "urn:ietf:params:jmap:submission"
 const val FILENODE_CAPABILITY = "urn:ietf:params:jmap:filenode"
 const val SIEVE_CAPABILITY = "urn:ietf:params:jmap:sieve"
 
-class WebReply(val status: HttpStatusCode, val body: JsonObject?)
+class WebReply(val status: HttpStatusCode, private val json: JsonElement?) {
+    val body: JsonObject? get() = json as? JsonObject
+    val array: JsonArray? get() = json as? JsonArray
+}
 
 /**
  * A session against a rebased JMAP endpoint. [connect] discovers it; [call]
@@ -169,9 +175,9 @@ class JmapClient private constructor(
         return WebReply(response.status, if (hasBody) response.json() else response.jsonOrNull())
     }
 
-    private suspend fun HttpResponse.jsonOrNull(): JsonObject? =
+    private suspend fun HttpResponse.jsonOrNull(): JsonElement? =
         try {
-            body<JsonObject>()
+            body<JsonElement>()
         } catch (e: NoTransformationFoundException) {
             null
         } catch (e: ContentConvertException) {
@@ -180,14 +186,20 @@ class JmapClient private constructor(
             null
         }
 
-    private suspend fun HttpResponse.json(): JsonObject =
+    private suspend fun HttpResponse.json(): JsonElement =
         try {
-            body<JsonObject>()
+            body<JsonElement>()
         } catch (e: NoTransformationFoundException) {
             throw JmapException(JmapError.Request(type = "notJSON", detail = e.message))
         } catch (e: SerializationException) {
             throw JmapException(JmapError.Request(type = "notJSON", detail = e.message))
         }
+
+    /**
+     * Pushes from the session's EventSource endpoint for as long as it is collected: one connection,
+     * reopened on a drop. Ends with the [JmapException] of a terminal failure, which trips the latch on a 401.
+     */
+    fun stateChanges(): Flow<StateChange> = stateChangeFlow(httpClient, authLatch, { session.eventSourceUrl }, bearerToken)
 
     /** The address the client dialled, which the web tier's own paths hang off. */
     val webBase: String get() = baseUrl.trimEnd('/')
@@ -301,16 +313,31 @@ private suspend fun guarded(
     passThrough: Set<HttpStatusCode> = emptySet(),
     request: suspend () -> HttpResponse,
 ): HttpResponse {
+    val response = transport(authLatch, request)
+    rejectFailure(authLatch, response, passThrough)
+    return response
+}
+
+internal suspend fun <T> transport(
+    authLatch: AuthLatch,
+    block: suspend () -> T,
+): T {
     if (authLatch.tripped.value) throw JmapException(JmapError.Unauthorized)
-    val response =
-        try {
-            request()
-        } catch (e: SSLException) {
-            throw JmapException(JmapError.TlsFailure(e))
-        } catch (e: IOException) {
-            throw JmapException(JmapError.Unreachable(e))
-        }
-    if (response.status in passThrough) return response
+    return try {
+        block()
+    } catch (e: SSLException) {
+        throw JmapException(JmapError.TlsFailure(e))
+    } catch (e: IOException) {
+        throw JmapException(JmapError.Unreachable(e))
+    }
+}
+
+internal suspend fun rejectFailure(
+    authLatch: AuthLatch,
+    response: HttpResponse,
+    passThrough: Set<HttpStatusCode> = emptySet(),
+) {
+    if (response.status in passThrough) return
     when (response.status) {
         HttpStatusCode.Unauthorized -> {
             authLatch.trip()
@@ -341,7 +368,6 @@ private suspend fun guarded(
         )
     }
     if (!response.status.isSuccess()) throw JmapException(JmapError.Server(response.status.value))
-    return response
 }
 
 /**
