@@ -321,6 +321,10 @@ The master device may be the new device itself. The app's enrollment screen has 
 the admin passkey" action that runs step 2 on its own request, so the first device of an account
 unlocks without another one. The server never checks that the approver is unlocked.
 
+Pocket-ID refuses `corvid-admin` to a browser still signed in as the mail user, so step 2 first
+asks the browser to sign out of Pocket-ID and again after the passkey sign-in. Each is a "Sign out"
+confirmation to tap. `idp.sh provision` registers the logout callbacks that bring the browser back.
+
 An approve answers 401 for a token that proves nothing, 403 for a wrong code or a token that is not
 the admin's, 410 for a request that is gone, spent or expired, and 502 when Pocket-ID or Stalwart
 could not be reached or the key could not be written. After a 502 the request is spent and the
