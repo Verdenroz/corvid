@@ -25,6 +25,9 @@ interface AppInstaller {
 
     suspend fun install(file: File): InstallResult
 
+    /** Whether [install] would be accepted now rather than answer [InstallResult.NeedsPermission]. */
+    fun canInstall(): Boolean = true
+
     /** Opens the screen where the user lets this app install builds, after [InstallResult.NeedsPermission]. */
     fun allowInstalls() {}
 }
