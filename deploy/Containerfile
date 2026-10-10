@@ -16,4 +16,5 @@ COPY --from=build /src/target/release/corvid-labeler /usr/local/bin/
 COPY --from=build /src/target/release/corvid-sentinel /usr/local/bin/
 COPY --from=build /src/target/release/corvid-config /usr/local/bin/
 COPY deploy /usr/share/corvid/deploy
+COPY dist/app /usr/share/corvid/app
 USER 2000:2000

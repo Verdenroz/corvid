@@ -10,10 +10,53 @@ permissions:
   packages: write
 
 jobs:
-  publish:
+  client-release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - working-directory: client
+        run: echo "VERSION_CODE=$((1000 + $(git rev-list --count HEAD -- .)))" >> "$GITHUB_ENV"
+      - name: Decode the release keystore
+        run: echo "$CORVID_KEYSTORE" | base64 -d > "$RUNNER_TEMP/corvid-release.jks"
+        env:
+          CORVID_KEYSTORE: ${{ secrets.CORVID_KEYSTORE }}
+      - name: Build the release apps
+        working-directory: client
+        run: ./gradlew :androidApp:assembleRelease :desktopApp:createDistributable -Pcorvid.versionCode="$VERSION_CODE" --max-workers=2
+        env:
+          CORVID_KEYSTORE_FILE: ${{ runner.temp }}/corvid-release.jks
+          CORVID_KEYSTORE_PASSWORD: ${{ secrets.CORVID_KEYSTORE_PASSWORD }}
+          CORVID_KEY_ALIAS: ${{ secrets.CORVID_KEY_ALIAS }}
+          CORVID_KEY_PASSWORD: ${{ secrets.CORVID_KEY_PASSWORD }}
+      - name: Collect and verify the apps
+        run: |
+          mkdir app
+          cp client/androidApp/build/outputs/apk/release/*.apk app/corvid.apk
+          "$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)" verify --print-certs app/corvid.apk
+          tar -C client/desktopApp/build/compose/binaries/main/app -czf app/corvid-linux-x64.tar.gz corvid
+          ./scripts/app-manifest.py app "$VERSION_CODE"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: corvid-app
+          path: app
+          retention-days: 1
+
+  publish:
+    needs: client-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: corvid-app
+          path: dist/app
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
