@@ -458,6 +458,12 @@ mounted at the same path on both sides. The SDK is mounted read-only. The regist
 reaches the container's environment and is used once; the runner's credentials live in the
 `corvid-ci-home` volume.
 
+The container shares the host's network namespace, because `caddy.test.sh` and `oidc.test.sh`
+start containers with `--network host` and reach them on `127.0.0.1`. They bind 8080, 11333, 1411
+and 18443 plus Stalwart's own listeners, so the deploy job fails with a bind error if the laptop
+already holds one of those ports. `TMPDIR` points under the work directory so `mktemp -d` paths
+can be bind-mounted by the host daemon.
+
 A user unit, `corvid-ci-runner.service`, starts the container at boot (the account has linger on).
 Docker's own restart policy is not enough: the daemon here is socket-activated and stays down
 after a reboot until something connects, and the unit's `docker start` is that connection.

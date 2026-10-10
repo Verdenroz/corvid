@@ -22,13 +22,14 @@ up() {
   docker build -q -f "$HERE/ci-runner/Containerfile" \
     --build-arg "HOST_UID=$(id -u)" --build-arg "HOST_GID=$(id -g)" \
     -t "$IMAGE" "$HERE/ci-runner" >/dev/null
-  mkdir -p "$WORK" "$UNIT_DIR"
+  mkdir -p "$WORK/tmp" "$UNIT_DIR"
   systemctl --user stop "$NAME" 2>/dev/null || true
   docker rm -f "$NAME" >/dev/null 2>&1 || true
 
   local token
   token="$(gh api -X POST "repos/$REPO/actions/runners/registration-token" --jq .token)"
   RUNNER_TOKEN="$token" docker create --name "$NAME" \
+    --network host \
     --group-add "$(stat -c %g /var/run/docker.sock)" \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v "$WORK:$WORK" \
@@ -39,6 +40,7 @@ up() {
     -e "RUNNER_NAME=$NAME" \
     -e RUNNER_LABELS=corvid \
     -e "RUNNER_WORK=$WORK" \
+    -e "TMPDIR=$WORK/tmp" \
     -e "ANDROID_HOME=$SDK" \
     "$IMAGE" >/dev/null
 
