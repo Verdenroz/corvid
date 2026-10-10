@@ -29,7 +29,10 @@ sealed interface AppLockState {
 sealed interface EnrollmentRequest {
     data object Opening : EnrollmentRequest
 
-    /** Waiting for a master to approve [request]; [approving] while this device does it itself, [failure] when that did not work. */
+    /**
+     * Waiting for a master to approve [request]; [approving] while this device does it itself,
+     * [failure] when that did not work.
+     */
     data class Open(
         val request: DeviceRequest,
         val approving: Boolean = false,

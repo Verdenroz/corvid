@@ -21,7 +21,7 @@ class EnrollmentPromptTest {
         runComposeUiTest {
             setContent {
                 CorvidTheme(darkTheme = false) {
-                    EnrollmentPrompt("laptop-1", EnrollmentRequest.Open(request), onAskAgain = {}, onWatch = {})
+                    EnrollmentPrompt("laptop-1", EnrollmentRequest.Open(request), onAskAgain = {}, onApproveSelf = {}, onWatch = {})
                 }
             }
 
@@ -30,12 +30,39 @@ class EnrollmentPromptTest {
         }
 
     @Test
+    fun `an open request offers approving it with the admin passkey`() =
+        runComposeUiTest {
+            var approved = 0
+            setContent {
+                CorvidTheme(darkTheme = false) {
+                    EnrollmentPrompt(
+                        "laptop-1",
+                        EnrollmentRequest.Open(request),
+                        onAskAgain = {},
+                        onApproveSelf = { approved++ },
+                        onWatch = {},
+                    )
+                }
+            }
+
+            onNodeWithText("Approve with the admin passkey").performClick()
+
+            assertEquals(1, approved)
+        }
+
+    @Test
     fun `an expired request offers asking again`() =
         runComposeUiTest {
             var asked = 0
             setContent {
                 CorvidTheme(darkTheme = false) {
-                    EnrollmentPrompt("laptop-1", EnrollmentRequest.Expired, onAskAgain = { asked++ }, onWatch = {})
+                    EnrollmentPrompt(
+                        "laptop-1",
+                        EnrollmentRequest.Expired,
+                        onAskAgain = { asked++ },
+                        onApproveSelf = {},
+                        onWatch = {},
+                    )
                 }
             }
 

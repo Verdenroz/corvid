@@ -67,6 +67,7 @@ fun CorvidApp(
                         deviceName = current.deviceName,
                         request = current.request,
                         onAskAgain = viewModel::askAgain,
+                        onApproveSelf = viewModel::approveWithAdminPasskey,
                         onWatch = viewModel::watchRequest,
                     )
             }
