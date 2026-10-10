@@ -34,6 +34,7 @@ dependencies {
     implementation(libs.koin.compose)
     implementation(compose.desktop.currentOs)
     implementation(libs.compose.material3)
+    testImplementation(libs.kotlin.test)
 }
 
 compose.desktop {
