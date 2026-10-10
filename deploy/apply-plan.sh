@@ -109,7 +109,7 @@ retire_ed25519() {
     $STALWART_CLI update DkimSignature "$key" --json "{\"stage\":\"retiring\",\"nextTransitionAt\":\"$retire_at\"}"
   done <<<"$keys"
 }
-retire_ed25519
+[[ "$PLAN" != "$HERE/stalwart.plan.ndjson" ]] || retire_ed25519
 
 # Applied settings sit inert until the server rereads them. A fresh v0.16.21 refuses the reload
 # over spam DNSBL objects it ships and its own validator rejects; a restart loads them anyway.
