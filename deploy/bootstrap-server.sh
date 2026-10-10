@@ -17,8 +17,8 @@ for v in STALWART_URL RECOVERY_ADMIN_USER RECOVERY_ADMIN_PASSWORD; do
   [[ -n "${!v:-}" ]] || { echo "missing required variable: $v" >&2; exit 78; }
 done
 
-if [[ -n "${STALWART_PASSWORD:-}" ]]; then
-  echo "STALWART_PASSWORD is already set in $ENV_FILE, so the server is set up. Nothing to do."
+if server_set_up; then
+  echo "An admin credential is already set in $ENV_FILE, so the server is set up. Nothing to do."
   exit 0
 fi
 

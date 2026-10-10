@@ -49,6 +49,16 @@ printf 'STALWART_TOKEN=t\nSTALWART_USER=u\nSTALWART_PASSWORD=p\n' > "$work/corvi
 check "load_env drops the password pair when the file holds a token" \
   '[[ "$(bash -c ". \"$here/lib.sh\"; load_env \"$work/corvid.env\"; echo \"\$STALWART_TOKEN\${STALWART_USER:-}\${STALWART_PASSWORD:-}\"")" == t ]]'
 
+echo "== server_set_up"
+set_up() {
+  printf '%s\n' "$@" > "$work/corvid.env"
+  bash -c ". \"$here/lib.sh\"; load_env \"$work/corvid.env\"; server_set_up"
+}
+check "a token alone counts as set up" 'set_up STALWART_TOKEN=t'
+check "a password alone counts as set up" 'set_up STALWART_USER=u STALWART_PASSWORD=p'
+check "a token and a password count as set up" 'set_up STALWART_TOKEN=t STALWART_USER=u STALWART_PASSWORD=p'
+check "neither counts as not set up" '! set_up RECOVERY_ADMIN_USER=r'
+
 echo "== no other script embeds the password in curl's argv"
 hits="$(grep -l 'curl.*-u.*STALWART_PASSWORD' "$here"/*.sh 2>/dev/null | grep -v '/lib\.sh$' || true)"
 check "grep finds no such call site" '[[ -z "$hits" ]]'

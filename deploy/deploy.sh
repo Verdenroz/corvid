@@ -112,7 +112,7 @@ fi
 wait_healthy
 printf '%s\n' "$pod" > "$POD_MARKER"
 
-if [[ -z "${STALWART_PASSWORD:-}" ]]; then
+if ! server_set_up; then
   step "first boot"
   "$HERE/bootstrap-server.sh"
 

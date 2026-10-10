@@ -38,6 +38,12 @@ load_env() {
   prefer_token
 }
 
+# True once bootstrap has run. load_env drops the password pair when a token exists, so the
+# password alone cannot say so.
+server_set_up() {
+  [[ -n "${STALWART_PASSWORD:-}" || -n "${STALWART_TOKEN:-}" ]]
+}
+
 # curl -u puts the password in argv, readable in /proc by any local user for the call's
 # lifetime. --config on a process substitution keeps it off the command line. Its quoted value
 # needs its own backslashes and quotes escaped, or a password carrying either breaks the parse.
