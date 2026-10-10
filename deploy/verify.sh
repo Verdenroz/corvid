@@ -151,8 +151,11 @@ dig +short TXT "_dmarc.$DOMAIN" | grep -q 'v=DMARC1'   && ok "DMARC" || bad "DMA
 echo "== dkim =="
 if keys=$(active_dkim_keys "$DOMAIN"); then
   grep -q ' Dkim1RsaSha256 ' <<<"$keys" && ok "an active RSA key signs outbound mail" || bad "no active RSA DKIM key"
-  grep -q ' Dkim1Ed25519Sha256 ' <<<"$keys" && bad "an active ed25519 key signs outbound mail; Gmail does not validate it" ||
+  if grep -q ' Dkim1Ed25519Sha256 ' <<<"$keys"; then
+    bad "an active ed25519 key signs outbound mail; Gmail does not validate it"
+  else
     ok "no active ed25519 key"
+  fi
   while read -r id _ selector; do
     [[ -n "$id" ]] || continue
     key=$(dkim_public_key "$id") || { bad "DKIM $selector: could not read its public key from Stalwart"; continue; }

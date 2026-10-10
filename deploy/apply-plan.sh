@@ -99,7 +99,7 @@ render | $STALWART_CLI apply --stdin "$@"
 case " $* " in *" --dry-run "*) exit 0;; esac
 
 # Stalwart generates keys only for algorithms the Domain lists, so a key from before the list
-# narrowed stays active. Moving it to retiring stops signing and starts its normal wind-down.
+# narrowed stays active. Moving it to retiring starts its normal wind-down.
 retire_ed25519() {
   local keys key type retire_at
   retire_at="$(date -u -d '+7 days' +%Y-%m-%dT%H:%M:%SZ)"
