@@ -20,5 +20,4 @@ fun createOidcClient(
         scope = "openid profile"
         codeChallengeMethod = CodeChallengeMethod.S256
         this.redirectUri = redirectUri
-        postLogoutRedirectUri = redirectUri
     }

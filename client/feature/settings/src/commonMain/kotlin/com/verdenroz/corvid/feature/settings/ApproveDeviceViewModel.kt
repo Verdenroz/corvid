@@ -86,21 +86,19 @@ class ApproveDeviceViewModel(
         id: String,
         code: String,
     ): ApproveStep {
-        val token =
-            try {
-                masterSignIn()
-            } catch (e: OpenIdConnectException) {
-                return ApproveStep.Failed(uiText(Res.string.approve_failed_signin))
-            }
-        _state.value = _state.value.copy(step = ApproveStep.Sending)
         return try {
-            when (repository.approve(id, code, token)) {
-                ApproveOutcome.Approved -> ApproveStep.Approved(id.take(SHORT_ID_LENGTH))
-                ApproveOutcome.NotAccepted -> ApproveStep.Failed(uiText(Res.string.approve_failed_not_accepted))
-                ApproveOutcome.Refused -> ApproveStep.Failed(uiText(Res.string.approve_failed_refused))
-                ApproveOutcome.Gone -> ApproveStep.Failed(uiText(Res.string.approve_failed_gone))
-                ApproveOutcome.UpstreamFailed -> ApproveStep.Failed(uiText(Res.string.approve_failed_upstream))
+            masterSignIn.withAdminToken { token ->
+                _state.value = _state.value.copy(step = ApproveStep.Sending)
+                when (repository.approve(id, code, token)) {
+                    ApproveOutcome.Approved -> ApproveStep.Approved(id.take(SHORT_ID_LENGTH))
+                    ApproveOutcome.NotAccepted -> ApproveStep.Failed(uiText(Res.string.approve_failed_not_accepted))
+                    ApproveOutcome.Refused -> ApproveStep.Failed(uiText(Res.string.approve_failed_refused))
+                    ApproveOutcome.Gone -> ApproveStep.Failed(uiText(Res.string.approve_failed_gone))
+                    ApproveOutcome.UpstreamFailed -> ApproveStep.Failed(uiText(Res.string.approve_failed_upstream))
+                }
             }
+        } catch (e: OpenIdConnectException) {
+            ApproveStep.Failed(uiText(Res.string.approve_failed_signin))
         } catch (e: JmapException) {
             ApproveStep.Failed(e.userMessage())
         }

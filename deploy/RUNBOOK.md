@@ -321,11 +321,13 @@ The master device may be the new device itself. The app's enrollment screen has 
 the admin passkey" action that runs step 2 on its own request, so the first device of an account
 unlocks without another one. The server never checks that the approver is unlocked.
 
-Pocket-ID refuses `corvid-admin` to a browser still signed in as the mail user, so step 2 first
-asks the browser to sign out of Pocket-ID and again after the passkey sign-in. Each carries the
-session's ID token as `id_token_hint`, which makes Pocket-ID skip its "Sign out" confirmation and
-redirect at once, to a loopback callback on any port. Without a hint it stops at that page and never
-redirects. `idp.sh provision` registers the logout callbacks that bring the browser back.
+Pocket-ID holds one signed-in account per browser and refuses `corvid-admin` to a browser still
+signed in as the mail user. Ending that session would revoke the tokens it issued, including the
+app's own. So step 2 opens the admin sign-in in a private browser context with its own cookies: an
+ephemeral Custom Tab on Android (Chrome 136 or later; other browsers open a normal tab, which
+shares the daily session) and the default browser's private window on Linux desktop (a browser
+with no private-window action in its `.desktop` file opens a normal window, with the same
+limit).
 
 An approve answers 401 for a token that proves nothing, 403 for a wrong code or a token that is not
 the admin's, 410 for a request that is gone, spent or expired, and 502 when Pocket-ID or Stalwart

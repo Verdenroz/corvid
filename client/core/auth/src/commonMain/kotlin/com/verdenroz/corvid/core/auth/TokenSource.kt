@@ -59,9 +59,6 @@ class TokenSource(
         }
     }
 
-    val idToken: String?
-        get() = tokens?.id_token
-
     fun adopt(
         client: OpenIdConnectClient,
         tokens: AccessTokenResponse,
