@@ -16,6 +16,7 @@ import com.verdenroz.corvid.core.prefs.DevicePreferences
 import com.verdenroz.corvid.core.prefs.ThemeChoice
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.ConnectingPane
+import com.verdenroz.corvid.core.ui.DeviceApprovalOffPane
 import com.verdenroz.corvid.core.ui.LockedPane
 import com.verdenroz.corvid.core.ui.RevokedPane
 import com.verdenroz.corvid.core.ui.UnreachablePane
@@ -61,7 +62,7 @@ fun CorvidApp(
                     val facts = viewModel.lockFacts
                     LockedPane(facts.server, facts.device, facts.lockedAt?.let { droppedAt(it) }, onUnlock = viewModel::unlock)
                 }
-                is AppLockState.DeviceApprovalOff -> DeviceApprovalOffPane(onAskAgain = viewModel::askAgain)
+                is AppLockState.DeviceApprovalOff -> DeviceApprovalOffPane(onAskAgain = viewModel::askAgain, onSignOut = viewModel::signOut)
                 is AppLockState.Revoked -> RevokedPane()
                 is AppLockState.NeedsEnrollment ->
                     EnrollmentPrompt(

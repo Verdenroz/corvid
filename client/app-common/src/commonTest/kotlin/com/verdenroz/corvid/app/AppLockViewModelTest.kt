@@ -285,6 +285,23 @@ class AppLockViewModelTest {
         }
 
     @Test
+    fun `signing out from device approval off reaches the sign-in screen`() =
+        runTest(testDispatcher) {
+            val fake = FakeJmapServer()
+            val harness = harness(backgroundScope, fake)
+            fake.devices.off = true
+            harness.signIn()
+            harness.viewModel.state.awaitState { it is AppLockState.Connecting && it.needsDeviceName }
+            harness.viewModel.submitDeviceName("laptop-1")
+            harness.viewModel.state.awaitState { it is AppLockState.DeviceApprovalOff }
+
+            harness.viewModel.signOut()
+
+            harness.viewModel.state.awaitState { it is AppLockState.SignedOut }
+            assertIs<AuthState.SignedOut>(harness.tokenSource.state.value)
+        }
+
+    @Test
     fun `taps on ask again while a request is opening open one request`() =
         runTest(testDispatcher) {
             val fake = FakeJmapServer()

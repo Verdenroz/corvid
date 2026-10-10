@@ -10,6 +10,7 @@ kotlin {
         val desktopTest by getting {
             dependencies {
                 implementation(projects.core.testing)
+                implementation(libs.compose.ui.test)
             }
         }
         commonMain.dependencies {
