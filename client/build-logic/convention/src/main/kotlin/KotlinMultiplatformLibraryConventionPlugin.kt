@@ -1,3 +1,6 @@
+import com.android.build.api.variant.HasHostTestsBuilder
+import com.android.build.api.variant.HostTestBuilder
+import com.android.build.api.variant.LibraryAndroidComponentsExtension
 import com.android.build.gradle.LibraryExtension
 import org.gradle.api.JavaVersion
 import org.gradle.api.Plugin
@@ -47,6 +50,10 @@ class KotlinMultiplatformLibraryConventionPlugin : Plugin<Project> {
                 sourceCompatibility = JavaVersion.toVersion(jvmTarget.target)
                 targetCompatibility = JavaVersion.toVersion(jvmTarget.target)
             }
+        }
+
+        extensions.configure<LibraryAndroidComponentsExtension> {
+            beforeVariants(selector().withBuildType("release")) { (it as HasHostTestsBuilder).hostTests.getValue(HostTestBuilder.UNIT_TEST_TYPE).enable = false }
         }
     }
 }
