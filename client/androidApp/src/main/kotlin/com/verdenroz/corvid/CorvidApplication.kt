@@ -25,7 +25,7 @@ class CorvidApplication : Application() {
         val notices =
             module {
                 single<NoticeNotifier> { AndroidNoticeNotifier(androidContext()) }
-                single<AppInstaller> { AndroidAppInstaller() }
+                single<AppInstaller> { AndroidAppInstaller(androidContext()) }
             }
         val koin =
             startKoin {
