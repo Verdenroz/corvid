@@ -35,6 +35,7 @@ internal fun AppUpdatesBanner(updates: AppUpdates) {
     val release =
         when (val current = state) {
             is AppUpdateState.Available -> current.release
+            is AppUpdateState.NeedsPermission -> current.release
             is AppUpdateState.Failed -> current.release
             else -> null
         }

@@ -38,9 +38,11 @@ import com.verdenroz.corvid.feature.settings.resources.settings_about_update_now
 import com.verdenroz.corvid.feature.settings.resources.settings_about_updating
 import com.verdenroz.corvid.feature.settings.resources.settings_app_update
 import com.verdenroz.corvid.feature.settings.resources.settings_app_update_action
+import com.verdenroz.corvid.feature.settings.resources.settings_app_update_allow
 import com.verdenroz.corvid.feature.settings.resources.settings_app_update_available
 import com.verdenroz.corvid.feature.settings.resources.settings_app_update_current
 import com.verdenroz.corvid.feature.settings.resources.settings_app_update_downloading
+import com.verdenroz.corvid.feature.settings.resources.settings_app_update_needs_permission
 import com.verdenroz.corvid.feature.settings.resources.settings_app_update_ready
 import com.verdenroz.corvid.feature.settings.resources.settings_app_update_retry
 import com.verdenroz.corvid.feature.settings.resources.settings_result_current
@@ -80,6 +82,7 @@ private fun AppUpdateRows(control: AppUpdateControl) {
         when (val current = state) {
             is AppUpdateState.UpToDate -> stringResource(Res.string.settings_app_update_current)
             is AppUpdateState.Available -> stringResource(Res.string.settings_app_update_available, current.release.versionName)
+            is AppUpdateState.NeedsPermission -> stringResource(Res.string.settings_app_update_available, current.release.versionName)
             is AppUpdateState.Failed -> stringResource(Res.string.settings_app_update_available, current.release.versionName)
             is AppUpdateState.Downloading ->
                 stringResource(Res.string.settings_app_update_downloading, (current.progress * 100).toInt())
@@ -87,10 +90,17 @@ private fun AppUpdateRows(control: AppUpdateControl) {
         }
     FactRow(stringResource(Res.string.settings_app_update), value)
     (state as? AppUpdateState.Failed)?.let { Note(it.message.asString(), CorvidTheme.colors.danger) }
+    if (state is AppUpdateState.NeedsPermission) Note(stringResource(Res.string.settings_app_update_needs_permission))
     val retry = state is AppUpdateState.Failed
-    if (state is AppUpdateState.Available || retry) {
+    val allow = state is AppUpdateState.NeedsPermission
+    if (state is AppUpdateState.Available || retry || allow) {
         Row(Modifier.padding(vertical = 14.dp)) {
-            val action = if (retry) Res.string.settings_app_update_retry else Res.string.settings_app_update_action
+            val action =
+                when {
+                    retry -> Res.string.settings_app_update_retry
+                    allow -> Res.string.settings_app_update_allow
+                    else -> Res.string.settings_app_update_action
+                }
             PrimaryButton(stringResource(action), control.onUpdate)
         }
     }

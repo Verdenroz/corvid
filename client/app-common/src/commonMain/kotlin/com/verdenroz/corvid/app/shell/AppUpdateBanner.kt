@@ -18,7 +18,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.appcommon.resources.Res
 import com.verdenroz.corvid.appcommon.resources.app_update_action
+import com.verdenroz.corvid.appcommon.resources.app_update_allow
 import com.verdenroz.corvid.appcommon.resources.app_update_available
+import com.verdenroz.corvid.appcommon.resources.app_update_needs_permission
 import com.verdenroz.corvid.appcommon.resources.app_update_retry
 import com.verdenroz.corvid.appcommon.resources.notices_dismiss
 import com.verdenroz.corvid.core.data.AppUpdateState
@@ -43,6 +45,7 @@ internal fun AppUpdateBannerBar(
     val line =
         when (state) {
             is AppUpdateState.Available -> stringResource(Res.string.app_update_available, state.release.versionName)
+            is AppUpdateState.NeedsPermission -> stringResource(Res.string.app_update_needs_permission)
             is AppUpdateState.Failed -> state.message.asString()
             else -> return
         }
@@ -66,7 +69,13 @@ internal fun AppUpdateBannerBar(
         )
         TextButton(onClick = onUpdate) {
             Text(
-                stringResource(if (failed) Res.string.app_update_retry else Res.string.app_update_action),
+                stringResource(
+                    when {
+                        failed -> Res.string.app_update_retry
+                        state is AppUpdateState.NeedsPermission -> Res.string.app_update_allow
+                        else -> Res.string.app_update_action
+                    },
+                ),
                 style = CorvidTheme.type.meta,
                 color = content,
             )

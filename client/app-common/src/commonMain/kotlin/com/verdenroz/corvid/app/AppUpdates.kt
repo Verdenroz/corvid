@@ -13,6 +13,7 @@ import com.verdenroz.corvid.core.data.InstallResult
 import com.verdenroz.corvid.core.data.userMessage
 import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.model.AppRelease
+import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.uiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -96,6 +97,10 @@ class AppUpdates(
 
     private suspend fun install() {
         val platform = installer.platform ?: return
+        if (_state.value is AppUpdateState.NeedsPermission) {
+            installer.allowInstalls()
+            return
+        }
         val release = _state.value.release() ?: return
         val artifact = release.artifact(platform) ?: return
         if (_state.value is AppUpdateState.Downloading || _state.value is AppUpdateState.Ready) return
@@ -116,9 +121,12 @@ class AppUpdates(
             when (result) {
                 is DownloadResult.Failed -> AppUpdateState.Failed(release, uiText(result.reason.message()))
                 is DownloadResult.Verified ->
-                    when (installer.install(result.file)) {
+                    when (val installResult = installer.install(result.file)) {
                         InstallResult.Started -> AppUpdateState.Ready(release)
                         InstallResult.NotSupported -> AppUpdateState.Failed(release, uiText(Res.string.app_update_cannot_install))
+                        InstallResult.Cancelled -> AppUpdateState.Available(release)
+                        InstallResult.NeedsPermission -> AppUpdateState.NeedsPermission(release)
+                        is InstallResult.Failed -> AppUpdateState.Failed(release, UiText.FromServer(installResult.message))
                     }
             }
     }
@@ -129,6 +137,7 @@ private fun AppUpdateState.release(): AppRelease? =
         is AppUpdateState.Available -> release
         is AppUpdateState.Downloading -> release
         is AppUpdateState.Ready -> release
+        is AppUpdateState.NeedsPermission -> release
         is AppUpdateState.Failed -> release
         AppUpdateState.UpToDate -> null
     }
