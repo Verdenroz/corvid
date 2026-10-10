@@ -81,14 +81,17 @@ jobs:
         working-directory: client
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "21"
       - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew check --max-workers=2
-      - run: ./gradlew :androidApp:assembleDebug --max-workers=2
-      - run: ./gradlew :desktopApp:compileKotlin --max-workers=2
+      - run: echo "VERSION_CODE=$((1000 + $(git rev-list --count HEAD -- .)))" >> "$GITHUB_ENV"
+      - run: ./gradlew check -Pcorvid.versionCode=$VERSION_CODE --max-workers=2
+      - run: ./gradlew :androidApp:assembleDebug :androidApp:assembleRelease -Pcorvid.versionCode=$VERSION_CODE --max-workers=2
+      - run: ./gradlew :desktopApp:compileKotlin :desktopApp:createDistributable -Pcorvid.versionCode=$VERSION_CODE --max-workers=2
 
   chart:
     runs-on: ubuntu-latest

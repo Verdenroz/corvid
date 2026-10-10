@@ -1,6 +1,7 @@
 package com.verdenroz.corvid
 
 import android.Manifest
+import android.content.pm.ApplicationInfo
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
@@ -21,8 +22,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Nothing the app shows is meant to survive a screenshot or the recents thumbnail.
-        window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
+        // Nothing the app shows is meant to survive a screenshot or the recents thumbnail; debug builds are exempt.
+        if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE == 0) {
+            window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
+        }
         authFlowFactory.registerActivity(this)
         privateAuthFlowFactory.registerActivity(this)
         enableEdgeToEdge()
