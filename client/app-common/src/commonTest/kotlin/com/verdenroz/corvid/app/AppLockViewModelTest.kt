@@ -205,9 +205,8 @@ class AppLockViewModelTest {
         runTest(testDispatcher) {
             val store = InMemoryPreferencesStore()
             val fake = FakeJmapServer()
-            val prefs = DevicePreferences(store, backgroundScope, DeviceSettings())
-            prefs.setDeviceName("other.example.com", "laptop-1")
             val harness = harness(backgroundScope, fake, store = store)
+            harness.devicePreferences.setDeviceName("other.example.com", "laptop-1")
             harness.signIn()
 
             harness.viewModel.state.awaitState { it is AppLockState.Connecting && it.needsDeviceName }

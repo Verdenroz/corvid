@@ -6,7 +6,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 
-private const val HUE = 295f
+const val BRAND_HUE = 295f
 private const val CHROMA = 0.16f
 
 /**
@@ -40,49 +40,49 @@ data class CorvidColors(
 
 val DarkCorvidColors =
     CorvidColors(
-        rail = oklch(0.18f, 0.012f, HUE),
-        surface = oklch(0.205f, 0.012f, HUE),
-        hover = oklch(0.26f, 0.014f, HUE),
-        line = oklch(0.30f, 0.012f, HUE),
-        ink = oklch(0.93f, 0.008f, HUE),
-        inkMuted = oklch(0.73f, 0.012f, HUE),
-        inkFaint = oklch(0.58f, 0.012f, HUE),
-        accent = oklch(0.76f, CHROMA * 0.72f, HUE),
-        accentSoft = oklch(0.34f, CHROMA * 0.36f, HUE),
-        onAccentSoft = oklch(0.92f, CHROMA * 0.28f, HUE),
-        onAccent = oklch(0.20f, 0.02f, HUE),
-        chip = oklch(0.30f, CHROMA * 0.30f, HUE),
+        rail = oklch(0.18f, 0.012f, BRAND_HUE),
+        surface = oklch(0.205f, 0.012f, BRAND_HUE),
+        hover = oklch(0.26f, 0.014f, BRAND_HUE),
+        line = oklch(0.30f, 0.012f, BRAND_HUE),
+        ink = oklch(0.93f, 0.008f, BRAND_HUE),
+        inkMuted = oklch(0.73f, 0.012f, BRAND_HUE),
+        inkFaint = oklch(0.58f, 0.012f, BRAND_HUE),
+        accent = oklch(0.76f, CHROMA * 0.72f, BRAND_HUE),
+        accentSoft = oklch(0.34f, CHROMA * 0.36f, BRAND_HUE),
+        onAccentSoft = oklch(0.92f, CHROMA * 0.28f, BRAND_HUE),
+        onAccent = oklch(0.20f, 0.02f, BRAND_HUE),
+        chip = oklch(0.30f, CHROMA * 0.30f, BRAND_HUE),
         danger = oklch(0.72f, 0.15f, 28f),
         dangerSoft = oklch(0.30f, 0.06f, 28f),
         onDangerSoft = oklch(0.92f, 0.04f, 28f),
         dangerTint = oklch(0.24f, 0.035f, 28f),
         sheenStart = oklch(0.70f, 0.15f, 300f),
         sheenEnd = oklch(0.74f, 0.12f, 160f),
-        scrim = oklch(0.15f, 0.02f, HUE, alpha = 0.5f),
+        scrim = oklch(0.15f, 0.02f, BRAND_HUE, alpha = 0.5f),
         isDark = true,
     )
 
 val LightCorvidColors =
     CorvidColors(
-        rail = oklch(0.972f, 0.007f, HUE),
-        surface = oklch(0.996f, 0.002f, HUE),
-        hover = oklch(0.94f, 0.012f, HUE),
-        line = oklch(0.905f, 0.01f, HUE),
-        ink = oklch(0.24f, 0.02f, HUE),
-        inkMuted = oklch(0.47f, 0.02f, HUE),
-        inkFaint = oklch(0.62f, 0.015f, HUE),
-        accent = oklch(0.52f, CHROMA, HUE),
-        accentSoft = oklch(0.92f, CHROMA * 0.30f, HUE),
-        onAccentSoft = oklch(0.30f, CHROMA * 0.75f, HUE),
-        onAccent = oklch(0.99f, 0.005f, HUE),
-        chip = oklch(0.93f, CHROMA * 0.24f, HUE),
+        rail = oklch(0.972f, 0.007f, BRAND_HUE),
+        surface = oklch(0.996f, 0.002f, BRAND_HUE),
+        hover = oklch(0.94f, 0.012f, BRAND_HUE),
+        line = oklch(0.905f, 0.01f, BRAND_HUE),
+        ink = oklch(0.24f, 0.02f, BRAND_HUE),
+        inkMuted = oklch(0.47f, 0.02f, BRAND_HUE),
+        inkFaint = oklch(0.62f, 0.015f, BRAND_HUE),
+        accent = oklch(0.52f, CHROMA, BRAND_HUE),
+        accentSoft = oklch(0.92f, CHROMA * 0.30f, BRAND_HUE),
+        onAccentSoft = oklch(0.30f, CHROMA * 0.75f, BRAND_HUE),
+        onAccent = oklch(0.99f, 0.005f, BRAND_HUE),
+        chip = oklch(0.93f, CHROMA * 0.24f, BRAND_HUE),
         danger = oklch(0.55f, 0.19f, 28f),
         dangerSoft = oklch(0.95f, 0.03f, 28f),
         onDangerSoft = oklch(0.36f, 0.12f, 28f),
         dangerTint = oklch(0.975f, 0.015f, 28f),
         sheenStart = oklch(0.58f, 0.17f, 300f),
         sheenEnd = oklch(0.64f, 0.13f, 160f),
-        scrim = oklch(0.15f, 0.02f, HUE, alpha = 0.3f),
+        scrim = oklch(0.15f, 0.02f, BRAND_HUE, alpha = 0.3f),
         isDark = false,
     )
 

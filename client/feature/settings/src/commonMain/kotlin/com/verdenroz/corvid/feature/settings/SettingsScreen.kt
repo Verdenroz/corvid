@@ -63,7 +63,7 @@ data class AccountFacts(
     val address: String?,
     val server: String,
     val identityProvider: String?,
-    val manageSignInUrl: String? = null,
+    val manageSignInUrl: String?,
 )
 
 @Composable

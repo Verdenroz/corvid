@@ -1,6 +1,7 @@
 package com.verdenroz.corvid.app
 
 import androidx.compose.runtime.Composable
+import com.verdenroz.corvid.core.auth.accountSettingsUrl
 import com.verdenroz.corvid.core.data.UpdateRepository
 import com.verdenroz.corvid.core.domain.MasterSignIn
 import com.verdenroz.corvid.core.keyring.DeviceApprovalRepository
@@ -39,7 +40,7 @@ internal fun SettingsPage(
             address = session.identity?.email,
             server = session.hosts.server,
             identityProvider = session.hosts.identityProvider,
-            manageSignInUrl = session.hosts.identityProviderUrl?.let { "$it/settings/account" },
+            manageSignInUrl = session.hosts.identityProviderUrl?.let(::accountSettingsUrl),
         )
     SettingsScreen(
         viewModel,

@@ -90,13 +90,16 @@ class AppLockViewModel(
 
     /** What the locked screen can say for certain: whichever of these this session knows. */
     val lockFacts: LockFacts
-        get() = LockFacts((tokenSource.state.value as? AuthState.SignedIn)?.server?.baseUrl?.let(::hostOf), deviceName, lockedAt)
+        get() = LockFacts(serverHost, deviceName, lockedAt)
+
+    private val serverHost: String?
+        get() = (tokenSource.state.value as? AuthState.SignedIn)?.server?.baseUrl?.let(::hostOf)
 
     private var lockedAt: Instant? = null
 
     fun submitDeviceName(name: String) {
         deviceName = name
-        val server = (tokenSource.state.value as? AuthState.SignedIn)?.server?.baseUrl?.let(::hostOf)
+        val server = serverHost
         viewModelScope.launch {
             if (server != null) devicePreferences.setDeviceName(server, name)
             resolveKey(name)
@@ -112,10 +115,7 @@ class AppLockViewModel(
     fun signOut() = tokenSource.signOut()
 
     private val accountHosts: AccountHosts?
-        get() =
-            (tokenSource.state.value as? AuthState.SignedIn)?.let { signedIn ->
-                AccountHosts(hostOf(signedIn.server.baseUrl), tokenSource.issuerUrl?.let(::hostOf), tokenSource.issuerUrl)
-            }
+        get() = serverHost?.let { AccountHosts(it, tokenSource.issuerUrl) }
 
     /** Throttled by [reconnectPolicy], the same policy an automatic reconnect would use. */
     fun retry() {
@@ -160,7 +160,7 @@ class AppLockViewModel(
             jmapClient = client
             deviceKeyRepository = DeviceKeyRepository(client)
             deviceApprovalRepository = DeviceApprovalRepository(client)
-            val name = deviceName ?: devicePreferences.deviceName(hostOf(signedIn.server.baseUrl))?.also { deviceName = it }
+            val name = deviceName ?: serverHost?.let { devicePreferences.deviceName(it) }?.also { deviceName = it }
             if (name != null) resolveKey(name) else _state.value = AppLockState.Connecting(needsDeviceName = true)
         } catch (e: JmapException) {
             _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_server))
@@ -350,9 +350,10 @@ class AppLockViewModel(
 /** The signed-in server's hostname and, when there is an identity provider, its hostname. */
 data class AccountHosts(
     val server: String,
-    val identityProvider: String?,
-    val identityProviderUrl: String? = null,
+    val identityProviderUrl: String?,
 ) {
+    val identityProvider: String? get() = identityProviderUrl?.let(::hostOf)
+
     /** The first label of [server], the key pill's name for the machine holding the key. */
     val short: String get() = shortHost(server)
 }
