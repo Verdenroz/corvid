@@ -430,6 +430,17 @@ and leaves the release APK unsigned when any is missing.
 Keep the keystore and its password backed up offline. Android accepts an update only from the same
 signing key, so losing it means every install must be uninstalled once and the app installed fresh.
 
+## Desktop app
+
+The Linux app updates itself only when it runs from a managed install. Fetch
+`corvid-linux-x64.tar.gz` from your server's release directory and run
+`scripts/install-desktop.sh [--version-code N] corvid-linux-x64.tar.gz` once. It unpacks into
+`~/.local/share/corvid/versions/<n>` (`$XDG_DATA_HOME` is respected), points `current` at it, links
+`~/.local/bin/corvid` and writes a `corvid.desktop` entry. After that, Update in the app unpacks the
+verified tarball as the next number, swaps `current` and restarts into it. The newest two versions
+stay on disk, so the previous one can still be run from `versions/<n>/corvid/bin/corvid`. An app
+started from anywhere else offers the update and then reports that it needs the setup script.
+
 ## Building the Corvid image
 
 The milter, image proxy and labeler all run `localhost/corvid:latest`, and nothing in the deploy
