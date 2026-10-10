@@ -47,7 +47,8 @@ fun EnrollmentPrompt(
     onWatch: suspend () -> Unit,
 ) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    LaunchedEffect(request, lifecycle) { lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { onWatch() } }
+    val polled = (request as? EnrollmentRequest.Open)?.request ?: request
+    LaunchedEffect(polled, lifecycle) { lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { onWatch() } }
 
     StatePane(stringResource(Res.string.enroll_title, deviceName), detail = stringResource(Res.string.enroll_detail)) {
         when (request) {
@@ -78,12 +79,14 @@ private fun OpenRequest(
     rememberRemaining(request.expiresAt)?.let { remaining ->
         Text(stringResource(Res.string.enroll_expires_in, countdown(remaining)), style = CorvidTheme.type.meta, color = colors.inkMuted)
     }
-    if (open.approving) {
-        Text(stringResource(Res.string.enroll_self_approving), style = CorvidTheme.type.body)
-    } else {
-        PillButton(stringResource(Res.string.enroll_self_approve), icon = null, onClick = onApproveSelf)
+    when (val self = open.selfApproval) {
+        SelfApproval.Approving -> Text(stringResource(Res.string.enroll_self_approving), style = CorvidTheme.type.body)
+        SelfApproval.Idle -> PillButton(stringResource(Res.string.enroll_self_approve), icon = null, onClick = onApproveSelf)
+        is SelfApproval.Failed -> {
+            PillButton(stringResource(Res.string.enroll_self_approve), icon = null, onClick = onApproveSelf)
+            Text(self.message.asString(), style = CorvidTheme.type.body, color = colors.ink)
+        }
     }
-    open.failure?.let { Text(it.asString(), style = CorvidTheme.type.body, color = colors.ink) }
 }
 
 @Composable

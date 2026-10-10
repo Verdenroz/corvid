@@ -41,7 +41,6 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
@@ -134,7 +133,13 @@ class AppLockViewModelTest {
         masterSignIn: MasterSignIn = MasterSignIn { fake.devices.masterToken },
     ) = Harness(scope, fake, masterSignIn).also { harness = it }
 
-    private fun EnrollmentRequest.failure() = (this as? EnrollmentRequest.Open)?.failure
+    private suspend fun Harness.awaitSelfApprovalFailure(): EnrollmentRequest.Open {
+        val failed =
+            viewModel.state.awaitState {
+                ((it as? AppLockState.NeedsEnrollment)?.request as? EnrollmentRequest.Open)?.selfApproval is SelfApproval.Failed
+            }
+        return assertIs<EnrollmentRequest.Open>(assertIs<AppLockState.NeedsEnrollment>(failed).request)
+    }
 
     @BeforeTest
     fun setMain() = Dispatchers.setMain(testDispatcher)
@@ -288,12 +293,10 @@ class AppLockViewModelTest {
             val request = harness.requestKey("laptop-1")
 
             harness.viewModel.approveWithAdminPasskey()
-            val failed = harness.viewModel.state.awaitState { it is AppLockState.NeedsEnrollment && it.request.failure() != null }
+            val open = harness.awaitSelfApprovalFailure()
 
-            val open = assertIs<EnrollmentRequest.Open>(assertIs<AppLockState.NeedsEnrollment>(failed).request)
-            assertEquals(uiText(Res.string.enroll_self_failed_not_accepted), open.failure)
+            assertEquals(SelfApproval.Failed(uiText(Res.string.enroll_self_failed_not_accepted)), open.selfApproval)
             assertEquals(request, open.request)
-            assertFalse(open.approving)
         }
 
     @Test
@@ -304,10 +307,9 @@ class AppLockViewModelTest {
             harness.requestKey("laptop-1")
 
             harness.viewModel.approveWithAdminPasskey()
-            val failed = harness.viewModel.state.awaitState { it is AppLockState.NeedsEnrollment && it.request.failure() != null }
+            val open = harness.awaitSelfApprovalFailure()
 
-            val open = assertIs<EnrollmentRequest.Open>(assertIs<AppLockState.NeedsEnrollment>(failed).request)
-            assertEquals(uiText(Res.string.enroll_self_failed_signin), open.failure)
+            assertEquals(SelfApproval.Failed(uiText(Res.string.enroll_self_failed_signin)), open.selfApproval)
             assertEquals(emptyList(), fake.devices.approvals)
         }
 

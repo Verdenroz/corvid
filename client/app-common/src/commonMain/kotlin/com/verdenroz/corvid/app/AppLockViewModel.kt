@@ -210,11 +210,10 @@ class AppLockViewModel(
      * other. The token goes to this one request and is not stored; the poll picks up the approval.
      */
     fun approveWithAdminPasskey() {
-        val waiting = _state.value as? AppLockState.NeedsEnrollment ?: return
-        val open = waiting.request as? EnrollmentRequest.Open ?: return
+        val (waiting, open) = openEnrollment() ?: return
         val repository = deviceApprovalRepository ?: return
-        if (open.approving) return
-        _state.value = waiting.copy(request = open.copy(approving = true, failure = null))
+        if (open.selfApproval == SelfApproval.Approving) return
+        _state.value = waiting.copy(request = open.copy(selfApproval = SelfApproval.Approving))
         viewModelScope.launch {
             val ended =
                 try {
@@ -230,12 +229,18 @@ class AppLockViewModel(
                 } catch (e: JmapException) {
                     open.failed(e.userMessage())
                 }
-            val current = _state.value as? AppLockState.NeedsEnrollment ?: return@launch
-            if ((current.request as? EnrollmentRequest.Open)?.request == open.request) _state.value = current.copy(request = ended)
+            val (current, still) = openEnrollment() ?: return@launch
+            if (still.request == open.request) _state.value = current.copy(request = ended)
         }
     }
 
-    private fun EnrollmentRequest.Open.failed(message: UiText) = copy(approving = false, failure = message)
+    private fun EnrollmentRequest.Open.failed(message: UiText) = copy(selfApproval = SelfApproval.Failed(message))
+
+    private fun openEnrollment(): Pair<AppLockState.NeedsEnrollment, EnrollmentRequest.Open>? {
+        val waiting = _state.value as? AppLockState.NeedsEnrollment ?: return null
+        val open = waiting.request as? EnrollmentRequest.Open ?: return null
+        return waiting to open
+    }
 
     /**
      * Polls the open request while the caller stays in it, so a screen that is not visible stops asking.
@@ -244,10 +249,9 @@ class AppLockViewModel(
     suspend fun watchRequest() {
         val repository = deviceApprovalRepository ?: return
         while (true) {
-            val waiting = _state.value as? AppLockState.NeedsEnrollment ?: return
-            val open = waiting.request as? EnrollmentRequest.Open ?: return
+            val (waiting, open) = openEnrollment() ?: return
             delay(APPROVAL_POLL_INTERVAL)
-            if (_state.value != waiting) continue
+            if (openEnrollment()?.second?.request != open.request) continue
             val status =
                 try {
                     repository.status(open.request.id)
