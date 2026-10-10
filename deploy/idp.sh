@@ -25,6 +25,7 @@ CLIENT_ID=corvid
 MAIL_GROUP=mail
 ADMIN_CLIENT_ID=corvid-admin
 ADMIN_GROUP=admins
+CALLBACK_URLS='["http://127.0.0.1/callback", "com.verdenroz.corvid:/oauth2redirect"]'
 # A refresh grant mints a token with a new issue time and no passkey, so this client's refresh
 # token lives one minute, the shortest Pocket-ID accepts.
 ADMIN_CLIENT='{"requiresReauthentication": true, "accessTokenDurationMinutes": 5, "refreshTokenDurationMinutes": 1}'
@@ -111,7 +112,7 @@ ensure_client() {
   local client_id="$1" group="$2" group_id="$3" pinned="$4" client want ids
   want="$(python3 -c '
 import json, sys
-print(json.dumps({**json.loads(sys.argv[1]), "isGroupRestricted": True}))' "$pinned")"
+print(json.dumps({**json.loads(sys.argv[1]), "isGroupRestricted": True, "logoutCallbackURLs": json.loads(sys.argv[2])}))' "$pinned" "$CALLBACK_URLS")"
   if client="$(api GET "oidc/clients/$client_id" 2>/dev/null)"; then
     echo "  client $client_id exists" >&2
     if [[ "$(pick 'all(d[k] == v for k, v in json.loads(a[0]).items())' "$want" <<<"$client")" == False ]]; then
@@ -122,8 +123,7 @@ print(json.dumps({**json.loads(sys.argv[1]), "isGroupRestricted": True}))' "$pin
     client="$(api POST oidc/clients "$(python3 -c '
 import json, sys
 print(json.dumps({"id": sys.argv[1], "name": sys.argv[1], "isPublic": True, "pkceEnabled": True,
-                  "callbackURLs": ["http://127.0.0.1/callback", "com.verdenroz.corvid:/oauth2redirect"],
-                  **json.loads(sys.argv[2])}))' "$client_id" "$want")")"
+                  "callbackURLs": json.loads(sys.argv[3]), **json.loads(sys.argv[2])}))' "$client_id" "$want" "$CALLBACK_URLS")")"
     echo "  client $client_id created" >&2
   fi
   ids="$(with_id allowedUserGroups "$group_id" <<<"$client")"

@@ -10,11 +10,13 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import com.verdenroz.corvid.app.BackgroundDropController
 import com.verdenroz.corvid.app.CorvidApp
+import com.verdenroz.corvid.core.auth.privateAndroidFlowQualifier
 import org.koin.android.ext.android.inject
 import org.publicvalue.multiplatform.oidc.appsupport.AndroidCodeAuthFlowFactory
 
 class MainActivity : ComponentActivity() {
     private val authFlowFactory: AndroidCodeAuthFlowFactory by inject()
+    private val privateAuthFlowFactory: AndroidCodeAuthFlowFactory by inject(privateAndroidFlowQualifier)
     private val backgroundDropController: BackgroundDropController by inject()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -22,6 +24,7 @@ class MainActivity : ComponentActivity() {
         // Nothing the app shows is meant to survive a screenshot or the recents thumbnail.
         window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         authFlowFactory.registerActivity(this)
+        privateAuthFlowFactory.registerActivity(this)
         enableEdgeToEdge()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerForActivityResult(ActivityResultContracts.RequestPermission()) {}.launch(Manifest.permission.POST_NOTIFICATIONS)

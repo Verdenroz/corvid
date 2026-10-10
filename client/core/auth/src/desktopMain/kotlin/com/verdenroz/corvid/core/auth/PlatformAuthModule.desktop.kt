@@ -16,4 +16,10 @@ actual val platformAuthModule =
             JvmCodeAuthFlowFactory(webserverProvider = { SimpleKtorWebserver(port = port) })
         }
         single<CodeAuthFlowFactory> { get<JvmCodeAuthFlowFactory>() }
+        single {
+            val port = get<DesktopRedirectUriProvider>().port
+            PrivateCodeAuthFlowFactory(
+                JvmCodeAuthFlowFactory(webserverProvider = { SimpleKtorWebserver(port = port) }, openUrl = ::openInPrivateWindow),
+            )
+        }
     }

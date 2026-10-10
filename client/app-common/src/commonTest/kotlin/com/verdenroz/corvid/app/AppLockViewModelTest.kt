@@ -95,6 +95,11 @@ private class Harness(
     fun signIn() = tokenSource.adopt(FakeOidcClient { freshToken() }, freshToken(), ServerAddress(BASE_URL))
 }
 
+private fun fakeMasterSignIn(token: suspend () -> String) =
+    object : MasterSignIn {
+        override suspend fun <T> withAdminToken(use: suspend (String) -> T): T = use(token())
+    }
+
 private val POLL = 4.seconds
 
 /** Names the device and waits until its request is open on the server. */
@@ -131,7 +136,7 @@ class AppLockViewModelTest {
     private fun harness(
         scope: CoroutineScope,
         fake: FakeJmapServer,
-        masterSignIn: MasterSignIn = MasterSignIn { fake.devices.masterToken },
+        masterSignIn: MasterSignIn = fakeMasterSignIn { fake.devices.masterToken },
     ) = Harness(scope, fake, masterSignIn).also { harness = it }
 
     private suspend fun Harness.awaitSelfApprovalFailure(): EnrollmentRequest.Open {
@@ -385,7 +390,7 @@ class AppLockViewModelTest {
     fun `a token the server does not accept leaves the request open with a message`() =
         runTest(testDispatcher) {
             val fake = FakeJmapServer()
-            val harness = harness(backgroundScope, fake) { "stale" }
+            val harness = harness(backgroundScope, fake, fakeMasterSignIn { "stale" })
             val request = harness.requestKey("laptop-1")
 
             harness.viewModel.approveWithAdminPasskey()
@@ -399,7 +404,8 @@ class AppLockViewModelTest {
     fun `a cancelled admin sign-in sends nothing and leaves the request open with a message`() =
         runTest(testDispatcher) {
             val fake = FakeJmapServer()
-            val harness = harness(backgroundScope, fake) { throw OpenIdConnectException.AuthenticationCancelled("cancelled") }
+            val cancelled = fakeMasterSignIn { throw OpenIdConnectException.AuthenticationCancelled("cancelled") }
+            val harness = harness(backgroundScope, fake, cancelled)
             harness.requestKey("laptop-1")
 
             harness.viewModel.approveWithAdminPasskey()
