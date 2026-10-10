@@ -30,5 +30,6 @@
     <string name="app_update_action">Update</string>
     <string name="app_update_retry">Try again</string>
     <string name="app_update_allow">Allow</string>
-    <string name="app_update_needs_permission">Allow Corvid to install updates</string>
+    <string name="app_update_needs_permission">Allow Corvid to install %1$s</string>
+    <string name="app_update_failed">Update failed</string>
 </resources>
