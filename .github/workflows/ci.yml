@@ -5,8 +5,54 @@ on:
     branches: [main]
   pull_request:
 
+# A newer push to the same pull request makes the older run's result moot.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  # A required job skipped by its `if` still satisfies the branch ruleset, so each area's jobs run
+  # only when the change can affect them. The Rust tests read deploy/ and charts/, hence their paths.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+      deploy: ${{ steps.filter.outputs.deploy }}
+      client: ${{ steps.filter.outputs.client }}
+      chart: ${{ steps.filter.outputs.chart }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3.0.2
+        id: filter
+        with:
+          filters: |
+            ci: &ci
+              - .github/workflows/ci.yml
+            rust:
+              - *ci
+              - crates/**
+              - Cargo.toml
+              - Cargo.lock
+              - deploy/**
+              - charts/**
+              - .dockerignore
+            deploy:
+              - *ci
+              - deploy/**
+              - scripts/**
+              - crates/corvid-sentinel/**
+              - crates/corvid-config/**
+              - Cargo.lock
+            client:
+              - *ci
+              - client/**
+            chart:
+              - *ci
+              - charts/**
+
   rust:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,6 +66,8 @@ jobs:
       - run: cargo test --workspace --locked
 
   sentinel:
+    needs: changes
+    if: needs.changes.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -35,7 +83,8 @@ jobs:
           retention-days: 1
 
   deploy:
-    needs: sentinel
+    needs: [changes, sentinel]
+    if: needs.changes.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -76,26 +125,26 @@ jobs:
       - run: ./deploy/check-env.sh
       - run: ./deploy/check-sentinel-events.sh
 
+  # Release packaging (assembleRelease, createDistributable) runs once per main push in image.yml.
   client:
+    needs: changes
+    if: needs.changes.outputs.client == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: client
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "21"
       - uses: gradle/actions/setup-gradle@v4
-      - run: echo "VERSION_CODE=$((1000 + $(git rev-list --count HEAD -- .)))" >> "$GITHUB_ENV"
-      - run: ./gradlew check -Pcorvid.versionCode=$VERSION_CODE --max-workers=2
-      - run: ./gradlew :androidApp:assembleDebug :androidApp:assembleRelease -Pcorvid.versionCode=$VERSION_CODE --max-workers=2
-      - run: ./gradlew :desktopApp:compileKotlin :desktopApp:createDistributable -Pcorvid.versionCode=$VERSION_CODE --max-workers=2
+      - run: ./gradlew check :androidApp:assembleDebug :desktopApp:compileKotlin --max-workers=2
 
   chart:
+    needs: changes
+    if: needs.changes.outputs.chart == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
