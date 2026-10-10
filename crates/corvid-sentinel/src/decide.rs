@@ -3,6 +3,7 @@ use crate::state::{CredentialKind, Identity, Seen};
 use crate::webhook::{AuthEvent, Kind};
 
 const APP_PASSWORD_DETAILS: &str = "Authenticated with app password";
+const API_KEY_DETAILS: &str = "Authenticated with API key";
 /// How often a too-many-attempts notice may repeat for the same address.
 const BURST_WINDOW_SECS: i64 = 3600;
 
@@ -71,6 +72,7 @@ fn success(event: &AuthEvent, seen: &mut Seen) -> Option<Reason> {
     let kind = match event.details.as_deref() {
         None => CredentialKind::Primary,
         Some(APP_PASSWORD_DETAILS) => CredentialKind::AppPassword,
+        Some(API_KEY_DETAILS) => CredentialKind::ApiKey,
         Some(other) => return Some(Reason::UnrecognisedCredential(other.to_owned())),
     };
     let (Some(account), Some(remote_ip), Some(listener)) =
@@ -205,6 +207,20 @@ mod tests {
             alerts[0].reason,
             Reason::NewSignIn(CredentialKind::AppPassword)
         );
+    }
+
+    #[test]
+    fn an_api_key_sign_in_alerts_once_per_identity() {
+        let mut seen = Seen::default();
+        let mut key = event(Kind::Success);
+        key.details = Some(API_KEY_DETAILS.to_owned());
+
+        let first = step(&[key.clone()], &mut seen);
+        let second = step(&[key], &mut seen);
+
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0].reason, Reason::NewSignIn(CredentialKind::ApiKey));
+        assert!(second.is_empty());
     }
 
     #[test]

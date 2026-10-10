@@ -12,6 +12,7 @@ const NOTICE_CAP: usize = 200;
 pub enum CredentialKind {
     Primary,
     AppPassword,
+    ApiKey,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
