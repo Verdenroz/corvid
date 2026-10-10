@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
@@ -39,6 +40,8 @@ import com.verdenroz.corvid.feature.settings.resources.settings_filters_detail
 import com.verdenroz.corvid.feature.settings.resources.settings_filters_row
 import com.verdenroz.corvid.feature.settings.resources.settings_identity_provider
 import com.verdenroz.corvid.feature.settings.resources.settings_lock_now
+import com.verdenroz.corvid.feature.settings.resources.settings_manage_sign_in
+import com.verdenroz.corvid.feature.settings.resources.settings_manage_sign_in_detail
 import com.verdenroz.corvid.feature.settings.resources.settings_name
 import com.verdenroz.corvid.feature.settings.resources.settings_notices
 import com.verdenroz.corvid.feature.settings.resources.settings_notices_detail
@@ -60,6 +63,7 @@ data class AccountFacts(
     val address: String?,
     val server: String,
     val identityProvider: String?,
+    val manageSignInUrl: String? = null,
 )
 
 @Composable
@@ -142,6 +146,14 @@ private fun AccountSection(
         account.address?.let { FactRow(stringResource(Res.string.settings_address), it) }
         FactRow(stringResource(Res.string.settings_server), account.server)
         account.identityProvider?.let { FactRow(stringResource(Res.string.settings_identity_provider), it) }
+        account.manageSignInUrl?.let {
+            val uriHandler = LocalUriHandler.current
+            LinkRow(
+                title = stringResource(Res.string.settings_manage_sign_in),
+                detail = stringResource(Res.string.settings_manage_sign_in_detail),
+                onClick = { uriHandler.openUri(it) },
+            )
+        }
         if (confirmingSignOut) {
             DiscardQuestion(
                 stringResource(Res.string.settings_sign_out_question),

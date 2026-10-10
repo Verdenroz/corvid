@@ -28,4 +28,11 @@ class SenderAvatarTest {
     fun `the initial skips leading punctuation`() {
         assertEquals("A", initial("\"ada"))
     }
+
+    @Test
+    fun `initials take the first and last word, or one letter of a single name`() {
+        assertEquals("HT", initials("Harvey Tseng"))
+        assertEquals("AL", initials("Ada Byron Lovelace"))
+        assertEquals("A", initials("ada@example.com"))
+    }
 }

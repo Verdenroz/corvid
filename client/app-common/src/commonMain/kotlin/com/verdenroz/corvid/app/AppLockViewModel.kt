@@ -114,7 +114,7 @@ class AppLockViewModel(
     private val accountHosts: AccountHosts?
         get() =
             (tokenSource.state.value as? AuthState.SignedIn)?.let { signedIn ->
-                AccountHosts(hostOf(signedIn.server.baseUrl), tokenSource.issuerUrl?.let(::hostOf))
+                AccountHosts(hostOf(signedIn.server.baseUrl), tokenSource.issuerUrl?.let(::hostOf), tokenSource.issuerUrl)
             }
 
     /** Throttled by [reconnectPolicy], the same policy an automatic reconnect would use. */
@@ -351,6 +351,7 @@ class AppLockViewModel(
 data class AccountHosts(
     val server: String,
     val identityProvider: String?,
+    val identityProviderUrl: String? = null,
 ) {
     /** The first label of [server], the key pill's name for the machine holding the key. */
     val short: String get() = shortHost(server)

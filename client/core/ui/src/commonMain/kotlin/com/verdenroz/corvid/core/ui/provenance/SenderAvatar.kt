@@ -117,4 +117,10 @@ internal fun avatarColor(
     return if (dark) oklch(0.30f + lightness, 0.03f, hue) else oklch(0.91f - lightness, 0.025f, hue)
 }
 
+/** The first letters of the first and last words, so "Harvey Tseng" is "HT". */
+fun initials(name: String): String {
+    val words = name.split(' ').filter { word -> word.any { it.isLetterOrDigit() } }
+    return (listOfNotNull(words.firstOrNull(), words.drop(1).lastOrNull()).map(::initial)).joinToString("").ifEmpty { initial(name) }
+}
+
 internal fun initial(name: String): String = (name.firstOrNull { it.isLetterOrDigit() } ?: name.firstOrNull() ?: ' ').uppercase()

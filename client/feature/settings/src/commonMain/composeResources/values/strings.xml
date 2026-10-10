@@ -7,6 +7,8 @@
     <string name="settings_address">Address</string>
     <string name="settings_server">Server</string>
     <string name="settings_identity_provider">Identity provider</string>
+    <string name="settings_manage_sign_in">Manage sign-in</string>
+    <string name="settings_manage_sign_in_detail">Passkeys and sessions, on your identity provider.</string>
     <string name="settings_sign_out">Sign out</string>
     <string name="settings_sign_out_question">Sign out of this device?</string>
     <string name="settings_cancel">Cancel</string>

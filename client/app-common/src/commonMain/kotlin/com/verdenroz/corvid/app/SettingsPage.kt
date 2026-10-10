@@ -39,6 +39,7 @@ internal fun SettingsPage(
             address = session.identity?.email,
             server = session.hosts.server,
             identityProvider = session.hosts.identityProvider,
+            manageSignInUrl = session.hosts.identityProviderUrl?.let { "$it/settings/account" },
         )
     SettingsScreen(
         viewModel,
