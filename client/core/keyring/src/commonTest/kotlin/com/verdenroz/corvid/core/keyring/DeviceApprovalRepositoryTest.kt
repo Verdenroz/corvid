@@ -59,6 +59,53 @@ class DeviceApprovalRepositoryTest {
         }
 
     @Test
+    fun `the pending requests list by id, name and expiry, newest first`() =
+        runTest {
+            val repository = repository()
+            val first = opened(repository)
+            val second = assertIs<OpenOutcome.Opened>(repository.open("tablet")).request
+
+            val listed = assertIs<PendingOutcome.Listed>(repository.pending())
+
+            assertEquals(
+                listOf(
+                    PendingRequest(second.id, "tablet", Instant.parse("2030-01-01T00:00:00Z")),
+                    PendingRequest(first.id, "laptop-1", Instant.parse("2030-01-01T00:00:00Z")),
+                ),
+                listed.requests,
+            )
+        }
+
+    @Test
+    fun `a request that is approved or expired is not pending`() =
+        runTest {
+            val repository = repository()
+            val approved = opened(repository)
+            val expired = opened(repository)
+            fake.devices.approveElsewhere(approved.id)
+            fake.devices.expire(expired.id)
+
+            assertEquals(emptyList(), assertIs<PendingOutcome.Listed>(repository.pending()).requests)
+        }
+
+    @Test
+    fun `a server with device approval off lists as not served, not thrown`() =
+        runTest {
+            fake.devices.off = true
+
+            assertIs<PendingOutcome.NotServed>(repository().pending())
+            assertFalse(latch.tripped.value)
+        }
+
+    @Test
+    fun `a pending list that never reaches the sentinel is a failure, not empty`() =
+        runTest {
+            fake.devices.unrouted = true
+
+            assertFailsWith<JmapException> { repository().pending() }
+        }
+
+    @Test
     fun `a request reads off once the server switches device approval off`() =
         runTest {
             val repository = repository()

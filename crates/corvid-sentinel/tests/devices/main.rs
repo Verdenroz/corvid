@@ -156,6 +156,7 @@ async fn a_host_without_device_config_answers_every_device_route_with_devices_of
         client
             .post(format!("{url}/corvid/devices/requests"))
             .json(&json!({"name": "phone"})),
+        client.get(format!("{url}/corvid/devices/requests")),
         client.get(format!("{url}/corvid/devices/requests/some-id")),
         client
             .post(format!("{url}/corvid/devices/requests/some-id/approve"))
@@ -186,6 +187,84 @@ async fn a_new_request_answers_with_an_id_a_six_digit_code_and_an_expiry_and_rea
     );
     assert!(body["expiresAt"].as_str().unwrap().ends_with('Z'));
     assert_eq!(rig.status(body["id"].as_str().unwrap()).await, "pending");
+}
+
+async fn listed(rig: &Rig) -> Vec<Value> {
+    let body: Value = reqwest::get(format!("{}/corvid/devices/requests", rig.url))
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    body.as_array().unwrap().clone()
+}
+
+fn request_in(name: &str, expires_at: i64, attempts: u8, stage: Stage) -> Request {
+    Request {
+        name: name.to_owned(),
+        code: "123456".to_owned(),
+        expires_at,
+        attempts,
+        stage,
+    }
+}
+
+#[tokio::test]
+async fn the_list_holds_only_open_live_requests_newest_first() {
+    let mut devices = Devices::default();
+    for (id, request) in [
+        ("old", request_in("older", now() + 100, 0, Stage::Open)),
+        ("new", request_in("newer", now() + 500, 4, Stage::Open)),
+        ("gone", request_in("expired", now() - 1, 0, Stage::Open)),
+        ("dead", request_in("dead", now() + 500, 5, Stage::Open)),
+        (
+            "done",
+            request_in("approved", now() + 500, 0, Stage::Approved),
+        ),
+        (
+            "held",
+            request_in("claimed", now() + 500, 0, Stage::Claimed),
+        ),
+    ] {
+        devices.requests.insert(id.to_owned(), request);
+    }
+    let rig = rig_with(devices).await;
+
+    let list = listed(&rig).await;
+
+    let ids: Vec<_> = list
+        .iter()
+        .map(|entry| entry["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["new", "old"]);
+    assert_eq!(list[0]["name"], "newer");
+    assert!(list[0]["expiresAt"].as_str().unwrap().ends_with('Z'));
+}
+
+#[tokio::test]
+async fn the_list_never_carries_a_code_or_attempt_count() {
+    let rig = rig().await;
+    let (id, code) = rig.request("phone").await;
+
+    let list = listed(&rig).await;
+
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0]["id"], id.as_str());
+    let mut keys: Vec<_> = list[0].as_object().unwrap().keys().cloned().collect();
+    keys.sort();
+    assert_eq!(keys, ["expiresAt", "id", "name"]);
+    assert!(!list[0].to_string().contains(&code));
+}
+
+#[tokio::test]
+async fn a_request_leaves_the_list_once_approved() {
+    let rig = rig().await;
+    let (id, code) = rig.request("phone").await;
+    assert_eq!(listed(&rig).await.len(), 1);
+
+    rig.approve(&id, &code, Some(&token())).await;
+
+    assert!(listed(&rig).await.is_empty());
 }
 
 #[tokio::test]
