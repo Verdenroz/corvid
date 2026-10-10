@@ -4,7 +4,6 @@ import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.appcommon.resources.Res
 import com.verdenroz.corvid.appcommon.resources.enroll_self_failed_not_accepted
 import com.verdenroz.corvid.appcommon.resources.enroll_self_failed_signin
-import com.verdenroz.corvid.appcommon.resources.unreachable_devices_not_served
 import com.verdenroz.corvid.appcommon.resources.unreachable_heartbeat
 import com.verdenroz.corvid.appcommon.resources.unreachable_key_damaged
 import com.verdenroz.corvid.appcommon.resources.unreachable_key_unreachable
@@ -248,9 +247,7 @@ class AppLockViewModelTest {
             harness.viewModel.state.awaitState { it is AppLockState.Connecting && it.needsDeviceName }
 
             harness.viewModel.submitDeviceName("laptop-1")
-            val unreachable = assertIs<AppLockState.Unreachable>(harness.viewModel.state.awaitState { it is AppLockState.Unreachable })
-
-            assertEquals(uiText(Res.string.unreachable_devices_not_served), unreachable.reason)
+            harness.viewModel.state.awaitState { it is AppLockState.DeviceApprovalOff }
         }
 
     @Test

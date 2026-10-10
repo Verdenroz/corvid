@@ -7,7 +7,6 @@ import com.verdenroz.corvid.appcommon.resources.enroll_self_failed_not_accepted
 import com.verdenroz.corvid.appcommon.resources.enroll_self_failed_refused
 import com.verdenroz.corvid.appcommon.resources.enroll_self_failed_signin
 import com.verdenroz.corvid.appcommon.resources.enroll_self_failed_upstream
-import com.verdenroz.corvid.appcommon.resources.unreachable_devices_not_served
 import com.verdenroz.corvid.appcommon.resources.unreachable_heartbeat
 import com.verdenroz.corvid.appcommon.resources.unreachable_key_damaged
 import com.verdenroz.corvid.appcommon.resources.unreachable_key_unreachable
@@ -194,7 +193,7 @@ class AppLockViewModel(
                 when (val outcome = repository.open(name)) {
                     is OpenOutcome.Opened -> AppLockState.NeedsEnrollment(name, EnrollmentRequest.Open(outcome.request))
                     is OpenOutcome.TooManyOpen -> AppLockState.NeedsEnrollment(name, EnrollmentRequest.TooManyOpen)
-                    is OpenOutcome.NotServed -> AppLockState.Unreachable(uiText(Res.string.unreachable_devices_not_served))
+                    is OpenOutcome.NotServed -> AppLockState.DeviceApprovalOff
                 }
         } catch (e: JmapException) {
             _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_request_failed))
