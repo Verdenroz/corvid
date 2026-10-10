@@ -27,4 +27,6 @@ dependencies {
     implementation(libs.koin.android)
     implementation(libs.koin.compose)
     implementation(libs.compose.material3)
+    implementation(libs.kotlinx.coroutines.core)
+    testImplementation(libs.kotlin.test)
 }

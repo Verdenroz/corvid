@@ -38,10 +38,15 @@ private class RecordingInstaller(
     private val result: InstallResult = InstallResult.Started,
 ) : AppInstaller {
     val installed = mutableListOf<ByteArray>()
+    var allowRequests = 0
 
     override suspend fun install(file: File): InstallResult {
         installed += file.readBytes()
         return result
+    }
+
+    override fun allowInstalls() {
+        allowRequests++
     }
 }
 
@@ -161,6 +166,74 @@ class AppUpdatesTest {
 
             val failed = rig.updates.state.value as AppUpdateState.Failed
             assertEquals("app_update_cannot_install", KeyedTextResolver.resolve(failed.message))
+        }
+
+    @Test
+    fun `an install the user cancels leaves the offer standing`() =
+        runTest {
+            val rig =
+                updatesRig(
+                    FakeJmapServer().apply { app.release(6, android = APK) },
+                    RecordingInstaller(AppPlatform.Android, InstallResult.Cancelled),
+                )
+            eventually { rig.updates.state.value is AppUpdateState.Available }
+
+            rig.updates.update()
+            eventually { rig.installer.installed.size == 1 }
+
+            eventually { rig.updates.state.value is AppUpdateState.Available }
+        }
+
+    @Test
+    fun `an install the platform fails shows its message`() =
+        runTest {
+            val rig =
+                updatesRig(
+                    FakeJmapServer().apply { app.release(6, android = APK) },
+                    RecordingInstaller(AppPlatform.Android, InstallResult.Failed("Package conflicts")),
+                )
+            eventually { rig.updates.state.value is AppUpdateState.Available }
+
+            rig.updates.update()
+            eventually { rig.updates.state.value is AppUpdateState.Failed }
+
+            val failed = rig.updates.state.value as AppUpdateState.Failed
+            assertEquals("Package conflicts", KeyedTextResolver.resolve(failed.message))
+        }
+
+    @Test
+    fun `an install needing permission asks for it on the next update instead of downloading again`() =
+        runTest {
+            val rig =
+                updatesRig(
+                    FakeJmapServer().apply { app.release(6, android = APK) },
+                    RecordingInstaller(AppPlatform.Android, InstallResult.NeedsPermission),
+                )
+            eventually { rig.updates.state.value is AppUpdateState.Available }
+            rig.updates.update()
+            eventually { rig.updates.state.value is AppUpdateState.NeedsPermission }
+
+            rig.updates.update()
+            eventually { rig.installer.allowRequests == 1 }
+
+            assertEquals(1, rig.installer.installed.size)
+        }
+
+    @Test
+    fun `returning to the foreground after allowing installs offers the update again`() =
+        runTest {
+            val rig =
+                updatesRig(
+                    FakeJmapServer().apply { app.release(6, android = APK) },
+                    RecordingInstaller(AppPlatform.Android, InstallResult.NeedsPermission),
+                )
+            eventually { rig.updates.state.value is AppUpdateState.Available }
+            rig.updates.update()
+            eventually { rig.updates.state.value is AppUpdateState.NeedsPermission }
+
+            rig.foreground.send(Unit)
+
+            eventually { rig.updates.state.value is AppUpdateState.Available }
         }
 
     @Test
