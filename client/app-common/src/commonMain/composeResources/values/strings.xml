@@ -34,6 +34,9 @@
     <string name="notices_more">%1$s and %2$d more</string>
     <string name="notices_open">Open notices</string>
     <string name="notices_dismiss">Dismiss</string>
+    <string name="app_update_available">Corvid %1$s is available</string>
+    <string name="app_update_action">Update</string>
+    <string name="app_update_retry">Try again</string>
     <string name="app_update_corrupt">The download did not match what the server lists. Nothing was installed.</string>
     <string name="app_update_no_build">This server has no build for this device.</string>
     <string name="app_update_cannot_install">This build cannot install updates yet.</string>

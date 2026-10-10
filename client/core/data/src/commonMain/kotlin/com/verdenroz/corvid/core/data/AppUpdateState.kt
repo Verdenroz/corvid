@@ -14,6 +14,6 @@ sealed interface AppUpdateState {
     /** The build is verified and the platform installer has it. */
     data class Ready(val release: AppRelease) : AppUpdateState
 
-    /** [release] is what a retry would fetch; null when the failure was the check itself. */
-    data class Failed(val release: AppRelease?, val message: UiText) : AppUpdateState
+    /** [release] is what a retry would fetch. */
+    data class Failed(val release: AppRelease, val message: UiText) : AppUpdateState
 }
