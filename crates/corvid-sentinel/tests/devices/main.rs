@@ -143,6 +143,35 @@ fn expired_request(name: &str, code: &str) -> Devices {
 }
 
 #[tokio::test]
+async fn a_host_without_device_config_answers_every_device_route_with_devices_off() {
+    let dir = tempfile::tempdir().unwrap();
+    let url = common::serve(common::config(
+        &dir.path().join("sentinel.json"),
+        &dir.path().join("no-update"),
+    ))
+    .await;
+    let client = reqwest::Client::new();
+
+    for request in [
+        client
+            .post(format!("{url}/corvid/devices/requests"))
+            .json(&json!({"name": "phone"})),
+        client.get(format!("{url}/corvid/devices/requests/some-id")),
+        client
+            .post(format!("{url}/corvid/devices/requests/some-id/approve"))
+            .json(&json!({"code": "123456"})),
+        client.get(format!("{url}/corvid/devices/phone")),
+        client.delete(format!("{url}/internal/devices/phone")),
+    ] {
+        let response = request.send().await.unwrap();
+        let route = response.url().path().to_owned();
+        assert_eq!(response.status(), 503, "{route}");
+        let body: Value = response.json().await.unwrap();
+        assert_eq!(body, json!({"error": "devices_off"}), "{route}");
+    }
+}
+
+#[tokio::test]
 async fn a_new_request_answers_with_an_id_a_six_digit_code_and_an_expiry_and_reads_as_pending() {
     let rig = rig().await;
 

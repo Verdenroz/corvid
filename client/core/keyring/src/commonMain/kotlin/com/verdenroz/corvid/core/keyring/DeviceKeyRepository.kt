@@ -3,12 +3,26 @@ package com.verdenroz.corvid.core.keyring
 import com.verdenroz.corvid.core.jmap.JmapClient
 import com.verdenroz.corvid.core.jmap.JmapError
 import com.verdenroz.corvid.core.jmap.JmapException
+import com.verdenroz.corvid.core.jmap.WebReply
+import io.ktor.http.HttpMethod
+import io.ktor.http.HttpStatusCode
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
 val DEVICE_NAME_PATTERN = Regex("[a-z0-9-]{1,32}")
 
 internal const val DEVICES_PATH = "/corvid/devices"
+
+/** A 404 is the sentinel's own answer for an unknown name; a 503 may mean approval is off. */
+internal val DEVICES_PASS_THROUGH = setOf(HttpStatusCode.NotFound, HttpStatusCode.ServiceUnavailable)
+
+/** True for the sentinel's answer on a host without `sentinel.devices`; any other 503 is the server failing. */
+internal fun WebReply.approvalOff(): Boolean {
+    if (status != HttpStatusCode.ServiceUnavailable) return false
+    if (body?.get("error")?.jsonPrimitive?.contentOrNull == "devices_off") return true
+    throw JmapException(JmapError.Server(status.value))
+}
+
 private const val KEY_VERSION: Byte = 1
 private const val KEY_LENGTH = 32
 private const val KEY_CONTENT_TYPE = "application/octet-stream"
@@ -19,6 +33,9 @@ sealed interface DeviceKeyLookup {
     data object Missing : DeviceKeyLookup
 
     data object Damaged : DeviceKeyLookup
+
+    /** The server has device approval switched off, so it holds no key for anyone. */
+    data object ApprovalOff : DeviceKeyLookup
 
     class Unreachable(val error: JmapError) : DeviceKeyLookup
 }
@@ -33,7 +50,9 @@ sealed interface DeviceKeyLookup {
 class DeviceKeyRepository(private val jmapClient: JmapClient) {
     suspend fun fetch(deviceName: String): DeviceKeyLookup =
         try {
-            val record = jmapClient.webGet("$DEVICES_PATH/$deviceName") ?: return DeviceKeyLookup.Missing
+            val reply = jmapClient.webSend(HttpMethod.Get, "$DEVICES_PATH/$deviceName", passThrough = DEVICES_PASS_THROUGH)
+            if (reply.approvalOff()) return DeviceKeyLookup.ApprovalOff
+            val record = reply.body.takeIf { reply.status == HttpStatusCode.OK } ?: return DeviceKeyLookup.Missing
             val accountId = record["accountId"]?.jsonPrimitive?.contentOrNull
             val blobId = record["blobId"]?.jsonPrimitive?.contentOrNull
             if (accountId == null || blobId == null) {

@@ -48,10 +48,10 @@ pub fn build(config: Config) -> (Router, impl Future<Output = ()> + Send + 'stat
         .route("/corvid/notices", get(notices))
         .with_state(state)
         .merge(update::routes(config.update_dir));
-    let router = match config.devices {
-        Some(devices) => router.merge(devices::routes(devices)),
-        None => router,
-    };
+    let router = router.merge(match config.devices {
+        Some(devices) => devices::routes(devices),
+        None => devices::off(),
+    });
     (router, watcher)
 }
 

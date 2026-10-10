@@ -7,6 +7,7 @@ import com.verdenroz.corvid.appcommon.resources.enroll_self_failed_signin
 import com.verdenroz.corvid.appcommon.resources.unreachable_heartbeat
 import com.verdenroz.corvid.appcommon.resources.unreachable_key_damaged
 import com.verdenroz.corvid.appcommon.resources.unreachable_key_unreachable
+import com.verdenroz.corvid.appcommon.resources.unreachable_request_failed
 import com.verdenroz.corvid.core.auth.AuthState
 import com.verdenroz.corvid.core.auth.TokenSource
 import com.verdenroz.corvid.core.domain.MasterSignIn
@@ -243,15 +244,97 @@ class AppLockViewModelTest {
         }
 
     @Test
-    fun `a server without device routes is said so, not called unreachable`() =
+    fun `a server with device approval off is said so, not called unreachable`() =
         runTest(testDispatcher) {
             val fake = FakeJmapServer()
             val harness = harness(backgroundScope, fake)
-            fake.devices.notServed = true
+            fake.devices.off = true
             harness.signIn()
             harness.viewModel.state.awaitState { it is AppLockState.Connecting && it.needsDeviceName }
 
             harness.viewModel.submitDeviceName("laptop-1")
+            harness.viewModel.state.awaitState { it is AppLockState.DeviceApprovalOff }
+        }
+
+    @Test
+    fun `a request that never reaches the sentinel reads as unreachable, not approval off`() =
+        runTest(testDispatcher) {
+            val fake = FakeJmapServer()
+            val harness = harness(backgroundScope, fake)
+            fake.devices.unrouted = true
+            harness.signIn()
+            harness.viewModel.state.awaitState { it is AppLockState.Connecting && it.needsDeviceName }
+
+            harness.viewModel.submitDeviceName("laptop-1")
+            val unreachable = assertIs<AppLockState.Unreachable>(harness.viewModel.state.awaitState { it is AppLockState.Unreachable })
+
+            assertEquals(uiText(Res.string.unreachable_request_failed), unreachable.reason)
+        }
+
+    @Test
+    fun `asking again once device approval is back on opens a request`() =
+        runTest(testDispatcher) {
+            val fake = FakeJmapServer()
+            val harness = harness(backgroundScope, fake)
+            fake.devices.off = true
+            harness.signIn()
+            harness.viewModel.state.awaitState { it is AppLockState.Connecting && it.needsDeviceName }
+            harness.viewModel.submitDeviceName("laptop-1")
+            harness.viewModel.state.awaitState { it is AppLockState.DeviceApprovalOff }
+
+            fake.devices.off = false
+            harness.viewModel.askAgain()
+
+            harness.viewModel.state.awaitState { it is AppLockState.NeedsEnrollment && it.request is EnrollmentRequest.Open }
+            assertEquals(listOf("laptop-1"), fake.devices.opened)
+        }
+
+    @Test
+    fun `signing out from device approval off reaches the sign-in screen`() =
+        runTest(testDispatcher) {
+            val fake = FakeJmapServer()
+            val harness = harness(backgroundScope, fake)
+            fake.devices.off = true
+            harness.signIn()
+            harness.viewModel.state.awaitState { it is AppLockState.Connecting && it.needsDeviceName }
+            harness.viewModel.submitDeviceName("laptop-1")
+            harness.viewModel.state.awaitState { it is AppLockState.DeviceApprovalOff }
+
+            harness.viewModel.signOut()
+
+            harness.viewModel.state.awaitState { it is AppLockState.SignedOut }
+            assertIs<AuthState.SignedOut>(harness.tokenSource.state.value)
+        }
+
+    @Test
+    fun `taps on ask again while a request is opening open one request`() =
+        runTest(testDispatcher) {
+            val fake = FakeJmapServer()
+            val harness = harness(backgroundScope, fake)
+            fake.devices.full = true
+            harness.signIn()
+            harness.viewModel.state.awaitState { it is AppLockState.Connecting && it.needsDeviceName }
+            harness.viewModel.submitDeviceName("laptop-1")
+            harness.viewModel.state.awaitState { it is AppLockState.NeedsEnrollment && it.request is EnrollmentRequest.TooManyOpen }
+
+            fake.devices.full = false
+            repeat(3) { harness.viewModel.askAgain() }
+
+            harness.viewModel.state.awaitState { it is AppLockState.NeedsEnrollment && it.request is EnrollmentRequest.Open }
+            assertEquals(listOf("laptop-1"), fake.devices.opened)
+        }
+
+    @Test
+    fun `device approval switched off while a request is open reads as off, not expired`() =
+        runTest(testDispatcher) {
+            val fake = FakeJmapServer()
+            val harness = harness(backgroundScope, fake)
+            harness.requestKey("laptop-1")
+            fake.devices.off = true
+            harness.watch()
+
+            delay(POLL)
+
             harness.viewModel.state.awaitState { it is AppLockState.DeviceApprovalOff }
         }
 
@@ -390,6 +473,22 @@ class AppLockViewModelTest {
             harness.viewModel.state.awaitState { it is AppLockState.Revoked }
 
             assertIs<AuthState.SignedOut>(harness.tokenSource.state.value)
+        }
+
+    @Test
+    fun `a device that held a key and then finds approval off is not revoked and stays signed in`() =
+        runTest(testDispatcher) {
+            val fake = FakeJmapServer()
+            val harness = harness(backgroundScope, fake)
+            harness.enrollAndUnlock("laptop-1", fake)
+            harness.keyHolder.drop()
+            harness.viewModel.state.awaitState { it is AppLockState.Locked }
+
+            fake.devices.off = true
+            harness.viewModel.unlock()
+            harness.viewModel.state.awaitState { it is AppLockState.DeviceApprovalOff }
+
+            assertIs<AuthState.SignedIn>(harness.tokenSource.state.value)
         }
 
     @Test

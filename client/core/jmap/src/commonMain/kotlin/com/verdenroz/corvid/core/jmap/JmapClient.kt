@@ -15,6 +15,7 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
+import io.ktor.serialization.ContentConvertException
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -137,7 +138,8 @@ class JmapClient private constructor(
     /**
      * Any web tier call, answered with whatever status came back. A status in [passThrough] is
      * returned instead of thrown and does not trip the auth latch, so a path's own 401 is not the
-     * session's. A 200 or 201 body is read as JSON.
+     * session's. A 200 or 201 body is read as JSON; any other status keeps its body only when it
+     * is JSON, so a proxy's HTML error page reads as no body.
      */
     suspend fun webSend(
         method: HttpMethod,
@@ -164,8 +166,19 @@ class JmapClient private constructor(
             throw JmapException(JmapError.Unauthorized)
         }
         val hasBody = response.status == HttpStatusCode.OK || response.status == HttpStatusCode.Created
-        return WebReply(response.status, if (hasBody) response.json() else null)
+        return WebReply(response.status, if (hasBody) response.json() else response.jsonOrNull())
     }
+
+    private suspend fun HttpResponse.jsonOrNull(): JsonObject? =
+        try {
+            body<JsonObject>()
+        } catch (e: NoTransformationFoundException) {
+            null
+        } catch (e: ContentConvertException) {
+            null
+        } catch (e: SerializationException) {
+            null
+        }
 
     private suspend fun HttpResponse.json(): JsonObject =
         try {

@@ -84,6 +84,30 @@ pub fn routes(config: Config) -> Router {
         .with_state(state)
 }
 
+#[derive(Serialize)]
+struct Off {
+    error: &'static str,
+}
+
+/// The device routes on a host whose config has no `sentinel.devices`. A stable 503 lets a client
+/// tell "switched off" from a request that never reached the sentinel, which Stalwart answers 404.
+pub fn off() -> Router {
+    async fn off() -> (StatusCode, Json<Off>) {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(Off {
+                error: "devices_off",
+            }),
+        )
+    }
+    Router::new()
+        .route("/corvid/devices/requests", post(off))
+        .route("/corvid/devices/requests/{id}", get(off))
+        .route("/corvid/devices/requests/{id}/approve", post(off))
+        .route("/corvid/devices/{name}", get(off))
+        .route("/internal/devices/{name}", delete(off))
+}
+
 /// `requests` is refused because it is the path segment the request routes live under.
 fn valid_name(name: &str) -> bool {
     name != "requests"

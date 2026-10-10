@@ -22,4 +22,8 @@
     <string name="locked_device_dropped">%1$s, key dropped at %2$s</string>
     <string name="unreachable_detail">%1$s Nothing was wiped. Try again when the server answers.</string>
     <string name="connecting_title">Connecting.</string>
+    <string name="device_approval_off_title">Device approval is off</string>
+    <string name="device_approval_off_detail">This server signs you in but does not hand out device keys yet. Its administrator turns this on in the server's settings, then you can ask again.</string>
+    <string name="device_approval_off_ask_again">Ask again</string>
+    <string name="device_approval_off_sign_out">Sign out</string>
 </resources>

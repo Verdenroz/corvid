@@ -87,13 +87,21 @@ else
 fi
 
 echo "== devices =="
-# An unknown id answers 200 whenever the routes exist; without sentinel.devices it is a 404.
-code="$( (in_pod corvid-sentinel curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:11333/corvid/devices/requests/probe) 2>/dev/null)"
-case "$code" in
-  200) ok "the sentinel serves the device routes" ;;
-  404) bad "the sentinel serves no device routes (answers 404); add sentinel.devices (state: /var/lib/corvid/devices.json) to config.yaml and restart corvid-sentinel" ;;
-  *) bad "the sentinel's device routes answer ${code:-no status}, not 200; check: journalctl -u corvid-sentinel" ;;
-esac
+# Through Caddy, the way the app reaches them. An unknown id answers 200 when the routes are on and
+# 503 without sentinel.devices; a request Caddy does not route falls through to Stalwart's 404.
+if unit_masked corvid-sentinel.service; then
+  warn "corvid-sentinel is masked, so the device routes are not checked"
+elif [[ -z "${STALWART_TOKEN:-}" ]]; then
+  warn "STALWART_TOKEN is not set, so the device routes are not checked"
+else
+  code="$(curl_authed -s -o /dev/null -w '%{http_code}' --max-time 10 \
+    --resolve "$MAIL_HOSTNAME:$WEB_PORT:127.0.0.1" "https://$MAIL_HOSTNAME:$WEB_PORT/corvid/devices/requests/probe")"
+  case "$code" in
+    200) ok "the device routes answer through Caddy" ;;
+    503) bad "device approval is off: add sentinel.devices (state: /var/lib/corvid/devices.json) to config.yaml and restart corvid-sentinel" ;;
+    *) bad "the device routes answer ${code:-no status} through Caddy, not 200; check: journalctl -u corvid-caddy and journalctl -u corvid-sentinel" ;;
+  esac
+fi
 
 echo "== published ports =="
 for p in 25 465 993; do
