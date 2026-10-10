@@ -357,7 +357,7 @@ private fun JsonObject.toEmailDetail(ownDomain: String?): EmailDetail {
         body = parts.joinToString("\n\n") { it.first },
         bodyTruncated = parts.any { it.second },
         html = htmlBody(bodyValues),
-        preview = getValue("preview").jsonPrimitive.content,
+        preview = get("preview")?.jsonPrimitive?.contentOrNull.orEmpty(),
         keywords = getValue("keywords").jsonObject.keys,
         provenance = provenance(from, ownDomain),
     )
