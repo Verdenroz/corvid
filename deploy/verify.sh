@@ -149,19 +149,7 @@ echo "== dns =="
 dig +short TXT "$DOMAIN" | grep -q 'v=spf1'            && ok "SPF"   || bad "SPF missing"
 dig +short TXT "_dmarc.$DOMAIN" | grep -q 'v=DMARC1'   && ok "DMARC" || bad "DMARC missing"
 echo "== dkim =="
-domain_id=$($STALWART_CLI query Domain --json | DOMAIN="$DOMAIN" python3 -c '
-import json, os, sys
-for line in sys.stdin:
-    d = json.loads(line)
-    if d.get("name") == os.environ["DOMAIN"]:
-        print(d["id"])')
-keys=$($STALWART_CLI query DkimSignature --json | DOMAIN_ID="$domain_id" python3 -c '
-import json, os, sys
-for line in sys.stdin:
-    d = json.loads(line)
-    if d["domainId"] == os.environ["DOMAIN_ID"] and d["stage"] == "active":
-        key = "".join(l for l in d["publicKey"].splitlines() if not l.startswith("-----"))
-        print(d["@type"], d["selector"], key)')
+keys=$(active_dkim_keys "$DOMAIN" | cut -d' ' -f2-)
 grep -q '^Dkim1RsaSha256 ' <<<"$keys" && ok "an active RSA key signs outbound mail" || bad "no active RSA DKIM key"
 grep -q '^Dkim1Ed25519Sha256 ' <<<"$keys" && bad "an active ed25519 key signs outbound mail; Gmail does not validate it" ||
   ok "no active ed25519 key"

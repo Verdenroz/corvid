@@ -159,6 +159,24 @@ atomic_write() {
   mv "$tmp" "$dest"
 }
 
+# Prints "<id> <type> <selector> <public key body>" for each active DKIM key of domain NAME.
+active_dkim_keys() {
+  local domain_id
+  domain_id="$($STALWART_CLI query Domain --json | NAME="$1" python3 -c '
+import json, os, sys
+for line in sys.stdin:
+    d = json.loads(line)
+    if d.get("name") == os.environ["NAME"]:
+        print(d["id"])')"
+  $STALWART_CLI query DkimSignature --json | DOMAIN_ID="$domain_id" python3 -c '
+import json, os, sys
+for line in sys.stdin:
+    d = json.loads(line)
+    if d["domainId"] == os.environ["DOMAIN_ID"] and d["stage"] == "active":
+        key = "".join(l for l in d["publicKey"].splitlines() if not l.startswith("-----"))
+        print(d["id"], d["@type"], d["selector"], key)'
+}
+
 unit_masked() { [[ "$(systemctl is-enabled "$1" 2>/dev/null)" == masked ]]; }
 
 # Sets and exports MAIL_DOMAIN, MAIL_HOSTNAME, MAIL_USER, ACME_CONTACT, WEB_PORT, HOST_ZONE,
