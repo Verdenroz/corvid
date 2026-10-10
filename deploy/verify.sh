@@ -103,6 +103,19 @@ else
   esac
 fi
 
+echo "== app release =="
+if [[ ! -e "$CORVID_DIR/apps/current/manifest.json" ]]; then
+  warn "no app release in this image"
+elif [[ -z "${STALWART_TOKEN:-}" ]]; then
+  warn "STALWART_TOKEN is not set, so the app release is not checked"
+else
+  code="$(curl_authed -s -o /dev/null -w '%{http_code}' --max-time 10 \
+    --resolve "$MAIL_HOSTNAME:$WEB_PORT:127.0.0.1" "https://$MAIL_HOSTNAME:$WEB_PORT/corvid/app/manifest.json")"
+  [[ "$code" == 200 ]] \
+    && ok "the app release is served through Caddy" \
+    || bad "the app release answers ${code:-no status} through Caddy, not 200; check: journalctl -u corvid-caddy"
+fi
+
 echo "== published ports =="
 for p in 25 465 993; do
   ss -tlnH "sport = :$p" 2>/dev/null | grep -q . && ok "host publishes $p" || bad "nothing listens on $p"

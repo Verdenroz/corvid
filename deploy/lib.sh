@@ -131,6 +131,24 @@ require_image() {
   exit 69
 }
 
+# Replaces the served app release with the one the image carries. The Caddy container mounts
+# apps/ rather than apps/current, so the rename is visible to it. An image without a release
+# leaves current empty, which serves 404.
+install_apps() {
+  local apps="$CORVID_DIR/apps" ctr
+  rm -rf "$apps/.new" "$apps/.old"
+  mkdir "$apps/.new"
+  ctr="$(podman create "$CORVID_IMAGE")"
+  # An image built before releases were baked in has no such directory; it serves nothing.
+  podman cp "$ctr:/usr/share/corvid/app/." "$apps/.new" 2>/dev/null || echo "  $CORVID_IMAGE carries no app release"
+  podman rm "$ctr" >/dev/null
+  [[ -e "$apps/.new/manifest.json" ]] || find "$apps/.new" -mindepth 1 -delete
+  chmod -R a+rX "$apps/.new"
+  [[ ! -e "$apps/current" ]] || mv "$apps/current" "$apps/.old"
+  mv "$apps/.new" "$apps/current"
+  rm -rf "$apps/.old"
+}
+
 # Writes CONTENT to DEST through a temp file in CORVID_DIR, outside update/, which the pod's uid
 # can write, so a planted symlink cannot redirect root's write. Rename does not follow one either.
 atomic_write() {

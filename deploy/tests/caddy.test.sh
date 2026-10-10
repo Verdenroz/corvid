@@ -39,12 +39,16 @@ for port, handler in ((8080, Stalwart), (11333, Sentinel), (1411, Idp)):
 ' &
 stubs=$!
 
+mkdir -p "$work/apps/current"
+printf 'manifest' > "$work/apps/current/manifest.json"
+chmod -R a+rX "$work/apps"
+
 # Rootless containers cannot bind 80, where Caddy puts its HTTP-to-HTTPS redirect.
 { printf '{\n\thttp_port 18080\n}\n\n'; cat "$here/Caddyfile"; } > "$work/Caddyfile"
 "$engine" run -d --name "$name" --network host \
   -e CORVID_WEB_HOSTNAME=localhost -e CORVID_WEB_PORT="$port" -e CORVID_MTA_STS_SITE= \
   -e CORVID_MAIL_DOMAIN=localhost -e CORVID_IDP_HOSTNAME=idp.localhost \
-  -v "$work/Caddyfile:/etc/caddy/Caddyfile:ro,z" "$image" >/dev/null
+  -v "$work/Caddyfile:/etc/caddy/Caddyfile:ro,z" -v "$work/apps:/srv/corvid-apps:ro,z" "$image" >/dev/null
 
 fetch() {
   curl -sk --max-time 5 -o "$work/body" -w '%{http_code}' --resolve "localhost:$port:127.0.0.1" --resolve "idp.localhost:$port:127.0.0.1" \
@@ -70,6 +74,10 @@ for path in /corvid/devices/requests /corvid/devices/requests/abc /corvid/device
 done
 check "the host-only revoke route is never routed to the sentinel" \
   "$(fetch -X POST -d '{}' -u good:good "$url/internal/devices/phone")" "404 stalwart"
+check "an app file without a credential stays with Stalwart" "$(fetch "$url/corvid/app/manifest.json")" "404 stalwart"
+check "an app file with a refused credential gets Stalwart's 401" "$(fetch -u bad:bad "$url/corvid/app/manifest.json")" "401 stalwart"
+check "an app file with an accepted credential is served" "$(fetch -u good:good "$url/corvid/app/manifest.json")" "200 manifest"
+check "a missing app file is a 404" "$(fetch -u good:good "$url/corvid/app/absent.apk")" "404 "
 doc='{"version":1,"server":"https://localhost:'"$port"'","issuer":"https://idp.localhost:'"$port"'"}'
 check "the discovery document names the web tier and the issuer" "$(fetch "$url/.well-known/corvid")" "200 $doc"
 check "the discovery document ignores a credential" "$(fetch -u bad:bad "$url/.well-known/corvid")" "200 $doc"

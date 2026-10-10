@@ -10,6 +10,7 @@ Pod=corvid.pod
 EnvironmentFile=/opt/corvid/server.env
 Volume=/opt/corvid/Caddyfile:/etc/caddy/Caddyfile:ro
 Volume=/opt/corvid/caddy:/data
+Volume=/opt/corvid/apps:/srv/corvid-apps:ro
 
 [Service]
 Restart=always
