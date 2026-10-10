@@ -419,6 +419,17 @@ To roll back by hand, on the host:
 
 Set `update.auto: false` first, or the next night's run takes the release again.
 
+## Android release signing
+
+Release APKs are signed by CI with a key supplied through four repository secrets:
+`CORVID_KEYSTORE` (the keystore file, base64), `CORVID_KEYSTORE_PASSWORD`, `CORVID_KEY_ALIAS` and
+`CORVID_KEY_PASSWORD`. The build reads the file path and the other three from the environment as
+`CORVID_KEYSTORE_FILE`, `CORVID_KEYSTORE_PASSWORD`, `CORVID_KEY_ALIAS` and `CORVID_KEY_PASSWORD`,
+and leaves the release APK unsigned when any is missing.
+
+Keep the keystore and its password backed up offline. Android accepts an update only from the same
+signing key, so losing it means every install must be uninstalled once and the app installed fresh.
+
 ## Building the Corvid image
 
 The milter, image proxy and labeler all run `localhost/corvid:latest`, and nothing in the deploy
