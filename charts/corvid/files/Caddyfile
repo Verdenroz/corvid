@@ -25,6 +25,18 @@
 		}
 		reverse_proxy 127.0.0.1:11333
 	}
+	@corvidapp {
+		path /corvid/app/*
+		header Authorization *
+	}
+	handle @corvidapp {
+		forward_auth 127.0.0.1:8080 {
+			uri /jmap/session
+		}
+		uri strip_prefix /corvid/app
+		root * /srv/corvid-apps/current
+		file_server
+	}
 	handle {
 		reverse_proxy 127.0.0.1:8080
 	}
