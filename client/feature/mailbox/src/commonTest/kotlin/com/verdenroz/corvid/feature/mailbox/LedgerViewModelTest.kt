@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
@@ -102,6 +103,30 @@ class LedgerViewModelTest {
 
             val patched = vm.state.first { (it as? LedgerUiState.Loaded)?.conversations?.single()?.latest?.keywords == setOf("bills") }
             assertEquals(1, (patched as LedgerUiState.Loaded).conversations.size)
+        }
+
+    @Test
+    fun `refresh reloads from the top and completes once the new page is shown`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
+            val vm = track(LedgerViewModel(repository(fake), LedgerTab.Inbox))
+            vm.state.first { it is LedgerUiState.Loaded }
+            fake.emails += FakeEmail("m1", "m1", setOf("inbox"), "s", "a@x.test", "2024-01-02T00:00:00Z")
+
+            vm.refresh()?.join()
+
+            assertEquals(listOf("m1"), (vm.state.value as LedgerUiState.Loaded).conversations.map { it.latest.id })
+        }
+
+    @Test
+    fun `refresh does nothing before the first page has loaded`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
+            val vm = track(LedgerViewModel(repository(fake), LedgerTab.Inbox))
+
+            assertNull(vm.refresh())
         }
 
     @Test
