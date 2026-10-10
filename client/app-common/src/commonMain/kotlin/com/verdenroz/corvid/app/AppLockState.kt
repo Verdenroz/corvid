@@ -29,10 +29,22 @@ sealed interface AppLockState {
 sealed interface EnrollmentRequest {
     data object Opening : EnrollmentRequest
 
-    /** Waiting for a master to approve [request]. */
-    data class Open(val request: DeviceRequest) : EnrollmentRequest
+    /** Waiting for a master to approve [request], which may be this device itself ([selfApproval]). */
+    data class Open(
+        val request: DeviceRequest,
+        val selfApproval: SelfApproval = SelfApproval.Idle,
+    ) : EnrollmentRequest
 
     data object Expired : EnrollmentRequest
 
     data object TooManyOpen : EnrollmentRequest
+}
+
+/** This device approving its own open request with the admin passkey. */
+sealed interface SelfApproval {
+    data object Idle : SelfApproval
+
+    data object Approving : SelfApproval
+
+    data class Failed(val message: UiText) : SelfApproval
 }
