@@ -304,7 +304,7 @@ internal fun JsonObject.toEmailSummary(ownDomain: String?): EmailSummary {
         from = from,
         receivedAt = Instant.parse(getValue("receivedAt").jsonPrimitive.content),
         keywords = getValue("keywords").jsonObject.keys,
-        preview = getValue("preview").jsonPrimitive.content,
+        preview = get("preview")?.jsonPrimitive?.contentOrNull.orEmpty(),
         provenance = provenance(from, ownDomain),
     )
 }

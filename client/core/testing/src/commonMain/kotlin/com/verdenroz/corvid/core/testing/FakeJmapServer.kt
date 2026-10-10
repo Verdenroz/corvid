@@ -712,7 +712,7 @@ private fun FakeEmail.toJson(headerProperties: List<String>): JsonObject =
         putIdList("references", references)
         put("receivedAt", receivedAt)
         putJsonObject("keywords") { for (keyword in keywords) put(keyword, true) }
-        put("preview", preview)
+        preview?.let { put("preview", it) }
         if (body == null) {
             put("textBody", null as String?)
             put("htmlBody", null as String?)

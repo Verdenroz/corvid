@@ -17,7 +17,7 @@ data class FakeEmail(
     val from: String?,
     val receivedAt: String,
     val keywords: Set<String> = emptySet(),
-    val preview: String = "",
+    val preview: String? = "",
     val to: List<String> = emptyList(),
     val cc: List<String> = emptyList(),
     val bcc: List<String> = emptyList(),
