@@ -6,9 +6,11 @@ import io.ktor.client.call.body
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
+import io.ktor.client.request.prepareGet
 import io.ktor.client.request.request
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
@@ -16,6 +18,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.serialization.ContentConvertException
+import io.ktor.utils.io.readAvailable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonArray
@@ -25,7 +28,10 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.IOException
+import java.io.OutputStream
 import javax.net.ssl.SSLException
+
+private const val DOWNLOAD_BUFFER = 64 * 1024
 
 const val CORE_CAPABILITY = "urn:ietf:params:jmap:core"
 const val MAIL_CAPABILITY = "urn:ietf:params:jmap:mail"
@@ -132,6 +138,34 @@ class JmapClient private constructor(
     suspend fun webGet(path: String): JsonObject? {
         val reply = webSend(HttpMethod.Get, path)
         return if (reply.status == HttpStatusCode.OK) reply.body else null
+    }
+
+    /**
+     * Streams a GET of a web tier file into [sink] without reading it as JSON, reporting the bytes written so far.
+     * Any non-success status, a 404 included, is a [JmapException]; a 401 trips the auth latch.
+     */
+    suspend fun webDownload(
+        path: String,
+        sink: OutputStream,
+        onProgress: (Long) -> Unit = {},
+    ) {
+        transport(authLatch) {
+            httpClient.prepareGet("$baseUrl$path") {
+                bearerToken()?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+            }.execute { response ->
+                rejectFailure(authLatch, response)
+                val channel = response.bodyAsChannel()
+                val buffer = ByteArray(DOWNLOAD_BUFFER)
+                var written = 0L
+                while (true) {
+                    val read = channel.readAvailable(buffer)
+                    if (read < 0) break
+                    sink.write(buffer, 0, read)
+                    written += read
+                    onProgress(written)
+                }
+            }
+        }
     }
 
     suspend fun webPost(

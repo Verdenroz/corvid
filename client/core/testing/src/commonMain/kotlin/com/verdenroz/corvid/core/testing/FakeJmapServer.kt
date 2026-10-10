@@ -130,6 +130,9 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
     /** `/corvid/notices`, the sentinel's feed. */
     val notices = FakeWebEndpoint()
 
+    /** `/corvid/app/`, the app builds and their manifest. */
+    val app = FakeAppRelease()
+
     private val webTier = mapOf("/corvid/update" to update, "/corvid/notices" to notices)
 
     var requestCount: Int = 0
@@ -157,6 +160,7 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
             path.startsWith("/jmap/upload/") -> uploadResponse(request)
             path.startsWith("/jmap/download/") -> downloadResponse(path)
             path.startsWith("/corvid/devices") -> devices.handle(this, request)
+            path.startsWith("/corvid/app/") -> app.handle(this, request)
             path.startsWith("/i/") -> imageResponse(request, path)
             else -> webTier[path]?.handle(this, request) ?: respond("not found", HttpStatusCode.NotFound)
         }
