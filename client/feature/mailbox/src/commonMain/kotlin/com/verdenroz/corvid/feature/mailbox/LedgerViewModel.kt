@@ -49,9 +49,7 @@ class LedgerViewModel(
         paging = viewModelScope.launch { loadPage(anchor) }
     }
 
-    fun refresh() {
-        if (_state.value is LedgerUiState.Loaded) viewModelScope.launch { restartFromTop() }
-    }
+    fun refresh(): Job? = if (_state.value is LedgerUiState.Loaded) viewModelScope.launch { restartFromTop() } else null
 
     private fun apply(patch: KeywordPatch) {
         val loaded = _state.value as? LedgerUiState.Loaded ?: return

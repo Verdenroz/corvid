@@ -24,5 +24,13 @@ fun SearchScreen(
         return
     }
     val state by viewModel.state.collectAsState()
-    LedgerContent(state, stringResource(Res.string.search_no_results, query), onOpenEmail, onOpenSender, viewModel::loadMore, modifier)
+    LedgerContent(
+        state,
+        stringResource(Res.string.search_no_results, query),
+        onOpenEmail,
+        onOpenSender,
+        viewModel::loadMore,
+        viewModel::refreshAndWait,
+        modifier,
+    )
 }
