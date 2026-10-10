@@ -1,6 +1,7 @@
 package com.verdenroz.corvid.core.domain
 
 import com.verdenroz.corvid.core.auth.AuthState
+import com.verdenroz.corvid.core.auth.PrivateCodeAuthFlowFactory
 import com.verdenroz.corvid.core.auth.TokenSource
 import com.verdenroz.corvid.core.auth.createOidcClient
 import com.verdenroz.corvid.core.jmap.AuthLatch
@@ -62,7 +63,17 @@ class MasterSignInUseCaseTest {
         runTest {
             val tokenSource = signedIn()
             val useCase =
-                MasterSignInUseCase(RecordingFactory(FakeCodeAuthFlow { token("admin-at") }), fakeRedirectUriProvider, tokenSource)
+                MasterSignInUseCase(
+                    PrivateCodeAuthFlowFactory(
+                        RecordingFactory(
+                            FakeCodeAuthFlow {
+                                token("admin-at")
+                            },
+                        ),
+                    ),
+                    fakeRedirectUriProvider,
+                    tokenSource,
+                )
 
             val admin = useCase.withAdminToken { it }
 
@@ -76,7 +87,11 @@ class MasterSignInUseCaseTest {
         runTest {
             val factory = RecordingFactory(FakeCodeAuthFlow { token("admin-at", idToken = "admin-id") })
 
-            MasterSignInUseCase(factory, fakeRedirectUriProvider, signedIn()).withAdminToken { factory.events += "use $it" }
+            MasterSignInUseCase(
+                PrivateCodeAuthFlowFactory(factory),
+                fakeRedirectUriProvider,
+                signedIn(),
+            ).withAdminToken { factory.events += "use $it" }
 
             assertEquals(listOf("authorize corvid-admin", "use admin-at"), factory.events)
         }
@@ -88,7 +103,11 @@ class MasterSignInUseCaseTest {
 
             val failure =
                 assertFailsWith<IllegalStateException> {
-                    MasterSignInUseCase(factory, fakeRedirectUriProvider, signedIn()).withAdminToken<Unit> { error("refused") }
+                    MasterSignInUseCase(
+                        PrivateCodeAuthFlowFactory(factory),
+                        fakeRedirectUriProvider,
+                        signedIn(),
+                    ).withAdminToken<Unit> { error("refused") }
                 }
 
             assertEquals("refused", failure.message)
@@ -99,7 +118,7 @@ class MasterSignInUseCaseTest {
         runTest {
             val factory = RecordingFactory(FakeCodeAuthFlow { token("admin-at") })
 
-            MasterSignInUseCase(factory, fakeRedirectUriProvider, signedIn()).withAdminToken { }
+            MasterSignInUseCase(PrivateCodeAuthFlowFactory(factory), fakeRedirectUriProvider, signedIn()).withAdminToken { }
 
             val config = factory.client!!.config
             assertEquals("corvid-admin", config.clientId)
@@ -112,7 +131,17 @@ class MasterSignInUseCaseTest {
         runTest {
             val tokenSource = signedIn()
             val useCase =
-                MasterSignInUseCase(RecordingFactory(FakeCodeAuthFlow { error("cancelled") }), fakeRedirectUriProvider, tokenSource)
+                MasterSignInUseCase(
+                    PrivateCodeAuthFlowFactory(
+                        RecordingFactory(
+                            FakeCodeAuthFlow {
+                                error("cancelled")
+                            },
+                        ),
+                    ),
+                    fakeRedirectUriProvider,
+                    tokenSource,
+                )
 
             assertFailsWith<IllegalStateException> { useCase.withAdminToken { } }
 
@@ -125,7 +154,7 @@ class MasterSignInUseCaseTest {
         runTest {
             val useCase =
                 MasterSignInUseCase(
-                    RecordingFactory(FakeCodeAuthFlow { token("admin-at") }),
+                    PrivateCodeAuthFlowFactory(RecordingFactory(FakeCodeAuthFlow { token("admin-at") })),
                     fakeRedirectUriProvider,
                     TokenSource(latch, backgroundScope),
                 )

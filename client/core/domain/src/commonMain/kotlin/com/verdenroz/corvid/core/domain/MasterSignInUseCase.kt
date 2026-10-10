@@ -1,11 +1,11 @@
 package com.verdenroz.corvid.core.domain
 
 import com.verdenroz.corvid.core.auth.OIDC_ADMIN_CLIENT_ID
+import com.verdenroz.corvid.core.auth.PrivateCodeAuthFlowFactory
 import com.verdenroz.corvid.core.auth.RedirectUriProvider
 import com.verdenroz.corvid.core.auth.TokenSource
 import com.verdenroz.corvid.core.auth.createOidcClient
 import org.publicvalue.multiplatform.oidc.ExperimentalOpenIdConnect
-import org.publicvalue.multiplatform.oidc.flows.CodeAuthFlowFactory
 
 interface MasterSignIn {
     suspend fun <T> withAdminToken(use: suspend (String) -> T): T
@@ -18,7 +18,7 @@ interface MasterSignIn {
  */
 @OptIn(ExperimentalOpenIdConnect::class)
 class MasterSignInUseCase(
-    private val authFlowFactory: CodeAuthFlowFactory,
+    private val authFlowFactory: PrivateCodeAuthFlowFactory,
     private val redirectUriProvider: RedirectUriProvider,
     private val tokenSource: TokenSource,
 ) : MasterSignIn {

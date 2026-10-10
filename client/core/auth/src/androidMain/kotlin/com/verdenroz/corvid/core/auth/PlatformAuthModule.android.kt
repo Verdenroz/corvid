@@ -12,5 +12,6 @@ actual val platformAuthModule =
     module {
         single { AndroidCodeAuthFlowFactory(useWebView = false) }
         single<CodeAuthFlowFactory> { get<AndroidCodeAuthFlowFactory>() }
+        single { PrivateCodeAuthFlowFactory(get<AndroidCodeAuthFlowFactory>()) }
         single<RedirectUriProvider> { AndroidRedirectUriProvider() }
     }
