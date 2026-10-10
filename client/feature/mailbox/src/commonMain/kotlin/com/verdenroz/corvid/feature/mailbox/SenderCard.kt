@@ -132,7 +132,7 @@ private fun Header(
                     drawLine(colors.line, Offset(0f, y), Offset(size.width, y), 1.dp.toPx())
                 }.padding(start = CorvidSpacing.gutter(wide), end = CorvidSpacing.gutter(wide), bottom = 18.dp),
     ) {
-        SenderAvatar(name, sender is SenderKind.Source, seal, size = if (wide) 60.dp else 52.dp)
+        SenderAvatar(name, sender ?: SenderKind.Person, seal, size = if (wide) 60.dp else 52.dp)
         Column(Modifier.weight(1f)) {
             sender?.sourceLabel()?.let {
                 Text(stringResource(Res.string.card_source_kind, it).uppercase(), style = CorvidTheme.type.label, color = colors.inkFaint)

@@ -7,6 +7,8 @@ const val OIDC_CLIENT_ID = "corvid"
 const val OIDC_ADMIN_CLIENT_ID = "corvid-admin"
 const val ANDROID_REDIRECT_URI = "com.verdenroz.corvid:/oauth2redirect"
 
+fun accountSettingsUrl(issuer: String): String = "${issuer.trimEnd('/')}/settings/account"
+
 fun desktopRedirectUri(port: Int): String = "http://127.0.0.1:$port/callback"
 
 /** Pocket-ID as a public PKCE client; app passwords cover IMAP/SMTP, this covers JMAP. */

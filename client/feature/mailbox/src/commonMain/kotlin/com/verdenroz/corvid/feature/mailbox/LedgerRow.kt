@@ -29,7 +29,6 @@ import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.model.Conversation
 import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.core.model.Rewrite
-import com.verdenroz.corvid.core.model.SenderKind
 import com.verdenroz.corvid.core.model.labels
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.provenance.LabelChip
@@ -126,7 +125,7 @@ private fun Avatar(
 ) {
     SenderAvatar(
         name = email.from.displayName(),
-        isSource = email.provenance.sender is SenderKind.Source,
+        sender = email.provenance.sender,
         seal = email.provenance.seal,
         size = 40.dp,
         onClick = openSender,

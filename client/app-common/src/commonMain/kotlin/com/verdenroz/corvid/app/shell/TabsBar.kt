@@ -20,6 +20,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
@@ -80,26 +86,26 @@ internal fun TabsBar(
 @Composable
 private fun Tab(
     title: StringResource,
-    icon: ImageVector?,
+    icon: ImageVector,
     selected: Boolean,
     count: Int?,
     onClick: () -> Unit,
 ) {
     val colors = CorvidTheme.colors
-    val ink = if (selected) colors.onAccentSoft else colors.inkMuted
+    val ink = if (selected) colors.ink else colors.inkMuted
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         modifier =
             Modifier
-                .height(32.dp)
-                .clip(CorvidShape.pill)
-                .background(if (selected) colors.accentSoft else colors.surface)
+                .height(36.dp)
+                .clip(CorvidShape.small)
                 .clickable(role = Role.Tab, onClick = onClick)
                 .semantics { this.selected = selected }
+                .drawBehind { if (selected) drawIndicator(colors.accent) }
                 .padding(horizontal = 12.dp),
     ) {
-        icon?.let { Icon(it, contentDescription = null, tint = ink, modifier = Modifier.size(18.dp)) }
+        Icon(icon, contentDescription = null, tint = ink, modifier = Modifier.size(18.dp))
         Text(
             stringResource(title),
             style = CorvidTheme.type.name,
@@ -110,6 +116,16 @@ private fun Tab(
             Text(it.toString(), style = CorvidTheme.type.metaNumeric, color = ink)
         }
     }
+}
+
+private fun DrawScope.drawIndicator(color: Color) {
+    val width = 20.dp.toPx()
+    drawRoundRect(
+        color,
+        Offset((size.width - width) / 2, size.height - 2.dp.toPx()),
+        Size(width, 2.dp.toPx()),
+        CornerRadius(1.dp.toPx()),
+    )
 }
 
 private fun HomeTab.title(): StringResource =
@@ -123,10 +139,13 @@ private fun HomeTab.title(): StringResource =
         HomeTab.Labels -> Res.string.tab_labels
     }
 
-private fun HomeTab.icon(): ImageVector? =
+private fun HomeTab.icon(): ImageVector =
     when (this) {
         HomeTab.Inbox -> CorvidIcons.Inbox
         HomeTab.People -> CorvidIcons.Person
         HomeTab.Sources -> CorvidIcons.Box
-        else -> null
+        HomeTab.Starred -> CorvidIcons.Star
+        HomeTab.Sent -> CorvidIcons.Send
+        HomeTab.Drafts -> CorvidIcons.Draft
+        HomeTab.Labels -> CorvidIcons.Tag
     }
