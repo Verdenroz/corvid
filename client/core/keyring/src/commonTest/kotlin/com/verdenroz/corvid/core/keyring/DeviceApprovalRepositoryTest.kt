@@ -41,12 +41,41 @@ class DeviceApprovalRepositoryTest {
         }
 
     @Test
-    fun `a server without device routes is reported, not thrown`() =
+    fun `a server with device approval off is reported, not thrown`() =
         runTest {
-            fake.devices.notServed = true
+            fake.devices.off = true
 
             assertIs<OpenOutcome.NotServed>(repository().open("laptop-1"))
             assertFalse(latch.tripped.value)
+        }
+
+    @Test
+    fun `a 404 from a request that never reached the sentinel is a failure, not approval off`() =
+        runTest {
+            fake.devices.unrouted = true
+
+            assertFailsWith<JmapException> { repository().open("laptop-1") }
+            assertFalse(latch.tripped.value)
+        }
+
+    @Test
+    fun `a request reads off once the server switches device approval off`() =
+        runTest {
+            val repository = repository()
+            val request = opened(repository)
+            fake.devices.off = true
+
+            assertEquals(RequestStatus.Off, repository.status(request.id))
+        }
+
+    @Test
+    fun `a request whose status never reaches the sentinel is a failure, not expired`() =
+        runTest {
+            val repository = repository()
+            val request = opened(repository)
+            fake.devices.unrouted = true
+
+            assertFailsWith<JmapException> { repository.status(request.id) }
         }
 
     @Test

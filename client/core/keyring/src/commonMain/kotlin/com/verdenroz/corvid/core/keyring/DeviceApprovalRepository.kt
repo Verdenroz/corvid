@@ -16,11 +16,18 @@ sealed interface OpenOutcome {
 
     data object TooManyOpen : OpenOutcome
 
-    /** The server has no device routes, so no key can be asked for. */
+    /** The server has device approval switched off, so no key can be asked for. */
     data object NotServed : OpenOutcome
 }
 
-enum class RequestStatus { Pending, Approved, Expired }
+enum class RequestStatus {
+    Pending,
+    Approved,
+    Expired,
+
+    /** The server switched device approval off while the request was open. */
+    Off,
+}
 
 sealed interface ApproveOutcome {
     data object Approved : ApproveOutcome
@@ -55,10 +62,10 @@ class DeviceApprovalRepository(private val jmapClient: JmapClient) {
                 HttpMethod.Post,
                 "$DEVICES_PATH/requests",
                 buildJsonObject { put("name", deviceName) },
-                passThrough = setOf(HttpStatusCode.TooManyRequests, HttpStatusCode.NotFound),
+                passThrough = setOf(HttpStatusCode.TooManyRequests, HttpStatusCode.ServiceUnavailable),
             )
         if (reply.status == HttpStatusCode.TooManyRequests) return OpenOutcome.TooManyOpen
-        if (reply.status == HttpStatusCode.NotFound) return OpenOutcome.NotServed
+        if (reply.approvalOff()) return OpenOutcome.NotServed
         val body = reply.body.orEmpty()
         return OpenOutcome.Opened(
             DeviceRequest(
@@ -69,12 +76,17 @@ class DeviceApprovalRepository(private val jmapClient: JmapClient) {
         )
     }
 
-    suspend fun status(id: String): RequestStatus =
-        when (jmapClient.webGet("$DEVICES_PATH/requests/$id")?.getValue("status")?.jsonPrimitive?.content) {
+    /** The sentinel answers any id it does not hold as expired, so a 404 never reached it and is thrown. */
+    suspend fun status(id: String): RequestStatus {
+        val reply =
+            jmapClient.webSend(HttpMethod.Get, "$DEVICES_PATH/requests/$id", passThrough = setOf(HttpStatusCode.ServiceUnavailable))
+        if (reply.approvalOff()) return RequestStatus.Off
+        return when (reply.body?.get("status")?.jsonPrimitive?.content) {
             "pending" -> RequestStatus.Pending
             "approved" -> RequestStatus.Approved
             else -> RequestStatus.Expired
         }
+    }
 
     /** [masterToken] rides one header on one request and is not kept. */
     suspend fun approve(

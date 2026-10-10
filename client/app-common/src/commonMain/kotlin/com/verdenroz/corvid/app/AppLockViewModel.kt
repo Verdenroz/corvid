@@ -75,6 +75,7 @@ class AppLockViewModel(
     private var deviceName: String? = null
     private var hadKeyThisSession = false
     private var heartbeatJob: Job? = null
+    private var askJob: Job? = null
 
     init {
         viewModelScope.launch { tokenSource.state.collect(::onAuthState) }
@@ -180,6 +181,7 @@ class AppLockViewModel(
                     askForKey(name)
                 }
             is DeviceKeyLookup.Damaged -> _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_key_damaged))
+            is DeviceKeyLookup.ApprovalOff -> _state.value = AppLockState.DeviceApprovalOff
             is DeviceKeyLookup.Unreachable -> _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_key_unreachable))
         }
     }
@@ -200,9 +202,11 @@ class AppLockViewModel(
         }
     }
 
+    /** A tap while a request is still opening is dropped, so repeated taps open one request. */
     fun askAgain() {
         val name = deviceName ?: return
-        viewModelScope.launch { askForKey(name) }
+        if (askJob?.isActive == true) return
+        askJob = viewModelScope.launch { askForKey(name) }
     }
 
     /**
@@ -266,6 +270,10 @@ class AppLockViewModel(
                 }
                 RequestStatus.Expired -> {
                     _state.value = waiting.copy(request = EnrollmentRequest.Expired)
+                    return
+                }
+                RequestStatus.Off -> {
+                    _state.value = AppLockState.DeviceApprovalOff
                     return
                 }
             }

@@ -54,6 +54,16 @@ class DeviceKeyRepositoryTest {
         }
 
     @Test
+    fun `a server with device approval off reads as off, not missing`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.devices.enroll("laptop-1")
+            fake.devices.off = true
+
+            assertIs<DeviceKeyLookup.ApprovalOff>(repository(fake).fetch("laptop-1"))
+        }
+
+    @Test
     fun `a file of the wrong size is damaged, not missing`() =
         runTest {
             val fake = FakeJmapServer()
