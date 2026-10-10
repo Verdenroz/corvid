@@ -19,7 +19,7 @@ class AndroidAppInstaller(private val context: Context) : AppInstaller {
     override val platform = AppPlatform.Android
 
     override suspend fun install(file: File): InstallResult {
-        if (!context.packageManager.canRequestPackageInstalls()) return InstallResult.NeedsPermission
+        if (!canInstall()) return InstallResult.NeedsPermission
         val installer = context.packageManager.packageInstaller
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply { setSize(file.length()) }
         val id = installer.createSession(params)
@@ -33,6 +33,8 @@ class AndroidAppInstaller(private val context: Context) : AppInstaller {
             InstallSessions.forget(id)
         }
     }
+
+    override fun canInstall() = context.packageManager.canRequestPackageInstalls()
 
     override fun allowInstalls() {
         val settings = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, "package:${context.packageName}".toUri())

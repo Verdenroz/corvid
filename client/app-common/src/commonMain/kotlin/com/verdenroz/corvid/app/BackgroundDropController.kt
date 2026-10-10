@@ -26,6 +26,11 @@ class BackgroundDropController(
     /** A return to the foreground, held until read and merged with any not yet read; one reader at a time. */
     val foregrounded: Flow<Unit> = returned.receiveAsFlow()
 
+    private val resumes = Channel<Unit>(Channel.CONFLATED)
+
+    /** The activity resuming, which a start does not follow when a dialog-like screen only paused it; one reader at a time. */
+    val resumed: Flow<Unit> = resumes.receiveAsFlow()
+
     fun enteredBackground() {
         job =
             scope.launch {
@@ -38,5 +43,9 @@ class BackgroundDropController(
         job?.cancel()
         job = null
         returned.trySend(Unit)
+    }
+
+    fun resumedForeground() {
+        resumes.trySend(Unit)
     }
 }

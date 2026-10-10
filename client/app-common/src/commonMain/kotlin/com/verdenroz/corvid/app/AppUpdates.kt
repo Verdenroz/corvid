@@ -22,6 +22,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -59,9 +60,13 @@ class AppUpdates(
 
     /**
      * Checks on entry, again as soon as [foreground] has emitted or [checkEvery] has passed since the last check began,
-     * and installs when [update] asks; ends when the caller's scope does.
+     * and installs when [update] asks; ends when the caller's scope does. Each [resumed] emission offers the update
+     * again if the user has since allowed installs.
      */
-    suspend fun run(foreground: Flow<Unit>) {
+    suspend fun run(
+        foreground: Flow<Unit>,
+        resumed: Flow<Unit> = emptyFlow(),
+    ) {
         coroutineScope {
             val due = Channel<Unit>(Channel.CONFLATED)
             launch { foreground.collect { due.trySend(Unit) } }
@@ -71,6 +76,7 @@ class AppUpdates(
                     due.trySend(Unit)
                 }
             }
+            launch { resumed.collect { recheckPermission() } }
             launch { for (request in requests) install() }
             while (true) {
                 check()
@@ -95,14 +101,24 @@ class AppUpdates(
         return release.versionCode > installedCode && release.artifact(platform) != null
     }
 
+    private fun recheckPermission() {
+        val current = _state.value
+        if (current is AppUpdateState.NeedsPermission && installer.canInstall()) _state.value = AppUpdateState.Available(current.release)
+    }
+
     private suspend fun install() {
         val platform = installer.platform ?: return
-        if (_state.value is AppUpdateState.NeedsPermission) {
-            installer.allowInstalls()
-            return
-        }
         val release = _state.value.release() ?: return
         val artifact = release.artifact(platform) ?: return
+        if (_state.value is AppUpdateState.NeedsPermission) {
+            if (!installer.canInstall()) {
+                installer.allowInstalls()
+                return
+            }
+            _state.value = AppUpdateState.Downloading(release, 1f)
+            _state.value = handOff(release, File(directory, artifact.path))
+            return
+        }
         if (_state.value is AppUpdateState.Downloading || _state.value is AppUpdateState.Ready) return
         _state.value = AppUpdateState.Downloading(release, 0f)
         val result =
@@ -120,16 +136,21 @@ class AppUpdates(
         _state.value =
             when (result) {
                 is DownloadResult.Failed -> AppUpdateState.Failed(release, uiText(result.reason.message()))
-                is DownloadResult.Verified ->
-                    when (val installResult = installer.install(result.file)) {
-                        InstallResult.Started -> AppUpdateState.Ready(release)
-                        InstallResult.NotSupported -> AppUpdateState.Failed(release, uiText(Res.string.app_update_cannot_install))
-                        InstallResult.Cancelled -> AppUpdateState.Available(release)
-                        InstallResult.NeedsPermission -> AppUpdateState.NeedsPermission(release)
-                        is InstallResult.Failed -> AppUpdateState.Failed(release, UiText.FromServer(installResult.message))
-                    }
+                is DownloadResult.Verified -> handOff(release, result.file)
             }
     }
+
+    private suspend fun handOff(
+        release: AppRelease,
+        file: File,
+    ): AppUpdateState =
+        when (val result = installer.install(file)) {
+            InstallResult.Started -> AppUpdateState.Ready(release)
+            InstallResult.NotSupported -> AppUpdateState.Failed(release, uiText(Res.string.app_update_cannot_install))
+            InstallResult.Cancelled -> AppUpdateState.Available(release)
+            InstallResult.NeedsPermission -> AppUpdateState.NeedsPermission(release)
+            is InstallResult.Failed -> AppUpdateState.Failed(release, UiText.FromServer(result.message))
+        }
 }
 
 private fun AppUpdateState.release(): AppRelease? =

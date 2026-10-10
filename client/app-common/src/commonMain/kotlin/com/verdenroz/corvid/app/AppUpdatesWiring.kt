@@ -24,7 +24,7 @@ internal fun rememberAppUpdates(
         remember(scope) {
             AppUpdates(scope.get<AppReleaseRepository>(), installer, File(System.getProperty("java.io.tmpdir"), "corvid-update"))
         }
-    LaunchedEffect(updates) { updates.run(backgroundDrop.foregrounded) }
+    LaunchedEffect(updates) { updates.run(backgroundDrop.foregrounded, backgroundDrop.resumed) }
     return updates
 }
 
