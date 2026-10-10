@@ -7,6 +7,8 @@ import com.verdenroz.corvid.core.domain.MasterSignIn
 import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.keyring.ApproveOutcome
 import com.verdenroz.corvid.core.keyring.DeviceApprovalRepository
+import com.verdenroz.corvid.core.keyring.PendingOutcome
+import com.verdenroz.corvid.core.keyring.PendingRequest
 import com.verdenroz.corvid.core.keyring.parseApprovalLink
 import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.uiText
@@ -38,10 +40,22 @@ sealed interface ApproveStep {
     data class Failed(val message: UiText) : ApproveStep
 }
 
+sealed interface PendingList {
+    data object Loading : PendingList
+
+    data class Listed(val requests: List<PendingRequest>) : PendingList
+
+    data object Off : PendingList
+
+    data class Failed(val message: UiText) : PendingList
+}
+
 data class ApproveDeviceState(
     val id: String = "",
     val code: String = "",
     val step: ApproveStep = ApproveStep.Editing,
+    val pending: PendingList = PendingList.Loading,
+    val typingId: Boolean = false,
 ) {
     val busy: Boolean get() = step is ApproveStep.SigningIn || step is ApproveStep.Sending
     val canApprove: Boolean get() = id.isNotBlank() && CODE.matches(code) && !busy
@@ -58,6 +72,30 @@ class ApproveDeviceViewModel(
     private val _state = MutableStateFlow(ApproveDeviceState())
     val state: StateFlow<ApproveDeviceState> = _state
 
+    init {
+        refresh()
+    }
+
+    fun refresh() {
+        _state.value = _state.value.copy(pending = PendingList.Loading)
+        viewModelScope.launch {
+            val pending =
+                try {
+                    when (val outcome = repository.pending()) {
+                        is PendingOutcome.Listed -> PendingList.Listed(outcome.requests)
+                        PendingOutcome.NotServed -> PendingList.Off
+                    }
+                } catch (e: JmapException) {
+                    PendingList.Failed(e.userMessage())
+                }
+            _state.value = _state.value.copy(pending = pending)
+        }
+    }
+
+    fun pick(request: PendingRequest) = setId(request.id)
+
+    fun typeIdInstead() = edit { it.copy(typingId = true) }
+
     fun setId(id: String) = edit { it.copy(id = id.trim()) }
 
     fun setCode(code: String) = edit { it.copy(code = code.filter(Char::isDigit).take(CODE_LENGTH)) }
@@ -68,7 +106,7 @@ class ApproveDeviceViewModel(
             if (link == null) {
                 _state.value.copy(step = ApproveStep.Failed(uiText(Res.string.approve_not_a_link)))
             } else {
-                ApproveDeviceState(id = link.id, code = link.code)
+                _state.value.copy(id = link.id, code = link.code, step = ApproveStep.Editing, typingId = true)
             }
     }
 
@@ -79,6 +117,7 @@ class ApproveDeviceViewModel(
         viewModelScope.launch {
             val step = send(current.id, current.code)
             _state.value = _state.value.copy(step = step)
+            if (step is ApproveStep.Approved) refresh()
         }
     }
 

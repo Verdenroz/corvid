@@ -59,6 +59,7 @@ import com.verdenroz.corvid.core.data.NoticeRepository
 import com.verdenroz.corvid.core.data.SenderRepository
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.jmap.JmapClient
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.prefs.DevicePreferences
 import com.verdenroz.corvid.core.ui.LocalBackGuard
@@ -96,6 +97,12 @@ internal fun UnlockedContent(
     val notices = rememberNotices(scope)
     val ledgers = remember(repository) { Ledgers(repository) }
     DisposableEffect(ledgers) { onDispose { ledgers.clear() } }
+    LaunchedEffect(scope) {
+        followMailboxChanges(scope.get<JmapClient>().stateChanges()) {
+            shell.refresh()
+            ledgers.refreshAll()
+        }
+    }
     val models = remember(scope) { EntryModels() }
     DisposableEffect(models) { onDispose { models.clear() } }
 

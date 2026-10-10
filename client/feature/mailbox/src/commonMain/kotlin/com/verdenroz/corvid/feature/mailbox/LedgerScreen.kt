@@ -15,12 +15,16 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -34,6 +38,7 @@ import com.verdenroz.corvid.feature.mailbox.resources.ledger_empty_drafts
 import com.verdenroz.corvid.feature.mailbox.resources.ledger_empty_inbox
 import com.verdenroz.corvid.feature.mailbox.resources.ledger_empty_sent
 import com.verdenroz.corvid.feature.mailbox.resources.ledger_empty_starred
+import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
@@ -51,7 +56,19 @@ fun LedgerScreen(
 ) {
     val state by viewModel.state.collectAsState()
 
-    LedgerContent(state, stringResource(tab.emptyText()), onOpenEmail, onOpenSender, viewModel::loadMore, modifier)
+    LedgerContent(
+        state,
+        stringResource(tab.emptyText()),
+        onOpenEmail,
+        onOpenSender,
+        viewModel::loadMore,
+        viewModel::refreshAndWait,
+        modifier,
+    )
+}
+
+internal suspend fun LedgerViewModel.refreshAndWait() {
+    refresh()?.join()
 }
 
 @Composable
@@ -61,15 +78,31 @@ internal fun LedgerContent(
     onOpenEmail: (String) -> Unit,
     onOpenSender: (String) -> Unit,
     onLoadMore: () -> Unit,
+    onRefresh: suspend () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Box(modifier.fillMaxSize()) {
+    val scope = rememberCoroutineScope()
+    var refreshing by remember { mutableStateOf(false) }
+    PullToRefreshBox(
+        isRefreshing = refreshing,
+        onRefresh = {
+            scope.launch {
+                refreshing = true
+                try {
+                    onRefresh()
+                } finally {
+                    refreshing = false
+                }
+            }
+        },
+        modifier = modifier.fillMaxSize(),
+    ) {
         when (state) {
             is LedgerUiState.Loading -> Unit
             is LedgerUiState.Failed -> QuietPane(state.message.asString())
             is LedgerUiState.Loaded ->
                 if (state.conversations.isEmpty()) {
-                    QuietPane(emptyText)
+                    LazyColumn(Modifier.fillMaxSize()) { item { QuietPane(emptyText, Modifier.fillParentMaxSize()) } }
                 } else {
                     Ledger(state, onOpenEmail, onOpenSender, onLoadMore)
                 }

@@ -317,6 +317,11 @@ The flow, over the web tier and all behind the same credential check as `/corvid
    `/corvid/devices/<name>`, which names the key's `accountId`, `nodeId` and `blobId`. It downloads
    that blob from the keys account and never looks a key up by name.
 
+A master device finds a waiting request without the id: `GET /corvid/devices/requests` lists the
+open ones as `{id, name, expiresAt}`, newest first, and never the code. The app's "Approve a
+device" screen shows that list; the approver picks the device by name and types the code from its
+screen. Typing the id or scanning the QR code remains as a fallback.
+
 The master device may be the new device itself. The app's enrollment screen has an "Approve with
 the admin passkey" action that runs step 2 on its own request, so the first device of an account
 unlocks without another one. The server never checks that the approver is unlocked.

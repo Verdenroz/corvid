@@ -3,6 +3,7 @@ package com.verdenroz.corvid.app
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -68,13 +69,17 @@ private fun OpenRequest(
     val colors = CorvidTheme.colors
     val request = open.request
     QrCode(request.approvalLink(), stringResource(Res.string.enroll_qr), Modifier.size(232.dp))
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(stringResource(Res.string.enroll_request_id), style = CorvidTheme.type.meta, color = colors.inkMuted)
-        Text(request.id, style = CorvidTheme.type.metaNumeric, color = colors.ink)
-    }
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(stringResource(Res.string.enroll_code), style = CorvidTheme.type.meta, color = colors.inkMuted)
-        Text(request.code, style = CorvidTheme.type.name, color = colors.ink)
+    SelectionContainer {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(stringResource(Res.string.enroll_request_id), style = CorvidTheme.type.meta, color = colors.inkMuted)
+                Text(request.id, style = CorvidTheme.type.metaNumeric, color = colors.ink)
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(stringResource(Res.string.enroll_code), style = CorvidTheme.type.meta, color = colors.inkMuted)
+                Text(request.code, style = CorvidTheme.type.name, color = colors.ink)
+            }
+        }
     }
     rememberRemaining(request.expiresAt)?.let { remaining ->
         Text(stringResource(Res.string.enroll_expires_in, countdown(remaining)), style = CorvidTheme.type.meta, color = colors.inkMuted)

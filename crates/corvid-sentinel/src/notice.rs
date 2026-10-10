@@ -92,6 +92,13 @@ pub fn unparseable(body: &[u8]) -> String {
     )
 }
 
+/// Events inside a verified batch that did not match the expected shape; the batch is
+/// identified by digest for the same reason as `unparseable`.
+pub fn unreadable_events(count: usize, body: &[u8]) -> String {
+    let digest = hex::encode(Sha256::digest(body));
+    format!("{count} event(s) in a verified webhook batch could not be parsed. sha256: {digest}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
