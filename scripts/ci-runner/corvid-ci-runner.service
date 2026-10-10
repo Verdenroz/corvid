@@ -1,0 +1,11 @@
+[Unit]
+Description=Corvid CI runner
+
+[Service]
+ExecStart=/usr/bin/docker start -a corvid-ci-runner
+ExecStop=/usr/bin/docker stop corvid-ci-runner
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
