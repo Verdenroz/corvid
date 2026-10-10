@@ -16,6 +16,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.serialization.ContentConvertException
+import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -189,6 +190,12 @@ class JmapClient private constructor(
             throw JmapException(JmapError.Request(type = "notJSON", detail = e.message))
         }
 
+    /**
+     * Pushes from the session's EventSource endpoint for as long as it is collected: one connection,
+     * reopened on a drop. Ends with the [JmapException] of a terminal failure, which trips the latch on a 401.
+     */
+    fun stateChanges(): Flow<StateChange> = stateChangeFlow(httpClient, authLatch, { session.eventSourceUrl }, bearerToken)
+
     /** The address the client dialled, which the web tier's own paths hang off. */
     val webBase: String get() = baseUrl.trimEnd('/')
 
@@ -301,16 +308,31 @@ private suspend fun guarded(
     passThrough: Set<HttpStatusCode> = emptySet(),
     request: suspend () -> HttpResponse,
 ): HttpResponse {
+    val response = transport(authLatch, request)
+    rejectFailure(authLatch, response, passThrough)
+    return response
+}
+
+internal suspend fun <T> transport(
+    authLatch: AuthLatch,
+    block: suspend () -> T,
+): T {
     if (authLatch.tripped.value) throw JmapException(JmapError.Unauthorized)
-    val response =
-        try {
-            request()
-        } catch (e: SSLException) {
-            throw JmapException(JmapError.TlsFailure(e))
-        } catch (e: IOException) {
-            throw JmapException(JmapError.Unreachable(e))
-        }
-    if (response.status in passThrough) return response
+    return try {
+        block()
+    } catch (e: SSLException) {
+        throw JmapException(JmapError.TlsFailure(e))
+    } catch (e: IOException) {
+        throw JmapException(JmapError.Unreachable(e))
+    }
+}
+
+internal suspend fun rejectFailure(
+    authLatch: AuthLatch,
+    response: HttpResponse,
+    passThrough: Set<HttpStatusCode> = emptySet(),
+) {
+    if (response.status in passThrough) return
     when (response.status) {
         HttpStatusCode.Unauthorized -> {
             authLatch.trip()
@@ -341,7 +363,6 @@ private suspend fun guarded(
         )
     }
     if (!response.status.isSuccess()) throw JmapException(JmapError.Server(response.status.value))
-    return response
 }
 
 /**
