@@ -118,8 +118,13 @@ class AppUpdates(
             try {
                 withContext(Dispatchers.IO) {
                     directory.mkdirs()
+                    var percent = 0
                     repository.download(release, platform, File(directory, artifact.path)) { received ->
-                        _state.value = AppUpdateState.Downloading(release, received.toFloat() / artifact.size)
+                        val now = (received * 100 / artifact.size).toInt()
+                        if (now != percent) {
+                            percent = now
+                            _state.value = AppUpdateState.Downloading(release, now / 100f)
+                        }
                     }
                 }
             } catch (e: JmapException) {

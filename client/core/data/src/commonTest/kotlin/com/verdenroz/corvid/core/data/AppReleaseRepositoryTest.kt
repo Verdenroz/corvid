@@ -83,6 +83,35 @@ class AppReleaseRepositoryTest {
         }
 
     @Test
+    fun `a destination that already verifies is reused without a request`() =
+        runTest {
+            val fake = FakeJmapServer().apply { app.release(7, android = APK) }
+            val repository = repository(fake)
+            val release = repository.latest()!!
+            val dest = File(workDir(), "corvid.apk")
+            repository.download(release, AppPlatform.Android, dest)
+
+            val result = repository.download(release, AppPlatform.Android, dest)
+
+            assertEquals(DownloadResult.Verified(dest), result)
+            assertEquals(1, fake.app.requests.count { it != "manifest.json" })
+        }
+
+    @Test
+    fun `a destination that no longer verifies is fetched again`() =
+        runTest {
+            val fake = FakeJmapServer().apply { app.release(7, android = APK) }
+            val repository = repository(fake)
+            val release = repository.latest()!!
+            val dest = File(workDir(), "corvid.apk").apply { writeBytes(APK.reversedArray()) }
+
+            val result = repository.download(release, AppPlatform.Android, dest)
+
+            assertEquals(DownloadResult.Verified(dest), result)
+            assertContentEquals(APK, dest.readBytes())
+        }
+
+    @Test
     fun `progress reports the bytes received up to the whole file`() =
         runTest {
             val fake = FakeJmapServer().apply { app.release(7, android = APK) }
