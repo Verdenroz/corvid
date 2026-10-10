@@ -38,6 +38,17 @@ class ThreadsTest {
         }
 
     @Test
+    fun `a conversation whose email lacks a preview gets an empty one`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.emails += message("a1", "a", "2024-01-01T00:00:00Z").copy(preview = null)
+
+            val page = assertIs<EmailPage.Found>(repository(fake).page(MailFilter.InMailbox("inbox"), null))
+
+            assertEquals("", page.conversations.single().latest.preview)
+        }
+
+    @Test
     fun `a thread counts its messages filed elsewhere`() =
         runTest {
             val fake = FakeJmapServer()
