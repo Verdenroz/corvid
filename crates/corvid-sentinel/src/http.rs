@@ -94,7 +94,24 @@ async fn webhook(
 
     let outcome = tokio::task::spawn_blocking(move || {
         state.commit(|seen| match events {
-            Ok(events) => handle(&events, seen),
+            Ok(batch) => {
+                let handled = handle(&batch.events, seen);
+                if batch.unreadable == 0 {
+                    return handled;
+                }
+                tracing::warn!(
+                    count = batch.unreadable,
+                    "verified webhook events could not be parsed"
+                );
+                let mut next = handled.unwrap_or_else(|| seen.clone());
+                next.push_notice(
+                    NoticeKind::SignIn,
+                    dates::rfc3339_now(),
+                    "Unreadable webhook events".to_owned(),
+                    notice::unreadable_events(batch.unreadable, &body),
+                );
+                Some(next)
+            }
             Err(error) => {
                 tracing::warn!(%error, "a verified webhook body could not be parsed");
                 let mut next = seen.clone();
@@ -226,6 +243,41 @@ mod tests {
 
         assert_eq!(response.status(), 200);
         assert_eq!(open(&path).unwrap().notices.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn an_auth_error_with_a_string_cause_is_read_and_noticed_by_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sentinel.json");
+        let url = serve(&path).await;
+        let body = br#"{"events":[{"id":"1","createdAt":"2026-10-09T02:51:00Z","type":"auth.error","data":{"causedBy":"crates/directory/src/core/dispatch.rs:17","reason":"Unsupported credentials type for OIDC backend"}}]}"#.to_vec();
+
+        let response = post(&url, sign(&body), body).await;
+
+        assert_eq!(response.status(), 200);
+        let notices = open(&path).unwrap().notices;
+        assert_eq!(notices.len(), 1);
+        assert_eq!(notices[0].title, "Unknown sign-in event");
+    }
+
+    #[tokio::test]
+    async fn one_unreadable_event_does_not_hide_the_others_in_its_batch() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sentinel.json");
+        let url = serve(&path).await;
+        let body = br#"{"events":[{"id":"1","type":"auth.failed"},{"id":"2","createdAt":"2026-09-27T02:08:58Z","type":"auth.success","data":{"accountName":"alice@corvid.test","remoteIp":"203.0.113.9","listenerId":"imaps"}}]}"#.to_vec();
+
+        let response = post(&url, sign(&body), body).await;
+
+        assert_eq!(response.status(), 200);
+        let titles: Vec<_> = open(&path)
+            .unwrap()
+            .notices
+            .into_iter()
+            .map(|n| n.title)
+            .collect();
+        assert_eq!(titles.len(), 2);
+        assert!(titles.contains(&"Unreadable webhook events".to_owned()));
     }
 
     #[tokio::test]
