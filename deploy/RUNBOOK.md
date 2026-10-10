@@ -322,7 +322,8 @@ the admin passkey" action that runs step 2 on its own request, so the first devi
 unlocks without another one. The server never checks that the approver is unlocked.
 
 Pocket-ID refuses `corvid-admin` to a browser still signed in as the mail user, so step 2 first
-asks the browser to sign out of Pocket-ID and again after the passkey sign-in. Each carries the
+asks the browser to sign out of Pocket-ID and again once the approval has been sent, since ending
+the admin's session revokes its token. Each carries the
 session's ID token as `id_token_hint`, which makes Pocket-ID skip its "Sign out" confirmation and
 redirect at once, to a loopback callback on any port. Without a hint it stops at that page and never
 redirects. `idp.sh provision` registers the logout callbacks that bring the browser back.
