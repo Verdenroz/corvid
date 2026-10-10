@@ -35,6 +35,9 @@ class FakeDevices(private val blobs: MutableMap<String, ByteArray>) {
     /** Answers a request to open with 429, as a server with too many open does. */
     var full: Boolean = false
 
+    /** Serves no device routes, as a server whose sentinel has no `devices` section does. */
+    var notServed: Boolean = false
+
     /** Answers an approval that passes every check with 502, as a failed key creation does. */
     var upstreamFails: Boolean = false
 
@@ -103,6 +106,7 @@ class FakeDevices(private val blobs: MutableMap<String, ByteArray>) {
                 headersOf(HttpHeaders.WWWAuthenticate, listOf("Bearer realm=\"Stalwart Server\"")),
             )
         }
+        if (notServed) return scope.respond("not found", HttpStatusCode.NotFound)
         val segments = request.url.encodedPath.removePrefix("/corvid/devices").trim('/').split("/").filter { it.isNotEmpty() }
         return when {
             segments == listOf("requests") && request.method == HttpMethod.Post -> open(scope, request)

@@ -61,6 +61,7 @@ fun CorvidApp(
                     val facts = viewModel.lockFacts
                     LockedPane(facts.server, facts.device, facts.lockedAt?.let { droppedAt(it) }, onUnlock = viewModel::unlock)
                 }
+                is AppLockState.DeviceApprovalOff -> DeviceApprovalOffPane(onAskAgain = viewModel::askAgain)
                 is AppLockState.Revoked -> RevokedPane()
                 is AppLockState.NeedsEnrollment ->
                     EnrollmentPrompt(

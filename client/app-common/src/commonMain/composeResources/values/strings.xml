@@ -19,6 +19,8 @@
     <string name="enroll_opening">Asking the server for a request.</string>
     <string name="enroll_expired">This request has expired.</string>
     <string name="enroll_too_many">Too many requests are open. Wait for one to expire, then ask again.</string>
+    <string name="device_approval_off_title">Device approval is off</string>
+    <string name="device_approval_off_detail">This server signs you in but does not hand out device keys yet. Its administrator turns this on in the server's settings, then you can ask again.</string>
     <string name="enroll_ask_again">Ask again</string>
     <string name="enroll_self_approve">Approve with the admin passkey</string>
     <string name="enroll_self_approving">Waiting for the admin sign-in.</string>

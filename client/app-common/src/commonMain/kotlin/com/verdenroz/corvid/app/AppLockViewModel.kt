@@ -189,12 +189,12 @@ class AppLockViewModel(
         val repository = deviceApprovalRepository ?: return
         _state.value = AppLockState.NeedsEnrollment(name, EnrollmentRequest.Opening)
         try {
-            val request =
+            _state.value =
                 when (val outcome = repository.open(name)) {
-                    is OpenOutcome.Opened -> EnrollmentRequest.Open(outcome.request)
-                    is OpenOutcome.TooManyOpen -> EnrollmentRequest.TooManyOpen
+                    is OpenOutcome.Opened -> AppLockState.NeedsEnrollment(name, EnrollmentRequest.Open(outcome.request))
+                    is OpenOutcome.TooManyOpen -> AppLockState.NeedsEnrollment(name, EnrollmentRequest.TooManyOpen)
+                    is OpenOutcome.NotServed -> AppLockState.DeviceApprovalOff
                 }
-            _state.value = AppLockState.NeedsEnrollment(name, request)
         } catch (e: JmapException) {
             _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_request_failed))
         }

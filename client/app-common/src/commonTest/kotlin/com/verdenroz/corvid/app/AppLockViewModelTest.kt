@@ -238,6 +238,19 @@ class AppLockViewModelTest {
         }
 
     @Test
+    fun `a server without device routes is said so, not called unreachable`() =
+        runTest(testDispatcher) {
+            val fake = FakeJmapServer()
+            val harness = harness(backgroundScope, fake)
+            fake.devices.notServed = true
+            harness.signIn()
+            harness.viewModel.state.awaitState { it is AppLockState.Connecting && it.needsDeviceName }
+
+            harness.viewModel.submitDeviceName("laptop-1")
+            harness.viewModel.state.awaitState { it is AppLockState.DeviceApprovalOff }
+        }
+
+    @Test
     fun `a watch that stops asking leaves an approval unread until it resumes`() =
         runTest(testDispatcher) {
             val fake = FakeJmapServer()

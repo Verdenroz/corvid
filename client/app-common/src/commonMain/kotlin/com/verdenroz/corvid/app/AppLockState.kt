@@ -17,6 +17,9 @@ sealed interface AppLockState {
      *  Revoked, so they share one pane. */
     data class Unreachable(val reason: UiText) : AppLockState
 
+    /** The server answered but serves no device routes, so no key can be asked for. */
+    data object DeviceApprovalOff : AppLockState
+
     data object Locked : AppLockState
 
     data object Revoked : AppLockState

@@ -86,6 +86,15 @@ else
     || bad "the Pocket-ID setup page answers $code, not 404; Caddy must refuse it, or the first visitor can claim the admin account"
 fi
 
+echo "== devices =="
+# An unknown id answers 200 whenever the routes exist; without sentinel.devices it is a 404.
+code="$( (in_pod corvid-sentinel curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:11333/corvid/devices/requests/probe) 2>/dev/null)"
+case "$code" in
+  200) ok "the sentinel serves the device routes" ;;
+  404) bad "the sentinel serves no device routes (answers 404); add sentinel.devices (state: /var/lib/corvid/devices.json) to config.yaml and restart corvid-sentinel" ;;
+  *) bad "the sentinel's device routes answer ${code:-no status}, not 200; check: journalctl -u corvid-sentinel" ;;
+esac
+
 echo "== published ports =="
 for p in 25 465 993; do
   ss -tlnH "sport = :$p" 2>/dev/null | grep -q . && ok "host publishes $p" || bad "nothing listens on $p"
