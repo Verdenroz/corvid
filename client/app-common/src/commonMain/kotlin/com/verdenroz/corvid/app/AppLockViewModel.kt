@@ -32,6 +32,7 @@ import com.verdenroz.corvid.core.keyring.KeyState
 import com.verdenroz.corvid.core.keyring.OpenOutcome
 import com.verdenroz.corvid.core.keyring.RequestStatus
 import com.verdenroz.corvid.core.model.hostOf
+import com.verdenroz.corvid.core.prefs.DevicePreferences
 import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.uiText
 import io.ktor.client.HttpClient
@@ -64,6 +65,7 @@ class AppLockViewModel(
     private val httpClient: HttpClient,
     private val unlockedScopeHolder: UnlockedScopeHolder,
     private val masterSignIn: MasterSignIn,
+    private val devicePreferences: DevicePreferences,
 ) : ViewModel() {
     private val _state = MutableStateFlow<AppLockState>(AppLockState.SignedOut)
     val state: StateFlow<AppLockState> = _state
@@ -94,7 +96,11 @@ class AppLockViewModel(
 
     fun submitDeviceName(name: String) {
         deviceName = name
-        viewModelScope.launch { resolveKey(name) }
+        val server = (tokenSource.state.value as? AuthState.SignedIn)?.server?.baseUrl?.let(::hostOf)
+        viewModelScope.launch {
+            if (server != null) devicePreferences.setDeviceName(server, name)
+            resolveKey(name)
+        }
     }
 
     fun unlock() {
@@ -154,7 +160,7 @@ class AppLockViewModel(
             jmapClient = client
             deviceKeyRepository = DeviceKeyRepository(client)
             deviceApprovalRepository = DeviceApprovalRepository(client)
-            val name = deviceName
+            val name = deviceName ?: devicePreferences.deviceName(hostOf(signedIn.server.baseUrl))?.also { deviceName = it }
             if (name != null) resolveKey(name) else _state.value = AppLockState.Connecting(needsDeviceName = true)
         } catch (e: JmapException) {
             _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_server))
