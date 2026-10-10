@@ -22,7 +22,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -60,23 +59,24 @@ class AppUpdates(
 
     /**
      * Checks on entry, again as soon as [foreground] has emitted or [checkEvery] has passed since the last check began,
-     * and installs when [update] asks; ends when the caller's scope does. Each [resumed] emission offers the update
-     * again if the user has since allowed installs.
+     * and installs when [update] asks; ends when the caller's scope does. Each [foreground] emission also offers the
+     * update again if the user has since allowed installs.
      */
-    suspend fun run(
-        foreground: Flow<Unit>,
-        resumed: Flow<Unit> = emptyFlow(),
-    ) {
+    suspend fun run(foreground: Flow<Unit>) {
         coroutineScope {
             val due = Channel<Unit>(Channel.CONFLATED)
-            launch { foreground.collect { due.trySend(Unit) } }
+            launch {
+                foreground.collect {
+                    recheckPermission()
+                    due.trySend(Unit)
+                }
+            }
             launch {
                 while (true) {
                     delay(checkEvery)
                     due.trySend(Unit)
                 }
             }
-            launch { resumed.collect { recheckPermission() } }
             launch { for (request in requests) install() }
             while (true) {
                 check()

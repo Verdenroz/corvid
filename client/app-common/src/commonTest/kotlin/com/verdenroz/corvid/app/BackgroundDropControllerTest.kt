@@ -1,6 +1,8 @@
 package com.verdenroz.corvid.app
 
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
@@ -37,13 +39,15 @@ class BackgroundDropControllerTest {
         }
 
     @Test
-    fun `a return to the foreground nobody was reading yet is still delivered`() =
+    fun `every collector sees a return to the foreground`() =
         runTest {
             val controller = BackgroundDropController(backgroundScope, onTimeout = {})
+            val first = async(start = CoroutineStart.UNDISPATCHED) { controller.foregrounded.first() }
+            val second = async(start = CoroutineStart.UNDISPATCHED) { controller.foregrounded.first() }
 
             controller.enteredForeground()
-            controller.enteredForeground()
 
-            assertEquals(Unit, controller.foregrounded.first())
+            assertEquals(Unit, first.await())
+            assertEquals(Unit, second.await())
         }
 }

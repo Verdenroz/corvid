@@ -46,9 +46,4 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         backgroundDropController.enteredForeground()
     }
-
-    override fun onResume() {
-        super.onResume()
-        backgroundDropController.resumedForeground()
-    }
 }

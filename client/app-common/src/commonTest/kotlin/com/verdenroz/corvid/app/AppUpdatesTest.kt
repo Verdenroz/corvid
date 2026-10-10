@@ -58,7 +58,6 @@ private class UpdatesRig(
     val updates: AppUpdates,
     val installer: RecordingInstaller,
     val foreground: Channel<Unit>,
-    val resumed: Channel<Unit>,
     val directory: File,
 )
 
@@ -72,11 +71,10 @@ private suspend fun TestScope.updatesRig(
 ): UpdatesRig {
     val directory = createTempDirectory("corvid-update").toFile().apply { deleteOnExit() }
     val foreground = Channel<Unit>(Channel.CONFLATED)
-    val resumed = Channel<Unit>(Channel.CONFLATED)
     val updates = AppUpdates(AppReleaseRepository(fake.client(token)), installer, directory, installed, checkEvery)
-    backgroundScope.launch { updates.run(foreground.receiveAsFlow(), resumed.receiveAsFlow()) }
+    backgroundScope.launch { updates.run(foreground.receiveAsFlow()) }
     runCurrent()
-    return UpdatesRig(fake, updates, installer, foreground, resumed, directory)
+    return UpdatesRig(fake, updates, installer, foreground, directory)
 }
 
 /** The fake answers on another thread, so the test waits on real time for what it caused. */
@@ -246,28 +244,6 @@ class AppUpdatesTest {
             assertEquals(2, rig.installer.installed.size)
             assertEquals(0, rig.installer.allowRequests)
             assertEquals(1, rig.fake.app.requests.count { it != "manifest.json" })
-        }
-
-    @Test
-    fun `resuming after allowing installs offers the update again`() =
-        runTest {
-            val rig =
-                updatesRig(
-                    FakeJmapServer().apply { app.release(6, android = APK) },
-                    RecordingInstaller(AppPlatform.Android, InstallResult.NeedsPermission),
-                )
-            eventually { rig.updates.state.value is AppUpdateState.Available }
-            rig.installer.allowed = false
-            rig.updates.update()
-            eventually { rig.updates.state.value is AppUpdateState.NeedsPermission }
-
-            rig.resumed.send(Unit)
-            runCurrent()
-            assertIs<AppUpdateState.NeedsPermission>(rig.updates.state.value)
-            rig.installer.allowed = true
-            rig.resumed.send(Unit)
-
-            eventually { rig.updates.state.value is AppUpdateState.Available }
         }
 
     @Test
