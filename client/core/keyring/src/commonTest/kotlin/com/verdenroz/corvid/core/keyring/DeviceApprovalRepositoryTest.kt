@@ -41,6 +41,15 @@ class DeviceApprovalRepositoryTest {
         }
 
     @Test
+    fun `a server without device routes is reported, not thrown`() =
+        runTest {
+            fake.devices.notServed = true
+
+            assertIs<OpenOutcome.NotServed>(repository().open("laptop-1"))
+            assertFalse(latch.tripped.value)
+        }
+
+    @Test
     fun `a request reads pending, then approved once a master approves it`() =
         runTest {
             val repository = repository()

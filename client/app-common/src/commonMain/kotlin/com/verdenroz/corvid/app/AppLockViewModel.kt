@@ -3,6 +3,7 @@ package com.verdenroz.corvid.app
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.appcommon.resources.Res
+import com.verdenroz.corvid.appcommon.resources.unreachable_devices_not_served
 import com.verdenroz.corvid.appcommon.resources.unreachable_heartbeat
 import com.verdenroz.corvid.appcommon.resources.unreachable_key_damaged
 import com.verdenroz.corvid.appcommon.resources.unreachable_key_unreachable
@@ -179,12 +180,12 @@ class AppLockViewModel(
         val repository = deviceApprovalRepository ?: return
         _state.value = AppLockState.NeedsEnrollment(name, EnrollmentRequest.Opening)
         try {
-            val request =
+            _state.value =
                 when (val outcome = repository.open(name)) {
-                    is OpenOutcome.Opened -> EnrollmentRequest.Open(outcome.request)
-                    is OpenOutcome.TooManyOpen -> EnrollmentRequest.TooManyOpen
+                    is OpenOutcome.Opened -> AppLockState.NeedsEnrollment(name, EnrollmentRequest.Open(outcome.request))
+                    is OpenOutcome.TooManyOpen -> AppLockState.NeedsEnrollment(name, EnrollmentRequest.TooManyOpen)
+                    is OpenOutcome.NotServed -> AppLockState.Unreachable(uiText(Res.string.unreachable_devices_not_served))
                 }
-            _state.value = AppLockState.NeedsEnrollment(name, request)
         } catch (e: JmapException) {
             _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_request_failed))
         }

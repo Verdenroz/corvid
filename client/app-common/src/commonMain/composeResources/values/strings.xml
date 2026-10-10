@@ -9,6 +9,7 @@
     <string name="device_name_detail">The name labels this device's key on the server, so you can tell keys apart and revoke one.</string>
     <string name="device_name_hint">lowercase letters, digits, hyphens</string>
     <string name="device_name_continue">Continue</string>
+    <string name="unreachable_devices_not_served">This server does not hand out device keys yet. Its administrator has to turn on device approval.</string>
     <string name="unreachable_request_failed">Could not reach the server to ask for a key.</string>
     <string name="enroll_title">Approve "%1$s" from another device</string>
     <string name="enroll_detail">On a device that already has access, open Settings, choose Approve a device, and scan this code or enter the request id and code.</string>

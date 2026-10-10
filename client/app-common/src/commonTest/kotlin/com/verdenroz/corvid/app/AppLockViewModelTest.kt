@@ -2,6 +2,7 @@ package com.verdenroz.corvid.app
 
 import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.appcommon.resources.Res
+import com.verdenroz.corvid.appcommon.resources.unreachable_devices_not_served
 import com.verdenroz.corvid.appcommon.resources.unreachable_heartbeat
 import com.verdenroz.corvid.appcommon.resources.unreachable_key_damaged
 import com.verdenroz.corvid.appcommon.resources.unreachable_key_unreachable
@@ -217,6 +218,21 @@ class AppLockViewModelTest {
             fake.devices.full = false
             harness.viewModel.askAgain()
             harness.viewModel.state.awaitState { it is AppLockState.NeedsEnrollment && it.request is EnrollmentRequest.Open }
+        }
+
+    @Test
+    fun `a server without device routes is said so, not called unreachable`() =
+        runTest(testDispatcher) {
+            val fake = FakeJmapServer()
+            val harness = harness(backgroundScope, fake)
+            fake.devices.notServed = true
+            harness.signIn()
+            harness.viewModel.state.awaitState { it is AppLockState.Connecting && it.needsDeviceName }
+
+            harness.viewModel.submitDeviceName("laptop-1")
+            val unreachable = assertIs<AppLockState.Unreachable>(harness.viewModel.state.awaitState { it is AppLockState.Unreachable })
+
+            assertEquals(uiText(Res.string.unreachable_devices_not_served), unreachable.reason)
         }
 
     @Test

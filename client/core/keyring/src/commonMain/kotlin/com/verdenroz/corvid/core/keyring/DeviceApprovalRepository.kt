@@ -15,6 +15,9 @@ sealed interface OpenOutcome {
     class Opened(val request: DeviceRequest) : OpenOutcome
 
     data object TooManyOpen : OpenOutcome
+
+    /** The server has no device routes, so no key can be asked for. */
+    data object NotServed : OpenOutcome
 }
 
 enum class RequestStatus { Pending, Approved, Expired }
@@ -52,9 +55,10 @@ class DeviceApprovalRepository(private val jmapClient: JmapClient) {
                 HttpMethod.Post,
                 "$DEVICES_PATH/requests",
                 buildJsonObject { put("name", deviceName) },
-                passThrough = setOf(HttpStatusCode.TooManyRequests),
+                passThrough = setOf(HttpStatusCode.TooManyRequests, HttpStatusCode.NotFound),
             )
         if (reply.status == HttpStatusCode.TooManyRequests) return OpenOutcome.TooManyOpen
+        if (reply.status == HttpStatusCode.NotFound) return OpenOutcome.NotServed
         val body = reply.body.orEmpty()
         return OpenOutcome.Opened(
             DeviceRequest(
