@@ -41,6 +41,7 @@ compose.desktop {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "corvid"
             packageVersion = providers.gradleProperty("corvid.version").getOrElse("0.1.0")
+            modules("java.instrument", "java.management", "java.naming", "jdk.unsupported")
             linux { iconFile.set(project.file("src/main/resources/corvid-512.png")) }
             windows { iconFile.set(project.file("src/main/resources/corvid.ico")) }
             macOS {
