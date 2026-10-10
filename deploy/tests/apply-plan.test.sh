@@ -40,10 +40,10 @@ printf 'STALWART_URL=http://127.0.0.1:%s\nSTALWART_USER=admin\nSTALWART_PASSWORD
   "$(cat "$work/port")" > "$work/corvid.env"
 
 cat > "$work/keys" <<'KEYS'
-{"id":"e1","domainId":"b","selector":"v1-ed","publicKey":"PK","stage":"active","@type":"Dkim1Ed25519Sha256"}
-{"id":"r1","domainId":"b","selector":"v1-rsa","publicKey":"PK","stage":"active","@type":"Dkim1RsaSha256"}
-{"id":"e2","domainId":"b","selector":"v0-ed","publicKey":"PK","stage":"retiring","@type":"Dkim1Ed25519Sha256"}
-{"id":"e3","domainId":"c","selector":"v1-ed","publicKey":"PK","stage":"active","@type":"Dkim1Ed25519Sha256"}
+{"id":"e1","domainId":"b","selector":"v1-ed","stage":"active","@type":"Dkim1Ed25519Sha256"}
+{"id":"r1","domainId":"b","selector":"v1-rsa","stage":"active","@type":"Dkim1RsaSha256"}
+{"id":"e2","domainId":"b","selector":"v0-ed","stage":"retiring","@type":"Dkim1Ed25519Sha256"}
+{"id":"e3","domainId":"c","selector":"v1-ed","stage":"active","@type":"Dkim1Ed25519Sha256"}
 KEYS
 
 fail=0

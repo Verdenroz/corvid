@@ -179,9 +179,11 @@ Caddyfile built from the same env vars as everything else. `core/discovery` hold
 - **`dataStore` RocksDb requires `path`** in the Bootstrap payload.
 - **`serverHostname` rejects reserved TLDs**, so `.example` is refused.
 - **Gmail does not validate ed25519 DKIM.** Google's DMARC reports showed RSA passing and ed25519
-  failing on every message. The plan now lists only `Dkim1RsaSha256` in the Domain's
-  `dkimManagement.algorithms` and states `SenderAuth.dkimSignDomain` explicitly. A key generated
-  before that stays `active` until `apply-plan.sh` moves it to `retiring`; `verify.sh` fails while
+  failing on every message, while the message's own Authentication-Results said `dkim=neutral (no
+  key)` for ed25519 even though its record was published, so the DNS is not the thing to chase.
+  The plan now lists only `Dkim1RsaSha256` in the Domain's `dkimManagement.algorithms` and states
+  `SenderAuth.dkimSignDomain` explicitly. A key generated before that stays `active` until
+  `apply-plan.sh` sets it to `retiring`, which is meant to stop it signing; `verify.sh` fails while
   one is active.
 - **`smtp.dkim-fail` with `result=[]` on a submission is the pre-signing verify, not a missing
   signature.** Stalwart verifies the message as received, before it signs, and an authenticated

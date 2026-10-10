@@ -101,12 +101,13 @@ case " $* " in *" --dry-run "*) exit 0;; esac
 # Stalwart generates keys only for algorithms the Domain lists, so a key from before the list
 # narrowed stays active. Moving it to retiring stops signing and starts its normal wind-down.
 retire_ed25519() {
-  local key type retire_at
+  local keys key type retire_at
   retire_at="$(date -u -d '+7 days' +%Y-%m-%dT%H:%M:%SZ)"
-  active_dkim_keys "$MAIL_DOMAIN" | while read -r key type _; do
+  keys="$(active_dkim_keys "$MAIL_DOMAIN")"
+  while read -r key type _; do
     [[ "$type" == Dkim1Ed25519Sha256 ]] || continue
     $STALWART_CLI update DkimSignature "$key" --json "{\"stage\":\"retiring\",\"nextTransitionAt\":\"$retire_at\"}"
-  done
+  done <<<"$keys"
 }
 retire_ed25519
 

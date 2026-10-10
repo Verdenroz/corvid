@@ -159,22 +159,26 @@ atomic_write() {
   mv "$tmp" "$dest"
 }
 
-# Prints "<id> <type> <selector> <public key body>" for each active DKIM key of domain NAME.
+# Prints "<id> <type> <selector>" for each active DKIM key of domain NAME. Fails when Stalwart's
+# answer cannot be read, so the caller must not assume an empty list means no keys.
 active_dkim_keys() {
-  local domain_id
-  domain_id="$($STALWART_CLI query Domain --json | NAME="$1" python3 -c '
+  local domains keys
+  domains="$($STALWART_CLI query Domain --json)" || return 1
+  keys="$($STALWART_CLI query DkimSignature --json)" || return 1
+  DOMAINS="$domains" python3 -c '
 import json, os, sys
-for line in sys.stdin:
-    d = json.loads(line)
-    if d.get("name") == os.environ["NAME"]:
-        print(d["id"])')"
-  $STALWART_CLI query DkimSignature --json | DOMAIN_ID="$domain_id" python3 -c '
-import json, os, sys
-for line in sys.stdin:
-    d = json.loads(line)
-    if d["domainId"] == os.environ["DOMAIN_ID"] and d["stage"] == "active":
-        key = "".join(l for l in d["publicKey"].splitlines() if not l.startswith("-----"))
-        print(d["id"], d["@type"], d["selector"], key)'
+rows = lambda text: map(json.loads, filter(str.strip, text.splitlines()))
+domain = next(d["id"] for d in rows(os.environ["DOMAINS"]) if d["name"] == sys.argv[1])
+for d in rows(sys.stdin.read()):
+    if d["domainId"] == domain and d["stage"] == "active":
+        print(d["id"], d["@type"], d["selector"])' "$1" <<<"$keys"
+}
+
+# The DNS form of a DKIM key's public half. Only a get carries it, never a query.
+dkim_public_key() {
+  local key
+  key="$($STALWART_CLI get DkimSignature "$1" --json)" || return 1
+  python3 -c 'import json, sys; print(json.load(sys.stdin)["publicKey"])' <<<"$key"
 }
 
 unit_masked() { [[ "$(systemctl is-enabled "$1" 2>/dev/null)" == masked ]]; }
