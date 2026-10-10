@@ -41,6 +41,12 @@ spec:
           command: [unbound-anchor, -a, /var/lib/unbound/root.key]
           volumeMounts:
             - {name: state, mountPath: /var/lib/unbound, subPath: unbound}
+        - name: app-release
+          image: {{ include "corvid.image" . }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          command: [cp, -a, /usr/share/corvid/app/., /srv/corvid-apps/current]
+          volumeMounts:
+            - {name: apps, mountPath: /srv/corvid-apps/current}
       containers:
         - name: mail
           image: {{ .Values.images.stalwart }}
@@ -154,6 +160,7 @@ spec:
           volumeMounts:
             - {name: config, mountPath: /etc/caddy/Caddyfile, subPath: Caddyfile}
             - {name: state, mountPath: /data, subPath: caddy}
+            - {name: apps, mountPath: /srv/corvid-apps/current, readOnly: true}
           resources:
             {{- toYaml .Values.resources.caddy | nindent 12 }}
         {{- if .Values.idp.enabled }}
@@ -175,6 +182,8 @@ spec:
             {{- toYaml .Values.resources.idp | nindent 12 }}
         {{- end }}
       volumes:
+        - name: apps
+          emptyDir: {}
         - name: config
           configMap:
             name: {{ include "corvid.fullname" . }}

@@ -65,6 +65,7 @@ install -m 644 "$HERE/unbound.conf" "$CORVID_DIR/unbound.conf"
 install -m 644 "$HERE/Caddyfile" "$CORVID_DIR/Caddyfile"
 # The pod's uid writes update requests and reads status.json here; nothing else is its to touch.
 install -d -o "$STALWART_UID" -g "$STALWART_UID" -m 750 "$CORVID_DIR/update"
+install -d -m 755 "$CORVID_DIR/apps"
 ok "directories"
 
 # Read by the Stalwart process, which runs as uid 2000. Root-owned 600 would be

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -66,17 +67,17 @@ private fun WriteButton(
     Surface(
         onClick = onClick,
         shape = CorvidShape.medium,
-        color = colors.accent,
-        contentColor = colors.onAccent,
-        shadowElevation = 6.dp,
+        color = colors.ink,
+        contentColor = colors.surface,
+        shadowElevation = 3.dp,
         modifier = modifier,
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier.height(48.dp).padding(start = 16.dp, end = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.height(40.dp).padding(start = 12.dp, end = 16.dp),
         ) {
-            Icon(CorvidIcons.Pencil, contentDescription = null)
+            Icon(CorvidIcons.Pencil, contentDescription = null, modifier = Modifier.size(18.dp))
             Text(stringResource(Res.string.write), style = CorvidTheme.type.action)
         }
     }
