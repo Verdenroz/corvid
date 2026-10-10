@@ -17,18 +17,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.appcommon.resources.Res
-import com.verdenroz.corvid.appcommon.resources.app_update_action
-import com.verdenroz.corvid.appcommon.resources.app_update_allow
-import com.verdenroz.corvid.appcommon.resources.app_update_available
-import com.verdenroz.corvid.appcommon.resources.app_update_needs_permission
-import com.verdenroz.corvid.appcommon.resources.app_update_retry
 import com.verdenroz.corvid.appcommon.resources.notices_dismiss
 import com.verdenroz.corvid.core.data.AppUpdateState
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
-import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.LocalWideLayout
+import com.verdenroz.corvid.core.ui.actionLabel
+import com.verdenroz.corvid.core.ui.offerText
+import com.verdenroz.corvid.core.ui.problemText
 import org.jetbrains.compose.resources.stringResource
 
 /** One line above the shell offering a newer app build, or saying why the last attempt did not finish. */
@@ -42,13 +39,7 @@ internal fun AppUpdateBannerBar(
     val failed = state is AppUpdateState.Failed
     val background = if (failed) colors.dangerSoft else colors.accentSoft
     val content = if (failed) colors.onDangerSoft else colors.onAccentSoft
-    val line =
-        when (state) {
-            is AppUpdateState.Available -> stringResource(Res.string.app_update_available, state.release.versionName)
-            is AppUpdateState.NeedsPermission -> stringResource(Res.string.app_update_needs_permission)
-            is AppUpdateState.Failed -> state.message.asString()
-            else -> return
-        }
+    val line = state.problemText() ?: state.offerText().orEmpty()
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier =
@@ -68,17 +59,7 @@ internal fun AppUpdateBannerBar(
             modifier = Modifier.weight(1f),
         )
         TextButton(onClick = onUpdate) {
-            Text(
-                stringResource(
-                    when {
-                        failed -> Res.string.app_update_retry
-                        state is AppUpdateState.NeedsPermission -> Res.string.app_update_allow
-                        else -> Res.string.app_update_action
-                    },
-                ),
-                style = CorvidTheme.type.meta,
-                color = content,
-            )
+            Text(state.actionLabel()?.let { stringResource(it) }.orEmpty(), style = CorvidTheme.type.meta, color = content)
         }
         IconButton(onClick = onDismiss) {
             Icon(CorvidIcons.Close, stringResource(Res.string.notices_dismiss), tint = content, modifier = Modifier.size(18.dp))

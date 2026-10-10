@@ -75,13 +75,8 @@
     <string name="settings_about_unfinished">The server has not finished. Check again later.</string>
     <string name="settings_app_update">App update</string>
     <string name="settings_app_update_current">Up to date</string>
-    <string name="settings_app_update_available">%1$s available</string>
     <string name="settings_app_update_downloading">Downloading, %1$d%%</string>
     <string name="settings_app_update_ready">Downloaded and verified. Installing.</string>
-    <string name="settings_app_update_action">Update</string>
-    <string name="settings_app_update_retry">Try again</string>
-    <string name="settings_app_update_allow">Allow</string>
-    <string name="settings_app_update_needs_permission">Allow Corvid to install updates</string>
     <string name="settings_about_unsupported">This server does not report its version</string>
     <string name="settings_result_current">Up to date</string>
     <string name="settings_result_updated">Updated</string>

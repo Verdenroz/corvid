@@ -13,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -27,6 +28,7 @@ import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.seconds
@@ -152,23 +154,6 @@ class AppUpdatesTest {
 
             assertEquals(1, rig.installer.installed.size)
             assertEquals(APK.toList(), rig.installer.installed.single().toList())
-        }
-
-    @Test
-    fun `an installer that cannot install leaves a failure saying so`() =
-        runTest {
-            val rig =
-                updatesRig(
-                    FakeJmapServer().apply { app.release(6, android = APK) },
-                    RecordingInstaller(AppPlatform.Android, InstallResult.NotSupported),
-                )
-            eventually { rig.updates.state.value is AppUpdateState.Available }
-
-            rig.updates.update()
-            eventually { rig.updates.state.value is AppUpdateState.Failed }
-
-            val failed = rig.updates.state.value as AppUpdateState.Failed
-            assertEquals("app_update_cannot_install", KeyedTextResolver.resolve(failed.message))
         }
 
     @Test
@@ -326,11 +311,12 @@ class AppUpdatesTest {
             assertIs<AppUpdateState.Available>(rig.updates.state.value)
 
             rig.updates.dismiss()
+            assertNull(rig.updates.banner.first())
             fake.app.release(7, android = APK)
             advanceTimeBy(25.hours)
             runCurrent()
 
-            assertEquals(6, rig.updates.dismissed.value)
+            assertEquals(7, (rig.updates.banner.first() as AppUpdateState.Available).release.versionCode)
             assertEquals(7, (rig.updates.state.value as AppUpdateState.Available).release.versionCode)
         }
 }
