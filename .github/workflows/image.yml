@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   client-release:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, corvid]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -50,7 +50,7 @@ jobs:
 
   publish:
     needs: client-release
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, corvid]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4

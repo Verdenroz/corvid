@@ -441,6 +441,37 @@ verified tarball as the next number, swaps `current` and restarts into it. The n
 stay on disk, so the previous one can still be run from `versions/<n>/corvid/bin/corvid`. An app
 started from anywhere else offers the update and then reports that it needs the setup script.
 
+## CI on a self-hosted runner
+
+Every job in `ci.yml` and `image.yml` runs on `[self-hosted, linux, x64, corvid]`, so a private
+repo does not spend GitHub-hosted minutes. `scripts/ci-runner.sh up` builds the runner image
+(`scripts/ci-runner/Containerfile`: GitHub's runner on Ubuntu, plus the compiler and shellcheck the
+hosted image has), registers one runner to this repo with a fresh token from `gh`, and starts it.
+`status` shows the unit, the container and what GitHub reports; `down` removes the container and
+`down --purge` also deregisters the runner and deletes its state volume. Jobs queue behind the one
+runner.
+
+It needs docker, a `gh` login with admin on the repo, and the Android SDK at `~/Android/Sdk` (or
+`ANDROID_HOME`). The container gets the docker socket, so image builds use the host daemon and a
+job can `docker run -v` any path under the work directory, `~/.local/share/corvid-ci/work`, which is
+mounted at the same path on both sides. The SDK is mounted read-only. The registration token only
+reaches the container's environment and is used once; the runner's credentials live in the
+`corvid-ci-home` volume.
+
+The container shares the host's network namespace, because `caddy.test.sh` and `oidc.test.sh`
+start containers with `--network host` and reach them on `127.0.0.1`. They bind 8080, 11333, 1411
+and 18443 plus Stalwart's own listeners, so the deploy job fails with a bind error if the laptop
+already holds one of those ports. `TMPDIR` points under the work directory so `mktemp -d` paths
+can be bind-mounted by the host daemon.
+
+A user unit, `corvid-ci-runner.service`, starts the container at boot (the account has linger on).
+Docker's own restart policy is not enough: the daemon here is socket-activated and stays down
+after a reboot until something connects, and the unit's `docker start` is that connection.
+
+Jobs run as the host user with the docker socket, which is root on this machine, so only run
+workflows from branches you trust: never enable this on a repo that takes pull requests from
+forks.
+
 ## Building the Corvid image
 
 The milter, image proxy and labeler all run `localhost/corvid:latest`, and nothing in the deploy
