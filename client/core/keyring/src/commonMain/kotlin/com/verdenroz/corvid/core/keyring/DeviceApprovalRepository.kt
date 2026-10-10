@@ -4,12 +4,23 @@ import com.verdenroz.corvid.core.jmap.JmapClient
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlin.time.Instant
 
 /** A request the server holds open for a new device until a master approves it by [id] and [code]. */
 data class DeviceRequest(val id: String, val code: String, val expiresAt: Instant)
+
+/** A request still waiting for a master; the server keeps its code to the device that asked. */
+data class PendingRequest(val id: String, val name: String, val expiresAt: Instant)
+
+sealed interface PendingOutcome {
+    class Listed(val requests: List<PendingRequest>) : PendingOutcome
+
+    /** The server has device approval switched off, so nothing can be waiting. */
+    data object NotServed : PendingOutcome
+}
 
 sealed interface OpenOutcome {
     class Opened(val request: DeviceRequest) : OpenOutcome
@@ -74,6 +85,22 @@ class DeviceApprovalRepository(private val jmapClient: JmapClient) {
                 expiresAt = Instant.parse(body.getValue("expiresAt").jsonPrimitive.content),
             ),
         )
+    }
+
+    suspend fun pending(): PendingOutcome {
+        val reply =
+            jmapClient.webSend(HttpMethod.Get, "$DEVICES_PATH/requests", passThrough = setOf(HttpStatusCode.ServiceUnavailable))
+        if (reply.approvalOff()) return PendingOutcome.NotServed
+        val requests =
+            reply.array.orEmpty().map { entry ->
+                val fields = entry.jsonObject
+                PendingRequest(
+                    id = fields.getValue("id").jsonPrimitive.content,
+                    name = fields.getValue("name").jsonPrimitive.content,
+                    expiresAt = Instant.parse(fields.getValue("expiresAt").jsonPrimitive.content),
+                )
+            }
+        return PendingOutcome.Listed(requests)
     }
 
     /** The sentinel answers any id it does not hold as expired, so a 404 never reached it and is thrown. */
