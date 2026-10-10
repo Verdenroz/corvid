@@ -257,6 +257,11 @@ print(c["requiresReauthentication"], c["isGroupRestricted"], sorted(g["name"] fo
 check "corvid-admin is restricted to the admins group, demands reauthentication and refreshes for a minute" \
   "$(client_flags corvid-admin)" "True True ['admins'] 5 1"
 check "corvid is restricted to the mail group and keeps the default lifetimes" "$(client_flags corvid)" "False True ['mail'] 60 43200"
+logout_urls="['http://127.0.0.1/callback', 'com.verdenroz.corvid:/oauth2redirect']"
+for client in corvid corvid-admin; do
+  check "$client may send the browser back after sign-out to both app redirects" \
+    "$(idp_api "oidc/clients/$client" | json logoutCallbackURLs)" "$logout_urls"
+done
 admins_id="$(group_id admins)"
 check "the admins group holds only the admin user" \
   "$(idp_api "user-groups/$admins_id" | python3 -c '
