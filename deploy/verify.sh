@@ -69,18 +69,21 @@ echo "== web tier =="
 web_status() {
   curl -s -o /dev/null -w '%{http_code}' --max-time 10 --resolve "$1:$WEB_PORT:127.0.0.1" "https://$1:$WEB_PORT$2"
 }
-[[ "$(web_status "$MAIL_HOSTNAME" /.well-known/corvid)" == 200 ]] \
+code="$(web_status "$MAIL_HOSTNAME" /.well-known/corvid)"
+[[ "$code" == 200 ]] \
   && ok "Caddy serves /.well-known/corvid on $MAIL_HOSTNAME:$WEB_PORT" \
-  || bad "Caddy does not serve /.well-known/corvid on $MAIL_HOSTNAME:$WEB_PORT; check: journalctl -u corvid-caddy"
+  || bad "/.well-known/corvid on $MAIL_HOSTNAME:$WEB_PORT answers $code, not 200; check: journalctl -u corvid-caddy"
 if unit_masked corvid-idp.service; then
   warn "corvid-idp is masked, so the issuer is not checked"
 else
-  [[ "$(web_status "$IDP_HOSTNAME" /.well-known/openid-configuration)" == 200 ]] \
+  code="$(web_status "$IDP_HOSTNAME" /.well-known/openid-configuration)"
+  [[ "$code" == 200 ]] \
     && ok "the issuer answers through Caddy at $IDP_HOSTNAME:$WEB_PORT" \
-    || bad "the issuer does not answer through Caddy at $IDP_HOSTNAME:$WEB_PORT; check: journalctl -u corvid-idp"
-  [[ "$(web_status "$IDP_HOSTNAME" /setup)" == 404 ]] \
+    || bad "the issuer at $IDP_HOSTNAME:$WEB_PORT answers $code, not 200; check: journalctl -u corvid-idp"
+  code="$(web_status "$IDP_HOSTNAME" /setup)"
+  [[ "$code" == 404 ]] \
     && ok "Caddy refuses the Pocket-ID setup page" \
-    || bad "the Pocket-ID setup page is reachable, so the first visitor can claim the admin account"
+    || bad "the Pocket-ID setup page answers $code, not 404; Caddy must refuse it, or the first visitor can claim the admin account"
 fi
 
 echo "== published ports =="

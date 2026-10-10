@@ -38,7 +38,7 @@ load_env() {
   prefer_token
 }
 
-# True once bootstrap has run. load_env drops the password pair when a token exists, so the
+# True once corvid.env holds an admin credential. load_env drops the password pair when a token exists, so the
 # password alone cannot say so.
 server_set_up() {
   [[ -n "${STALWART_PASSWORD:-}" || -n "${STALWART_TOKEN:-}" ]]
