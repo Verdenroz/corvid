@@ -2,11 +2,14 @@ package com.verdenroz.corvid.app
 
 import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.appcommon.resources.Res
+import com.verdenroz.corvid.appcommon.resources.enroll_self_failed_not_accepted
+import com.verdenroz.corvid.appcommon.resources.enroll_self_failed_signin
 import com.verdenroz.corvid.appcommon.resources.unreachable_heartbeat
 import com.verdenroz.corvid.appcommon.resources.unreachable_key_damaged
 import com.verdenroz.corvid.appcommon.resources.unreachable_key_unreachable
 import com.verdenroz.corvid.core.auth.AuthState
 import com.verdenroz.corvid.core.auth.TokenSource
+import com.verdenroz.corvid.core.domain.MasterSignIn
 import com.verdenroz.corvid.core.jmap.AuthLatch
 import com.verdenroz.corvid.core.jmap.createJmapHttpClient
 import com.verdenroz.corvid.core.keyring.DeviceRequest
@@ -32,6 +35,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.koin.dsl.koinApplication
+import org.publicvalue.multiplatform.oidc.OpenIdConnectException
 import org.publicvalue.multiplatform.oidc.types.remote.AccessTokenResponse
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -69,7 +73,11 @@ private fun freshToken() =
  */
 private suspend fun StateFlow<AppLockState>.awaitState(predicate: (AppLockState) -> Boolean): AppLockState = first(predicate)
 
-private class Harness(scope: CoroutineScope, fake: FakeJmapServer) {
+private class Harness(
+    scope: CoroutineScope,
+    fake: FakeJmapServer,
+    masterSignIn: MasterSignIn,
+) {
     val authLatch = AuthLatch()
     val tokenSource = TokenSource(authLatch, scope)
     val keyHolder = KeyHolder()
@@ -80,6 +88,7 @@ private class Harness(scope: CoroutineScope, fake: FakeJmapServer) {
             authLatch = authLatch,
             httpClient = createJmapHttpClient(fake.engine),
             unlockedScopeHolder = UnlockedScopeHolder(koinApplication {}.koin),
+            masterSignIn = masterSignIn,
         )
 
     fun signIn() = tokenSource.adopt(FakeOidcClient { freshToken() }, freshToken(), ServerAddress(BASE_URL))
@@ -121,7 +130,16 @@ class AppLockViewModelTest {
     private fun harness(
         scope: CoroutineScope,
         fake: FakeJmapServer,
-    ) = Harness(scope, fake).also { harness = it }
+        masterSignIn: MasterSignIn = MasterSignIn { fake.devices.masterToken },
+    ) = Harness(scope, fake, masterSignIn).also { harness = it }
+
+    private suspend fun Harness.awaitSelfApprovalFailure(): EnrollmentRequest.Open {
+        val failed =
+            viewModel.state.awaitState {
+                ((it as? AppLockState.NeedsEnrollment)?.request as? EnrollmentRequest.Open)?.selfApproval is SelfApproval.Failed
+            }
+        return assertIs<EnrollmentRequest.Open>(assertIs<AppLockState.NeedsEnrollment>(failed).request)
+    }
 
     @BeforeTest
     fun setMain() = Dispatchers.setMain(testDispatcher)
@@ -246,6 +264,66 @@ class AppLockViewModelTest {
             harness.enrollAndUnlock("laptop-1", fake)
 
             assertIs<KeyState.Unlocked>(harness.keyHolder.state.value)
+        }
+
+    @Test
+    fun `a device approves its own request with the admin token and then unlocks`() =
+        runTest(testDispatcher) {
+            val fake = FakeJmapServer()
+            val harness = harness(backgroundScope, fake)
+            val request = harness.requestKey("laptop-1")
+
+            harness.viewModel.approveWithAdminPasskey()
+            harness.watch()
+            delay(POLL)
+            harness.viewModel.state.awaitState { it is AppLockState.Unlocked }
+
+            val approval = fake.devices.approvals.single()
+            assertEquals(request.id, approval.id)
+            assertEquals(request.code, approval.code)
+            assertEquals(fake.devices.masterToken, approval.master)
+            assertIs<KeyState.Unlocked>(harness.keyHolder.state.value)
+        }
+
+    @Test
+    fun `a token the server does not accept leaves the request open with a message`() =
+        runTest(testDispatcher) {
+            val fake = FakeJmapServer()
+            val harness = harness(backgroundScope, fake) { "stale" }
+            val request = harness.requestKey("laptop-1")
+
+            harness.viewModel.approveWithAdminPasskey()
+            val open = harness.awaitSelfApprovalFailure()
+
+            assertEquals(SelfApproval.Failed(uiText(Res.string.enroll_self_failed_not_accepted)), open.selfApproval)
+            assertEquals(request, open.request)
+        }
+
+    @Test
+    fun `a cancelled admin sign-in sends nothing and leaves the request open with a message`() =
+        runTest(testDispatcher) {
+            val fake = FakeJmapServer()
+            val harness = harness(backgroundScope, fake) { throw OpenIdConnectException.AuthenticationCancelled("cancelled") }
+            harness.requestKey("laptop-1")
+
+            harness.viewModel.approveWithAdminPasskey()
+            val open = harness.awaitSelfApprovalFailure()
+
+            assertEquals(SelfApproval.Failed(uiText(Res.string.enroll_self_failed_signin)), open.selfApproval)
+            assertEquals(emptyList(), fake.devices.approvals)
+        }
+
+    @Test
+    fun `approving a request that has ended offers asking again`() =
+        runTest(testDispatcher) {
+            val fake = FakeJmapServer()
+            val harness = harness(backgroundScope, fake)
+            val request = harness.requestKey("laptop-1")
+            fake.devices.expire(request.id)
+
+            harness.viewModel.approveWithAdminPasskey()
+
+            harness.viewModel.state.awaitState { it is AppLockState.NeedsEnrollment && it.request is EnrollmentRequest.Expired }
         }
 
     @Test

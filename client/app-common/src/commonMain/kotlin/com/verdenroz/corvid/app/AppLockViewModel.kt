@@ -3,6 +3,10 @@ package com.verdenroz.corvid.app
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.appcommon.resources.Res
+import com.verdenroz.corvid.appcommon.resources.enroll_self_failed_not_accepted
+import com.verdenroz.corvid.appcommon.resources.enroll_self_failed_refused
+import com.verdenroz.corvid.appcommon.resources.enroll_self_failed_signin
+import com.verdenroz.corvid.appcommon.resources.enroll_self_failed_upstream
 import com.verdenroz.corvid.appcommon.resources.unreachable_heartbeat
 import com.verdenroz.corvid.appcommon.resources.unreachable_key_damaged
 import com.verdenroz.corvid.appcommon.resources.unreachable_key_unreachable
@@ -11,12 +15,15 @@ import com.verdenroz.corvid.appcommon.resources.unreachable_server
 import com.verdenroz.corvid.appcommon.resources.unreachable_session
 import com.verdenroz.corvid.core.auth.AuthState
 import com.verdenroz.corvid.core.auth.TokenSource
+import com.verdenroz.corvid.core.data.userMessage
+import com.verdenroz.corvid.core.domain.MasterSignIn
 import com.verdenroz.corvid.core.jmap.AuthLatch
 import com.verdenroz.corvid.core.jmap.Invocation
 import com.verdenroz.corvid.core.jmap.JmapClient
 import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.jmap.JmapSessionException
 import com.verdenroz.corvid.core.jmap.ReconnectPolicy
+import com.verdenroz.corvid.core.keyring.ApproveOutcome
 import com.verdenroz.corvid.core.keyring.DeviceApprovalRepository
 import com.verdenroz.corvid.core.keyring.DeviceKeyLookup
 import com.verdenroz.corvid.core.keyring.DeviceKeyRepository
@@ -25,6 +32,7 @@ import com.verdenroz.corvid.core.keyring.KeyState
 import com.verdenroz.corvid.core.keyring.OpenOutcome
 import com.verdenroz.corvid.core.keyring.RequestStatus
 import com.verdenroz.corvid.core.model.hostOf
+import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.uiText
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.Dispatchers
@@ -34,6 +42,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
+import org.publicvalue.multiplatform.oidc.OpenIdConnectException
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
@@ -54,6 +63,7 @@ class AppLockViewModel(
     private val authLatch: AuthLatch,
     private val httpClient: HttpClient,
     private val unlockedScopeHolder: UnlockedScopeHolder,
+    private val masterSignIn: MasterSignIn,
 ) : ViewModel() {
     private val _state = MutableStateFlow<AppLockState>(AppLockState.SignedOut)
     val state: StateFlow<AppLockState> = _state
@@ -196,16 +206,52 @@ class AppLockViewModel(
     }
 
     /**
+     * Approves this device's own open request with a fresh admin passkey, so a first device needs no
+     * other. The token goes to this one request and is not stored; the poll picks up the approval.
+     */
+    fun approveWithAdminPasskey() {
+        val (waiting, open) = openEnrollment() ?: return
+        val repository = deviceApprovalRepository ?: return
+        if (open.selfApproval == SelfApproval.Approving) return
+        _state.value = waiting.copy(request = open.copy(selfApproval = SelfApproval.Approving))
+        viewModelScope.launch {
+            val ended =
+                try {
+                    when (repository.approve(open.request.id, open.request.code, masterSignIn())) {
+                        ApproveOutcome.Approved -> return@launch
+                        ApproveOutcome.Gone -> EnrollmentRequest.Expired
+                        ApproveOutcome.NotAccepted -> open.failed(uiText(Res.string.enroll_self_failed_not_accepted))
+                        ApproveOutcome.Refused -> open.failed(uiText(Res.string.enroll_self_failed_refused))
+                        ApproveOutcome.UpstreamFailed -> open.failed(uiText(Res.string.enroll_self_failed_upstream))
+                    }
+                } catch (e: OpenIdConnectException) {
+                    open.failed(uiText(Res.string.enroll_self_failed_signin))
+                } catch (e: JmapException) {
+                    open.failed(e.userMessage())
+                }
+            val (current, still) = openEnrollment() ?: return@launch
+            if (still.request == open.request) _state.value = current.copy(request = ended)
+        }
+    }
+
+    private fun EnrollmentRequest.Open.failed(message: UiText) = copy(selfApproval = SelfApproval.Failed(message))
+
+    private fun openEnrollment(): Pair<AppLockState.NeedsEnrollment, EnrollmentRequest.Open>? {
+        val waiting = _state.value as? AppLockState.NeedsEnrollment ?: return null
+        val open = waiting.request as? EnrollmentRequest.Open ?: return null
+        return waiting to open
+    }
+
+    /**
      * Polls the open request while the caller stays in it, so a screen that is not visible stops asking.
      * An approval reads the key on [viewModelScope], which outlives that caller.
      */
     suspend fun watchRequest() {
         val repository = deviceApprovalRepository ?: return
         while (true) {
-            val waiting = _state.value as? AppLockState.NeedsEnrollment ?: return
-            val open = waiting.request as? EnrollmentRequest.Open ?: return
+            val (waiting, open) = openEnrollment() ?: return
             delay(APPROVAL_POLL_INTERVAL)
-            if (_state.value != waiting) continue
+            if (openEnrollment()?.second?.request != open.request) continue
             val status =
                 try {
                     repository.status(open.request.id)

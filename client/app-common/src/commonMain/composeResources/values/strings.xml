@@ -20,6 +20,12 @@
     <string name="enroll_expired">This request has expired.</string>
     <string name="enroll_too_many">Too many requests are open. Wait for one to expire, then ask again.</string>
     <string name="enroll_ask_again">Ask again</string>
+    <string name="enroll_self_approve">Approve with the admin passkey</string>
+    <string name="enroll_self_approving">Waiting for the admin sign-in.</string>
+    <string name="enroll_self_failed_signin">The admin sign-in did not finish.</string>
+    <string name="enroll_self_failed_not_accepted">The admin sign-in was not accepted.</string>
+    <string name="enroll_self_failed_refused">That sign-in is not the admin's. Use the admin passkey.</string>
+    <string name="enroll_self_failed_upstream">The server could not make the key; try again.</string>
     <string name="app_name">Corvid</string>
     <string name="search_placeholder">Search mail</string>
     <string name="search_shortcut">Ctrl K</string>
