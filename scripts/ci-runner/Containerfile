@@ -6,7 +6,8 @@ USER root
 # The base image's `ubuntu` user holds uid and gid 1000; the runner takes the host user's ids so
 # the bind-mounted work directory stays writable on both sides.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends build-essential ca-certificates git openssl shellcheck xz-utils \
+ && apt-get install -y --no-install-recommends build-essential ca-certificates dnsutils expect gettext-base git iproute2 openssl shellcheck xz-utils \
+    libasound2t64 libfontconfig1 libfreetype6 libgl1 libx11-6 libxcursor1 libxext6 libxi6 libxinerama1 libxrandr2 libxrender1 libxtst6 \
  && rm -rf /var/lib/apt/lists/* \
  && userdel -r ubuntu \
  && groupmod -g "$HOST_GID" runner \
