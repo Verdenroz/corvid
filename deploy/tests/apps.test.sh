@@ -46,6 +46,7 @@ echo three > "$work/image/manifest.json"
 install_apps
 rm -rf "$work/image"
 install_apps
+# shellcheck disable=SC2034  # read inside the eval'd checks
 status=$?
 check "the install still succeeds" '[[ $status -eq 0 ]]'
 check "current is left empty rather than holding the old release" '[[ -d "$apps/current" && -z "$(ls -A "$apps/current")" ]]'
