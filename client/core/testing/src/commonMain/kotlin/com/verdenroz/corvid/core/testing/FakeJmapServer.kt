@@ -16,6 +16,8 @@ import io.ktor.http.content.OutgoingContent
 import io.ktor.http.headersOf
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -124,6 +126,9 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
     /** While set, a JMAP API request waits on it before it is answered, as a slow server would. */
     var gate: CompletableDeferred<Unit>? = null
 
+    // Handlers run on the engine's background threads; one request at a time, as a server applies them.
+    private val state = Mutex()
+
     /** `/corvid/update`, the server's release report. */
     val update = FakeWebEndpoint()
 
@@ -152,9 +157,9 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
             path.endsWith("/jmap/session") -> sessionResponse()
             path.endsWith("/jmap/api/") -> {
                 gate?.await()
-                apiResponse(request)
+                state.withLock { apiResponse(request) }
             }
-            path.startsWith("/jmap/upload/") -> uploadResponse(request)
+            path.startsWith("/jmap/upload/") -> state.withLock { uploadResponse(request) }
             path.startsWith("/jmap/download/") -> downloadResponse(path)
             path.startsWith("/corvid/devices") -> devices.handle(this, request)
             path.startsWith("/i/") -> imageResponse(request, path)
