@@ -63,5 +63,9 @@ echo "== no other script embeds the password in curl's argv"
 hits="$(grep -l 'curl.*-u.*STALWART_PASSWORD' "$here"/*.sh 2>/dev/null | grep -v '/lib\.sh$' || true)"
 check "grep finds no such call site" '[[ -z "$hits" ]]'
 
-[[ $fail -eq 0 ]] || { echo "--- argv:"; cat "$work/argv"; echo "--- hits: $hits"; }
+echo "== every deploy script that is run rather than sourced is executable"
+unexecutable="$(find "$here" -maxdepth 1 -name '*.sh' ! -name '*lib.sh' ! -perm -u+x)"
+check "find lists no such script" '[[ -z "$unexecutable" ]]'
+
+[[ $fail -eq 0 ]] || { echo "--- argv:"; cat "$work/argv"; echo "--- hits: $hits"; echo "--- not executable: $unexecutable"; }
 exit "$fail"
