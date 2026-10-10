@@ -1,11 +1,11 @@
 package com.verdenroz.corvid.core.data
 
+import com.verdenroz.corvid.core.common.sha256Hex
 import com.verdenroz.corvid.core.jmap.JmapError
 import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.model.AppPlatform
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.client
-import com.verdenroz.corvid.core.testing.sha256Hex
 import kotlinx.coroutines.test.runTest
 import java.io.File
 import kotlin.io.path.createTempDirectory
@@ -80,6 +80,35 @@ class AppReleaseRepositoryTest {
             assertEquals(DownloadResult.Verified(dest), result)
             assertContentEquals(APK, dest.readBytes())
             assertEquals(listOf("corvid.apk"), dest.siblings())
+        }
+
+    @Test
+    fun `a destination that already verifies is reused without a request`() =
+        runTest {
+            val fake = FakeJmapServer().apply { app.release(7, android = APK) }
+            val repository = repository(fake)
+            val release = repository.latest()!!
+            val dest = File(workDir(), "corvid.apk")
+            repository.download(release, AppPlatform.Android, dest)
+
+            val result = repository.download(release, AppPlatform.Android, dest)
+
+            assertEquals(DownloadResult.Verified(dest), result)
+            assertEquals(1, fake.app.requests.count { it != "manifest.json" })
+        }
+
+    @Test
+    fun `a destination that no longer verifies is fetched again`() =
+        runTest {
+            val fake = FakeJmapServer().apply { app.release(7, android = APK) }
+            val repository = repository(fake)
+            val release = repository.latest()!!
+            val dest = File(workDir(), "corvid.apk").apply { writeBytes(APK.reversedArray()) }
+
+            val result = repository.download(release, AppPlatform.Android, dest)
+
+            assertEquals(DownloadResult.Verified(dest), result)
+            assertContentEquals(APK, dest.readBytes())
         }
 
     @Test

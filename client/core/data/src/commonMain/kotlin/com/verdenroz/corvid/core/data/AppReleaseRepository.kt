@@ -1,5 +1,6 @@
 package com.verdenroz.corvid.core.data
 
+import com.verdenroz.corvid.core.common.toHex
 import com.verdenroz.corvid.core.jmap.JmapClient
 import com.verdenroz.corvid.core.model.AppArtifact
 import com.verdenroz.corvid.core.model.AppPlatform
@@ -8,6 +9,7 @@ import kotlinx.serialization.Serializable
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.security.DigestOutputStream
 import java.security.MessageDigest
 
 private const val APP_PATH = "/corvid/app"
@@ -45,7 +47,10 @@ class AppReleaseRepository(private val jmapClient: JmapClient) {
         return body.decodeWeb(WireManifest.serializer(), "AppManifest") { it.toRelease() }
     }
 
-    /** Fetches [platform]'s build to [dest], which only ever receives a file whose size and SHA-256 match the manifest. */
+    /**
+     * Fetches [platform]'s build to [dest], which only ever receives a file whose size and SHA-256 match the manifest.
+     * A [dest] already holding such a file is returned without a request.
+     */
     suspend fun download(
         release: AppRelease,
         platform: AppPlatform,
@@ -53,10 +58,12 @@ class AppReleaseRepository(private val jmapClient: JmapClient) {
         onProgress: (Long) -> Unit = {},
     ): DownloadResult {
         val artifact = release.artifact(platform) ?: return DownloadResult.Failed(DownloadFailure.NoBuild)
+        if (dest.isFile && failureOf(dest.length(), artifact) { dest.sha256() } == null) return DownloadResult.Verified(dest)
         val partial = File(dest.parentFile, "${dest.name}.part")
+        val digest = MessageDigest.getInstance("SHA-256")
         try {
-            partial.outputStream().use { jmapClient.webDownload("$APP_PATH/${artifact.path}", it, onProgress) }
-            partial.failureAgainst(artifact)?.let { return DownloadResult.Failed(it) }
+            DigestOutputStream(partial.outputStream(), digest).use { jmapClient.webDownload("$APP_PATH/${artifact.path}", it, onProgress) }
+            failureOf(partial.length(), artifact) { digest.digest().toHex() }?.let { return DownloadResult.Failed(it) }
             Files.move(partial.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING)
             return DownloadResult.Verified(dest)
         } finally {
@@ -65,9 +72,13 @@ class AppReleaseRepository(private val jmapClient: JmapClient) {
     }
 }
 
-private fun File.failureAgainst(artifact: AppArtifact): DownloadFailure? =
+private fun failureOf(
+    size: Long,
+    artifact: AppArtifact,
+    sha256: () -> String,
+): DownloadFailure? =
     when {
-        length() != artifact.size -> DownloadFailure.WrongSize
+        size != artifact.size -> DownloadFailure.WrongSize
         sha256() != artifact.sha256.lowercase() -> DownloadFailure.WrongDigest
         else -> null
     }
@@ -82,7 +93,7 @@ private fun File.sha256(): String {
             digest.update(buffer, 0, read)
         }
     }
-    return digest.digest().joinToString("") { "%02x".format(it) }
+    return digest.digest().toHex()
 }
 
 private fun WireManifest.toRelease(): AppRelease {

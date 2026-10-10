@@ -20,3 +20,13 @@ sealed interface AppUpdateState {
     /** [release] is what a retry would fetch. */
     data class Failed(val release: AppRelease, val message: UiText) : AppUpdateState
 }
+
+fun AppUpdateState.release(): AppRelease? =
+    when (this) {
+        is AppUpdateState.Available -> release
+        is AppUpdateState.Downloading -> release
+        is AppUpdateState.Ready -> release
+        is AppUpdateState.NeedsPermission -> release
+        is AppUpdateState.Failed -> release
+        AppUpdateState.UpToDate -> null
+    }

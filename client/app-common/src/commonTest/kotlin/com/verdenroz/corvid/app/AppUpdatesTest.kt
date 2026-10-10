@@ -1,5 +1,6 @@
 package com.verdenroz.corvid.app
 
+import com.verdenroz.corvid.core.common.sha256Hex
 import com.verdenroz.corvid.core.data.AppInstaller
 import com.verdenroz.corvid.core.data.AppReleaseRepository
 import com.verdenroz.corvid.core.data.AppUpdateState
@@ -8,11 +9,11 @@ import com.verdenroz.corvid.core.model.AppPlatform
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.KeyedTextResolver
 import com.verdenroz.corvid.core.testing.client
-import com.verdenroz.corvid.core.testing.sha256Hex
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -27,6 +28,7 @@ import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.seconds
@@ -58,7 +60,6 @@ private class UpdatesRig(
     val updates: AppUpdates,
     val installer: RecordingInstaller,
     val foreground: Channel<Unit>,
-    val resumed: Channel<Unit>,
     val directory: File,
 )
 
@@ -72,11 +73,10 @@ private suspend fun TestScope.updatesRig(
 ): UpdatesRig {
     val directory = createTempDirectory("corvid-update").toFile().apply { deleteOnExit() }
     val foreground = Channel<Unit>(Channel.CONFLATED)
-    val resumed = Channel<Unit>(Channel.CONFLATED)
     val updates = AppUpdates(AppReleaseRepository(fake.client(token)), installer, directory, installed, checkEvery)
-    backgroundScope.launch { updates.run(foreground.receiveAsFlow(), resumed.receiveAsFlow()) }
+    backgroundScope.launch { updates.run(foreground.receiveAsFlow()) }
     runCurrent()
-    return UpdatesRig(fake, updates, installer, foreground, resumed, directory)
+    return UpdatesRig(fake, updates, installer, foreground, directory)
 }
 
 /** The fake answers on another thread, so the test waits on real time for what it caused. */
@@ -157,23 +157,6 @@ class AppUpdatesTest {
         }
 
     @Test
-    fun `an installer that cannot install leaves a failure saying so`() =
-        runTest {
-            val rig =
-                updatesRig(
-                    FakeJmapServer().apply { app.release(6, android = APK) },
-                    RecordingInstaller(AppPlatform.Android, InstallResult.NotSupported),
-                )
-            eventually { rig.updates.state.value is AppUpdateState.Available }
-
-            rig.updates.update()
-            eventually { rig.updates.state.value is AppUpdateState.Failed }
-
-            val failed = rig.updates.state.value as AppUpdateState.Failed
-            assertEquals("app_update_cannot_install", KeyedTextResolver.resolve(failed.message))
-        }
-
-    @Test
     fun `an install the user cancels leaves the offer standing`() =
         runTest {
             val rig =
@@ -246,28 +229,6 @@ class AppUpdatesTest {
             assertEquals(2, rig.installer.installed.size)
             assertEquals(0, rig.installer.allowRequests)
             assertEquals(1, rig.fake.app.requests.count { it != "manifest.json" })
-        }
-
-    @Test
-    fun `resuming after allowing installs offers the update again`() =
-        runTest {
-            val rig =
-                updatesRig(
-                    FakeJmapServer().apply { app.release(6, android = APK) },
-                    RecordingInstaller(AppPlatform.Android, InstallResult.NeedsPermission),
-                )
-            eventually { rig.updates.state.value is AppUpdateState.Available }
-            rig.installer.allowed = false
-            rig.updates.update()
-            eventually { rig.updates.state.value is AppUpdateState.NeedsPermission }
-
-            rig.resumed.send(Unit)
-            runCurrent()
-            assertIs<AppUpdateState.NeedsPermission>(rig.updates.state.value)
-            rig.installer.allowed = true
-            rig.resumed.send(Unit)
-
-            eventually { rig.updates.state.value is AppUpdateState.Available }
         }
 
     @Test
@@ -350,11 +311,12 @@ class AppUpdatesTest {
             assertIs<AppUpdateState.Available>(rig.updates.state.value)
 
             rig.updates.dismiss()
+            assertNull(rig.updates.banner.first())
             fake.app.release(7, android = APK)
             advanceTimeBy(25.hours)
             runCurrent()
 
-            assertEquals(6, rig.updates.dismissed.value)
+            assertEquals(7, (rig.updates.banner.first() as AppUpdateState.Available).release.versionCode)
             assertEquals(7, (rig.updates.state.value as AppUpdateState.Available).release.versionCode)
         }
 }

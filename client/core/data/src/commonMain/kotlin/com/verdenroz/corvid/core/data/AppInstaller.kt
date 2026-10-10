@@ -7,8 +7,6 @@ sealed interface InstallResult {
     /** The platform installed the build or took over. */
     data object Started : InstallResult
 
-    data object NotSupported : InstallResult
-
     /** The user declined the platform's confirmation. */
     data object Cancelled : InstallResult
 

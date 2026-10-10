@@ -15,6 +15,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
+import com.verdenroz.corvid.core.data.AppUpdateState
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
@@ -55,6 +56,7 @@ import com.verdenroz.corvid.feature.settings.resources.settings_theme_dark
 import com.verdenroz.corvid.feature.settings.resources.settings_theme_light
 import com.verdenroz.corvid.feature.settings.resources.settings_theme_system
 import com.verdenroz.corvid.feature.settings.resources.settings_title
+import kotlinx.coroutines.flow.StateFlow
 import org.jetbrains.compose.resources.stringResource
 
 /** What the account section states; the server is always known, the other rows are left out while null. */
@@ -71,7 +73,8 @@ fun SettingsScreen(
     viewModel: SettingsViewModel,
     about: AboutViewModel,
     appVersion: String,
-    appUpdate: AppUpdateControl,
+    appUpdate: StateFlow<AppUpdateState>,
+    onUpdateApp: () -> Unit,
     account: AccountFacts,
     onBack: () -> Unit,
     onOpenFilters: () -> Unit,
@@ -130,7 +133,7 @@ fun SettingsScreen(
                         onClick = onOpenNotices,
                     )
                 }
-                AboutSection(appVersion, appUpdate, aboutState, about)
+                AboutSection(appVersion, appUpdate, onUpdateApp, aboutState, about)
             }
         }
     }

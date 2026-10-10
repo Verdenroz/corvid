@@ -20,6 +20,9 @@ import com.verdenroz.corvid.core.designsystem.component.PrimaryButton
 import com.verdenroz.corvid.core.model.UpdateReport
 import com.verdenroz.corvid.core.model.UpdateResult
 import com.verdenroz.corvid.core.text.asString
+import com.verdenroz.corvid.core.ui.actionLabel
+import com.verdenroz.corvid.core.ui.offerText
+import com.verdenroz.corvid.core.ui.problemText
 import com.verdenroz.corvid.feature.settings.resources.Res
 import com.verdenroz.corvid.feature.settings.resources.settings_about
 import com.verdenroz.corvid.feature.settings.resources.settings_about_app_version
@@ -37,20 +40,16 @@ import com.verdenroz.corvid.feature.settings.resources.settings_about_unsupporte
 import com.verdenroz.corvid.feature.settings.resources.settings_about_update_now
 import com.verdenroz.corvid.feature.settings.resources.settings_about_updating
 import com.verdenroz.corvid.feature.settings.resources.settings_app_update
-import com.verdenroz.corvid.feature.settings.resources.settings_app_update_action
-import com.verdenroz.corvid.feature.settings.resources.settings_app_update_allow
-import com.verdenroz.corvid.feature.settings.resources.settings_app_update_available
 import com.verdenroz.corvid.feature.settings.resources.settings_app_update_current
 import com.verdenroz.corvid.feature.settings.resources.settings_app_update_downloading
-import com.verdenroz.corvid.feature.settings.resources.settings_app_update_needs_permission
 import com.verdenroz.corvid.feature.settings.resources.settings_app_update_ready
-import com.verdenroz.corvid.feature.settings.resources.settings_app_update_retry
 import com.verdenroz.corvid.feature.settings.resources.settings_result_current
 import com.verdenroz.corvid.feature.settings.resources.settings_result_detail
 import com.verdenroz.corvid.feature.settings.resources.settings_result_failed
 import com.verdenroz.corvid.feature.settings.resources.settings_result_rolled_back
 import com.verdenroz.corvid.feature.settings.resources.settings_result_skipped
 import com.verdenroz.corvid.feature.settings.resources.settings_result_updated
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.datetime.TimeZone
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -59,13 +58,14 @@ import kotlin.time.Clock
 @Composable
 internal fun AboutSection(
     appVersion: String,
-    appUpdate: AppUpdateControl,
+    appUpdate: StateFlow<AppUpdateState>,
+    onUpdateApp: () -> Unit,
     state: AboutState,
     viewModel: AboutViewModel,
 ) {
     SettingsSection(stringResource(Res.string.settings_about)) {
         FactRow(stringResource(Res.string.settings_about_app_version), appVersion)
-        AppUpdateRows(appUpdate)
+        AppUpdateRows(appUpdate, onUpdateApp)
         when (state) {
             is AboutState.Loading -> Unit
             is AboutState.Unsupported -> Note(stringResource(Res.string.settings_about_unsupported))
@@ -76,33 +76,23 @@ internal fun AboutSection(
 }
 
 @Composable
-private fun AppUpdateRows(control: AppUpdateControl) {
-    val state by control.state.collectAsState()
+private fun AppUpdateRows(
+    appUpdate: StateFlow<AppUpdateState>,
+    onUpdate: () -> Unit,
+) {
+    val state by appUpdate.collectAsState()
     val value =
         when (val current = state) {
             is AppUpdateState.UpToDate -> stringResource(Res.string.settings_app_update_current)
-            is AppUpdateState.Available -> stringResource(Res.string.settings_app_update_available, current.release.versionName)
-            is AppUpdateState.NeedsPermission -> stringResource(Res.string.settings_app_update_available, current.release.versionName)
-            is AppUpdateState.Failed -> stringResource(Res.string.settings_app_update_available, current.release.versionName)
             is AppUpdateState.Downloading ->
                 stringResource(Res.string.settings_app_update_downloading, (current.progress * 100).toInt())
             is AppUpdateState.Ready -> stringResource(Res.string.settings_app_update_ready)
+            else -> current.offerText().orEmpty()
         }
     FactRow(stringResource(Res.string.settings_app_update), value)
-    (state as? AppUpdateState.Failed)?.let { Note(it.message.asString(), CorvidTheme.colors.danger) }
-    if (state is AppUpdateState.NeedsPermission) Note(stringResource(Res.string.settings_app_update_needs_permission))
-    val retry = state is AppUpdateState.Failed
-    val allow = state is AppUpdateState.NeedsPermission
-    if (state is AppUpdateState.Available || retry || allow) {
-        Row(Modifier.padding(vertical = 14.dp)) {
-            val action =
-                when {
-                    retry -> Res.string.settings_app_update_retry
-                    allow -> Res.string.settings_app_update_allow
-                    else -> Res.string.settings_app_update_action
-                }
-            PrimaryButton(stringResource(action), control.onUpdate)
-        }
+    state.problemText()?.let { Note(it, if (state is AppUpdateState.Failed) CorvidTheme.colors.danger else CorvidTheme.colors.inkMuted) }
+    state.actionLabel()?.let { action ->
+        Row(Modifier.padding(vertical = 14.dp)) { PrimaryButton(stringResource(action), onUpdate) }
     }
 }
 

@@ -1,7 +1,6 @@
 package com.verdenroz.corvid.app
 
 import com.verdenroz.corvid.appcommon.resources.Res
-import com.verdenroz.corvid.appcommon.resources.app_update_cannot_install
 import com.verdenroz.corvid.appcommon.resources.app_update_corrupt
 import com.verdenroz.corvid.appcommon.resources.app_update_no_build
 import com.verdenroz.corvid.core.data.AppInstaller
@@ -10,6 +9,7 @@ import com.verdenroz.corvid.core.data.AppUpdateState
 import com.verdenroz.corvid.core.data.DownloadFailure
 import com.verdenroz.corvid.core.data.DownloadResult
 import com.verdenroz.corvid.core.data.InstallResult
+import com.verdenroz.corvid.core.data.release
 import com.verdenroz.corvid.core.data.userMessage
 import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.model.AppRelease
@@ -18,11 +18,10 @@ import com.verdenroz.corvid.core.text.uiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -43,15 +42,21 @@ class AppUpdates(
     private val _state = MutableStateFlow<AppUpdateState>(AppUpdateState.UpToDate)
     val state: StateFlow<AppUpdateState> = _state
 
-    private val _dismissed = MutableStateFlow<Int?>(null)
+    private val dismissed = MutableStateFlow<Int?>(null)
 
-    /** The version code whose banner was dismissed; a newer release shows its banner again. */
-    val dismissed: StateFlow<Int?> = _dismissed
+    /** The state the banner shows, or null when there is nothing to offer or its release was dismissed; a newer release shows again. */
+    val banner: Flow<AppUpdateState?> =
+        combine(_state, dismissed) { current, dismissedCode ->
+            current.takeIf {
+                (it is AppUpdateState.Available || it is AppUpdateState.NeedsPermission || it is AppUpdateState.Failed) &&
+                    it.release()?.versionCode != dismissedCode
+            }
+        }
 
     private val requests = Channel<Unit>(Channel.CONFLATED)
 
     fun dismiss() {
-        _state.value.release()?.let { _dismissed.value = it.versionCode }
+        _state.value.release()?.let { dismissed.value = it.versionCode }
     }
 
     fun update() {
@@ -60,27 +65,15 @@ class AppUpdates(
 
     /**
      * Checks on entry, again as soon as [foreground] has emitted or [checkEvery] has passed since the last check began,
-     * and installs when [update] asks; ends when the caller's scope does. Each [resumed] emission offers the update
-     * again if the user has since allowed installs.
+     * and installs when [update] asks; ends when the caller's scope does. Each check also offers the update again if the
+     * user has since allowed installs.
      */
-    suspend fun run(
-        foreground: Flow<Unit>,
-        resumed: Flow<Unit> = emptyFlow(),
-    ) {
+    suspend fun run(foreground: Flow<Unit>) {
         coroutineScope {
-            val due = Channel<Unit>(Channel.CONFLATED)
-            launch { foreground.collect { due.trySend(Unit) } }
-            launch {
-                while (true) {
-                    delay(checkEvery)
-                    due.trySend(Unit)
-                }
-            }
-            launch { resumed.collect { recheckPermission() } }
             launch { for (request in requests) install() }
-            while (true) {
+            pollWhileForegrounded(foreground, checkEvery) {
+                recheckPermission()
                 check()
-                due.receive()
             }
         }
     }
@@ -125,8 +118,13 @@ class AppUpdates(
             try {
                 withContext(Dispatchers.IO) {
                     directory.mkdirs()
+                    var percent = 0
                     repository.download(release, platform, File(directory, artifact.path)) { received ->
-                        _state.value = AppUpdateState.Downloading(release, received.toFloat() / artifact.size)
+                        val now = (received * 100 / artifact.size).toInt()
+                        if (now != percent) {
+                            percent = now
+                            _state.value = AppUpdateState.Downloading(release, now / 100f)
+                        }
                     }
                 }
             } catch (e: JmapException) {
@@ -146,22 +144,11 @@ class AppUpdates(
     ): AppUpdateState =
         when (val result = installer.install(file)) {
             InstallResult.Started -> AppUpdateState.Ready(release)
-            InstallResult.NotSupported -> AppUpdateState.Failed(release, uiText(Res.string.app_update_cannot_install))
             InstallResult.Cancelled -> AppUpdateState.Available(release)
             InstallResult.NeedsPermission -> AppUpdateState.NeedsPermission(release)
             is InstallResult.Failed -> AppUpdateState.Failed(release, UiText.FromServer(result.message))
         }
 }
-
-private fun AppUpdateState.release(): AppRelease? =
-    when (this) {
-        is AppUpdateState.Available -> release
-        is AppUpdateState.Downloading -> release
-        is AppUpdateState.Ready -> release
-        is AppUpdateState.NeedsPermission -> release
-        is AppUpdateState.Failed -> release
-        AppUpdateState.UpToDate -> null
-    }
 
 private fun DownloadFailure.message() =
     when (this) {

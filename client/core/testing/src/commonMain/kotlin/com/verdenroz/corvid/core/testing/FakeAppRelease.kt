@@ -1,5 +1,6 @@
 package com.verdenroz.corvid.core.testing
 
+import com.verdenroz.corvid.core.common.sha256Hex
 import io.ktor.client.engine.mock.MockRequestHandleScope
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.request.HttpRequestData
@@ -9,7 +10,6 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import java.security.MessageDigest
 import java.util.concurrent.CopyOnWriteArrayList
 
 /** The files under `/corvid/app`, the builds the server carries; a name nothing was published under answers 404. */
@@ -86,5 +86,3 @@ class FakeAppRelease {
         return scope.respond(bytes, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, listOf(type)))
     }
 }
-
-fun sha256Hex(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }

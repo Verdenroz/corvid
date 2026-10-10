@@ -8,7 +8,6 @@ import androidx.compose.runtime.remember
 import com.verdenroz.corvid.app.shell.AppUpdateBannerBar
 import com.verdenroz.corvid.core.data.AppInstaller
 import com.verdenroz.corvid.core.data.AppReleaseRepository
-import com.verdenroz.corvid.core.data.AppUpdateState
 import org.koin.compose.koinInject
 import org.koin.core.scope.Scope
 import java.io.File
@@ -24,22 +23,12 @@ internal fun rememberAppUpdates(
         remember(scope) {
             AppUpdates(scope.get<AppReleaseRepository>(), installer, File(System.getProperty("java.io.tmpdir"), "corvid-update"))
         }
-    LaunchedEffect(updates) { updates.run(backgroundDrop.foregrounded, backgroundDrop.resumed) }
+    LaunchedEffect(updates) { updates.run(backgroundDrop.foregrounded) }
     return updates
 }
 
 @Composable
 internal fun AppUpdatesBanner(updates: AppUpdates) {
-    val state by updates.state.collectAsState()
-    val dismissed by updates.dismissed.collectAsState()
-    val release =
-        when (val current = state) {
-            is AppUpdateState.Available -> current.release
-            is AppUpdateState.NeedsPermission -> current.release
-            is AppUpdateState.Failed -> current.release
-            else -> null
-        }
-    if (release != null && release.versionCode != dismissed) {
-        AppUpdateBannerBar(state, onUpdate = updates::update, onDismiss = updates::dismiss)
-    }
+    val banner by updates.banner.collectAsState(null)
+    banner?.let { AppUpdateBannerBar(it, onUpdate = updates::update, onDismiss = updates::dismiss) }
 }
