@@ -45,9 +45,11 @@ private suspend fun ViewModelTestScope.setup(
         track(
             ApproveDeviceViewModel(
                 repository,
-                MasterSignIn {
-                    signIns++
-                    signIn()
+                object : MasterSignIn {
+                    override suspend fun <T> withAdminToken(use: suspend (String) -> T): T {
+                        signIns++
+                        return use(signIn())
+                    }
                 },
             ),
         )

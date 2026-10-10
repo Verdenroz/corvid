@@ -81,7 +81,7 @@ class MasterSignInUseCaseTest {
             val useCase =
                 MasterSignInUseCase(RecordingFactory(FakeCodeAuthFlow { token("admin-at") }), fakeRedirectUriProvider, tokenSource)
 
-            val admin = useCase()
+            val admin = useCase.withAdminToken { it }
 
             assertEquals("admin-at", admin)
             assertEquals(AuthState.SignedIn("daily-at", server), tokenSource.state.value)
@@ -89,16 +89,54 @@ class MasterSignInUseCaseTest {
         }
 
     @Test
-    fun `the browser session ends first and the admin session ends after its token arrives`() =
+    fun `the admin session ends after the token is used`() =
         runTest {
             val factory = RecordingFactory(FakeCodeAuthFlow { token("admin-at", idToken = "admin-id") })
 
-            MasterSignInUseCase(factory, fakeRedirectUriProvider, signedIn())()
+            MasterSignInUseCase(factory, fakeRedirectUriProvider, signedIn()).withAdminToken { factory.events += "use $it" }
 
             assertEquals(
-                listOf("end-session corvid daily-id", "authorize corvid-admin", "end-session corvid-admin admin-id"),
+                listOf(
+                    "end-session corvid daily-id",
+                    "authorize corvid-admin",
+                    "use admin-at",
+                    "end-session corvid-admin admin-id",
+                ),
                 factory.events,
             )
+        }
+
+    @Test
+    fun `the admin session ends when the block throws and the exception surfaces`() =
+        runTest {
+            val factory = RecordingFactory(FakeCodeAuthFlow { token("admin-at", idToken = "admin-id") })
+
+            val failure =
+                assertFailsWith<IllegalStateException> {
+                    MasterSignInUseCase(factory, fakeRedirectUriProvider, signedIn()).withAdminToken<Unit> { error("refused") }
+                }
+
+            assertEquals("refused", failure.message)
+            assertEquals("end-session corvid-admin admin-id", factory.events.last())
+        }
+
+    @Test
+    fun `a failed admin sign-out does not mask the block's exception`() =
+        runTest {
+            val factory =
+                RecordingFactory(
+                    FakeCodeAuthFlow { token("admin-at") },
+                    endSession = { clientId, _ ->
+                        if (clientId == "corvid-admin") throw OpenIdConnectException.AuthenticationCancelled("cancelled")
+                    },
+                )
+
+            val failure =
+                assertFailsWith<IllegalStateException> {
+                    MasterSignInUseCase(factory, fakeRedirectUriProvider, signedIn()).withAdminToken<Unit> { error("refused") }
+                }
+
+            assertEquals("refused", failure.message)
         }
 
     @Test
@@ -112,13 +150,13 @@ class MasterSignInUseCaseTest {
                     throw OpenIdConnectException.AuthenticationCancelled("cancelled")
                 })
 
-            assertFailsWith<OpenIdConnectException> { MasterSignInUseCase(factory, fakeRedirectUriProvider, signedIn())() }
+            assertFailsWith<OpenIdConnectException> { MasterSignInUseCase(factory, fakeRedirectUriProvider, signedIn()).withAdminToken { } }
 
             assertEquals(listOf("end-session corvid daily-id"), factory.events)
         }
 
     @Test
-    fun `a failed second sign-out still returns the token`() =
+    fun `a failed admin sign-out still returns the block result`() =
         runTest {
             val factory =
                 RecordingFactory(
@@ -131,7 +169,7 @@ class MasterSignInUseCaseTest {
                     },
                 )
 
-            assertEquals("admin-at", MasterSignInUseCase(factory, fakeRedirectUriProvider, signedIn())())
+            assertEquals("used admin-at", MasterSignInUseCase(factory, fakeRedirectUriProvider, signedIn()).withAdminToken { "used $it" })
         }
 
     @Test
@@ -139,7 +177,7 @@ class MasterSignInUseCaseTest {
         runTest {
             val factory = RecordingFactory(FakeCodeAuthFlow { token("admin-at") })
 
-            MasterSignInUseCase(factory, fakeRedirectUriProvider, signedIn())()
+            MasterSignInUseCase(factory, fakeRedirectUriProvider, signedIn()).withAdminToken { }
 
             val config = factory.client!!.config
             assertEquals("corvid-admin", config.clientId)
@@ -154,7 +192,7 @@ class MasterSignInUseCaseTest {
             val useCase =
                 MasterSignInUseCase(RecordingFactory(FakeCodeAuthFlow { error("cancelled") }), fakeRedirectUriProvider, tokenSource)
 
-            assertFailsWith<IllegalStateException> { useCase() }
+            assertFailsWith<IllegalStateException> { useCase.withAdminToken { } }
 
             assertFalse(latch.tripped.value)
             assertEquals(AuthState.SignedIn("daily-at", server), tokenSource.state.value)
@@ -170,7 +208,7 @@ class MasterSignInUseCaseTest {
                     TokenSource(latch, backgroundScope),
                 )
 
-            assertFailsWith<IllegalStateException> { useCase() }
+            assertFailsWith<IllegalStateException> { useCase.withAdminToken { } }
         }
 
     private fun TestScope.signedIn(): TokenSource =
