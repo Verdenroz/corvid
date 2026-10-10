@@ -12,9 +12,13 @@ concurrency:
 
 jobs:
   # A required job skipped by its `if` still satisfies the branch ruleset, so each area's jobs run
-  # only when the change can affect them. The Rust tests read deploy/ and charts/, hence their paths.
+  # only when the change can affect them, and every job runs when this filter itself did not succeed.
+  # The Rust tests read deploy/ and charts/, hence their paths.
   changes:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
       deploy: ${{ steps.filter.outputs.deploy }}
@@ -52,7 +56,7 @@ jobs:
 
   rust:
     needs: changes
-    if: needs.changes.outputs.rust == 'true'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.rust == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -67,7 +71,7 @@ jobs:
 
   sentinel:
     needs: changes
-    if: needs.changes.outputs.deploy == 'true'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.deploy == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -84,7 +88,7 @@ jobs:
 
   deploy:
     needs: [changes, sentinel]
-    if: needs.changes.outputs.deploy == 'true'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.deploy == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -129,7 +133,7 @@ jobs:
   # Release packaging (assembleRelease, createDistributable) runs once per main push in image.yml.
   client:
     needs: changes
-    if: needs.changes.outputs.client == 'true'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.client == 'true') }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -145,7 +149,7 @@ jobs:
 
   chart:
     needs: changes
-    if: needs.changes.outputs.chart == 'true'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.chart == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
