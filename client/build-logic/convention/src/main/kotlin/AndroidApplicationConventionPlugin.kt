@@ -25,6 +25,25 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
                 versionCode = appVersionCode()
                 versionName = appVersionName()
             }
+            val signing = releaseSigning()
+            if (signing != null) {
+                signingConfigs.create("release") {
+                    storeFile = signing.storeFile
+                    storePassword = signing.storePassword
+                    keyAlias = signing.keyAlias
+                    keyPassword = signing.keyPassword
+                }
+            }
+            buildTypes {
+                debug {
+                    applicationIdSuffix = ".debug"
+                    versionNameSuffix = "-debug"
+                }
+                release {
+                    isMinifyEnabled = false
+                    if (signing != null) signingConfig = signingConfigs.getByName("release")
+                }
+            }
             compileOptions {
                 sourceCompatibility = JavaVersion.toVersion(jvmTarget.target)
                 targetCompatibility = JavaVersion.toVersion(jvmTarget.target)
