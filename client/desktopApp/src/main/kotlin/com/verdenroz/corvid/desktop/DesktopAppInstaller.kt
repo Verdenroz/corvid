@@ -34,9 +34,25 @@ private fun dataRoot(): File {
     return File(base, "corvid")
 }
 
-// Waits for this process to exit first so the preferences file is never open in two.
-private fun relaunchAndExit(launcher: File) {
+// The jpackage launcher treats a process carrying this as its own re-exec and skips the JVM arguments.
+private const val JPACKAGE_LAUNCHER_ENV = "_JPACKAGE_LAUNCHER"
+
+// Waits for the process to exit first so the preferences file is never open in two.
+internal fun relaunchCommand(
+    pid: Long,
+    launcher: File,
+    parentEnv: Map<String, String> = System.getenv(),
+): ProcessBuilder {
     val wait = "while kill -0 \"\$1\" 2>/dev/null; do sleep 0.2; done; exec \"\$2\""
-    ProcessBuilder("sh", "-c", wait, "sh", "${ProcessHandle.current().pid()}", launcher.path).inheritIO().start()
+    return ProcessBuilder("sh", "-c", wait, "sh", "$pid", launcher.path).inheritIO().apply {
+        environment().apply {
+            clear()
+            putAll(parentEnv - JPACKAGE_LAUNCHER_ENV)
+        }
+    }
+}
+
+private fun relaunchAndExit(launcher: File) {
+    relaunchCommand(ProcessHandle.current().pid(), launcher).start()
     exitProcess(0)
 }
