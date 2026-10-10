@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -17,43 +18,66 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.verdenroz.corvid.core.designsystem.BRAND_HUE
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
+import com.verdenroz.corvid.core.designsystem.component.CorvidMark
 import com.verdenroz.corvid.core.designsystem.oklch
 import com.verdenroz.corvid.core.model.Seal
+import com.verdenroz.corvid.core.model.SenderKind
+import com.verdenroz.corvid.core.model.SourceKind
 import com.verdenroz.corvid.core.ui.resources.Res
 import com.verdenroz.corvid.core.ui.resources.seal_failed
 import com.verdenroz.corvid.core.ui.resources.seal_signed
 import com.verdenroz.corvid.core.ui.resources.seal_signed_by
 import org.jetbrains.compose.resources.stringResource
 
-/** Circles are people, rounded squares are sources; the badge is the server's own verdict on the sender. */
+private val SourceShape = RoundedCornerShape(percent = 30)
+
+/**
+ * Circles are people, rounded squares are sources, and the squircle holding the Corvid mark is the
+ * user's own server; the badge is the server's own verdict on the sender.
+ */
 @Composable
 fun SenderAvatar(
     name: String,
-    isSource: Boolean,
+    sender: SenderKind,
     seal: Seal?,
     modifier: Modifier = Modifier,
     size: Dp = 36.dp,
     onClick: (() -> Unit)? = null,
 ) {
-    val shape = if (isSource) RoundedCornerShape(size * 0.28f) else CircleShape
+    val colors = CorvidTheme.colors
+    val source = sender as? SenderKind.Source
+    val shape = if (source == null) CircleShape else SourceShape
+    val ownServer = source?.kind == SourceKind.OwnServer
+    val tone = remember(name, colors.isDark) { avatarColor(name, colors.isDark) }
+    val fill = if (ownServer) (if (colors.isDark) colors.hover else colors.ink) else tone
+    val type = CorvidTheme.type
+    val style =
+        remember(type, source != null) {
+            if (source != null) type.name.copy(fontFamily = type.title.fontFamily) else type.name
+        }
     Box(modifier.size(size)) {
         Box(
             contentAlignment = Alignment.Center,
             modifier =
                 Modifier
                     .size(size)
-                    .background(avatarColor(name, CorvidTheme.colors.isDark), shape)
+                    .background(fill, shape)
                     .then(if (onClick == null) Modifier else Modifier.clickable(onClick = onClick)),
         ) {
-            Text(
-                initial(name),
-                style = if (isSource) CorvidTheme.type.name.copy(fontFamily = CorvidTheme.type.title.fontFamily) else CorvidTheme.type.name,
-                fontWeight = if (isSource) FontWeight.Bold else FontWeight.SemiBold,
-                fontSize = (size.value * 0.39f).sp,
-                color = CorvidTheme.colors.onAccent,
-            )
+            if (ownServer) {
+                CorvidMark(size * 0.58f)
+            } else {
+                Text(
+                    initial(name),
+                    style = style,
+                    fontWeight = if (source != null) FontWeight.Bold else FontWeight.SemiBold,
+                    fontSize = (size.value * 0.39f).sp,
+                    color = colors.ink,
+                )
+            }
         }
         seal?.let { SealBadge(it, size, Modifier.align(Alignment.BottomEnd)) }
     }
@@ -89,13 +113,21 @@ fun sealDescription(seal: Seal): String? =
         is Seal.Unsigned -> null
     }
 
-/** A stable hue per name, so a sender keeps its colour across sessions and devices. */
+/** Ink-tinted neutrals: a sender keeps its tone across sessions and devices, within a band too narrow to read as a colour. */
 internal fun avatarColor(
     name: String,
     dark: Boolean,
 ): Color {
-    val hue = name.fold(7) { acc, char -> (acc * 31 + char.code) % 360 }.toFloat()
-    return if (dark) oklch(0.72f, 0.1f, hue) else oklch(0.55f, 0.12f, hue)
+    val bucket = name.fold(7) { acc, char -> (acc * 31 + char.code) % 997 }
+    val lightness = (bucket % 4) * 0.025f
+    val hue = BRAND_HUE + (bucket / 4 % 5 - 2) * 9f
+    return if (dark) oklch(0.30f + lightness, 0.03f, hue) else oklch(0.91f - lightness, 0.025f, hue)
+}
+
+/** The first letters of the first and last words, so "Harvey Tseng" is "HT". */
+fun initials(name: String): String {
+    val words = name.split(' ').filter { word -> word.any { it.isLetterOrDigit() } }
+    return listOfNotNull(words.firstOrNull(), words.drop(1).lastOrNull()).map(::initial).joinToString("").ifEmpty { initial(name) }
 }
 
 internal fun initial(name: String): String = (name.firstOrNull { it.isLetterOrDigit() } ?: name.firstOrNull() ?: ' ').uppercase()
