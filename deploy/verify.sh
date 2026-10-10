@@ -148,6 +148,46 @@ echo "== dns =="
 [[ -n "$(dig +short MX "$DOMAIN")" ]]                  && ok "MX"    || bad "MX missing"
 dig +short TXT "$DOMAIN" | grep -q 'v=spf1'            && ok "SPF"   || bad "SPF missing"
 dig +short TXT "_dmarc.$DOMAIN" | grep -q 'v=DMARC1'   && ok "DMARC" || bad "DMARC missing"
+echo "== dkim =="
+domain_id=$($STALWART_CLI query Domain --json | DOMAIN="$DOMAIN" python3 -c '
+import json, os, sys
+for line in sys.stdin:
+    d = json.loads(line)
+    if d.get("name") == os.environ["DOMAIN"]:
+        print(d["id"])')
+keys=$($STALWART_CLI query DkimSignature --json | DOMAIN_ID="$domain_id" python3 -c '
+import json, os, sys
+for line in sys.stdin:
+    d = json.loads(line)
+    if d["domainId"] == os.environ["DOMAIN_ID"] and d["stage"] == "active":
+        key = "".join(l for l in d["publicKey"].splitlines() if not l.startswith("-----"))
+        print(d["@type"], d["selector"], key)')
+grep -q '^Dkim1RsaSha256 ' <<<"$keys" && ok "an active RSA key signs outbound mail" || bad "no active RSA DKIM key"
+grep -q '^Dkim1Ed25519Sha256 ' <<<"$keys" && bad "an active ed25519 key signs outbound mail; Gmail does not validate it" ||
+  ok "no active ed25519 key"
+while read -r _ selector key; do
+  [[ -n "$selector" ]] || continue
+  published=$(dig +short TXT "$selector._domainkey.$DOMAIN" | tr -d '" ' | sed -n 's/.*p=\([^;]*\).*/\1/p')
+  [[ "$published" == "$key" ]] && ok "DKIM $selector matches the key Stalwart signs with" ||
+    bad "DKIM $selector: DNS does not publish the key Stalwart signs with"
+done <<<"$keys"
+report=$($STALWART_CLI query DmarcExternalReport --json | python3 -c '
+import json, sys
+google = [json.loads(l) for l in sys.stdin if "google.com" in json.loads(l)["from"]]
+if google:
+    print(max(google, key=lambda r: r["receivedAt"])["id"])')
+if [[ -n "$report" ]]; then
+  read -r begin total failed < <($STALWART_CLI get DmarcExternalReport "$report" --json | SERVER_IP="$(server_ip)" python3 -c '
+import json, os, sys
+r = json.load(sys.stdin)
+ours = [x for x in r["records"].values() if x["sourceIp"] == os.environ["SERVER_IP"]]
+failed = sum(1 for x in ours if "pass" not in (x["evaluatedDkim"], x["evaluatedSpf"]))
+print(r["dateRangeBegin"], len(ours), failed)')
+  echo "  info  newest Google DMARC report starts $begin: $total record(s) from this server"
+  (( failed == 0 )) && ok "no DMARC failure in that report" || bad "$failed record(s) from this server failed DMARC in that report"
+else
+  echo "  info  no Google DMARC report yet"
+fi
 echo "== dnssec-validating resolver (required for DANE) =="
 out=$(dig @127.0.0.1 -p 5335 +dnssec +noall +comments cloudflare.com A 2>/dev/null)
 if grep -q 'status: NOERROR' <<<"$out" && grep -qE 'flags:[^;]* ad' <<<"$out"; then
