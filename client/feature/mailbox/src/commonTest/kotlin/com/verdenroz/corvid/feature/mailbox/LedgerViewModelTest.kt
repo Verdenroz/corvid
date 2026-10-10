@@ -9,6 +9,7 @@ import com.verdenroz.corvid.core.testing.runViewModelTest
 import com.verdenroz.corvid.core.text.uiText
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_no_mailbox
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -124,9 +125,12 @@ class LedgerViewModelTest {
         runViewModelTest {
             val fake = FakeJmapServer()
             fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
+            val gate = CompletableDeferred<Unit>()
+            fake.gate = gate
             val vm = track(LedgerViewModel(repository(fake), LedgerTab.Inbox))
 
             assertNull(vm.refresh())
+            gate.complete(Unit)
         }
 
     @Test
