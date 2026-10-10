@@ -317,6 +317,10 @@ The flow, over the web tier and all behind the same credential check as `/corvid
    `/corvid/devices/<name>`, which names the key's `accountId`, `nodeId` and `blobId`. It downloads
    that blob from the keys account and never looks a key up by name.
 
+The master device may be the new device itself. The app's enrollment screen has an "Approve with
+the admin passkey" action that runs step 2 on its own request, so the first device of an account
+unlocks without another one. The server never checks that the approver is unlocked.
+
 An approve answers 401 for a token that proves nothing, 403 for a wrong code or a token that is not
 the admin's, 410 for a request that is gone, spent or expired, and 502 when Pocket-ID or Stalwart
 could not be reached or the key could not be written. After a 502 the request is spent and the
