@@ -27,7 +27,7 @@ import org.jetbrains.compose.resources.stringResource
 
 internal enum class BannerTone { Accent, Danger }
 
-/** The one-line strip above the shell: [text] on a [tone] background, [trailing] before the close button. */
+/** The strip above the shell: up to two lines of [text] on a [tone] background, [trailing] before the close button. */
 @Composable
 internal fun ShellBannerBar(
     tone: BannerTone,
@@ -53,9 +53,9 @@ internal fun ShellBannerBar(
             text,
             style = CorvidTheme.type.meta,
             color = content,
-            maxLines = 1,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).padding(end = 8.dp),
         )
         trailing(content)
         IconButton(onClick = onDismiss) {
