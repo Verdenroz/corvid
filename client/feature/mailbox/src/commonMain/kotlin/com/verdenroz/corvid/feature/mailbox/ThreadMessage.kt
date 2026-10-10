@@ -33,7 +33,6 @@ import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.model.EmailAddress
 import com.verdenroz.corvid.core.model.EmailDetail
 import com.verdenroz.corvid.core.model.Seal
-import com.verdenroz.corvid.core.model.SenderKind
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.provenance.SenderAvatar
 import com.verdenroz.corvid.core.ui.provenance.sealDescription
@@ -150,7 +149,7 @@ private fun CollapsedMessage(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(vertical = 12.dp),
     ) {
-        SenderAvatar(email.from.displayName(), email.provenance.sender is SenderKind.Source, email.provenance.seal, size = 28.dp)
+        SenderAvatar(email.from.displayName(), email.provenance.sender, email.provenance.seal, size = 28.dp)
         Text(
             email.from.displayName(),
             style = CorvidTheme.type.name,
@@ -187,7 +186,7 @@ private fun SenderLine(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         modifier = modifier.fillMaxWidth().padding(bottom = 16.dp),
     ) {
-        SenderAvatar(email.from.displayName(), email.provenance.sender is SenderKind.Source, seal, onClick = open)
+        SenderAvatar(email.from.displayName(), email.provenance.sender, seal, onClick = open)
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(

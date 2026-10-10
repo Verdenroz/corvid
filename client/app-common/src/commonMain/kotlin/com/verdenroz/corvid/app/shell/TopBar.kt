@@ -31,6 +31,7 @@ import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.CorvidMark
 import com.verdenroz.corvid.core.model.Identity
+import com.verdenroz.corvid.core.model.SenderKind
 import com.verdenroz.corvid.core.ui.provenance.SenderAvatar
 import kotlinx.coroutines.flow.StateFlow
 import org.jetbrains.compose.resources.stringResource
@@ -125,7 +126,7 @@ private fun AccountAvatar(
                 Icon(CorvidIcons.Person, contentDescription = null, tint = CorvidTheme.colors.inkMuted, modifier = Modifier.size(18.dp))
             }
         } else {
-            SenderAvatar(name = identity.name.ifBlank { identity.email }, isSource = false, seal = null, size = 32.dp)
+            SenderAvatar(name = identity.name.ifBlank { identity.email }, sender = SenderKind.Person, seal = null, size = 32.dp)
         }
     }
 }
