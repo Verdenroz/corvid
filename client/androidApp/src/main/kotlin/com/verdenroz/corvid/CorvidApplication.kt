@@ -13,6 +13,7 @@ import com.verdenroz.corvid.app.NotificationPermission
 import com.verdenroz.corvid.app.di.appModules
 import com.verdenroz.corvid.core.auth.platformAuthModule
 import com.verdenroz.corvid.core.data.AppInstaller
+import com.verdenroz.corvid.core.data.AttachmentFiles
 import com.verdenroz.corvid.core.discovery.platformDiscoveryModule
 import com.verdenroz.corvid.core.keyring.KeyHolder
 import com.verdenroz.corvid.core.prefs.platformPreferencesModule
@@ -31,6 +32,8 @@ class CorvidApplication : Application() {
                 single<NewMailNotifier> { AndroidNewMailNotifier(androidContext()) }
                 single { AndroidNotificationPermission(androidContext()) } bind NotificationPermission::class
                 single<AppInstaller> { AndroidAppInstaller(androidContext()) }
+                single { AndroidAttachmentFiles(androidContext()) }
+                single<AttachmentFiles> { get<AndroidAttachmentFiles>() }
             }
         val koin =
             startKoin {

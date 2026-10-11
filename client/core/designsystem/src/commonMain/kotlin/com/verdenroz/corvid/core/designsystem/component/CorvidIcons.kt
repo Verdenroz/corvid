@@ -78,6 +78,10 @@ object CorvidIcons {
     val Headers: ImageVector by lazy { stroke("Headers", "M5 6h14M5 10h14M5 14h9M5 18h6") }
 
     val Plus: ImageVector by lazy { stroke("Plus", "M12 5v14M5 12h14") }
+
+    val Paperclip: ImageVector by lazy {
+        stroke("Paperclip", "M20 11.5l-8.2 8.2a5 5 0 0 1-7.1-7.1L13 4.3a3.3 3.3 0 0 1 4.7 4.7l-8.3 8.3a1.7 1.7 0 0 1-2.4-2.4L14.5 7.4")
+    }
     val ChevronDown: ImageVector by lazy { stroke("ChevronDown", "M6 9l6 6 6-6") }
     val ChevronUp: ImageVector by lazy { stroke("ChevronUp", "M6 15l6-6 6 6") }
 

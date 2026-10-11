@@ -22,6 +22,7 @@ import com.verdenroz.corvid.app.di.appModules
 import com.verdenroz.corvid.core.auth.InMemoryPreferencesFactory
 import com.verdenroz.corvid.core.auth.platformAuthModule
 import com.verdenroz.corvid.core.data.AppInstaller
+import com.verdenroz.corvid.core.data.AttachmentFiles
 import com.verdenroz.corvid.core.discovery.platformDiscoveryModule
 import com.verdenroz.corvid.core.prefs.platformPreferencesModule
 import kotlinx.coroutines.runBlocking
@@ -41,6 +42,7 @@ fun main() {
             single<NewMailNotifier> { notifier }
             single<NotificationPermission> { NoPermissionNeeded }
             single<AppInstaller> { DesktopAppInstaller() }
+            single<AttachmentFiles> { DesktopAttachmentFiles() }
         }
     val koin = startKoin { modules(appModules + platformAuthModule + platformDiscoveryModule + platformPreferencesModule + notices) }.koin
     val presence = koin.get<AppPresence>()

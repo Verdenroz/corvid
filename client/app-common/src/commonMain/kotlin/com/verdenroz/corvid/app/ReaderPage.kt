@@ -3,6 +3,7 @@ package com.verdenroz.corvid.app
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import com.verdenroz.corvid.core.data.AttachmentFiles
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.feature.mailbox.LedgerSource
@@ -40,6 +41,7 @@ internal fun ReaderPage(
     route: Route.Reader,
     list: LedgerViewModel?,
     mailbox: MailboxRepository,
+    files: AttachmentFiles,
     actions: MailActions,
     navigator: Navigator,
     onCompose: (ComposeIntent) -> Unit,
@@ -51,6 +53,7 @@ internal fun ReaderPage(
     LaunchedEffect(atLoadedEnd) { if (atLoadedEnd) list.loadMore() }
     ReaderScreen(
         mailbox,
+        files,
         actions,
         route.emailId,
         neighbours,

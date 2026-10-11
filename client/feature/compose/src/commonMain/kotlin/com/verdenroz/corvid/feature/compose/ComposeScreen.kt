@@ -2,8 +2,10 @@ package com.verdenroz.corvid.feature.compose
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,6 +28,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -33,16 +36,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.verdenroz.corvid.core.data.AttachmentFiles
 import com.verdenroz.corvid.core.data.ComposeRepository
+import com.verdenroz.corvid.core.data.fileSize
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.PrimaryButton
+import com.verdenroz.corvid.core.model.Attachment
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.text.asString
+import com.verdenroz.corvid.core.ui.AttachmentTile
 import com.verdenroz.corvid.core.ui.DiscardQuestion
 import com.verdenroz.corvid.core.ui.GuardBack
 import com.verdenroz.corvid.core.ui.QuietPane
 import com.verdenroz.corvid.feature.compose.resources.Res
+import com.verdenroz.corvid.feature.compose.resources.compose_attach
 import com.verdenroz.corvid.feature.compose.resources.compose_bcc
 import com.verdenroz.corvid.feature.compose.resources.compose_cc
 import com.verdenroz.corvid.feature.compose.resources.compose_close
@@ -58,11 +66,14 @@ import com.verdenroz.corvid.feature.compose.resources.compose_title_forward
 import com.verdenroz.corvid.feature.compose.resources.compose_title_new
 import com.verdenroz.corvid.feature.compose.resources.compose_title_reply
 import com.verdenroz.corvid.feature.compose.resources.compose_to
+import com.verdenroz.corvid.feature.compose.resources.compose_uploading
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun ComposeScreen(
     composeRepository: ComposeRepository,
+    files: AttachmentFiles,
     intent: ComposeIntent,
     onClose: () -> Unit,
 ) {
@@ -86,10 +97,18 @@ fun ComposeScreen(
                 viewModel::dismissSuggestions,
             )
         }
+    val scope = rememberCoroutineScope()
+    val attach = { scope.launch { viewModel.attach(files.pick()) } }
 
     Column(Modifier.fillMaxSize().background(CorvidTheme.colors.surface)) {
         val editing = state as? ComposeUiState.Editing
-        Bar(intent, sending = editing?.sending ?: true, onClose = close, onSend = viewModel::send)
+        Bar(
+            intent,
+            sending = editing?.let { it.sending || it.uploading.isNotEmpty() } ?: true,
+            onClose = close,
+            onAttach = if (editing == null) null else ({ attach() }),
+            onSend = viewModel::send,
+        )
         when (val current = state) {
             is ComposeUiState.Loading -> Unit
             is ComposeUiState.Sent -> LaunchedEffect(Unit) { onClose() }
@@ -107,7 +126,7 @@ fun ComposeScreen(
                         onCancel = viewModel::keepEditing,
                     )
                 }
-                Fields(current, recipients, onEdit = viewModel::edit, onRetrySave = viewModel::retrySave)
+                Fields(current, recipients, onEdit = viewModel::edit, onRetrySave = viewModel::retrySave, onDetach = viewModel::detach)
             }
         }
     }
@@ -118,6 +137,7 @@ private fun Bar(
     intent: ComposeIntent,
     sending: Boolean,
     onClose: () -> Unit,
+    onAttach: (() -> Unit)?,
     onSend: () -> Unit,
 ) {
     val title =
@@ -136,6 +156,11 @@ private fun Bar(
         ) { Icon(CorvidIcons.Close, stringResource(Res.string.compose_close), tint = CorvidTheme.colors.inkMuted) }
         Text(stringResource(title), style = CorvidTheme.type.action, fontWeight = FontWeight.Bold)
         Spacer(Modifier.weight(1f))
+        onAttach?.let {
+            IconButton(onClick = it, modifier = Modifier.padding(end = 4.dp)) {
+                Icon(CorvidIcons.Paperclip, stringResource(Res.string.compose_attach), tint = CorvidTheme.colors.inkMuted)
+            }
+        }
         PrimaryButton(stringResource(Res.string.compose_send), onClick = onSend, icon = CorvidIcons.Send, enabled = !sending)
     }
     HorizontalDivider(color = CorvidTheme.colors.line)
@@ -147,6 +172,7 @@ private fun Fields(
     recipients: RecipientActions,
     onEdit: (ComposeForm.() -> ComposeForm) -> Unit,
     onRetrySave: () -> Unit,
+    onDetach: (Attachment) -> Unit,
 ) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         if (state.saveFailed) NotSaved(onRetrySave)
@@ -172,8 +198,30 @@ private fun Fields(
             RecipientInput(stringResource(Res.string.compose_bcc), RecipientField.Bcc, state.form.bcc, state.suggestions, recipients)
         }
         Field(stringResource(Res.string.compose_subject), state.form.subject) { onEdit { copy(subject = it) } }
+        Attachments(state, onDetach)
         Body(state.form.body) { onEdit { copy(body = it) } }
     }
+}
+
+@Composable
+private fun Attachments(
+    state: ComposeUiState.Editing,
+    onDetach: (Attachment) -> Unit,
+) {
+    val colors = CorvidTheme.colors
+    if (state.form.attachments.isEmpty() && state.uploading.isEmpty() && state.attachError == null) return
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        state.attachError?.let { Text(it.asString(), style = CorvidTheme.type.meta, color = colors.danger) }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            state.form.attachments.forEach { file ->
+                AttachmentTile(file.name, file.type, fileSize(file.size).asString(), onRemove = { onDetach(file) })
+            }
+            state.uploading.forEach { name ->
+                AttachmentTile(name, "", stringResource(Res.string.compose_uploading), detailColor = colors.inkFaint)
+            }
+        }
+    }
+    HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = colors.line)
 }
 
 @Composable

@@ -48,6 +48,18 @@ internal fun createEmail(
                     }
                 }
                 putJsonObject("bodyValues") { putJsonObject(BODY_PART_ID) { put("value", draft.body) } }
+                if (draft.attachments.isNotEmpty()) {
+                    putJsonArray("attachments") {
+                        draft.attachments.forEach { attachment ->
+                            addJsonObject {
+                                put("blobId", attachment.blobId)
+                                put("type", attachment.type)
+                                put("name", attachment.fileName())
+                                put("disposition", "attachment")
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -76,7 +88,7 @@ internal fun submit(
     }
 
 internal val DRAFT_PROPERTIES =
-    listOf("to", "cc", "bcc", "subject", "inReplyTo", "references", "keywords", "textBody", "bodyValues")
+    listOf("to", "cc", "bcc", "subject", "inReplyTo", "references", "keywords", "textBody", "bodyValues", "attachments")
 
 internal fun JsonObject.toDraft(): Draft {
     val values = getValue("bodyValues").jsonObject
@@ -92,6 +104,7 @@ internal fun JsonObject.toDraft(): Draft {
         body = body,
         inReplyTo = idList("inReplyTo"),
         references = idList("references"),
+        attachments = attachmentList(html = null),
     )
 }
 

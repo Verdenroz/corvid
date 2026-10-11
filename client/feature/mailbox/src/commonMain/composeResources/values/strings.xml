@@ -189,4 +189,14 @@
         <item quantity="one">%1$d message deleted for good</item>
         <item quantity="other">%1$d messages deleted for good</item>
     </plurals>
+    <string name="attachment_open">Open</string>
+    <string name="attachment_fetching">Fetching…</string>
+    <string name="attachment_saved">Saved to %1$s</string>
+    <string name="attachment_no_viewer">Nothing on this device opens this kind of file.</string>
+    <string name="attachment_not_saved">Not saved: %1$s</string>
+    <string name="attachment_unverified">Sender not verified. These files may not come from who the message claims.</string>
+    <string name="attachment_open_question">Open %1$s from an unverified sender?</string>
+    <string name="attachment_open_anyway">Open anyway</string>
+    <string name="attachment_keep_closed">Cancel</string>
+    <string name="has_attachments">Has attachments</string>
 </resources>

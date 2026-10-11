@@ -5,12 +5,16 @@ import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.core.data.ComposeRepository
 import com.verdenroz.corvid.core.data.Contact
 import com.verdenroz.corvid.core.data.DraftSaveResult
+import com.verdenroz.corvid.core.data.PickedFile
 import com.verdenroz.corvid.core.data.SendResult
 import com.verdenroz.corvid.core.data.SendUnavailable
 import com.verdenroz.corvid.core.data.StartResult
+import com.verdenroz.corvid.core.data.UploadResult
+import com.verdenroz.corvid.core.data.fileSize
 import com.verdenroz.corvid.core.data.matching
 import com.verdenroz.corvid.core.data.userMessage
 import com.verdenroz.corvid.core.jmap.JmapException
+import com.verdenroz.corvid.core.model.Attachment
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.model.Draft
 import com.verdenroz.corvid.core.model.parseAddresses
@@ -23,7 +27,9 @@ import com.verdenroz.corvid.feature.compose.resources.compose_no_drafts_mailbox
 import com.verdenroz.corvid.feature.compose.resources.compose_no_identity
 import com.verdenroz.corvid.feature.compose.resources.compose_no_sent_mailbox
 import com.verdenroz.corvid.feature.compose.resources.compose_not_sent
+import com.verdenroz.corvid.feature.compose.resources.compose_not_uploaded
 import com.verdenroz.corvid.feature.compose.resources.compose_original_gone
+import com.verdenroz.corvid.feature.compose.resources.compose_too_large
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,6 +38,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.io.IOException
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -165,6 +172,40 @@ class ComposeViewModel(
         return false
     }
 
+    /** Uploads each file and adds it to the form once the server holds it; the draft saves after each one lands. */
+    fun attach(files: List<PickedFile>) {
+        files.forEach { file ->
+            val current = _state.value as? ComposeUiState.Editing ?: return
+            _state.value = current.copy(uploading = current.uploading + file.name, attachError = null)
+            viewModelScope.launch {
+                val failure = upload(file)
+                updateEditing { copy(uploading = uploading - file.name, attachError = failure ?: attachError) }
+                if (failure == null) scheduleSave()
+            }
+        }
+    }
+
+    fun detach(attachment: Attachment) = edit { copy(attachments = attachments - attachment) }
+
+    private suspend fun upload(file: PickedFile): UiText? =
+        try {
+            when (val result = composeRepository.upload(file)) {
+                is UploadResult.Uploaded -> {
+                    updateEditing { copy(form = form.copy(attachments = form.attachments + result.attachment)) }
+                    null
+                }
+                is UploadResult.TooLarge -> uiText(Res.string.compose_too_large, file.name, fileSize(result.limit))
+            }
+        } catch (e: JmapException) {
+            uiText(Res.string.compose_not_uploaded, file.name, e.userMessage())
+        } catch (e: IOException) {
+            uiText(Res.string.compose_not_uploaded, file.name, UiText.FromServer(e.message.orEmpty()))
+        }
+
+    private fun updateEditing(change: ComposeUiState.Editing.() -> ComposeUiState.Editing) {
+        _state.update { if (it is ComposeUiState.Editing) it.change() else it }
+    }
+
     fun keepEditing() {
         val current = _state.value as? ComposeUiState.Editing ?: return
         _state.value = current.copy(confirmingDiscard = false)
@@ -195,7 +236,7 @@ class ComposeViewModel(
 
     fun send() {
         val current = _state.value as? ComposeUiState.Editing ?: return
-        if (current.sending) return
+        if (current.sending || current.uploading.isNotEmpty()) return
         val draft = current.form.applyTo(current.seed)
         if (draft.to.isEmpty()) {
             _state.value = current.copy(error = uiText(Res.string.compose_add_recipient))
@@ -278,7 +319,7 @@ private const val SUGGESTION_LIMIT = 6
 
 private class Typing(val field: RecipientField, val caret: Int)
 
-private fun ComposeForm.isBlank() = listOf(to, cc, bcc, subject, body).all { it.isBlank() }
+private fun ComposeForm.isBlank() = listOf(to, cc, bcc, subject, body).all { it.isBlank() } && attachments.isEmpty()
 
 private fun SendUnavailable.message() =
     when (this) {
@@ -296,6 +337,7 @@ private fun Draft.toForm() =
         bcc = bcc.joinToString(", ") { it.toText() },
         subject = subject,
         body = body,
+        attachments = attachments,
     )
 
 private fun ComposeForm.applyTo(seed: Draft) =
@@ -305,4 +347,5 @@ private fun ComposeForm.applyTo(seed: Draft) =
         bcc = parseAddresses(bcc),
         subject = subject,
         body = body,
+        attachments = attachments,
     )

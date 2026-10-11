@@ -17,6 +17,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
+import io.ktor.http.encodeURLParameter
 import io.ktor.http.isSuccess
 import io.ktor.serialization.ContentConvertException
 import io.ktor.utils.io.readAvailable
@@ -253,6 +254,7 @@ class JmapClient private constructor(
         return if (response.status.isSuccess()) response.body() else null
     }
 
+    /** [name] and [type] come from the message, so a slash or `?` in either is escaped rather than read as URL structure. */
     suspend fun downloadBlob(
         blobId: String,
         name: String,
@@ -262,9 +264,9 @@ class JmapClient private constructor(
         val url =
             session.downloadUrl
                 .replace("{accountId}", accountId.orEmpty())
-                .replace("{blobId}", blobId)
-                .replace("{name}", name)
-                .replace("{type}", type)
+                .replace("{blobId}", blobId.encodeURLParameter())
+                .replace("{name}", name.encodeURLParameter())
+                .replace("{type}", type.encodeURLParameter())
         val response =
             guarded(authLatch) {
                 httpClient.get(url) {
@@ -440,6 +442,7 @@ private fun parseSession(
         state = text("state"),
         maxCallsInRequest = core["maxCallsInRequest"]?.jsonPrimitive?.contentOrNull?.toIntOrNull(),
         maxObjectsInGet = core["maxObjectsInGet"]?.jsonPrimitive?.contentOrNull?.toIntOrNull(),
+        maxSizeUpload = core["maxSizeUpload"]?.jsonPrimitive?.contentOrNull?.toLongOrNull(),
     )
 }
 

@@ -21,6 +21,7 @@ class MainActivity : ComponentActivity() {
     private val backgroundDropController: BackgroundDropController by inject()
     private val presence: AppPresence by inject()
     private val notificationPermission: AndroidNotificationPermission by inject()
+    private val attachmentFiles: AndroidAttachmentFiles by inject()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -30,6 +31,7 @@ class MainActivity : ComponentActivity() {
         }
         authFlowFactory.registerActivity(this)
         privateAuthFlowFactory.registerActivity(this)
+        attachmentFiles.register(this)
         enableEdgeToEdge()
         notificationPermission.attach(registerForActivityResult(ActivityResultContracts.RequestPermission()) {})
         openInboxIfAsked(intent)

@@ -56,7 +56,7 @@ internal fun FakeEmail.matches(filter: JsonObject?): Boolean {
             "inMailbox" -> wanted in mailboxIds
             "hasKeyword" -> wanted in keywords
             "notKeyword" -> wanted !in keywords
-            "hasAttachment" -> hasAttachment == value.jsonPrimitive.boolean
+            "hasAttachment" -> reportsAttachment == value.jsonPrimitive.boolean
             "before" -> Instant.parse(receivedAt) < Instant.parse(wanted)
             "after" -> Instant.parse(receivedAt) >= Instant.parse(wanted)
             "subject" -> subject.orEmpty().contains(wanted, ignoreCase = true)
