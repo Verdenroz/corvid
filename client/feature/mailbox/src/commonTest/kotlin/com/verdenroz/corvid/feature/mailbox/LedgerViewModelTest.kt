@@ -316,6 +316,23 @@ class LedgerViewModelTest {
         }
 
     @Test
+    fun `clearing the selection unticks every row at once`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
+            listOf("a", "b").forEach { id ->
+                fake.emails += FakeEmail(id, id, setOf("inbox"), "subject", "$id@example.test", "2024-01-01T00:00:00Z")
+            }
+            val vm = track(LedgerViewModel(repository(fake), LedgerTab.Inbox))
+            vm.state.first { it is LedgerUiState.Loaded }
+            vm.selectAll()
+
+            vm.clearSelection()
+
+            assertTrue(vm.selected.value.isEmpty())
+        }
+
+    @Test
     fun `a row moving away is hidden while the move runs and gone after the refetch`() =
         runViewModelTest {
             val fake = FakeJmapServer()

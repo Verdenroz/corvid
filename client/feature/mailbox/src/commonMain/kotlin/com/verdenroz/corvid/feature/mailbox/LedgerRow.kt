@@ -1,11 +1,12 @@
 package com.verdenroz.corvid.feature.mailbox
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,13 +27,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.clockTime
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
@@ -54,6 +63,12 @@ import kotlinx.datetime.TimeZone
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
+private val FOCUS_BAR = 3.dp
+
+/**
+ * While selecting, the whole row ticks. Otherwise a tap opens the conversation, a long press anywhere ticks it, and the
+ * avatar ticks on narrow (Gmail's habit) but opens the sender's card on wide, where the name does too and hover shows the tick.
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun LedgerRow(
@@ -69,6 +84,7 @@ internal fun LedgerRow(
     menu: MoveMenu,
     onMove: (MoveFolder, Conversation) -> Unit,
     onOpenSender: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val colors = CorvidTheme.colors
     val email = conversation.latest
@@ -77,34 +93,38 @@ internal fun LedgerRow(
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     var menuShown by remember { mutableStateOf(false) }
+    val focused by interaction.collectIsFocusedAsState()
     val background =
         when {
             selected -> colors.accentSoft
             email.provenance.suspect -> colors.dangerTint
-            hovered -> colors.hover
+            hovered || focused -> colors.hover
             else -> colors.surface
         }
+    val accent = colors.accent
     Column(
-        Modifier
+        modifier
             .fillMaxWidth()
             .background(background)
+            .then(if (focused) Modifier.drawBehind { drawRect(accent, size = Size(FOCUS_BAR.toPx(), size.height)) } else Modifier)
             .hoverable(interaction)
             .combinedClickable(
-                onClick = if (selecting) toggle else ({ onOpen(email.id) }),
-                onLongClick = toggle,
+                interactionSource = interaction,
+                indication = LocalIndication.current,
                 onLongClickLabel = stringResource(Res.string.selection_select),
+                onLongClick = toggle,
+                onClick = if (selecting) toggle else ({ onOpen(email.id) }),
             ),
     ) {
+        val tick = selecting || (wide && (hovered || focused))
+        val leadingTap = if (tick || !wide) toggle else (openSender ?: toggle)
+        val nameTap = openSender?.takeIf { wide && !selecting }
         val leading: @Composable () -> Unit = {
-            if (selecting || (wide && hovered)) {
-                SelectMark(selected, toggle)
-            } else {
-                Avatar(email, openSender)
-            }
+            Leading(email, tick, selected, if (wide) 40.dp else 48.dp, leadingTap, toggle)
         }
         if (wide) {
             val trailing: @Composable () -> Unit = {
-                if ((hovered || menuShown) && !selecting) {
+                if ((hovered || focused || menuShown) && !selecting) {
                     ConversationActionRow(
                         actions,
                         menu,
@@ -119,9 +139,9 @@ internal fun LedgerRow(
                     }
                 }
             }
-            WideRow(conversation, zone, openSender, leading, trailing)
+            WideRow(conversation, zone, nameTap, toggle, leading, trailing)
         } else {
-            NarrowRow(conversation, zone, openSender, leading)
+            NarrowRow(conversation, zone, leading)
         }
         HorizontalDivider(color = colors.line)
     }
@@ -132,6 +152,7 @@ private fun WideRow(
     conversation: Conversation,
     zone: TimeZone,
     openSender: (() -> Unit)?,
+    onLongPress: () -> Unit,
     leading: @Composable () -> Unit,
     trailing: @Composable () -> Unit,
 ) {
@@ -142,24 +163,27 @@ private fun WideRow(
     ) {
         Time(conversation, zone, Modifier.width(58.dp))
         leading()
-        SenderName(conversation, Modifier.width(200.dp), openSender)
+        SenderName(conversation, Modifier.width(200.dp), openSender, onLongPress)
         Summary(conversation, Modifier.weight(1f))
         trailing()
     }
 }
 
+/** The leading target is 48dp, 4dp wider than the avatar on each side, so the padding gives those 4dp back. */
 @Composable
 private fun NarrowRow(
     conversation: Conversation,
     zone: TimeZone,
-    openSender: (() -> Unit)?,
     leading: @Composable () -> Unit,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(horizontal = 16.dp, vertical = 11.dp)) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.padding(start = 12.dp, end = 16.dp, top = 7.dp, bottom = 11.dp),
+    ) {
         leading()
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(Modifier.weight(1f).padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(verticalAlignment = Alignment.Top) {
-                SenderName(conversation, Modifier.weight(1f), openSender)
+                SenderName(conversation, Modifier.weight(1f), openSender = null, onLongPress = null)
                 if (CorvidKeywords.FLAGGED in conversation.latest.keywords) StarMark(Modifier.padding(start = 6.dp, top = 3.dp))
                 Time(conversation, zone, Modifier.padding(start = 8.dp, top = 2.dp))
             }
@@ -188,32 +212,63 @@ private fun Time(
     }
 }
 
+/** The ripple is clipped to a circle over the avatar or tick, and the seal badge is left unclipped beside it. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun Avatar(
+private fun Leading(
     email: EmailSummary,
-    openSender: (() -> Unit)?,
+    tick: Boolean,
+    selected: Boolean,
+    size: Dp,
+    onTap: () -> Unit,
+    onLongPress: () -> Unit,
 ) {
-    SenderAvatar(
-        name = email.from.displayName(),
-        sender = email.provenance.sender,
-        seal = email.provenance.seal,
-        size = 40.dp,
-        onClick = openSender,
-    )
+    val select = stringResource(Res.string.selection_select)
+    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(size)) {
+        if (tick) {
+            TickRing(selected)
+        } else {
+            SenderAvatar(name = email.from.displayName(), sender = email.provenance.sender, seal = email.provenance.seal, size = 40.dp)
+        }
+        Box(
+            Modifier
+                .matchParentSize()
+                .clip(CircleShape)
+                .focusProperties { canFocus = false }
+                .combinedClickable(onLongClickLabel = select, onLongClick = onLongPress, onClick = onTap)
+                .semantics {
+                    if (tick) {
+                        contentDescription = select
+                        role = Role.Checkbox
+                        this.selected = selected
+                    }
+                },
+        )
+    }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SenderName(
     conversation: Conversation,
     modifier: Modifier,
     openSender: (() -> Unit)?,
+    onLongPress: (() -> Unit)?,
 ) {
     val email = conversation.latest
+    val target =
+        if (openSender == null) {
+            Modifier
+        } else {
+            Modifier
+                .focusProperties { canFocus = false }
+                .combinedClickable(interactionSource = null, indication = null, onLongClick = onLongPress, onClick = openSender)
+        }
     Column(modifier) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 email.from.displayName(),
-                modifier = (if (openSender == null) Modifier else Modifier.clickable(onClick = openSender)).weight(1f, fill = false),
+                modifier = target.weight(1f, fill = false),
                 style = CorvidTheme.type.name,
                 fontWeight = if (conversation.unread) FontWeight.Bold else FontWeight.Medium,
                 maxLines = 1,
