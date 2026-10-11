@@ -24,13 +24,13 @@ import org.jetbrains.compose.resources.stringResource
 /** Swiping right archives and left deletes, each only where the list offers that move. */
 internal data class SwipeActions(val right: ConversationAction?, val left: ConversationAction?)
 
-internal fun swipeActions(kind: ListKind) =
-    when (kind) {
-        ListKind.Inbox -> SwipeActions(right = ConversationAction.Archive, left = ConversationAction.Trash)
-        ListKind.Trash -> SwipeActions(right = null, left = ConversationAction.Destroy)
-        ListKind.Junk -> SwipeActions(right = ConversationAction.NotSpam, left = ConversationAction.Destroy)
-        ListKind.Other -> SwipeActions(right = null, left = ConversationAction.Trash)
-    }
+private val SWIPE_RIGHT = setOf(ConversationAction.Archive, ConversationAction.NotSpam)
+private val SWIPE_LEFT = setOf(ConversationAction.Trash, ConversationAction.Destroy)
+
+internal fun swipeActions(kind: ListKind): SwipeActions {
+    val moves = movesFor(kind)
+    return SwipeActions(right = moves.firstOrNull { it in SWIPE_RIGHT }, left = moves.firstOrNull { it in SWIPE_LEFT })
+}
 
 /** A moved row leaves the list on its own; one deleted for good waits on a question, so it slides back. */
 @Composable

@@ -9,6 +9,7 @@ import com.verdenroz.corvid.core.model.SenderKind
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlin.time.Instant
 
 private fun row(
@@ -103,5 +104,19 @@ class LedgerKeysTest {
     @Test
     fun `other lists only swipe left to delete`() {
         assertEquals(SwipeActions(right = null, left = ConversationAction.Trash), swipeActions(ListKind.Other))
+    }
+
+    @Test
+    fun `junk swipes right to rescue and left to delete for good`() {
+        assertEquals(SwipeActions(right = ConversationAction.NotSpam, left = ConversationAction.Destroy), swipeActions(ListKind.Junk))
+    }
+
+    @Test
+    fun `every swipe is a move the same list's bar offers`() {
+        ListKind.entries.forEach { kind ->
+            val bar = actionsFor(kind, listOf(row("a")).target()).filter { it.moves }
+            val swipes = swipeActions(kind)
+            listOfNotNull(swipes.right, swipes.left).forEach { assertTrue(it in bar, "$kind swipes $it, which its bar lacks") }
+        }
     }
 }

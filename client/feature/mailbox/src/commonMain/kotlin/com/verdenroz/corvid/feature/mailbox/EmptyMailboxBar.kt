@@ -13,6 +13,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.verdenroz.corvid.core.data.JUNK
+import com.verdenroz.corvid.core.data.TRASH
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
@@ -30,13 +32,12 @@ internal fun EmptyMailboxBar(
     tab: LedgerTab,
     onEmpty: (String) -> Unit,
 ) {
-    val label =
+    val (label, role) =
         when (tab) {
-            LedgerTab.Trash -> Res.string.action_empty_trash
-            LedgerTab.Junk -> Res.string.action_empty_junk
+            LedgerTab.Trash -> Res.string.action_empty_trash to TRASH
+            LedgerTab.Junk -> Res.string.action_empty_junk to JUNK
             else -> return
         }
-    val role = tab.role ?: return
     var confirming by rememberSaveable(tab) { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth()) {
         if (confirming) {

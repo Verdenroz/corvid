@@ -44,7 +44,10 @@ fun MessageBody(
     modifier: Modifier = Modifier,
 ) {
     val html = email.html
-    val context = remember(email, repository) { BodyContext(email.provenance) { repository.messageImage(email, it) } }
+    val context =
+        remember(email.id, email.inlineImages, email.provenance, repository) {
+            BodyContext(email.provenance) { repository.messageImage(email, it) }
+        }
     val parsed = html?.let { parse(it.html, repository).value } ?: Parsed.Plain
     SelectionContainer(modifier) {
         Column {

@@ -17,8 +17,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -39,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.AttachmentFiles
 import com.verdenroz.corvid.core.data.fileSize
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.component.ActionIcon
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.PrimaryButton
 import com.verdenroz.corvid.core.model.Attachment
@@ -151,15 +150,18 @@ private fun Bar(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 12.dp, top = 4.dp, bottom = 4.dp),
     ) {
-        IconButton(
-            onClick = onClose,
-        ) { Icon(CorvidIcons.Close, stringResource(Res.string.compose_close), tint = CorvidTheme.colors.inkMuted) }
+        ActionIcon(stringResource(Res.string.compose_close), CorvidIcons.Close, onClose, size = 48.dp, iconSize = 24.dp)
         Text(stringResource(title), style = CorvidTheme.type.action, fontWeight = FontWeight.Bold)
         Spacer(Modifier.weight(1f))
         onAttach?.let {
-            IconButton(onClick = it, modifier = Modifier.padding(end = 4.dp)) {
-                Icon(CorvidIcons.Paperclip, stringResource(Res.string.compose_attach), tint = CorvidTheme.colors.inkMuted)
-            }
+            ActionIcon(
+                stringResource(Res.string.compose_attach),
+                CorvidIcons.Paperclip,
+                it,
+                Modifier.padding(end = 4.dp),
+                size = 48.dp,
+                iconSize = 24.dp,
+            )
         }
         PrimaryButton(stringResource(Res.string.compose_send), onClick = onSend, icon = CorvidIcons.Send, enabled = !sending)
     }

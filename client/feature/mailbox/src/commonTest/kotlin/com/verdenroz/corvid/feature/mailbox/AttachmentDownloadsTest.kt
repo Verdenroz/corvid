@@ -10,9 +10,6 @@ import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.model.Attachment
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.client
-import com.verdenroz.corvid.core.text.uiText
-import com.verdenroz.corvid.feature.mailbox.resources.Res
-import com.verdenroz.corvid.feature.mailbox.resources.attachment_no_viewer
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import java.io.IOException
@@ -49,10 +46,8 @@ class AttachmentDownloadsTest {
             downloads.open(REPORT)
 
             assertEquals(
-                AttachmentState.Saved("~/Downloads/report.pdf"),
-                downloads.states.first {
-                    it["b-report"] is AttachmentState.Saved
-                }["b-report"],
+                AttachmentState.Done(Handoff.Saved("~/Downloads/report.pdf")),
+                downloads.states.first { it["b-report"] is AttachmentState.Done }["b-report"],
             )
             val (name, type, bytes) = files.opened.single()
             assertEquals("report.pdf" to "application/pdf", name to type)
@@ -69,8 +64,8 @@ class AttachmentDownloadsTest {
             downloads.open(REPORT)
 
             assertEquals(
-                AttachmentState.Failed(uiText(Res.string.attachment_no_viewer)),
-                downloads.states.first { it["b-report"] is AttachmentState.Failed }["b-report"],
+                AttachmentState.Done(Handoff.NoViewer),
+                downloads.states.first { it["b-report"] is AttachmentState.Done }["b-report"],
             )
         }
 
@@ -85,8 +80,8 @@ class AttachmentDownloadsTest {
             downloads.open(REPORT)
 
             assertEquals(
-                AttachmentState.Failed(JmapException(JmapError.Unreachable(IOException())).userMessage()),
-                downloads.states.first { it["b-report"] is AttachmentState.Failed }["b-report"],
+                AttachmentState.Unfetched(JmapException(JmapError.Unreachable(IOException())).userMessage()),
+                downloads.states.first { it["b-report"] is AttachmentState.Unfetched }["b-report"],
             )
             assertEquals(emptyList(), files.opened)
         }

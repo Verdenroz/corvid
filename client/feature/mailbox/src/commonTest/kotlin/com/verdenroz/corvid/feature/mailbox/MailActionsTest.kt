@@ -120,6 +120,23 @@ class MailActionsTest {
         }
 
     @Test
+    fun `move to lists the mailboxes already fetched without asking the server again`() =
+        runViewModelTest {
+            val fake = server()
+            fake.mailboxes += FakeMailbox("receipts", "Receipts")
+            val repository = MailboxRepository(fake.client())
+            val actions = track(MailActions(repository))
+            repository.mailboxes()
+            val before = fake.requestCount
+
+            actions.loadFolders()
+            val folders = actions.folders.first { it != null }!!
+
+            assertTrue(folders.any { it.label == "Receipts" })
+            assertEquals(before, fake.requestCount)
+        }
+
+    @Test
     fun `emptying trash deletes everything in it and says how many`() =
         runViewModelTest {
             val fake = server()

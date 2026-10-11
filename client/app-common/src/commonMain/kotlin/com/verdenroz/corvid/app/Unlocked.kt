@@ -66,6 +66,7 @@ import com.verdenroz.corvid.core.data.FiltersRepository
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.data.NoticeRepository
 import com.verdenroz.corvid.core.data.SenderRepository
+import com.verdenroz.corvid.core.designsystem.CorvidFloating
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.jmap.JmapClient
@@ -273,8 +274,11 @@ private fun BoxScope.Notice(
         notice,
         Modifier
             .align(if (wide) Alignment.BottomStart else Alignment.BottomCenter)
-            // A floating compose panel is 540dp wide and 24dp from the edge; the notice stays left of it.
-            .padding(start = 16.dp, end = if (composeFloats) 580.dp else 16.dp, bottom = if (wide) 22.dp else 80.dp),
+            .padding(
+                start = CorvidFloating.noticeStart,
+                end = CorvidFloating.noticeEnd(panelShown = composeFloats),
+                bottom = CorvidFloating.noticeBottom(wide),
+            ),
     )
 }
 
@@ -293,14 +297,14 @@ private fun BoxScope.floating(
     line: Color,
 ): Modifier =
     if (route is Route.Sender) {
-        Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(540.dp).shadow(16.dp)
+        Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(CorvidFloating.panelWidth).shadow(16.dp)
     } else {
         val shape = CorvidShape.medium.copy(bottomStart = CornerSize(0), bottomEnd = CornerSize(0))
         Modifier
             .align(Alignment.BottomEnd)
-            .padding(end = 24.dp)
-            .width(540.dp)
-            .height(470.dp)
+            .padding(end = CorvidFloating.panelEnd)
+            .width(CorvidFloating.panelWidth)
+            .height(CorvidFloating.panelHeight)
             .shadow(16.dp, shape)
             .border(1.dp, line, shape)
             .clip(shape)

@@ -84,9 +84,8 @@ internal fun LedgerRow(
     selecting: Boolean,
     onToggle: (String) -> Unit,
     onOpen: (String) -> Unit,
-    onAction: (ConversationAction, Conversation) -> Unit,
     menu: MoveMenu,
-    onMove: (MoveFolder, Conversation) -> Unit,
+    onAct: (Act, Conversation) -> Unit,
     onOpenSender: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -124,7 +123,7 @@ internal fun LedgerRow(
         val leadingTap = if (tick || !wide) toggle else (openSender ?: toggle)
         val nameTap = openSender?.takeIf { wide && !selecting }
         val leading: @Composable () -> Unit = {
-            Leading(email, tick, selected, if (wide) 40.dp else 48.dp, leadingTap, toggle)
+            Leading(email, tick, selected, touchTarget(), leadingTap, toggle)
         }
         if (wide) {
             val trailing: @Composable () -> Unit = {
@@ -132,10 +131,10 @@ internal fun LedgerRow(
                     ConversationActionRow(
                         actions,
                         menu,
-                        { onMove(it, conversation) },
-                        size = 34.dp,
+                        { onAct(it, conversation) },
+                        at = ActionsAt.Row,
                         onMenuShown = { menuShown = it },
-                    ) { onAction(it, conversation) }
+                    )
                 } else {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (CorvidKeywords.FLAGGED in email.keywords) StarMark()

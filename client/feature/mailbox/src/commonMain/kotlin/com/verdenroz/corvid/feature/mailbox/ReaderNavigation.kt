@@ -29,15 +29,14 @@ sealed interface ReaderExit {
     data class Open(val emailId: String) : ReaderExit
 }
 
-/** Archive and delete move on to the older conversation when there is one; anything else that empties the row goes back. */
+/** Every move, spam and not spam included, goes on to the older conversation when there is one; marking unread goes back. */
 fun exitAfter(
-    action: ConversationAction,
+    act: Act,
     neighbours: Neighbours?,
 ): ReaderExit {
-    if (!action.leavesList) return ReaderExit.Stay
-    val advances = action.moves
+    if (!act.leavesList) return ReaderExit.Stay
     val older = neighbours?.older
-    return if (advances && older != null) ReaderExit.Open(older) else ReaderExit.Back
+    return if (act.moves && older != null) ReaderExit.Open(older) else ReaderExit.Back
 }
 
 /** The keys a reader answers besides the [MailShortcut]s, Gmail's letters. */

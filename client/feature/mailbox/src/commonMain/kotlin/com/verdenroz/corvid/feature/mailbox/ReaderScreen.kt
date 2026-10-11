@@ -30,6 +30,7 @@ import com.verdenroz.corvid.core.data.Correction
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.component.ActionIcon
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.model.Attachment
 import com.verdenroz.corvid.core.model.ComposeIntent
@@ -75,40 +76,36 @@ fun ReaderScreen(
     val thread = state as? ReaderUiState.Loaded
     val offered = thread?.let { actionsFor(it.kind, it.target()) }.orEmpty()
     var confirming by remember(thread?.newest?.id) { mutableStateOf(false) }
-    val perform = { action: ConversationAction ->
-        if (thread != null) {
-            val exit = exitAfter(action, neighbours)
-            actions.perform(action, thread.target())
-            when (exit) {
-                ReaderExit.Stay -> Unit
-                ReaderExit.Back -> onBack()
-                is ReaderExit.Open -> onOpen(exit.emailId)
-            }
+    val leave = { exit: ReaderExit ->
+        when (exit) {
+            ReaderExit.Stay -> Unit
+            ReaderExit.Back -> onBack()
+            is ReaderExit.Open -> onOpen(exit.emailId)
         }
     }
-    val onAction = { action: ConversationAction -> if (action == ConversationAction.Destroy) confirming = true else perform(action) }
-    val onMove = { folder: MoveFolder ->
+    val perform = { act: Act ->
         if (thread != null) {
-            val exit = exitAfter(ConversationAction.Trash, neighbours)
-            actions.moveTo(thread.target().all, 1, folder)
-            if (exit is ReaderExit.Open) onOpen(exit.emailId) else onBack()
+            val exit = exitAfter(act, neighbours)
+            actions.perform(act, thread.target())
+            leave(exit)
         }
     }
+    val onAct = { act: Act -> if (act == DESTROY) confirming = true else perform(act) }
 
     HandleKeys { event ->
         val press = event.press()
         val shortcut = press?.mailShortcut()
         val command = press?.readerKey()
-        shortcut?.action(offered)?.let(onAction)
+        shortcut?.action(offered)?.let { onAct(Act.Do(it)) }
         command?.let { ReaderCommands(thread, neighbours, onOpen, onBack, onCompose).run(it) }
         shortcut != null || command != null
     }
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            ActionBar(wide, offered, neighbours, rememberMoveMenu(actions), onMove, onAction, onOpen, onBack)
+            ActionBar(wide, offered, neighbours, rememberMoveMenu(actions), onAct, onOpen, onBack)
             if (confirming) {
-                DestroyQuestion(onConfirm = { perform(ConversationAction.Destroy) }, onCancel = { confirming = false })
+                DestroyQuestion(onConfirm = { perform(DESTROY) }, onCancel = { confirming = false })
             }
             if (wide) HorizontalDivider(color = CorvidTheme.colors.line)
             when (val current = state) {
@@ -153,31 +150,28 @@ private class ReaderCommands(
     }
 }
 
-/** Touch targets stay 48dp when narrow; wide, the pointer gets the denser 40dp. */
 @Composable
 private fun ActionBar(
     wide: Boolean,
     offered: List<ConversationAction>,
     neighbours: Neighbours?,
     menu: MoveMenu,
-    onMove: (MoveFolder) -> Unit,
-    onAction: (ConversationAction) -> Unit,
+    onAct: (Act) -> Unit,
     onOpen: (String) -> Unit,
     onBack: () -> Unit,
 ) {
-    val target = if (wide) 40.dp else 48.dp
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().padding(start = 4.dp, top = 4.dp, end = 8.dp),
     ) {
         ActionIcon(stringResource(Res.string.mailbox_back), CorvidIcons.Back, onBack, size = 48.dp)
         Spacer(Modifier.weight(1f))
-        ConversationActionRow(offered, menu, onMove, target, shown = if (wide) Int.MAX_VALUE else NARROW_SHOWN, onAction = onAction)
+        ConversationActionRow(offered, menu, onAct)
         neighbours?.let {
             if (wide && offered.isNotEmpty()) {
                 VerticalDivider(Modifier.padding(horizontal = 8.dp).height(20.dp), color = CorvidTheme.colors.line)
             }
-            NeighbourControls(it, wide, target, onOpen)
+            NeighbourControls(it, wide, touchTarget(), onOpen)
         }
     }
 }

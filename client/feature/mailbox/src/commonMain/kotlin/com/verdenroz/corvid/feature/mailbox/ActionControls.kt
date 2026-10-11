@@ -12,16 +12,9 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TooltipAnchorPosition
-import androidx.compose.material3.TooltipBox
-import androidx.compose.material3.TooltipDefaults
-import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -32,16 +25,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.component.ActionIcon
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.DiscardQuestion
+import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.action_destroy_confirm
 import com.verdenroz.corvid.feature.mailbox.resources.action_destroy_question
@@ -57,27 +51,14 @@ import kotlin.time.Duration.Companion.seconds
 
 private val NOTICE_LIFETIME = 8.seconds
 
-/** An icon button that names itself on hover and to a screen reader. */
-@OptIn(ExperimentalMaterial3Api::class)
+/** How many action buttons a narrow bar shows before More. */
+private const val NARROW_SHOWN = 2
+
+private val ROW_BUTTON = 34.dp
+
+/** Touch targets stay 48dp when narrow; wide, the pointer gets the denser 40dp. */
 @Composable
-internal fun ActionIcon(
-    label: String,
-    icon: ImageVector,
-    onClick: () -> Unit,
-    tint: Color = CorvidTheme.colors.inkMuted,
-    size: Dp = 40.dp,
-    enabled: Boolean = true,
-) {
-    TooltipBox(
-        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Below),
-        tooltip = { PlainTooltip { Text(label) } },
-        state = rememberTooltipState(),
-    ) {
-        IconButton(onClick, Modifier.size(size), enabled = enabled) {
-            Icon(icon, label, tint = if (enabled) tint else CorvidTheme.colors.inkFaint, modifier = Modifier.size(20.dp))
-        }
-    }
-}
+internal fun touchTarget(): Dp = if (LocalWideLayout.current) 40.dp else 48.dp
 
 @Composable
 private fun ConversationActionIcon(
@@ -92,10 +73,10 @@ private fun ConversationActionIcon(
             ConversationAction.Destroy -> colors.danger
             else -> colors.inkMuted
         }
-    ActionIcon(stringResource(action.label), action.icon, onClick, tint, size)
+    ActionIcon(stringResource(action.label), action.icon, onClick, tint = tint, size = size)
 }
 
-/** Move to's folders, null until the server has answered, and how to ask it again. */
+/** Move to's folders, null until they are known, and how to ask for them. */
 internal class MoveMenu(val folders: List<MoveFolder>?, val onOpen: () -> Unit)
 
 @Composable
@@ -104,49 +85,48 @@ internal fun rememberMoveMenu(actions: MailActions): MoveMenu {
     return remember(actions, folders) { MoveMenu(folders, actions::loadFolders) }
 }
 
-/** How many action buttons a narrow bar shows before More. */
-internal const val NARROW_SHOWN = 2
+/** Where a [ConversationActionRow] sits: a screen's bar, or a wide list row under the pointer. */
+internal enum class ActionsAt { Bar, Row }
 
-/** Shows the first [shown] buttons, Move to counted among them; the rest wait under More, for a bar too narrow to hold them all. */
+/**
+ * A row shows every button. A bar does too when wide; narrow, it shows the first few, Move to counted among them, and
+ * the rest wait under More.
+ */
 @Composable
 internal fun ConversationActionRow(
     actions: List<ConversationAction>,
     menu: MoveMenu,
-    onMove: (MoveFolder) -> Unit,
-    size: Dp = 40.dp,
-    shown: Int = Int.MAX_VALUE,
+    onAct: (Act) -> Unit,
+    at: ActionsAt = ActionsAt.Bar,
     onMenuShown: (Boolean) -> Unit = {},
-    onAction: (ConversationAction) -> Unit,
 ) {
+    val size = if (at == ActionsAt.Row) ROW_BUTTON else touchTarget()
+    val shown = if (at == ActionsAt.Bar && !LocalWideLayout.current) NARROW_SHOWN else Int.MAX_VALUE
     val (moves, marks) = actions.partition { it.moves }
     val buttons: List<ConversationAction?> = moves + null + marks
     Row(verticalAlignment = Alignment.CenterVertically) {
         buttons.take(shown).forEach { action ->
             if (action == null) {
-                MoveToButton(
-                    menu,
-                    onMove,
-                    size,
-                    onMenuShown,
-                )
+                MenuButton(stringResource(Res.string.action_move_to), CorvidIcons.Folder, emptyList(), menu, size, onMenuShown, onAct)
             } else {
-                ConversationActionIcon(action, { onAction(action) }, size)
+                ConversationActionIcon(action, { onAct(Act.Do(action)) }, size)
             }
         }
         val rest = buttons.drop(shown)
-        if (rest.isNotEmpty()) MoreButton(rest, menu, onMove, size, onMenuShown, onAction)
+        if (rest.isNotEmpty()) MenuButton(stringResource(Res.string.action_more), CorvidIcons.More, rest, menu, size, onMenuShown, onAct)
     }
 }
 
-/** A null entry in [rest] is Move to, which opens the folder list in place. */
+/** Lists [entries], where null is Move to and swaps the list for the folders; with no entries it opens on the folders. */
 @Composable
-private fun MoreButton(
-    rest: List<ConversationAction?>,
+private fun MenuButton(
+    label: String,
+    icon: ImageVector,
+    entries: List<ConversationAction?>,
     menu: MoveMenu,
-    onMove: (MoveFolder) -> Unit,
     size: Dp,
     onShown: (Boolean) -> Unit,
-    onAction: (ConversationAction) -> Unit,
+    onAct: (Act) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     var folders by remember { mutableStateOf(false) }
@@ -155,27 +135,29 @@ private fun MoreButton(
         if (!shown) folders = false
         onShown(shown)
     }
+    val pick = { act: Act ->
+        show(false)
+        onAct(act)
+    }
     Box {
-        ActionIcon(stringResource(Res.string.action_more), CorvidIcons.More, { show(true) }, size = size)
+        ActionIcon(label, icon, {
+            if (entries.isEmpty()) menu.onOpen()
+            show(true)
+        }, size = size)
         DropdownMenu(expanded = expanded, onDismissRequest = { show(false) }) {
-            if (folders) {
-                FolderItems(menu) { folder ->
-                    show(false)
-                    onMove(folder)
-                }
+            if (folders || entries.isEmpty()) {
+                FolderItems(menu) { pick(Act.Move(it)) }
             } else {
-                rest.forEach { action ->
-                    val label = stringResource(action?.label ?: Res.string.action_move_to)
+                entries.forEach { action ->
                     DropdownMenuItem(
-                        text = { Text(label, style = CorvidTheme.type.name) },
+                        text = { Text(stringResource(action?.label ?: Res.string.action_move_to), style = CorvidTheme.type.name) },
                         leadingIcon = { Icon(action?.icon ?: CorvidIcons.Folder, null, tint = CorvidTheme.colors.inkMuted) },
                         onClick = {
                             if (action == null) {
                                 menu.onOpen()
                                 folders = true
                             } else {
-                                show(false)
-                                onAction(action)
+                                pick(Act.Do(action))
                             }
                         },
                     )
@@ -196,32 +178,6 @@ private fun FolderItems(
     } else {
         folders.forEach { folder ->
             DropdownMenuItem(text = { Text(folder.label, style = CorvidTheme.type.name) }, onClick = { onPick(folder) })
-        }
-    }
-}
-
-@Composable
-private fun MoveToButton(
-    menu: MoveMenu,
-    onMove: (MoveFolder) -> Unit,
-    size: Dp,
-    onShown: (Boolean) -> Unit,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val show = { shown: Boolean ->
-        expanded = shown
-        onShown(shown)
-    }
-    Box {
-        ActionIcon(stringResource(Res.string.action_move_to), CorvidIcons.Folder, {
-            menu.onOpen()
-            show(true)
-        }, size = size)
-        DropdownMenu(expanded = expanded, onDismissRequest = { show(false) }) {
-            FolderItems(menu) { folder ->
-                show(false)
-                onMove(folder)
-            }
         }
     }
 }

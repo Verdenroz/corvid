@@ -25,7 +25,6 @@ import com.verdenroz.corvid.feature.mailbox.resources.action_trashed
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import org.jetbrains.compose.resources.PluralStringResource
 
 /** What the last action did, for the bar under the list; [undo] is null when there is nothing to put back. */
 data class ActionNotice(val text: UiText, val undo: MailMove? = null)
@@ -45,40 +44,36 @@ class MailActions(
     fun archive(
         ids: Set<String>,
         conversations: Int,
-    ) = moveAway(ids, conversations, Res.plurals.action_archived) { repository.archive(it) }
+    ) = moveAway(ids, uiPlural(Res.plurals.action_archived, conversations)) { repository.archive(it) }
 
     fun trash(
         ids: Set<String>,
         conversations: Int,
-    ) = moveAway(ids, conversations, Res.plurals.action_trashed) { repository.trash(it) }
+    ) = moveAway(ids, uiPlural(Res.plurals.action_trashed, conversations)) { repository.trash(it) }
 
     fun reportSpam(
         ids: Set<String>,
         conversations: Int,
-    ) = moveAway(ids, conversations, Res.plurals.action_reported) { repository.reportSpam(it) }
+    ) = moveAway(ids, uiPlural(Res.plurals.action_reported, conversations)) { repository.reportSpam(it) }
 
     fun notSpam(
         ids: Set<String>,
         conversations: Int,
-    ) = moveAway(ids, conversations, Res.plurals.action_rescued) { repository.notSpam(it) }
+    ) = moveAway(ids, uiPlural(Res.plurals.action_rescued, conversations)) { repository.notSpam(it) }
 
     fun moveTo(
         ids: Set<String>,
         conversations: Int,
         folder: MoveFolder,
-    ) = act {
-        val moved = repository.moveTo(ids, folder.id)
-        val text =
-            refusal(moved.refused, ids)
-                ?: UiText.Plural(Res.plurals.action_moved, conversations, listOf(conversations, UiText.FromServer(folder.label)))
-        _notice.value = ActionNotice(text, moved.takeIf { it.moved.isNotEmpty() })
+    ) = moveAway(ids, UiText.Plural(Res.plurals.action_moved, conversations, listOf(conversations, UiText.FromServer(folder.label)))) {
+        repository.moveTo(it, folder.id)
     }
 
-    /** Asks the server each time, so a folder made elsewhere shows up the next time the menu opens. */
+    /** Reads the last mailbox list fetched, and asks the server only when there is none. */
     fun loadFolders() {
         viewModelScope.launch {
             try {
-                _folders.value = moveFolders(repository.mailboxes())
+                _folders.value = moveFolders(repository.knownMailboxes())
             } catch (e: JmapException) {
                 _notice.value = ActionNotice(e.userMessage())
             }
@@ -133,12 +128,11 @@ class MailActions(
 
     private fun moveAway(
         ids: Set<String>,
-        conversations: Int,
-        done: PluralStringResource,
+        done: UiText,
         move: suspend (Set<String>) -> MailMove,
     ) = act {
         val moved = move(ids)
-        val text = refusal(moved.refused, ids) ?: uiPlural(done, conversations)
+        val text = refusal(moved.refused, ids) ?: done
         _notice.value = ActionNotice(text, moved.takeIf { it.moved.isNotEmpty() })
     }
 

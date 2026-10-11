@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -25,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.fileBadge
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.component.ActionIcon
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.ui.resources.Res
 import com.verdenroz.corvid.core.ui.resources.attachment_remove
@@ -66,16 +66,7 @@ fun AttachmentTile(
             Text(shown, style = CorvidTheme.type.name, color = colors.ink, maxLines = 1, overflow = TextOverflow.MiddleEllipsis)
             Text(detail, style = CorvidTheme.type.meta, color = detailColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        onRemove?.let {
-            IconButton(onClick = it, modifier = Modifier.size(40.dp)) {
-                Icon(
-                    CorvidIcons.Close,
-                    stringResource(Res.string.attachment_remove, shown),
-                    tint = colors.inkMuted,
-                    modifier = Modifier.size(16.dp),
-                )
-            }
-        }
+        onRemove?.let { ActionIcon(stringResource(Res.string.attachment_remove, shown), CorvidIcons.Close, it, iconSize = 16.dp) }
     }
 }
 

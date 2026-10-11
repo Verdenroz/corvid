@@ -37,8 +37,10 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.verdenroz.corvid.core.designsystem.CorvidFloating
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.component.ActionIcon
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.model.Conversation
@@ -67,8 +69,6 @@ import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Clock
 
 private const val LOAD_AHEAD = 8
-private val WRITE_CLEARANCE = 96.dp
-private val NOTICE_CLEARANCE = 152.dp
 
 @Composable
 fun LedgerScreen(
@@ -80,10 +80,6 @@ fun LedgerScreen(
     modifier: Modifier = Modifier,
 ) {
     LedgerContent(viewModel, actions, stringResource(tab.emptyText()), onOpenEmail, onOpenSender, modifier, takeFocus = true)
-}
-
-internal suspend fun LedgerViewModel.refreshAndWait() {
-    refresh()?.join()
 }
 
 /**
@@ -121,19 +117,30 @@ internal fun LedgerContent(
     }
     if (takeFocus) LaunchedEffect(Unit) { listFocus.requestFocus() }
     val conversations = (state as? LedgerUiState.Loaded)?.conversations.orEmpty()
-    val open: (String) -> Unit = { id -> conversations.firstOrNull { it.latest.id == id }?.let { onOpenEmail(it.latest) } }
-    val onAction: (ConversationAction, ActionTarget) -> Unit = { action, target ->
-        if (action == ConversationAction.Destroy) {
-            doomed = target
-        } else {
-            actions.perform(action, target)
-            if (action.leavesList) viewModel.clearSelection()
+    val open: (String) -> Unit =
+        remember(conversations, onOpenEmail) {
+            { id -> conversations.firstOrNull { it.latest.id == id }?.let { onOpenEmail(it.latest) } }
         }
-    }
-    val onMove: (MoveFolder, ActionTarget) -> Unit = { folder, target ->
-        actions.moveTo(target.all, target.conversations, folder)
-        viewModel.clearSelection()
-    }
+    val onAct: (Act, ActionTarget) -> Unit =
+        remember(actions, viewModel) {
+            { act, target ->
+                if (act == DESTROY) {
+                    doomed = target
+                } else {
+                    actions.perform(act, target)
+                    if (act.leavesList) viewModel.clearSelection()
+                }
+            }
+        }
+    val events =
+        remember(viewModel, open, onOpenSender) {
+            LedgerRowEvents(
+                toggle = viewModel::toggleSelected,
+                open = open,
+                openSender = onOpenSender,
+                focus = { id, has -> focused = if (has) id else focused.takeUnless { it == id } },
+            )
+        }
     val onShortcut: (MailShortcut) -> Boolean = { shortcut ->
         val rows = keyTarget(conversations, selected, focused)
         val target = rows.target()
@@ -141,7 +148,7 @@ internal fun LedgerContent(
         if (action != null && action.leavesList && rows.any { it.latest.id == focused }) {
             focusManager.leaveRow(listFocus, toNeighbour = selected.isEmpty())
         }
-        action?.let { onAction(it, target) } != null
+        action?.let { onAct(Act.Do(it), target) } != null
     }
     val onListKey: (ListKey) -> Boolean = { key ->
         when (key) {
@@ -166,7 +173,7 @@ internal fun LedgerContent(
         doomed?.let { target ->
             DestroyQuestion(
                 onConfirm = {
-                    actions.perform(ConversationAction.Destroy, target)
+                    actions.perform(DESTROY, target)
                     viewModel.clearSelection()
                     doomed = null
                 },
@@ -182,8 +189,7 @@ internal fun LedgerContent(
                 onSelectAll = viewModel::selectAll,
                 onClear = viewModel::clearSelection,
                 menu = menu,
-                onMove = { onMove(it, ticked.target()) },
-                onAction = { onAction(it, ticked.target()) },
+                onAct = { onAct(it, ticked.target()) },
             )
         } else if (conversations.isNotEmpty()) {
             (viewModel.source as? LedgerSource.Tab)?.tab?.let { tab -> EmptyMailboxBar(tab) { actions.empty(it) } }
@@ -194,7 +200,7 @@ internal fun LedgerContent(
                 scope.launch {
                     refreshing = true
                     try {
-                        viewModel.refreshAndWait()
+                        viewModel.refresh()?.join()
                     } finally {
                         refreshing = false
                     }
@@ -214,15 +220,9 @@ internal fun LedgerContent(
                             kind,
                             selected,
                             noticeShown = notice != null,
-                            LedgerRowEvents(
-                                toggle = viewModel::toggleSelected,
-                                open = open,
-                                openSender = onOpenSender,
-                                focus = { id, has -> focused = if (has) id else focused.takeUnless { it == id } },
-                            ),
-                            onAction,
+                            events,
                             menu,
-                            onMove,
+                            onAct,
                             viewModel::loadMore,
                         )
                     }
@@ -246,18 +246,16 @@ private fun SelectionBar(
     onSelectAll: () -> Unit,
     onClear: () -> Unit,
     menu: MoveMenu,
-    onMove: (MoveFolder) -> Unit,
-    onAction: (ConversationAction) -> Unit,
+    onAct: (Act) -> Unit,
 ) {
     val colors = CorvidTheme.colors
-    val target = if (LocalWideLayout.current) 40.dp else 48.dp
     Column(Modifier.fillMaxWidth().background(colors.rail)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
         ) {
-            ActionIcon(stringResource(Res.string.selection_clear), CorvidIcons.Close, onClear, size = target)
+            ActionIcon(stringResource(Res.string.selection_clear), CorvidIcons.Close, onClear, size = touchTarget())
             Text(
                 stringResource(Res.string.selection_count, count),
                 style = CorvidTheme.type.name,
@@ -266,14 +264,7 @@ private fun SelectionBar(
             )
             if (!allSelected) PillButton(stringResource(Res.string.selection_all), null, onSelectAll, height = 30.dp)
             Spacer(Modifier.weight(1f))
-            ConversationActionRow(
-                actions,
-                menu,
-                onMove,
-                size = target,
-                shown = if (LocalWideLayout.current) Int.MAX_VALUE else NARROW_SHOWN,
-                onAction = onAction,
-            )
+            ConversationActionRow(actions, menu, onAct)
         }
         HorizontalDivider(color = colors.line)
     }
@@ -287,9 +278,8 @@ private fun Ledger(
     selected: Set<String>,
     noticeShown: Boolean,
     events: LedgerRowEvents,
-    onAction: (ConversationAction, ActionTarget) -> Unit,
     menu: MoveMenu,
-    onMove: (MoveFolder, ActionTarget) -> Unit,
+    onAct: (Act, ActionTarget) -> Unit,
     onLoadMore: () -> Unit,
 ) {
     val conversations = state.conversations
@@ -303,9 +293,8 @@ private fun Ledger(
     }
     val wide = LocalWideLayout.current
     val selecting = selected.isNotEmpty()
-    val onRowAction = remember(onAction) { { action: ConversationAction, row: Conversation -> onAction(action, listOf(row).target()) } }
-    val onRowMove = remember(onMove) { { folder: MoveFolder, row: Conversation -> onMove(folder, listOf(row).target()) } }
-    val bottom = if (noticeShown && !wide) NOTICE_CLEARANCE else WRITE_CLEARANCE
+    val onRowAct = remember(onAct) { { act: Act, row: Conversation -> onAct(act, listOf(row).target()) } }
+    val bottom = CorvidFloating.listClearance(noticeOverWrite = noticeShown && !wide)
     LazyColumn(state = listState, contentPadding = PaddingValues(bottom = bottom), modifier = Modifier.fillMaxSize()) {
         days.forEach { day ->
             stickyHeader(key = day.date.toString()) { DayHeader(day, wide) }
@@ -321,14 +310,13 @@ private fun Ledger(
                         selecting = selecting,
                         onToggle = events.toggle,
                         onOpen = events.open,
-                        onAction = onRowAction,
                         menu = menu,
-                        onMove = onRowMove,
+                        onAct = onRowAct,
                         onOpenSender = events.openSender,
                         modifier = Modifier.onFocusChanged { events.focus(id, it.hasFocus) },
                     )
                 }
-                if (wide) row() else SwipeRow(kind, enabled = !selecting, onSwipe = { onRowAction(it, conversation) }, content = row)
+                if (wide) row() else SwipeRow(kind, enabled = !selecting, onSwipe = { onRowAct(Act.Do(it), conversation) }, content = row)
             }
         }
     }

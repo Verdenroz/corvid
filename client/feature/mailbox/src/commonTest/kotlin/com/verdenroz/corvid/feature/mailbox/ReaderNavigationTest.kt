@@ -68,24 +68,34 @@ class ReaderNavigationTest {
     fun `archive and delete move on to the older conversation`() {
         val middle = Neighbours(newer = "a", older = "c", position = 2, total = 3)
 
-        assertEquals(ReaderExit.Open("c"), exitAfter(ConversationAction.Archive, middle))
-        assertEquals(ReaderExit.Open("c"), exitAfter(ConversationAction.Trash, middle))
-        assertEquals(ReaderExit.Open("c"), exitAfter(ConversationAction.Destroy, middle))
+        assertEquals(ReaderExit.Open("c"), exitAfter(Act.Do(ConversationAction.Archive), middle))
+        assertEquals(ReaderExit.Open("c"), exitAfter(Act.Do(ConversationAction.Trash), middle))
+        assertEquals(ReaderExit.Open("c"), exitAfter(Act.Do(ConversationAction.Destroy), middle))
+    }
+
+    @Test
+    fun `spam, not spam and a move to a folder move on to the older conversation too`() {
+        val middle = Neighbours(newer = "a", older = "c", position = 2, total = 3)
+
+        assertEquals(ReaderExit.Open("c"), exitAfter(Act.Do(ConversationAction.ReportSpam), middle))
+        assertEquals(ReaderExit.Open("c"), exitAfter(Act.Do(ConversationAction.NotSpam), middle))
+        assertEquals(ReaderExit.Open("c"), exitAfter(Act.Move(MoveFolder("receipts", "Receipts")), middle))
     }
 
     @Test
     fun `archive on the oldest conversation, or one opened from outside a list, goes back`() {
-        assertEquals(ReaderExit.Back, exitAfter(ConversationAction.Archive, Neighbours("a", null, 2, 2)))
-        assertEquals(ReaderExit.Back, exitAfter(ConversationAction.Trash, null))
+        assertEquals(ReaderExit.Back, exitAfter(Act.Do(ConversationAction.Archive), Neighbours("a", null, 2, 2)))
+        assertEquals(ReaderExit.Back, exitAfter(Act.Do(ConversationAction.Trash), null))
+        assertEquals(ReaderExit.Back, exitAfter(Act.Move(MoveFolder("receipts", "Receipts")), null))
     }
 
     @Test
     fun `mark unread goes back to the list and star stays put`() {
         val middle = Neighbours(newer = "a", older = "c", position = 2, total = 3)
 
-        assertEquals(ReaderExit.Back, exitAfter(ConversationAction.MarkUnread, middle))
-        assertEquals(ReaderExit.Stay, exitAfter(ConversationAction.Star, middle))
-        assertEquals(ReaderExit.Stay, exitAfter(ConversationAction.Unstar, middle))
+        assertEquals(ReaderExit.Back, exitAfter(Act.Do(ConversationAction.MarkUnread), middle))
+        assertEquals(ReaderExit.Stay, exitAfter(Act.Do(ConversationAction.Star), middle))
+        assertEquals(ReaderExit.Stay, exitAfter(Act.Do(ConversationAction.Unstar), middle))
     }
 
     @Test

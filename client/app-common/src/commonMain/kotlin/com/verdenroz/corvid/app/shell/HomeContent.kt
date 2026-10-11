@@ -21,6 +21,7 @@ import com.verdenroz.corvid.appcommon.resources.placeholder_labels
 import com.verdenroz.corvid.appcommon.resources.placeholder_people
 import com.verdenroz.corvid.appcommon.resources.placeholder_sources
 import com.verdenroz.corvid.appcommon.resources.write
+import com.verdenroz.corvid.core.designsystem.CorvidFloating
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
@@ -46,7 +47,12 @@ internal fun HomeContent(
         } else {
             LedgerScreen(ledgers.of(ledger), ledgers.actions, ledger, onOpenEmail, onOpenSender)
         }
-        if (!LocalWideLayout.current) WriteButton(onWrite, Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 22.dp))
+        if (!LocalWideLayout.current) {
+            WriteButton(
+                onWrite,
+                Modifier.align(Alignment.BottomEnd).padding(end = CorvidFloating.writeEnd, bottom = CorvidFloating.writeBottom),
+            )
+        }
     }
 }
 
@@ -78,7 +84,7 @@ private fun WriteButton(
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.height(40.dp).padding(start = 12.dp, end = 16.dp),
+            modifier = Modifier.height(CorvidFloating.writeHeight).padding(start = 12.dp, end = 16.dp),
         ) {
             Icon(CorvidIcons.Pencil, contentDescription = null, modifier = Modifier.size(18.dp))
             Text(stringResource(Res.string.write), style = CorvidTheme.type.action)

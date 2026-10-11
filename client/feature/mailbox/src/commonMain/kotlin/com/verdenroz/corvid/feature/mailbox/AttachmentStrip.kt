@@ -15,6 +15,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.verdenroz.corvid.core.data.Handoff
 import com.verdenroz.corvid.core.data.fileName
 import com.verdenroz.corvid.core.data.fileSize
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
@@ -27,6 +28,8 @@ import com.verdenroz.corvid.core.ui.DiscardQuestion
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.attachment_fetching
 import com.verdenroz.corvid.feature.mailbox.resources.attachment_keep_closed
+import com.verdenroz.corvid.feature.mailbox.resources.attachment_no_viewer
+import com.verdenroz.corvid.feature.mailbox.resources.attachment_not_saved
 import com.verdenroz.corvid.feature.mailbox.resources.attachment_open
 import com.verdenroz.corvid.feature.mailbox.resources.attachment_open_anyway
 import com.verdenroz.corvid.feature.mailbox.resources.attachment_open_question
@@ -72,7 +75,7 @@ internal fun AttachmentStrip(
                     name = file.name,
                     type = file.type,
                     detail = detail(file, state),
-                    detailColor = if (state is AttachmentState.Failed) colors.danger else colors.inkMuted,
+                    detailColor = if (state.failed) colors.danger else colors.inkMuted,
                     onClick = { if (suspect) asking = file else onOpen(file) },
                     onClickLabel = stringResource(Res.string.attachment_open),
                 )
@@ -88,7 +91,21 @@ private fun detail(
 ): String =
     when (state) {
         is AttachmentState.Fetching -> stringResource(Res.string.attachment_fetching)
-        is AttachmentState.Saved -> stringResource(Res.string.attachment_saved, state.location)
-        is AttachmentState.Failed -> state.message.asString()
-        is AttachmentState.Opened, null -> fileSize(file.size).asString()
+        is AttachmentState.Unfetched -> state.message.asString()
+        is AttachmentState.Done ->
+            when (val handoff = state.handoff) {
+                is Handoff.Saved -> stringResource(Res.string.attachment_saved, handoff.location)
+                is Handoff.NoViewer -> stringResource(Res.string.attachment_no_viewer)
+                is Handoff.Failed -> stringResource(Res.string.attachment_not_saved, handoff.reason)
+                is Handoff.Opened -> fileSize(file.size).asString()
+            }
+        null -> fileSize(file.size).asString()
     }
+
+private val AttachmentState?.failed: Boolean
+    get() =
+        when (this) {
+            is AttachmentState.Unfetched -> true
+            is AttachmentState.Done -> handoff is Handoff.NoViewer || handoff is Handoff.Failed
+            else -> false
+        }

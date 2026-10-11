@@ -16,12 +16,13 @@ import com.verdenroz.corvid.feature.mailbox.resources.action_trash
 import com.verdenroz.corvid.feature.mailbox.resources.action_unstar
 import org.jetbrains.compose.resources.StringResource
 
-enum class ConversationAction(val label: StringResource, val icon: ImageVector) {
-    Archive(Res.string.action_archive, CorvidIcons.Archive),
-    Trash(Res.string.action_trash, CorvidIcons.Trash),
-    Destroy(Res.string.action_destroy, CorvidIcons.Trash),
-    ReportSpam(Res.string.action_report_spam, CorvidIcons.Spam),
-    NotSpam(Res.string.action_not_spam, CorvidIcons.Inbox),
+/** [moves] files the conversation somewhere else, so Move to sits beside it. */
+enum class ConversationAction(val label: StringResource, val icon: ImageVector, val moves: Boolean = false) {
+    Archive(Res.string.action_archive, CorvidIcons.Archive, moves = true),
+    Trash(Res.string.action_trash, CorvidIcons.Trash, moves = true),
+    Destroy(Res.string.action_destroy, CorvidIcons.Trash, moves = true),
+    ReportSpam(Res.string.action_report_spam, CorvidIcons.Spam, moves = true),
+    NotSpam(Res.string.action_not_spam, CorvidIcons.Inbox, moves = true),
     MarkRead(Res.string.action_mark_read, CorvidIcons.MailOpen),
     MarkUnread(Res.string.action_mark_unread, CorvidIcons.Mail),
     Star(Res.string.action_star, CorvidIcons.Star),
@@ -30,7 +31,23 @@ enum class ConversationAction(val label: StringResource, val icon: ImageVector) 
 
 /** True for an action that takes the conversation out of the list it was taken from. */
 val ConversationAction.leavesList: Boolean
-    get() = this != ConversationAction.Star && this != ConversationAction.Unstar && this != ConversationAction.MarkRead
+    get() = moves || this == ConversationAction.MarkUnread
+
+/** What a conversation's controls ask for: one of its [ConversationAction]s, or a move to a folder picked from Move to. */
+sealed interface Act {
+    val moves: Boolean
+    val leavesList: Boolean
+
+    data class Do(val action: ConversationAction) : Act {
+        override val moves get() = action.moves
+        override val leavesList get() = action.leavesList
+    }
+
+    data class Move(val folder: MoveFolder) : Act {
+        override val moves get() = true
+        override val leavesList get() = true
+    }
+}
 
 /**
  * The messages an action reaches: moves take [all] of each thread, as a row stands for the whole
@@ -68,31 +85,34 @@ fun actionsFor(
     kind: ListKind,
     target: ActionTarget,
 ): List<ConversationAction> {
-    val moves =
-        when (kind) {
-            ListKind.Inbox -> listOf(ConversationAction.Archive, ConversationAction.Trash, ConversationAction.ReportSpam)
-            ListKind.Trash -> listOf(ConversationAction.Destroy)
-            ListKind.Junk -> listOf(ConversationAction.NotSpam, ConversationAction.Destroy)
-            ListKind.Other -> listOf(ConversationAction.Trash, ConversationAction.ReportSpam)
-        }
     val read = if (target.unread.isNotEmpty()) ConversationAction.MarkRead else ConversationAction.MarkUnread
     val star = if (target.starred) ConversationAction.Unstar else ConversationAction.Star
-    return moves + read + listOfNotNull(star.takeIf { kind == ListKind.Inbox || kind == ListKind.Other })
+    return movesFor(kind) + read + listOfNotNull(star.takeIf { kind == ListKind.Inbox || kind == ListKind.Other })
 }
 
-/** Whether [this] files the conversation somewhere else, so Move to sits beside it. */
-internal val ConversationAction.moves: Boolean
-    get() =
-        this in
-            setOf(
-                ConversationAction.Archive,
-                ConversationAction.Trash,
-                ConversationAction.Destroy,
-                ConversationAction.ReportSpam,
-                ConversationAction.NotSpam,
-            )
+/** The moves a [kind] list offers whatever is ticked, which the swipes draw from too. */
+internal fun movesFor(kind: ListKind): List<ConversationAction> =
+    when (kind) {
+        ListKind.Inbox -> listOf(ConversationAction.Archive, ConversationAction.Trash, ConversationAction.ReportSpam)
+        ListKind.Trash -> listOf(ConversationAction.Destroy)
+        ListKind.Junk -> listOf(ConversationAction.NotSpam, ConversationAction.Destroy)
+        ListKind.Other -> listOf(ConversationAction.Trash, ConversationAction.ReportSpam)
+    }
+
+/** Deleting for good, the one act that waits on a question before it runs. */
+internal val DESTROY: Act = Act.Do(ConversationAction.Destroy)
 
 fun MailActions.perform(
+    act: Act,
+    target: ActionTarget,
+) {
+    when (act) {
+        is Act.Do -> perform(act.action, target)
+        is Act.Move -> moveTo(target.all, target.conversations, act.folder)
+    }
+}
+
+private fun MailActions.perform(
     action: ConversationAction,
     target: ActionTarget,
 ) {
