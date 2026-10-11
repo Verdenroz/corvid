@@ -4,13 +4,10 @@
 # and something has to answer there. Pure decision helpers plus the Cloudflare orchestration,
 # kept separate so both can be unit tested against a fake Cloudflare without SSH.
 
-ASSETLINKS_PATH=/.well-known/assetlinks.json
+# shellcheck source=worker-lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/worker-lib.sh"
 
-# A Cloudflare Workers script name derived from DOMAIN: letters, digits and hyphens only.
-assetlinks_worker_name() {
-  local domain="$1"
-  echo "corvid-assetlinks-${domain//./-}"
-}
+ASSETLINKS_PATH=/.well-known/assetlinks.json
 
 # How the document reaches the internet, from what the mail domain's own name holds in DNS.
 # OWNED says what this script already binds (domain or route, else empty); RECORDS are
@@ -39,30 +36,13 @@ assetlinks_mode() {
   echo manual
 }
 
-# The Worker script: the document corvid-config rendered, served as application/json at its path
-# and nothing else, with no redirect.
-assetlinks_worker_script() {
-  local document="$1"
-  cat <<JS
-const DOCUMENT = \`$document\`;
-export default {
-  fetch(request) {
-    if (new URL(request.url).pathname !== "$ASSETLINKS_PATH") {
-      return new Response("not found", { status: 404 });
-    }
-    return new Response(DOCUMENT, { headers: { "content-type": "application/json" } });
-  },
-};
-JS
-}
-
 # Chooses the way, changing nothing at Cloudflare. Sets assetlinks_worker and assetlinks_choice.
 # Needs `cloudflare` and `die` in scope, and the account id from mta_sts_preflight.
 assetlinks_preflight() {
   local token="$1" domain="$2" domain_zone_id="$3" account_id="$4" server_ip="$5" web_port="$6"
   local owner route records owned=""
 
-  assetlinks_worker="$(assetlinks_worker_name "$domain")"
+  assetlinks_worker="$(worker_name corvid-assetlinks "$domain")"
   owner="$(cloudflare "$token" worker-owner "$account_id" "$domain")" ||
     die "could not check $domain: $owner"
   route="$(cloudflare "$token" worker-route "$domain_zone_id" "$domain$ASSETLINKS_PATH")" ||
@@ -83,7 +63,7 @@ assetlinks_publish() {
 
   step "publishing the Android app links"
   # shellcheck disable=SC2034  # read by cloudflare(), defined in install.sh
-  CLOUDFLARE_STDIN="$(assetlinks_worker_script "$document")"
+  CLOUDFLARE_STDIN="$(static_worker_script "$ASSETLINKS_PATH" application/json "$document")"
   case "$mode" in
     worker-domain)
       out="$(cloudflare "$token" deploy-worker "$account_id" "$domain_zone_id" "$worker_name" "$domain" 2>&1)" ||

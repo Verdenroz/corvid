@@ -12,7 +12,6 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.TextContent
-import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -96,6 +95,13 @@ interface AuthApi {
 private const val AUTH_PATH = "/corvid/auth"
 private val json = Json { ignoreUnknownKeys = true }
 
+private fun parseOrNull(body: String): JsonObject? =
+    try {
+        json.parseToJsonElement(body).jsonObject
+    } catch (e: IllegalArgumentException) {
+        null
+    }
+
 class HttpAuthApi(
     private val httpClient: HttpClient,
     private val clock: Clock = Clock.System,
@@ -150,13 +156,7 @@ class HttpAuthApi(
     }
 
     private fun parse(body: String): JsonObject =
-        try {
-            json.parseToJsonElement(body).jsonObject
-        } catch (e: SerializationException) {
-            throw JmapException(JmapError.Request("malformed", "the server's answer was not JSON"))
-        } catch (e: IllegalArgumentException) {
-            throw JmapException(JmapError.Request("malformed", "the server's answer was not an object"))
-        }
+        parseOrNull(body) ?: throw JmapException(JmapError.Request("malformed", "the server's answer was not a JSON object"))
 
     private suspend fun post(
         server: ServerAddress,
@@ -174,14 +174,7 @@ class HttpAuthApi(
         }
 
     private class Reply(val status: HttpStatusCode, val text: String, val retryAfter: Long?) {
-        fun error(): String? =
-            try {
-                json.parseToJsonElement(text).jsonObject["error"]?.jsonPrimitive?.contentOrNull
-            } catch (e: SerializationException) {
-                null
-            } catch (e: IllegalArgumentException) {
-                null
-            }
+        fun error(): String? = parseOrNull(text)?.get("error")?.jsonPrimitive?.contentOrNull
 
         /** The body of a 200, else the failure [known] names for the status, else the transport's own. */
         fun ok(vararg known: Pair<HttpStatusCode, AuthFailure>): String {

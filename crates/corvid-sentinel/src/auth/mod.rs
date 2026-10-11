@@ -21,7 +21,7 @@ use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::http::StatusCode;
 use axum::routing::any;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::dates;
 use crate::http::AppState;
@@ -31,8 +31,8 @@ use crate::state::NoticeKind;
 use limits::{Challenges, Failures};
 use state::save;
 
-pub use state::{Auth, Code, Credential, Family, Role, User, open};
-pub use token::{Audience, Claims, Invalid, Issuer};
+pub use state::{Auth, Code, Credential, Family, Role, open};
+pub use token::{Audience, Claims, Invalid, Issuer, MasterRefusal};
 pub use webauthn::{
     AssertionResponse, Policy, Refusal, Registration, RegistrationResponse, RelyingParty,
 };
@@ -69,6 +69,11 @@ struct AuthState {
 }
 
 type Shared = Arc<AuthState>;
+
+#[derive(Deserialize)]
+struct Which {
+    role: Role,
+}
 
 impl AuthState {
     fn username(&self, role: Role) -> &str {
@@ -153,4 +158,5 @@ pub(crate) fn off() -> Router {
     Router::new()
         .route("/corvid/auth/{*path}", any(off))
         .route("/internal/auth/{*path}", any(off))
+        .route("/internal/issuer/{*path}", any(off))
 }

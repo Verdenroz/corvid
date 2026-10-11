@@ -56,6 +56,13 @@ pub struct Claims {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Invalid(pub &'static str);
 
+/// Why a master token was refused: it proves nothing, or it is genuine but not the master's.
+#[derive(Debug, PartialEq, Eq)]
+pub enum MasterRefusal {
+    Invalid(Invalid),
+    NotMaster,
+}
+
 #[derive(Deserialize)]
 struct Header {
     alg: String,
@@ -85,6 +92,10 @@ impl Issuer {
             url,
             spent: Mutex::default(),
         }
+    }
+
+    pub fn kid(&self) -> &str {
+        &self.kid
     }
 
     pub fn discovery(&self) -> Value {
@@ -156,17 +167,26 @@ impl Issuer {
         }
         Ok(claims)
     }
-}
 
-impl Issuer {
-    /// The claims of a master token, which is good for one request: its id is spent here.
-    pub fn verify_master(&self, token: &str, now: i64) -> Result<Claims, Invalid> {
-        let claims = self.verify(token, Audience::Master, now)?;
+    /// Accepts a master token for `username`, which is good for one request: its id is spent here.
+    pub fn verify_master(
+        &self,
+        token: &str,
+        username: &str,
+        now: i64,
+    ) -> Result<(), MasterRefusal> {
+        let claims = self
+            .verify(token, Audience::Master, now)
+            .map_err(MasterRefusal::Invalid)?;
         let mut spent = self.spent.lock().unwrap_or_else(PoisonError::into_inner);
         spent.retain(|_, expires| *expires > now);
-        match spent.insert(claims.jti.clone(), claims.exp) {
-            Some(_) => Err(Invalid("already used")),
-            None => Ok(claims),
+        if spent.insert(claims.jti, claims.exp).is_some() {
+            return Err(MasterRefusal::Invalid(Invalid("already used")));
+        }
+        if claims.preferred_username == username {
+            Ok(())
+        } else {
+            Err(MasterRefusal::NotMaster)
         }
     }
 }

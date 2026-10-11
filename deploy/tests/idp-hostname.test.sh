@@ -54,7 +54,7 @@ check "apply-plan.sh exits 0" '[[ $status -eq 0 ]]'
 issuer="$(grep -o '"issuerUrl":"[^"]*"' "$work/applied" | cut -d'"' -f4)"
 
 MAIL_HOSTNAME=n1.relay.example MAIL_DOMAIN=corvid.example WEB_PORT=4443 IDP_HOSTNAME=idp.corvid.example \
-  PUBLISH_MTA_STS=false PUBLISH_ASSETLINKS=false ISSUER_URL=http://127.0.0.1:11333/corvid/auth CORVID_DIR="$work" CORVID_IMAGE=localhost/corvid:latest \
+  PUBLISH_MTA_STS=false PUBLISH_ASSETLINKS=false ISSUER_URL=http://127.0.0.1:11333/internal/issuer CORVID_DIR="$work" CORVID_IMAGE=localhost/corvid:latest \
   render_units "$work/units" "$here"
 # shellcheck disable=SC2034  # read inside the eval'd checks
 app_url="$(awk -F= '$1=="APP_URL"{print $2}' "$work/server.env")"

@@ -57,12 +57,13 @@ internal class Fido2SecurityKey private constructor(
 
     override fun make(
         creation: Creation,
+        clientDataHash: ByteArray,
         pin: String?,
     ): Made {
         val cred = checkNotNull(lib.credNew()) { "libfido2 could not allocate a credential" }
         try {
             checked(lib.credSetType(cred, COSE_ES256))
-            checked(lib.credSetClientdataHash(cred, creation.clientDataHash, size(creation.clientDataHash)))
+            checked(lib.credSetClientdataHash(cred, clientDataHash, size(clientDataHash)))
             checked(lib.credSetRp(cred, creation.rpId, creation.rpName))
             checked(lib.credSetUser(cred, creation.userId, size(creation.userId), creation.userName, creation.displayName, null))
             checked(lib.credSetRk(cred, if (creation.discoverable) OPTION_TRUE else OPTION_FALSE))
@@ -80,12 +81,13 @@ internal class Fido2SecurityKey private constructor(
 
     override fun assert(
         request: Request,
+        clientDataHash: ByteArray,
         pin: String?,
     ): Asserted {
         val assertion = checkNotNull(lib.assertNew()) { "libfido2 could not allocate an assertion" }
         try {
             checked(lib.assertSetRp(assertion, request.rpId))
-            checked(lib.assertSetClientdataHash(assertion, request.clientDataHash, size(request.clientDataHash)))
+            checked(lib.assertSetClientdataHash(assertion, clientDataHash, size(clientDataHash)))
             request.allow.forEach { checked(lib.assertAllowCred(assertion, it, size(it))) }
             checked(lib.assertSetUv(assertion, OPTION_TRUE))
             checked(lib.devGetAssert(dev, assertion, pin))

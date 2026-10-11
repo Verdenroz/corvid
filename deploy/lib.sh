@@ -26,6 +26,13 @@ in_pod() {
   "$@"
 }
 
+# The status the sentinel's issuer answers on the pod's loopback for DOCUMENT, the discovery
+# document by default; empty when the sentinel is not running.
+issuer_status() {
+  (in_pod corvid-sentinel curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+    "$ISSUER_URL/${1:-.well-known/openid-configuration}") 2>/dev/null
+}
+
 # Calls a sentinel route that Caddy does not serve, from inside the pod. The route takes an HMAC
 # of MESSAGE under the webhook secret. Prints the status, then the body, and fails only when the
 # sentinel cannot be reached.
@@ -262,15 +269,15 @@ corvid_config() {
 }
 
 # Sets and exports MAIL_DOMAIN, MAIL_HOSTNAME, MAIL_USER, ACME_CONTACT, WEB_PORT, HOST_ZONE,
-# IDP_HOSTNAME, IDP_URL, SENTINEL_URL, ADMIN_USER, PUBLISH_MTA_STS, PUBLISH_TLSA, MTA_STS_MODE,
-# CLIENT_SOURCES and UPDATE_AUTO from config.yaml. Tests set CORVID_CONFIG_CMD to run it without
-# the container.
+# IDP_HOSTNAME, IDP_URL, SENTINEL_URL, ISSUER_URL, ADMIN_USER, PUBLISH_MTA_STS, PUBLISH_TLSA,
+# PUBLISH_ASSETLINKS, ASSETLINKS, MTA_STS_MODE, CLIENT_SOURCES and UPDATE_AUTO from config.yaml.
+# Tests set CORVID_CONFIG_CMD to run it without the container.
 load_server() {
   local out key value
   out="$(corvid_config shell)" || exit 78
   while IFS='=' read -r key value; do
     case "$key" in
-      MAIL_DOMAIN|MAIL_HOSTNAME|MAIL_USER|ACME_CONTACT|WEB_PORT|HOST_ZONE|IDP_HOSTNAME|IDP_URL|SENTINEL_URL|ISSUER_URL|ADMIN_USER|PUBLISH_MTA_STS|PUBLISH_TLSA|PUBLISH_ASSETLINKS|MTA_STS_MODE|CLIENT_SOURCES|UPDATE_AUTO)
+      MAIL_DOMAIN|MAIL_HOSTNAME|MAIL_USER|ACME_CONTACT|WEB_PORT|HOST_ZONE|IDP_HOSTNAME|IDP_URL|SENTINEL_URL|ISSUER_URL|ADMIN_USER|PUBLISH_MTA_STS|PUBLISH_TLSA|PUBLISH_ASSETLINKS|ASSETLINKS|MTA_STS_MODE|CLIENT_SOURCES|UPDATE_AUTO)
         printf -v "$key" '%s' "$value"
         export "${key?}"
         ;;
@@ -296,7 +303,7 @@ CORVID_IDP_HOSTNAME=$IDP_HOSTNAME
 CORVID_MTA_STS_SITE=$([[ "$PUBLISH_MTA_STS" == true ]] && echo "mta-sts.$MAIL_DOMAIN:443")
 CORVID_ASSETLINKS_SITE=$([[ "$PUBLISH_ASSETLINKS" == true && "$MAIL_HOSTNAME" != "$MAIL_DOMAIN" ]] && echo "$MAIL_DOMAIN:443")
 CORVID_ASSETLINKS_HOST=$([[ "$PUBLISH_ASSETLINKS" == true ]] && echo "$MAIL_DOMAIN")
-CORVID_ASSETLINKS=$([[ "$PUBLISH_ASSETLINKS" == true ]] && corvid_config assetlinks | tr -d '\n')
+CORVID_ASSETLINKS=$([[ "$PUBLISH_ASSETLINKS" == true ]] && echo "$ASSETLINKS")
 APP_URL=https://$IDP_HOSTNAME:$WEB_PORT
 CORVID_ISSUER_URL=$ISSUER_URL
 EOF

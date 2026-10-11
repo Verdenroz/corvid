@@ -46,13 +46,10 @@ async fn enroll(soft: &mut Soft, url: &str, code: &str) -> (u16, Value) {
     if status != 200 {
         return (status, options);
     }
-    let created = soft.create(&decode(options["challenge"].as_str().expect("a challenge")));
+    let challenge = decode(options["challenge"].as_str().expect("a challenge"));
     post(
         &format!("{url}/register/finish"),
-        json!({"id": encode(&soft.credential_id), "response": {
-            "clientDataJSON": encode(&created.client_data_json),
-            "attestationObject": encode(&created.attestation_object),
-        }}),
+        soft.registration_json(&challenge),
     )
     .await
 }
@@ -62,14 +59,10 @@ async fn login(soft: &mut Soft, url: &str, role: &str) -> (u16, Value) {
     if status != 200 {
         return (status, options);
     }
-    let asserted = soft.get(&decode(options["challenge"].as_str().expect("a challenge")));
+    let challenge = decode(options["challenge"].as_str().expect("a challenge"));
     post(
         &format!("{url}/login/finish"),
-        json!({"id": encode(&soft.credential_id), "response": {
-            "clientDataJSON": encode(&asserted.client_data_json),
-            "authenticatorData": encode(&asserted.authenticator_data),
-            "signature": encode(&asserted.signature),
-        }}),
+        soft.assertion_json(&challenge),
     )
     .await
 }

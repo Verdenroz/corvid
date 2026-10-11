@@ -1,14 +1,15 @@
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use corvid_sentinel::auth::soft::signing_key;
-use corvid_sentinel::auth::{Audience, Invalid, Issuer};
+use corvid_sentinel::auth::{Audience, Invalid, Issuer, MasterRefusal};
 use p256::ecdsa::signature::Verifier;
 use p256::ecdsa::{Signature, VerifyingKey};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-const URL: &str = "http://127.0.0.1:11333/corvid/auth";
+const URL: &str = "http://127.0.0.1:11333/internal/issuer";
 const NOW: i64 = 1_800_000_000;
+const MASTER: &str = "mailuser-admin";
 
 fn issuer() -> Issuer {
     Issuer::new(signing_key(), URL.to_owned())
@@ -82,7 +83,7 @@ fn a_daily_token_carries_the_claims_stalwart_reads() {
 
 #[test]
 fn a_master_token_is_for_the_admin_audience_and_lasts_five_minutes() {
-    let claims = claims_of(&issuer().mint(Audience::Master, "handle", "mailuser-admin", NOW));
+    let claims = claims_of(&issuer().mint(Audience::Master, "handle", MASTER, NOW));
 
     assert_eq!(claims["aud"], "corvid-admin");
     assert_eq!(claims["exp"], NOW + 5 * 60);
@@ -93,8 +94,8 @@ fn a_master_token_is_for_the_admin_audience_and_lasts_five_minutes() {
 fn every_token_has_its_own_id() {
     let issuer = issuer();
 
-    let first = claims_of(&issuer.mint(Audience::Master, "handle", "mailuser-admin", NOW));
-    let second = claims_of(&issuer.mint(Audience::Master, "handle", "mailuser-admin", NOW));
+    let first = claims_of(&issuer.mint(Audience::Master, "handle", MASTER, NOW));
+    let second = claims_of(&issuer.mint(Audience::Master, "handle", MASTER, NOW));
 
     assert_ne!(first["jti"], second["jti"]);
 }
@@ -130,7 +131,7 @@ fn a_token_it_minted_verifies_for_its_audience() {
 #[test]
 fn a_master_token_is_refused_as_a_daily_one() {
     let issuer = issuer();
-    let token = issuer.mint(Audience::Master, "handle", "mailuser-admin", NOW);
+    let token = issuer.mint(Audience::Master, "handle", MASTER, NOW);
 
     assert_eq!(
         issuer.verify(&token, Audience::Daily, NOW).err(),
@@ -141,7 +142,7 @@ fn a_master_token_is_refused_as_a_daily_one() {
 #[test]
 fn an_expired_token_is_refused() {
     let issuer = issuer();
-    let token = issuer.mint(Audience::Master, "handle", "mailuser-admin", NOW);
+    let token = issuer.mint(Audience::Master, "handle", MASTER, NOW);
 
     assert_eq!(
         issuer.verify(&token, Audience::Master, NOW + 5 * 60).err(),
@@ -195,28 +196,39 @@ fn a_token_with_an_hmac_header_is_refused() {
 #[test]
 fn a_master_token_verifies_once_and_is_then_spent() {
     let issuer = issuer();
-    let token = issuer.mint(Audience::Master, "handle", "mailuser-admin", NOW);
+    let token = issuer.mint(Audience::Master, "handle", MASTER, NOW);
 
-    assert!(issuer.verify_master(&token, NOW).is_ok());
+    assert!(issuer.verify_master(&token, MASTER, NOW).is_ok());
 
     assert_eq!(
-        issuer.verify_master(&token, NOW).err(),
-        Some(Invalid("already used"))
+        issuer.verify_master(&token, MASTER, NOW).err(),
+        Some(MasterRefusal::Invalid(Invalid("already used")))
     );
 }
 
 #[test]
 fn a_spent_id_is_forgotten_once_its_token_has_expired() {
     let issuer = issuer();
-    let spent = issuer.mint(Audience::Master, "handle", "mailuser-admin", NOW);
-    issuer.verify_master(&spent, NOW).unwrap();
+    let spent = issuer.mint(Audience::Master, "handle", MASTER, NOW);
+    issuer.verify_master(&spent, MASTER, NOW).unwrap();
     let later = NOW + 10 * 60;
 
-    let fresh = issuer.mint(Audience::Master, "handle", "mailuser-admin", later);
+    let fresh = issuer.mint(Audience::Master, "handle", MASTER, later);
 
-    assert!(issuer.verify_master(&fresh, later).is_ok());
+    assert!(issuer.verify_master(&fresh, MASTER, later).is_ok());
     assert_eq!(
-        issuer.verify_master(&spent, later).err(),
-        Some(Invalid("expired"))
+        issuer.verify_master(&spent, MASTER, later).err(),
+        Some(MasterRefusal::Invalid(Invalid("expired")))
+    );
+}
+
+#[test]
+fn a_master_token_for_another_user_is_genuine_but_not_the_masters() {
+    let issuer = issuer();
+    let token = issuer.mint(Audience::Master, "handle", "someone-else", NOW);
+
+    assert_eq!(
+        issuer.verify_master(&token, MASTER, NOW).err(),
+        Some(MasterRefusal::NotMaster)
     );
 }

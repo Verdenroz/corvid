@@ -126,7 +126,7 @@ class Fido2LiveTest {
         http: HttpClient,
         base: String,
     ): Boolean =
-        runCatching { http.send(get("$base/corvid/auth/jwks"), HttpResponse.BodyHandlers.ofString()).statusCode() == 200 }
+        runCatching { http.send(get("$base/internal/issuer/jwks"), HttpResponse.BodyHandlers.ofString()).statusCode() == 200 }
             .getOrDefault(false)
 
     private fun get(url: String): HttpRequest = HttpRequest.newBuilder(URI(url)).GET().build()
@@ -151,7 +151,7 @@ class Fido2LiveTest {
     ): Int =
         http
             .send(
-                HttpRequest.newBuilder(URI("$base/corvid/auth/userinfo")).header("Authorization", "Bearer $token").GET().build(),
+                HttpRequest.newBuilder(URI("$base/internal/issuer/userinfo")).header("Authorization", "Bearer $token").GET().build(),
                 HttpResponse.BodyHandlers.discarding(),
             ).statusCode()
 
@@ -162,7 +162,7 @@ class Fido2LiveTest {
     ): Boolean {
         val (header, payload, signature) = jwt.split('.')
         val kid = Json.parseToJsonElement(String(decodeBase64Url(header))).jsonObject.getValue("kid").jsonPrimitive.content
-        val jwks = Json.parseToJsonElement(http.send(get("$base/corvid/auth/jwks"), HttpResponse.BodyHandlers.ofString()).body())
+        val jwks = Json.parseToJsonElement(http.send(get("$base/internal/issuer/jwks"), HttpResponse.BodyHandlers.ofString()).body())
         val jwk =
             (
                 jwks.jsonObject.getValue(

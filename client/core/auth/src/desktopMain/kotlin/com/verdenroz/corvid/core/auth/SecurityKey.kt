@@ -12,7 +12,6 @@ internal enum class Verification {
 }
 
 internal class Creation(
-    val clientDataHash: ByteArray,
     val rpId: String,
     val rpName: String,
     val userId: ByteArray,
@@ -23,7 +22,6 @@ internal class Creation(
 )
 
 internal class Request(
-    val clientDataHash: ByteArray,
     val rpId: String,
     val allow: List<ByteArray>,
 )
@@ -61,11 +59,13 @@ internal interface SecurityKey : AutoCloseable {
 
     fun make(
         creation: Creation,
+        clientDataHash: ByteArray,
         pin: String?,
     ): Made
 
     fun assert(
         request: Request,
+        clientDataHash: ByteArray,
         pin: String?,
     ): Asserted
 

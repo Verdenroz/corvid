@@ -37,9 +37,9 @@ class CtapTest {
     }
 
     @Test
-    fun `the origin is the dialled address with its port written out`() {
+    fun `the origin is the dialled address as it was written`() {
         assertEquals("https://mail.rig.test:4443", originOf(ServerAddress("https://mail.rig.test:4443")))
-        assertEquals("https://mail.rig.test:443", originOf(ServerAddress("https://mail.rig.test")))
+        assertEquals("https://mail.rig.test", originOf(ServerAddress("https://mail.rig.test")))
         assertEquals("https://mail.rig.test:4443", originOf(ServerAddress("https://mail.rig.test:4443/")))
     }
 
@@ -77,9 +77,9 @@ class CtapTest {
 
     @Test
     fun `creation options are read as the sentinel writes them`() {
-        val options = creationOptions(CREATION)
+        val (challenge, options) = creationOptions(CREATION)
 
-        assertEquals("Y2hhbGxlbmdl", options.challenge)
+        assertEquals("Y2hhbGxlbmdl", challenge)
         assertEquals("rig.test", options.rpId)
         assertEquals("Corvid", options.rpName)
         assertContentEquals("handle".toByteArray(), options.userId)
@@ -91,7 +91,7 @@ class CtapTest {
 
     @Test
     fun `a required resident key is asked for`() {
-        assertEquals(true, creationOptions(CREATION.replace("preferred", "required")).discoverable)
+        assertEquals(true, creationOptions(CREATION.replace("preferred", "required")).second.discoverable)
     }
 
     @Test
@@ -101,7 +101,7 @@ class CtapTest {
 
     @Test
     fun `request options carry every allowed credential`() {
-        val options = requestOptions(REQUEST)
+        val (_, options) = requestOptions(REQUEST)
 
         assertEquals("rig.test", options.rpId)
         assertEquals(listOf(listOf<Byte>(1, 2, 3), listOf<Byte>(4, 5, 6)), options.allow.map { it.toList() })

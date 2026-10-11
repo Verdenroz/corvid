@@ -59,7 +59,7 @@ account_of() { stalwart_id Account emailAddress "$1"; }
 export CORVID_DIR="$work"; . "$here/lib.sh"
 cat > "$work/shell" <<SH
 #!/bin/sh
-printf 'MAIL_DOMAIN=rig.test\nMAIL_HOSTNAME=mail.rig.test\nMAIL_USER=mailuser\nACME_CONTACT=ops@rig.test\nWEB_PORT=4443\nIDP_HOSTNAME=idp.rig.test\nADMIN_USER=mailuser-admin\nIDP_URL=http://127.0.0.1:1411\nSENTINEL_URL=http://127.0.0.1:$sentinel_port\nISSUER_URL=http://127.0.0.1:$sentinel_port/corvid/auth\n'
+printf 'MAIL_DOMAIN=rig.test\nMAIL_HOSTNAME=mail.rig.test\nMAIL_USER=mailuser\nACME_CONTACT=ops@rig.test\nWEB_PORT=4443\nIDP_HOSTNAME=idp.rig.test\nADMIN_USER=mailuser-admin\nIDP_URL=http://127.0.0.1:1411\nSENTINEL_URL=http://127.0.0.1:$sentinel_port\nISSUER_URL=http://127.0.0.1:$sentinel_port/internal/issuer\n'
 SH
 chmod +x "$work/shell"
 printf 'STALWART_URL=http://127.0.0.1:8080\nRECOVERY_ADMIN_USER=recovery\nRECOVERY_ADMIN_PASSWORD=%s\n' \
@@ -110,7 +110,7 @@ start_sentinel() {
   CORVID_CONFIG="$work/sentinel.yaml" CORVID_SENTINEL_SECRET="$sentinel_secret" CORVID_STALWART_TOKEN="$STALWART_TOKEN" \
     "$sentinel_bin" >> "$work/sentinel.log" 2>&1 &
   sentinel_pid=$!
-  wait_for "http://127.0.0.1:$sentinel_port/corvid/auth/.well-known/openid-configuration" \
+  wait_for "http://127.0.0.1:$sentinel_port/internal/issuer/.well-known/openid-configuration" \
     || { cat "$work/sentinel.log" >&2; echo "the sentinel never came up" >&2; exit 1; }
 }
 stop_sentinel() { kill "$sentinel_pid"; wait "$sentinel_pid" 2>/dev/null; sentinel_pid=; }
@@ -178,10 +178,10 @@ for line in filter(str.strip, sys.stdin):
   done
 }
 check "the decoy directory is applied" "$(directory_urls)" "http://localhost:1"
-ISSUER_URL="http://127.0.0.1:$sentinel_port/corvid/auth" MAIL_DOMAIN=rig.test \
+ISSUER_URL="http://127.0.0.1:$sentinel_port/internal/issuer" MAIL_DOMAIN=rig.test \
   envsubst '${MAIL_DOMAIN} ${ISSUER_URL}' < "$here/auth.plan.ndjson" |
   stalwart-cli apply --stdin >/dev/null
-check "the plan leaves the sentinel as the only directory" "$(directory_urls)" "http://127.0.0.1:$sentinel_port/corvid/auth"
+check "the plan leaves the sentinel as the only directory" "$(directory_urls)" "http://127.0.0.1:$sentinel_port/internal/issuer"
 "$engine" restart "$mail" >/dev/null
 wait_for "$STALWART_URL/healthz/live" || { echo "Stalwart never restarted" >&2; exit 1; }
 
@@ -248,7 +248,7 @@ echo "== the bounded wait before Stalwart starts (the script the unit runs, not 
 mkdir -p "$work/bin"
 printf '#!/bin/sh\necho masked\n' > "$work/bin/systemctl"
 chmod +x "$work/bin/systemctl"
-printf 'APP_URL=http://localhost:1\nCORVID_ISSUER_URL=http://127.0.0.1:%s/corvid/auth\n' "$sentinel_port" > "$work/server.env"
+printf 'APP_URL=http://localhost:1\nCORVID_ISSUER_URL=http://127.0.0.1:%s/internal/issuer\n' "$sentinel_port" > "$work/server.env"
 # corvid-idp masked, as when Pocket-ID is gone, so only the sentinel is waited for.
 wait_issuer() { PATH="$work/bin:$PATH" CORVID_HOST_NET=1 CORVID_DIR="$work" bash "$here/wait-issuer.sh" "$@" 2>/dev/null; }
 stop_sentinel
@@ -260,7 +260,7 @@ check "it gives up at its bound with the sentinel down" "$status $((SECONDS >= 4
 sentinel_pid=$!
 wait_issuer 60; status=$?
 check "it returns once the sentinel answers within the bound" "$status" 0
-wait_for "http://127.0.0.1:$sentinel_port/corvid/auth/.well-known/openid-configuration"
+wait_for "http://127.0.0.1:$sentinel_port/internal/issuer/.well-known/openid-configuration"
 
 [[ $fail -eq 0 ]] || { [[ ! -s "$work/sentinel.log" ]] || tail -8 "$work/sentinel.log"; "$engine" logs "$mail" 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E 'auth\.|http\.' | tail -10; }
 exit "$fail"

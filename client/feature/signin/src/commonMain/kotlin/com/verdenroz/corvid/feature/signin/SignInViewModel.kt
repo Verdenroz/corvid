@@ -2,16 +2,13 @@ package com.verdenroz.corvid.feature.signin
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.verdenroz.corvid.core.auth.AuthFailure
-import com.verdenroz.corvid.core.auth.PasskeyException
 import com.verdenroz.corvid.core.auth.PasskeyRole
-import com.verdenroz.corvid.core.data.userMessage
+import com.verdenroz.corvid.core.data.catchingSignIn
 import com.verdenroz.corvid.core.domain.DiscoverAccount
 import com.verdenroz.corvid.core.domain.Discovery
 import com.verdenroz.corvid.core.domain.DiscoveryFailure
 import com.verdenroz.corvid.core.domain.EnrollPasskey
 import com.verdenroz.corvid.core.domain.SignIn
-import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.model.ServerAddress
 import com.verdenroz.corvid.core.prefs.DevicePreferences
 import com.verdenroz.corvid.core.prefs.RememberedAccount
@@ -117,7 +114,7 @@ class SignInViewModel(
             _state.value = SignInUiState.SigningIn(discovery)
             val server = ServerAddress(account.server)
             _state.value =
-                try {
+                catchingSignIn(SignInUiState::Failed) {
                     val enrolled = if (code.isBlank()) null else enrollPasskey(server, code.trim())
                     if (enrolled == PasskeyRole.Master) {
                         SignInUiState.MasterEnrolled
@@ -126,12 +123,6 @@ class SignInViewModel(
                         preferences.rememberAccount(account)
                         SignInUiState.Idle
                     }
-                } catch (e: PasskeyException) {
-                    SignInUiState.Failed(e.userMessage())
-                } catch (e: AuthFailure) {
-                    SignInUiState.Failed(e.userMessage())
-                } catch (e: JmapException) {
-                    SignInUiState.Failed(e.userMessage())
                 }
         }
     }

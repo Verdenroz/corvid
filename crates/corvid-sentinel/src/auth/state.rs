@@ -48,11 +48,6 @@ impl Role {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct User {
-    pub role: Role,
-}
-
 /// A registered passkey. `public_key` is the uncompressed SEC1 point, base64url.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Credential {
@@ -60,7 +55,6 @@ pub struct Credential {
     pub public_key: String,
     pub sign_count: u32,
     pub backup_eligible: bool,
-    pub aaguid: String,
     pub created_at: i64,
 }
 
@@ -76,7 +70,6 @@ pub struct Code {
 /// after `rotated_at` so a lost response can be retried. Any other member revokes the family.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Family {
-    pub user: String,
     pub credential: String,
     pub current: String,
     pub previous: Option<String>,
@@ -88,7 +81,7 @@ pub struct Family {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Auth {
     /// By handle, the opaque id a credential is registered under.
-    pub users: BTreeMap<String, User>,
+    pub users: BTreeMap<String, Role>,
     /// By credential id, base64url.
     pub credentials: BTreeMap<String, Credential>,
     pub codes: BTreeMap<Role, Code>,
@@ -96,18 +89,15 @@ pub struct Auth {
     pub families: BTreeMap<String, Family>,
 }
 
-corvid_store::pin_shape!(User { role });
 corvid_store::pin_shape!(Credential {
     user,
     public_key,
     sign_count,
     backup_eligible,
-    aaguid,
     created_at
 });
 corvid_store::pin_shape!(Code { hash, expires_at });
 corvid_store::pin_shape!(Family {
-    user,
     credential,
     current,
     previous,
@@ -146,12 +136,12 @@ impl Auth {
     pub fn handle_of(&self, role: Role) -> Option<&String> {
         self.users
             .iter()
-            .find(|(_, user)| user.role == role)
+            .find(|(_, user)| **user == role)
             .map(|(handle, _)| handle)
     }
 
     pub fn role_of(&self, credential: &Credential) -> Role {
-        self.users[&credential.user].role
+        self.users[&credential.user]
     }
 
     pub fn credential_ids(&self, role: Role) -> Vec<&String> {
@@ -162,11 +152,17 @@ impl Auth {
             .collect()
     }
 
-    pub fn code_role(&self, hash: &str, now: i64) -> Option<Role> {
+    pub fn live_codes(&self, now: i64) -> impl Iterator<Item = (Role, &Code)> {
         self.codes
             .iter()
-            .find(|(_, code)| code.hash == hash && code.expires_at > now)
-            .map(|(role, _)| *role)
+            .filter(move |(_, code)| code.expires_at > now)
+            .map(|(role, code)| (*role, code))
+    }
+
+    pub fn code_role(&self, hash: &str, now: i64) -> Option<Role> {
+        self.live_codes(now)
+            .find(|(_, code)| code.hash == hash)
+            .map(|(role, _)| role)
     }
 }
 

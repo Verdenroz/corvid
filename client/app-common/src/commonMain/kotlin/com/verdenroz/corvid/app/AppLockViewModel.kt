@@ -12,11 +12,9 @@ import com.verdenroz.corvid.appcommon.resources.unreachable_key_unreachable
 import com.verdenroz.corvid.appcommon.resources.unreachable_request_failed
 import com.verdenroz.corvid.appcommon.resources.unreachable_server
 import com.verdenroz.corvid.appcommon.resources.unreachable_session
-import com.verdenroz.corvid.core.auth.AuthFailure
 import com.verdenroz.corvid.core.auth.AuthState
-import com.verdenroz.corvid.core.auth.PasskeyException
 import com.verdenroz.corvid.core.auth.TokenSource
-import com.verdenroz.corvid.core.data.userMessage
+import com.verdenroz.corvid.core.data.catchingSignIn
 import com.verdenroz.corvid.core.domain.MasterSignIn
 import com.verdenroz.corvid.core.jmap.AuthLatch
 import com.verdenroz.corvid.core.jmap.Invocation
@@ -232,7 +230,7 @@ class AppLockViewModel(
         _state.value = waiting.copy(request = open.copy(selfApproval = SelfApproval.Approving))
         viewModelScope.launch {
             val ended =
-                try {
+                catchingSignIn({ open.failed(it) }) {
                     masterSignIn.withAdminToken { token ->
                         when (repository.approve(open.request.id, open.request.code, token)) {
                             ApproveOutcome.Approved -> null
@@ -242,12 +240,6 @@ class AppLockViewModel(
                             ApproveOutcome.UpstreamFailed -> open.failed(uiText(Res.string.enroll_self_failed_upstream))
                         }
                     }
-                } catch (e: PasskeyException) {
-                    open.failed(e.userMessage())
-                } catch (e: AuthFailure) {
-                    open.failed(e.userMessage())
-                } catch (e: JmapException) {
-                    open.failed(e.userMessage())
                 } ?: return@launch
             val (current, still) = openEnrollment() ?: return@launch
             if (still.request == open.request) _state.value = current.copy(request = ended)

@@ -344,12 +344,16 @@ impl Server {
     }
 
     /// The origins a passkey ceremony may come from: each Android app, and the web tier for the
-    /// desktop client.
+    /// desktop client, serialized as a browser would, with no port when it is 443.
     pub fn webauthn_origins(&self) -> Vec<String> {
+        let web = match self.web_port.0 {
+            443 => format!("https://{}", self.hostname.0),
+            _ => self.web_url(),
+        };
         self.android_apps
             .iter()
             .map(AndroidApp::origin)
-            .chain([self.web_url()])
+            .chain([web])
             .collect()
     }
 
@@ -530,7 +534,7 @@ pub struct Sentinel {
 
 /// The issuer identifier Stalwart is configured with: the sentinel on loopback, never routed.
 pub fn issuer_url(bind: &str) -> String {
-    format!("http://{bind}/corvid/auth")
+    format!("http://{bind}/internal/issuer")
 }
 
 /// Where the sentinel keeps passkeys, codes and refresh tokens; its signing key sits beside it.
@@ -658,7 +662,7 @@ impl Config {
         Ok(format!(
             "MAIL_DOMAIN={}\nMAIL_HOSTNAME={}\nMAIL_USER={}\nACME_CONTACT={}\nWEB_PORT={}\nHOST_ZONE={}\n\
              IDP_HOSTNAME={}\nADMIN_USER={}\nIDP_URL={}\nSENTINEL_URL=http://{}\nISSUER_URL={}\nPUBLISH_MTA_STS={}\n\
-             PUBLISH_TLSA={}\nPUBLISH_ASSETLINKS={}\nMTA_STS_MODE={}\nMTA_STS_ID={}\nCLIENT_SOURCES={}\nUPDATE_AUTO={}\n",
+             PUBLISH_TLSA={}\nPUBLISH_ASSETLINKS={}\nASSETLINKS={}\nMTA_STS_MODE={}\nMTA_STS_ID={}\nCLIENT_SOURCES={}\nUPDATE_AUTO={}\n",
             server.domain.0,
             server.hostname.0,
             server.mail_user.0,
@@ -673,6 +677,7 @@ impl Config {
             server.web_port.0 == 443,
             server.host_zone.is_none(),
             server.assetlinks_caddy,
+            server.assetlinks().trim_end(),
             server.mta_sts_mode.as_str(),
             server.mta_sts_id(),
             server.client_access.sources(),
@@ -857,6 +862,7 @@ mod server_tests {
     fn the_server_section_becomes_shell_assignments() {
         let config = Config::parse(SERVER).unwrap();
         let id = config.server.as_ref().unwrap().mta_sts_id();
+        let links = config.server.as_ref().unwrap().assetlinks();
 
         assert_eq!(
             config.shell().unwrap(),
@@ -865,7 +871,8 @@ mod server_tests {
                  ACME_CONTACT=you@elsewhere.example\nWEB_PORT=4443\nHOST_ZONE=\n\
                  IDP_HOSTNAME=idp.example.com\nADMIN_USER=alice-admin\n\
                  IDP_URL=http://127.0.0.1:1411\nSENTINEL_URL=http://127.0.0.1:11333\n\
-                 ISSUER_URL=http://127.0.0.1:11333/corvid/auth\nPUBLISH_MTA_STS=false\nPUBLISH_TLSA=true\nPUBLISH_ASSETLINKS=false\nMTA_STS_MODE=testing\nMTA_STS_ID={id}\nCLIENT_SOURCES=any\nUPDATE_AUTO=true\n"
+                 ISSUER_URL=http://127.0.0.1:11333/internal/issuer\nPUBLISH_MTA_STS=false\nPUBLISH_TLSA=true\nPUBLISH_ASSETLINKS=false\nASSETLINKS={}\nMTA_STS_MODE=testing\nMTA_STS_ID={id}\nCLIENT_SOURCES=any\nUPDATE_AUTO=true\n",
+                links.trim_end()
             )
         );
     }
@@ -934,6 +941,17 @@ mod server_tests {
     }
 
     #[test]
+    fn the_web_tier_origin_on_443_names_no_port() {
+        let text = SERVER.to_owned() + "  web_port: 443\n";
+        let server = Config::parse(&text).unwrap().server.unwrap();
+
+        assert_eq!(
+            server.webauthn_origins().last().unwrap(),
+            "https://mail.example.com"
+        );
+    }
+
+    #[test]
     fn assetlinks_grants_get_login_creds_to_each_app() {
         let digits = "ab".repeat(32);
         let text = format!(
@@ -966,7 +984,7 @@ mod server_tests {
         assert!(
             shell
                 .lines()
-                .any(|l| l == "ISSUER_URL=http://127.0.0.1:2000/corvid/auth")
+                .any(|l| l == "ISSUER_URL=http://127.0.0.1:2000/internal/issuer")
         );
     }
 

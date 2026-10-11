@@ -7,7 +7,7 @@ use ring::signature::{self, RsaPublicKeyComponents};
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::auth::{Invalid, Issuer};
+use crate::auth::{Invalid, Issuer, MasterRefusal};
 
 const CLIENT_ID: &str = "corvid-admin";
 const MAX_AGE_SECONDS: i64 = 300;
@@ -101,7 +101,11 @@ impl Master {
             .split_once('.')
             .ok_or(Refusal::Invalid("not a JWT"))?;
         let header: Header = decode(header)?;
-        if let (Some(local), "ES256") = (&self.local, header.alg.as_str()) {
+        if let Some(local) = self
+            .local
+            .as_deref()
+            .filter(|local| header.kid.as_deref() == Some(local.kid()))
+        {
             return self.verify_local(local, token, now);
         }
         if header.alg != "RS256" || header.typ.as_deref() != Some("at+jwt") {
@@ -136,14 +140,12 @@ impl Master {
 
     /// A token this sentinel issued after a fresh passkey assertion, good for one request.
     fn verify_local(&self, local: &Issuer, token: &str, now: i64) -> Result<(), Refusal> {
-        let claims = local
-            .verify_master(token, now)
-            .map_err(|Invalid(reason)| Refusal::Invalid(reason))?;
-        if claims.preferred_username == self.admin_user {
-            Ok(())
-        } else {
-            Err(Refusal::NotMaster)
-        }
+        local
+            .verify_master(token, &self.admin_user, now)
+            .map_err(|refusal| match refusal {
+                MasterRefusal::Invalid(Invalid(reason)) => Refusal::Invalid(reason),
+                MasterRefusal::NotMaster => Refusal::NotMaster,
+            })
     }
 
     /// The signing key for `kid`. The key set is fetched again when it is an hour old or lacks

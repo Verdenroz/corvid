@@ -5,11 +5,11 @@ import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.core.auth.AuthFailure
 import com.verdenroz.corvid.core.auth.CodeOutcome
 import com.verdenroz.corvid.core.auth.Passkey
-import com.verdenroz.corvid.core.auth.PasskeyException
 import com.verdenroz.corvid.core.auth.PasskeyListing
 import com.verdenroz.corvid.core.auth.PasskeyRepository
 import com.verdenroz.corvid.core.auth.PasskeyRole
 import com.verdenroz.corvid.core.auth.RemoveOutcome
+import com.verdenroz.corvid.core.data.catchingSignIn
 import com.verdenroz.corvid.core.data.userMessage
 import com.verdenroz.corvid.core.domain.EnrollPasskey
 import com.verdenroz.corvid.core.domain.MasterSignIn
@@ -93,27 +93,26 @@ class PasskeysViewModel(
     }
 
     /** Makes a code for [role] to type on another device. */
-    fun makeCode(role: PasskeyRole) =
-        withMaster { token ->
-            when (val outcome = repository.mintCode(role, token)) {
-                is CodeOutcome.Minted -> PasskeyStep.Code(role, outcome.code)
-                CodeOutcome.NotAccepted -> PasskeyStep.Failed(uiText(Res.string.passkeys_failed_not_accepted))
-                CodeOutcome.NotServed -> PasskeyStep.Failed(AuthFailure.Off.userMessage())
-            }
-        }
+    fun makeCode(role: PasskeyRole) = withMaster { token -> withCode(role, token) { code -> PasskeyStep.Code(role, code) } }
 
     /** Makes a passkey of [role] on this device, through a code the master makes for it. */
     fun addHere(role: PasskeyRole) =
         withMaster { token ->
-            when (val outcome = repository.mintCode(role, token)) {
-                is CodeOutcome.Minted -> {
-                    _state.value = _state.value.copy(step = PasskeyStep.Working)
-                    enrollPasskey(server, outcome.code)
-                    PasskeyStep.Added(role)
-                }
-                CodeOutcome.NotAccepted -> PasskeyStep.Failed(uiText(Res.string.passkeys_failed_not_accepted))
-                CodeOutcome.NotServed -> PasskeyStep.Failed(AuthFailure.Off.userMessage())
+            withCode(role, token) { code ->
+                enrollPasskey(server, code)
+                PasskeyStep.Added(role)
             }
+        }
+
+    private suspend fun withCode(
+        role: PasskeyRole,
+        token: String,
+        minted: suspend (String) -> PasskeyStep,
+    ): PasskeyStep =
+        when (val outcome = repository.mintCode(role, token)) {
+            is CodeOutcome.Minted -> minted(outcome.code)
+            CodeOutcome.NotAccepted -> PasskeyStep.Failed(uiText(Res.string.passkeys_failed_not_accepted))
+            CodeOutcome.NotServed -> PasskeyStep.Failed(AuthFailure.Off.userMessage())
         }
 
     fun askRemove(id: String) {
@@ -140,20 +139,14 @@ class PasskeysViewModel(
         _state.value = _state.value.copy(step = PasskeyStep.SigningIn)
         viewModelScope.launch {
             val step =
-                try {
+                catchingSignIn(PasskeyStep::Failed) {
                     masterSignIn.withAdminToken { token ->
                         _state.value = _state.value.copy(step = PasskeyStep.Working)
                         act(token)
                     }
-                } catch (e: PasskeyException) {
-                    PasskeyStep.Failed(e.userMessage())
-                } catch (e: AuthFailure) {
-                    PasskeyStep.Failed(e.userMessage())
-                } catch (e: JmapException) {
-                    PasskeyStep.Failed(e.userMessage())
                 }
             _state.value = _state.value.copy(step = step)
-            refresh()
+            if (step is PasskeyStep.Added || step == PasskeyStep.Removed) refresh()
         }
     }
 }

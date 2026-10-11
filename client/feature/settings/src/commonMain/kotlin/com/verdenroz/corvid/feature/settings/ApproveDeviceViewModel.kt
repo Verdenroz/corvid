@@ -2,8 +2,7 @@ package com.verdenroz.corvid.feature.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.verdenroz.corvid.core.auth.AuthFailure
-import com.verdenroz.corvid.core.auth.PasskeyException
+import com.verdenroz.corvid.core.data.catchingSignIn
 import com.verdenroz.corvid.core.data.userMessage
 import com.verdenroz.corvid.core.domain.MasterSignIn
 import com.verdenroz.corvid.core.jmap.JmapException
@@ -125,7 +124,7 @@ class ApproveDeviceViewModel(
         id: String,
         code: String,
     ): ApproveStep {
-        return try {
+        return catchingSignIn(ApproveStep::Failed) {
             masterSignIn.withAdminToken { token ->
                 _state.value = _state.value.copy(step = ApproveStep.Sending)
                 when (repository.approve(id, code, token)) {
@@ -136,12 +135,6 @@ class ApproveDeviceViewModel(
                     ApproveOutcome.UpstreamFailed -> ApproveStep.Failed(uiText(Res.string.approve_failed_upstream))
                 }
             }
-        } catch (e: PasskeyException) {
-            ApproveStep.Failed(e.userMessage())
-        } catch (e: AuthFailure) {
-            ApproveStep.Failed(e.userMessage())
-        } catch (e: JmapException) {
-            ApproveStep.Failed(e.userMessage())
         }
     }
 

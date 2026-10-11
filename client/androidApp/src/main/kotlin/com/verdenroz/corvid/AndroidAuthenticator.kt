@@ -68,18 +68,21 @@ class AndroidAuthenticator : Authenticator {
 }
 
 /** What a Credential Manager failure means to the person, from its type or the DOM error behind it. */
-internal fun passkeyFailure(failure: Exception): PasskeyException =
-    when (failure) {
-        is CreateCredentialCancellationException, is GetCredentialCancellationException -> PasskeyException.Cancelled
-        is NoCredentialException -> PasskeyException.NoCredential
-        is CreateCredentialProviderConfigurationException,
-        is GetCredentialProviderConfigurationException,
-        is CreateCredentialNoCreateOptionException,
-        is GetCredentialUnsupportedException,
-        -> PasskeyException.Unsupported
-        is CreatePublicKeyCredentialDomException ->
-            if (failure.domError is SecurityError) PasskeyException.NotAssociated else PasskeyException.Refused(failure.message)
-        is GetPublicKeyCredentialDomException ->
-            if (failure.domError is SecurityError) PasskeyException.NotAssociated else PasskeyException.Refused(failure.message)
+internal fun passkeyFailure(failure: Exception): PasskeyException {
+    val domError =
+        when (failure) {
+            is CreatePublicKeyCredentialDomException -> failure.domError
+            is GetPublicKeyCredentialDomException -> failure.domError
+            else -> null
+        }
+    return when {
+        failure is CreateCredentialCancellationException || failure is GetCredentialCancellationException -> PasskeyException.Cancelled
+        failure is NoCredentialException -> PasskeyException.NoCredential
+        failure is CreateCredentialProviderConfigurationException ||
+            failure is GetCredentialProviderConfigurationException ||
+            failure is CreateCredentialNoCreateOptionException ||
+            failure is GetCredentialUnsupportedException -> PasskeyException.Unsupported
+        domError is SecurityError -> PasskeyException.NotAssociated
         else -> PasskeyException.Refused(failure.message)
     }
+}

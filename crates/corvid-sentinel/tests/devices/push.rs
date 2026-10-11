@@ -179,7 +179,7 @@ impl PushRig {
             .post(format!("{}/webhook/mail", self.rig.url))
             .header(
                 "X-Signature",
-                super::webhook_signature(SECRET, body.as_bytes()),
+                super::common::signature(SECRET, body.as_bytes()),
             )
             .body(body)
             .send()

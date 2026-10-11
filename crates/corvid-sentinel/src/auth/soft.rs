@@ -127,6 +127,23 @@ impl Soft {
         }
     }
 
+    pub fn registration_json(&mut self, challenge: &[u8]) -> serde_json::Value {
+        let created = self.create(challenge);
+        json!({"id": URL_SAFE_NO_PAD.encode(&self.credential_id), "response": {
+            "clientDataJSON": URL_SAFE_NO_PAD.encode(&created.client_data_json),
+            "attestationObject": URL_SAFE_NO_PAD.encode(&created.attestation_object),
+        }})
+    }
+
+    pub fn assertion_json(&mut self, challenge: &[u8]) -> serde_json::Value {
+        let asserted = self.get(challenge);
+        json!({"id": URL_SAFE_NO_PAD.encode(&self.credential_id), "response": {
+            "clientDataJSON": URL_SAFE_NO_PAD.encode(&asserted.client_data_json),
+            "authenticatorData": URL_SAFE_NO_PAD.encode(&asserted.authenticator_data),
+            "signature": URL_SAFE_NO_PAD.encode(&asserted.signature),
+        }})
+    }
+
     fn client_data(&self, kind: &str, challenge: &[u8]) -> Vec<u8> {
         json!({
             "type": self.client_data_type.as_deref().unwrap_or(kind),

@@ -38,7 +38,7 @@ die() { echo "  DIED: $*" >&2; exit 1; }
 fail=0
 check() { if eval "$2"; then echo "  ok    $1"; else echo "  FAIL  $1"; fail=1; fi; }
 
-check "dots become hyphens" '[[ "$(assetlinks_worker_name nroz.dev)" == corvid-assetlinks-nroz-dev ]]'
+check "dots become hyphens" '[[ "$(worker_name corvid-assetlinks nroz.dev)" == corvid-assetlinks-nroz-dev ]]'
 
 echo "== choosing the way"
 ip=203.0.113.9
@@ -65,7 +65,7 @@ check "a Worker route this script already holds keeps its way" \
 
 echo "== the Worker script"
 document='[{"relation":["delegate_permission/common.get_login_creds"],"target":{"namespace":"android_app","package_name":"org.example","sha256_cert_fingerprints":["AB:CD"]}}]'
-script="$(assetlinks_worker_script "$document")"
+script="$(static_worker_script "$ASSETLINKS_PATH" application/json "$document")"
 check "it embeds the document" '[[ "$script" == *"org.example"* ]]'
 check "it serves JSON" '[[ "$script" == *"application/json"* ]]'
 if command -v node >/dev/null; then

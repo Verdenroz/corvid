@@ -3,9 +3,10 @@ package com.verdenroz.corvid.core.auth
 import com.verdenroz.corvid.core.model.ServerAddress
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.serialization.SerializationException
+import kotlinx.coroutines.withContext
 
 /**
  * Passkeys on a security key, through the system's libfido2. The ceremony's client data is built
@@ -22,27 +23,25 @@ class DesktopAuthenticator internal constructor(
         server: ServerAddress,
         options: String,
     ): String {
-        val parsed = parsed { creationOptions(options) }
-        val clientData = clientDataJson("webauthn.create", parsed.challenge, originOf(server))
-        val creation = parsed.creation(sha256(clientData))
-        return registrationResponse(clientData, withKey { key -> verified(key) { pin -> key.make(creation, pin) } })
+        val (challenge, creation) = parsed { creationOptions(options) }
+        val clientData = clientDataJson("webauthn.create", challenge, originOf(server))
+        val hash = sha256(clientData)
+        return registrationResponse(clientData, withKey { key -> verified(key) { pin -> key.make(creation, hash, pin) } })
     }
 
     override suspend fun get(
         server: ServerAddress,
         options: String,
     ): String {
-        val parsed = parsed { requestOptions(options) }
-        val clientData = clientDataJson("webauthn.get", parsed.challenge, originOf(server))
-        val request = parsed.request(sha256(clientData))
-        return authenticationResponse(clientData, withKey { key -> verified(key) { pin -> key.assert(request, pin) } })
+        val (challenge, request) = parsed { requestOptions(options) }
+        val clientData = clientDataJson("webauthn.get", challenge, originOf(server))
+        val hash = sha256(clientData)
+        return authenticationResponse(clientData, withKey { key -> verified(key) { pin -> key.assert(request, hash, pin) } })
     }
 
     private fun <T> parsed(parse: () -> T): T =
         try {
             parse()
-        } catch (e: SerializationException) {
-            throw PasskeyException.Refused("the server's options could not be read: ${e.message}")
         } catch (e: IllegalArgumentException) {
             throw PasskeyException.Refused("the server's options could not be read: ${e.message}")
         } catch (e: NoSuchElementException) {
@@ -51,8 +50,14 @@ class DesktopAuthenticator internal constructor(
 
     private suspend fun <T> withKey(use: suspend (SecurityKey) -> T): T {
         val available = keys ?: throw PasskeyException.Unsupported
-        val key = available.first() ?: throw PasskeyException.Refused("no security key was found; plug it in and try again")
-        return key.use { use(it) }
+        val key =
+            withContext(Dispatchers.IO) { available.first() }
+                ?: throw PasskeyException.Refused("no security key was found; plug it in and try again")
+        try {
+            return use(key)
+        } finally {
+            withContext(NonCancellable + Dispatchers.IO) { key.close() }
+        }
     }
 
     /** Runs [call] with the PIN the key wants, asking again while it is wrong. */

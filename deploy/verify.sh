@@ -110,14 +110,14 @@ if unit_masked corvid-sentinel.service; then
   warn "corvid-sentinel is masked, so the passkey issuer is not checked"
 else
   for document in .well-known/openid-configuration jwks; do
-    code="$( (in_pod corvid-sentinel curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$ISSUER_URL/$document") 2>/dev/null)"
+    code="$(issuer_status "$document")"
     case "$code" in
       200) ok "the passkey issuer serves $document on loopback" ;;
       503) warn "passkey sign-in is off: add sentinel.auth (state: /var/lib/corvid/auth.json) to config.yaml and restart corvid-sentinel" ;;
       *) bad "the passkey issuer answers ${code:-no status} for $document on loopback, not 200; check: journalctl -u corvid-sentinel" ;;
     esac
   done
-  for path in /corvid/auth/jwks /corvid/auth/userinfo /corvid/auth/.well-known/openid-configuration /internal/auth/status; do
+  for path in /internal/issuer/jwks /corvid/auth/jwks /internal/auth/status; do
     code="$(web_status "$MAIL_HOSTNAME" "$path")"
     [[ "$code" == 404 ]] \
       && ok "Caddy does not route $path" \
@@ -130,7 +130,7 @@ echo "== app links =="
 # through real DNS. Not served is a warning, since mail does not wait on the Android app; a
 # document that differs, a redirect or the wrong type is a failure, since it is worse than none.
 links_url="https://$MAIL_DOMAIN/.well-known/assetlinks.json"
-expected="$(corvid_config assetlinks 2>/dev/null)" || expected=
+expected="${ASSETLINKS:-}"
 if [[ -z "$expected" ]]; then
   warn "corvid-config could not render the app links, so $links_url is not checked"
 else

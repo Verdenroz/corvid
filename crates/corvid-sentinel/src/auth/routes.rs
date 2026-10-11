@@ -14,7 +14,7 @@ use sha2::{Digest, Sha256};
 use super::limits::Pending;
 use super::state::{Credential, Family, Role};
 use super::webauthn::{AssertionResponse, Refusal, RegistrationResponse};
-use super::{Audience, Shared, codes, commit, notify};
+use super::{Audience, Shared, Which, codes, commit, notify};
 use crate::dates;
 use crate::webpush::random_bytes;
 
@@ -28,15 +28,21 @@ pub fn routes() -> Router<Shared> {
         .route("/corvid/auth/login/finish", post(login_finish))
         .route("/corvid/auth/token", post(refresh))
         .route(
-            "/corvid/auth/.well-known/openid-configuration",
+            "/internal/issuer/.well-known/openid-configuration",
             get(discovery),
         )
-        .route("/corvid/auth/jwks", get(jwks))
-        .route("/corvid/auth/userinfo", get(userinfo))
+        .route("/internal/issuer/jwks", get(jwks))
+        .route("/internal/issuer/userinfo", get(userinfo))
 }
 
 fn encode(bytes: impl AsRef<[u8]>) -> String {
     URL_SAFE_NO_PAD.encode(bytes)
+}
+
+fn descriptors(ids: &[String]) -> Vec<Value> {
+    ids.iter()
+        .map(|id| json!({"type": "public-key", "id": id}))
+        .collect()
 }
 
 fn decode(text: &str) -> Result<Vec<u8>, StatusCode> {
@@ -117,10 +123,7 @@ async fn register_options(
         "authenticatorSelection": {"residentKey": "preferred", "userVerification": "required"},
         "attestation": "none",
         "timeout": CEREMONY_TIMEOUT_MS,
-        "excludeCredentials": enrolled
-            .iter()
-            .map(|id| json!({"type": "public-key", "id": id}))
-            .collect::<Vec<_>>(),
+        "excludeCredentials": descriptors(&enrolled),
     })))
 }
 
@@ -170,11 +173,7 @@ async fn register_finish(
     let id = encode(&registration.credential_id);
     let public_key = encode(registration.key.to_sec1_point(false).as_bytes());
     let outcome = commit(&state, move |auth| {
-        let live = auth
-            .codes
-            .get(&role)
-            .is_some_and(|stored| stored.hash == code && stored.expires_at > now);
-        if !live {
+        if auth.code_role(&code, now) != Some(role) {
             return (None, Registration::CodeGone);
         }
         if auth.credentials.contains_key(&id) {
@@ -183,7 +182,7 @@ async fn register_finish(
         let mut next = auth.clone();
         next.codes.remove(&role);
         let user = next.handle_of(role).cloned().unwrap_or(handle);
-        next.users.insert(user.clone(), super::state::User { role });
+        next.users.insert(user.clone(), role);
         next.credentials.insert(
             id,
             Credential {
@@ -191,7 +190,6 @@ async fn register_finish(
                 public_key,
                 sign_count: registration.sign_count,
                 backup_eligible: registration.backup_eligible,
-                aaguid: hex::encode(registration.aaguid),
                 created_at: now,
             },
         );
@@ -203,11 +201,6 @@ async fn register_finish(
         Registration::CodeGone => Err(StatusCode::UNAUTHORIZED),
         Registration::Duplicate => Err(StatusCode::CONFLICT),
     }
-}
-
-#[derive(Deserialize)]
-struct Which {
-    role: Role,
 }
 
 async fn login_options(
@@ -235,10 +228,7 @@ async fn login_options(
         "rpId": state.rp_id,
         "userVerification": "required",
         "timeout": CEREMONY_TIMEOUT_MS,
-        "allowCredentials": enrolled
-            .iter()
-            .map(|id| json!({"type": "public-key", "id": id}))
-            .collect::<Vec<_>>(),
+        "allowCredentials": descriptors(&enrolled),
     })))
 }
 
@@ -321,7 +311,6 @@ async fn login_finish(
     };
 
     let id = assertion.id;
-    let user = credential.user.clone();
     let family = (role == Role::Daily).then(|| {
         (
             hex::encode(random_bytes::<16>()),
@@ -343,7 +332,6 @@ async fn login_finish(
             next.families.insert(
                 family,
                 Family {
-                    user,
                     credential: id,
                     current: secret_hash(&secret),
                     previous: None,
@@ -423,7 +411,7 @@ async fn refresh(
                 next.families.remove(&family);
                 return (Some(next), Grant::Reused);
             }
-            let user = found.user.clone();
+            let user = auth.credentials[&found.credential].user.clone();
             let entry = next
                 .families
                 .get_mut(&family)

@@ -28,15 +28,8 @@ internal fun encodeBase64Url(bytes: ByteArray): String = base64Url.encode(bytes)
 @OptIn(ExperimentalEncodingApi::class)
 internal fun decodeBase64Url(text: String): ByteArray = base64Url.decode(text)
 
-/**
- * The origin of the web tier as the sentinel lists it: the dialled address with its port written
- * out, even 443.
- */
-internal fun originOf(server: ServerAddress): String {
-    val base = server.baseUrl.trimEnd('/')
-    val authority = base.substringAfter("://")
-    return if (':' in authority) base else "$base:443"
-}
+/** The standard serialized origin of the web tier: the dialled address, with no trailing slash. */
+internal fun originOf(server: ServerAddress): String = server.baseUrl.trimEnd('/')
 
 internal fun clientDataJson(
     type: String,
@@ -82,54 +75,34 @@ internal fun unwrapByteString(cbor: ByteArray): ByteArray {
     return cbor.copyOfRange(header, cbor.size)
 }
 
-/** What a creation ceremony asks of the key, from `PublicKeyCredentialCreationOptionsJSON`. */
-internal class CreationOptions(
-    val challenge: String,
-    val rpId: String,
-    val rpName: String,
-    val userId: ByteArray,
-    val userName: String,
-    val displayName: String,
-    val exclude: List<ByteArray>,
-    val discoverable: Boolean,
-) {
-    fun creation(clientDataHash: ByteArray) = Creation(clientDataHash, rpId, rpName, userId, userName, displayName, exclude, discoverable)
-}
-
-internal class RequestOptions(
-    val challenge: String,
-    val rpId: String,
-    val allow: List<ByteArray>,
-) {
-    fun request(clientDataHash: ByteArray) = Request(clientDataHash, rpId, allow)
-}
-
-internal fun creationOptions(options: String): CreationOptions {
+/** The challenge and what the key is asked, from `PublicKeyCredentialCreationOptionsJSON`. */
+internal fun creationOptions(options: String): Pair<String, Creation> {
     val fields = json.parseToJsonElement(options).jsonObject
     val rp = fields.getValue("rp").jsonObject
     val user = fields.getValue("user").jsonObject
     require(
         fields.getValue("pubKeyCredParams").jsonArray.any { it.jsonObject.getValue("alg").jsonPrimitive.content == "-7" },
     ) { "the server does not accept ES256" }
-    return CreationOptions(
-        challenge = fields.getValue("challenge").jsonPrimitive.content,
-        rpId = rp.getValue("id").jsonPrimitive.content,
-        rpName = rp["name"]?.jsonPrimitive?.contentOrNull ?: rp.getValue("id").jsonPrimitive.content,
-        userId = decodeBase64Url(user.getValue("id").jsonPrimitive.content),
-        userName = user.getValue("name").jsonPrimitive.content,
-        displayName = user["displayName"]?.jsonPrimitive?.contentOrNull ?: user.getValue("name").jsonPrimitive.content,
-        exclude = credentialIds(fields["excludeCredentials"]),
-        discoverable = fields["authenticatorSelection"]?.jsonObject?.get("residentKey")?.jsonPrimitive?.contentOrNull == "required",
-    )
+    return fields.getValue("challenge").jsonPrimitive.content to
+        Creation(
+            rpId = rp.getValue("id").jsonPrimitive.content,
+            rpName = rp["name"]?.jsonPrimitive?.contentOrNull ?: rp.getValue("id").jsonPrimitive.content,
+            userId = decodeBase64Url(user.getValue("id").jsonPrimitive.content),
+            userName = user.getValue("name").jsonPrimitive.content,
+            displayName = user["displayName"]?.jsonPrimitive?.contentOrNull ?: user.getValue("name").jsonPrimitive.content,
+            exclude = credentialIds(fields["excludeCredentials"]),
+            discoverable = fields["authenticatorSelection"]?.jsonObject?.get("residentKey")?.jsonPrimitive?.contentOrNull == "required",
+        )
 }
 
-internal fun requestOptions(options: String): RequestOptions {
+/** The challenge and what the key is asked, from `PublicKeyCredentialRequestOptionsJSON`. */
+internal fun requestOptions(options: String): Pair<String, Request> {
     val fields = json.parseToJsonElement(options).jsonObject
-    return RequestOptions(
-        challenge = fields.getValue("challenge").jsonPrimitive.content,
-        rpId = fields.getValue("rpId").jsonPrimitive.content,
-        allow = credentialIds(fields["allowCredentials"]),
-    )
+    return fields.getValue("challenge").jsonPrimitive.content to
+        Request(
+            rpId = fields.getValue("rpId").jsonPrimitive.content,
+            allow = credentialIds(fields["allowCredentials"]),
+        )
 }
 
 private fun credentialIds(list: JsonElement?): List<ByteArray> =

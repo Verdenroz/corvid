@@ -37,7 +37,6 @@ class TokenSource(
 
     private val refreshMutex = Mutex()
     private var tokens: AuthTokens? = null
-    private var server: ServerAddress? = null
 
     init {
         // Unconfined so a trip wipes the token in the same call, not on the
@@ -53,13 +52,11 @@ class TokenSource(
         server: ServerAddress,
     ) {
         this.tokens = tokens
-        this.server = server
         _state.value = AuthState.SignedIn(tokens.accessToken, server)
     }
 
     fun signOut() {
         tokens = null
-        server = null
         _state.value = AuthState.SignedOut
     }
 
@@ -82,7 +79,7 @@ class TokenSource(
     private fun AuthTokens.expiresSoon() = expiresAt - clock.now() <= REFRESH_MARGIN
 
     private suspend fun refresh(current: AuthTokens): String? {
-        val activeServer = server ?: return signOutAndReturnNull()
+        val activeServer = (_state.value as? AuthState.SignedIn)?.server ?: return signOutAndReturnNull()
         val refreshToken = current.refreshToken ?: return signOutAndReturnNull()
         return when (val refreshed = api.refresh(activeServer, refreshToken)) {
             is Refreshed.Tokens -> {

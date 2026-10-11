@@ -5,10 +5,10 @@ use axum::Router;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{delete, get, post};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use super::state::{CODE_LIFETIME_SECONDS, Code, Role};
-use super::{Shared, codes, commit};
+use super::{MasterRefusal, Shared, Which, codes, commit};
 use crate::dates;
 
 pub fn routes() -> Router<Shared> {
@@ -59,18 +59,16 @@ fn require_master(state: &Shared, headers: &HeaderMap) -> Result<(), StatusCode>
         .get("X-Corvid-Master")
         .and_then(|value| value.to_str().ok())
         .ok_or(StatusCode::UNAUTHORIZED)?;
-    let claims = state
+    state
         .issuer
-        .verify_master(token, dates::now_secs())
-        .map_err(|reason| {
-            tracing::info!(?reason, "a master token was refused");
-            StatusCode::UNAUTHORIZED
-        })?;
-    if claims.preferred_username == state.master_user {
-        Ok(())
-    } else {
-        Err(StatusCode::FORBIDDEN)
-    }
+        .verify_master(token, &state.master_user, dates::now_secs())
+        .map_err(|refusal| match refusal {
+            MasterRefusal::Invalid(reason) => {
+                tracing::info!(?reason, "a master token was refused");
+                StatusCode::UNAUTHORIZED
+            }
+            MasterRefusal::NotMaster => StatusCode::FORBIDDEN,
+        })
 }
 
 /// How the host proves itself: the webhook secret signs what it asks for.
@@ -108,11 +106,6 @@ async fn mint(state: &Shared, role: Role) -> Result<Json<Minted>, StatusCode> {
     })
     .await?;
     Ok(Json(Minted { code, expires_at }))
-}
-
-#[derive(Deserialize)]
-struct Which {
-    role: Role,
 }
 
 async fn enroll(
@@ -208,13 +201,9 @@ async fn status(
             .count()
     };
     let now = dates::now_secs();
-    let codes = state.auth.read(|auth| {
-        auth.codes
-            .iter()
-            .filter(|(_, code)| code.expires_at > now)
-            .map(|(role, _)| *role)
-            .collect()
-    });
+    let codes = state
+        .auth
+        .read(|auth| auth.live_codes(now).map(|(role, _)| role).collect());
     Ok(Json(Status {
         daily: count(Role::Daily),
         master: count(Role::Master),

@@ -117,7 +117,7 @@ impl Rig {
     async fn revoke(&self, name: &str) -> reqwest::Response {
         self.revoke_signed(
             name,
-            Some(webhook_signature(
+            Some(common::signature(
                 SECRET,
                 format!("revoke {name}").as_bytes(),
             )),
@@ -617,8 +617,8 @@ async fn revoking_removes_the_key_file_and_the_record() {
 async fn revoking_without_the_webhook_secret_is_refused_and_removes_nothing() {
     let rig = rig().await;
     rig.approved("phone").await;
-    let wrong = webhook_signature(b"another secret", b"revoke phone");
-    let for_another_device = webhook_signature(SECRET, b"revoke tablet");
+    let wrong = common::signature(b"another secret", b"revoke phone");
+    let for_another_device = common::signature(SECRET, b"revoke tablet");
 
     for signature in [None, Some(wrong), Some(for_another_device)] {
         assert_eq!(rig.revoke_signed("phone", signature).await.status(), 401);
@@ -628,23 +628,12 @@ async fn revoking_without_the_webhook_secret_is_refused_and_removes_nothing() {
     assert_eq!(rig.record("phone").await.status(), 200);
 }
 
-/// The `X-Signature` Stalwart's WebHooks, and the host's revoke call, carry for `body`.
-fn webhook_signature(secret: &[u8], body: &[u8]) -> String {
-    use base64::Engine;
-    use hmac::{Hmac, KeyInit, Mac};
-    use sha2::Sha256;
-
-    let mut mac = <Hmac<Sha256>>::new_from_slice(secret).unwrap();
-    mac.update(body);
-    base64::engine::general_purpose::STANDARD.encode(mac.finalize().into_bytes())
-}
-
 fn base64_url(text: &str) -> String {
     use base64::Engine;
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(text)
 }
 
-const AUTH_URL: &str = "http://127.0.0.1:11333/corvid/auth";
+const AUTH_URL: &str = "http://127.0.0.1:11333/internal/issuer";
 
 fn issuer() -> Arc<Issuer> {
     Arc::new(Issuer::new(signing_key(), AUTH_URL.to_owned()))

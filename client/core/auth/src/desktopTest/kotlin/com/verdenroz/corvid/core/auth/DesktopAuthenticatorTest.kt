@@ -35,6 +35,7 @@ private class FakeKey(
     val pins = mutableListOf<String?>()
     val creations = mutableListOf<Creation>()
     val requests = mutableListOf<Request>()
+    val hashes = mutableListOf<ByteArray>()
     var closed = false
     var cancels = 0
 
@@ -43,18 +44,22 @@ private class FakeKey(
 
     override fun make(
         creation: Creation,
+        clientDataHash: ByteArray,
         pin: String?,
     ): Made {
         creations += creation
+        hashes += clientDataHash
         pins += pin
         return onMake(pin)
     }
 
     override fun assert(
         request: Request,
+        clientDataHash: ByteArray,
         pin: String?,
     ): Asserted {
         requests += request
+        hashes += clientDataHash
         pins += pin
         return onAssert(pin)
     }
@@ -103,7 +108,7 @@ class DesktopAuthenticatorTest {
             assertEquals(listOf(KeyPromptState.Pin(false), KeyPromptState.Touch), seen.filter { it != KeyPromptState.Idle })
             assertEquals(KeyPromptState.Idle, prompt.state.value)
             val clientData = String(decodeBase64Url(response.getValue("clientDataJSON").jsonPrimitive.content))
-            assertContentEquals(sha256(clientData), key.creations.single().clientDataHash)
+            assertContentEquals(sha256(clientData), key.hashes.single())
             assertEquals(
                 """{"type":"webauthn.create","challenge":"Y2hhbGxlbmdl","origin":"https://mail.rig.test:4443","crossOrigin":false}""",
                 clientData,
@@ -248,6 +253,7 @@ class DesktopAuthenticatorTest {
                 object : SecurityKey by key {
                     override fun assert(
                         request: Request,
+                        clientDataHash: ByteArray,
                         pin: String?,
                     ): Asserted {
                         waiting.countDown()

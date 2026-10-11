@@ -1,12 +1,11 @@
 use std::path::Path;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::Engine;
-use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use corvid_sentinel::auth::soft::{BACKUP_ELIGIBLE, Soft, signing_key};
-use corvid_sentinel::auth::{self, Audience, Auth, Family, Issuer, Role};
-use hmac::{Hmac, KeyInit, Mac};
+use corvid_sentinel::auth::{self, Audience, Auth, Credential, Family, Issuer, Role};
+use corvid_sentinel::now_secs;
 use reqwest::Response;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -18,19 +17,12 @@ const RP_ID: &str = "rig.test";
 const ORIGIN: &str = "android:apk-key-hash:rig";
 const DAILY: &str = "mailuser";
 const MASTER: &str = "mailuser-admin";
-const ISSUER: &str = "http://127.0.0.1:11333/corvid/auth";
+const ISSUER: &str = "http://127.0.0.1:11333/internal/issuer";
 
 struct Rig {
     url: String,
     issuer: Arc<Issuer>,
     dir: tempfile::TempDir,
-}
-
-fn now() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64
 }
 
 fn encode(bytes: impl AsRef<[u8]>) -> String {
@@ -39,12 +31,6 @@ fn encode(bytes: impl AsRef<[u8]>) -> String {
 
 fn decode(text: &str) -> Vec<u8> {
     URL_SAFE_NO_PAD.decode(text).unwrap()
-}
-
-fn signature(message: &str) -> String {
-    let mut mac = <Hmac<Sha256>>::new_from_slice(SECRET).unwrap();
-    mac.update(message.as_bytes());
-    STANDARD.encode(mac.finalize().into_bytes())
 }
 
 fn code_hash(code: &str) -> String {
@@ -104,7 +90,10 @@ impl Rig {
     async fn host_code(&self, role: &str) -> String {
         let response = reqwest::Client::new()
             .post(format!("{}/internal/auth/codes/{role}", self.url))
-            .header("X-Signature", signature(&format!("code {role}")))
+            .header(
+                "X-Signature",
+                common::signature(SECRET, format!("code {role}").as_bytes()),
+            )
             .send()
             .await
             .unwrap();
@@ -122,13 +111,9 @@ impl Rig {
         }
         let options: Value = options.json().await.unwrap();
         let challenge = decode(options["challenge"].as_str().unwrap());
-        let created = soft.create(&challenge);
         self.post(
             "/corvid/auth/register/finish",
-            json!({"id": encode(&soft.credential_id), "response": {
-                "clientDataJSON": encode(&created.client_data_json),
-                "attestationObject": encode(&created.attestation_object),
-            }}),
+            soft.registration_json(&challenge),
         )
         .await
     }
@@ -154,16 +139,8 @@ impl Rig {
     }
 
     async fn finish_login(&self, soft: &mut Soft, challenge: &[u8]) -> Response {
-        let asserted = soft.get(challenge);
-        self.post(
-            "/corvid/auth/login/finish",
-            json!({"id": encode(&soft.credential_id), "response": {
-                "clientDataJSON": encode(&asserted.client_data_json),
-                "authenticatorData": encode(&asserted.authenticator_data),
-                "signature": encode(&asserted.signature),
-            }}),
-        )
-        .await
+        self.post("/corvid/auth/login/finish", soft.assertion_json(challenge))
+            .await
     }
 
     async fn signed_in(&self, soft: &mut Soft, role: &str) -> Value {
@@ -239,7 +216,7 @@ async fn a_host_code_enrolls_a_daily_passkey_that_then_signs_in_with_both_tokens
         .verify(
             tokens["access_token"].as_str().unwrap(),
             Audience::Daily,
-            now(),
+            now_secs(),
         )
         .unwrap();
     assert_eq!(claims.preferred_username, DAILY);
@@ -259,7 +236,7 @@ async fn a_master_passkey_signs_in_with_an_admin_token_and_no_refresh_token() {
         .verify(
             tokens["access_token"].as_str().unwrap(),
             Audience::Master,
-            now(),
+            now_secs(),
         )
         .unwrap();
     assert_eq!(claims.preferred_username, MASTER);
@@ -331,7 +308,7 @@ async fn minting_a_new_code_replaces_the_previous_one_for_that_role() {
 
 #[tokio::test]
 async fn a_code_past_its_day_is_refused() {
-    let rig = rig_with(with_code(Role::Daily, "AAAABBBBCCCCDDDD", now() - 1)).await;
+    let rig = rig_with(with_code(Role::Daily, "AAAABBBBCCCCDDDD", now_secs() - 1)).await;
 
     assert_eq!(
         rig.enroll(&mut Soft::new(RP_ID, ORIGIN), "AAAA-BBBB-CCCC-DDDD")
@@ -568,7 +545,7 @@ async fn a_refreshed_access_token_verifies_for_the_daily_user() {
         .verify(
             body["access_token"].as_str().unwrap(),
             Audience::Daily,
-            now(),
+            now_secs(),
         )
         .unwrap();
     assert_eq!(claims.preferred_username, DAILY);
@@ -610,10 +587,20 @@ async fn a_refresh_token_nobody_issued_is_an_invalid_grant() {
 
 fn aged_family(last_used: i64, created_at: i64) -> Auth {
     let mut auth = Auth::default();
+    auth.users.insert("handle".to_owned(), Role::Daily);
+    auth.credentials.insert(
+        "credential".to_owned(),
+        Credential {
+            user: "handle".to_owned(),
+            public_key: String::new(),
+            sign_count: 0,
+            backup_eligible: true,
+            created_at,
+        },
+    );
     auth.families.insert(
         "fam".to_owned(),
         Family {
-            user: "handle".to_owned(),
             credential: "credential".to_owned(),
             current: code_hash("secret"),
             previous: None,
@@ -627,24 +614,25 @@ fn aged_family(last_used: i64, created_at: i64) -> Auth {
 
 #[tokio::test]
 async fn a_refresh_token_idle_for_a_day_is_an_invalid_grant() {
-    let rig = rig_with(aged_family(now() - 24 * 3600 - 1, now() - 25 * 3600)).await;
+    let rig = rig_with(aged_family(
+        now_secs() - 24 * 3600 - 1,
+        now_secs() - 25 * 3600,
+    ))
+    .await;
 
     assert_eq!(rig.refresh("fam.secret").await.status(), 400);
 }
 
 #[tokio::test]
 async fn a_refresh_token_in_use_for_a_week_is_an_invalid_grant() {
-    let rig = rig_with(aged_family(now() - 60, now() - 7 * 24 * 3600 - 1)).await;
+    let rig = rig_with(aged_family(now_secs() - 60, now_secs() - 7 * 24 * 3600 - 1)).await;
 
     assert_eq!(rig.refresh("fam.secret").await.status(), 400);
 }
 
 #[tokio::test]
 async fn a_refresh_token_inside_both_limits_is_accepted() {
-    let mut auth = aged_family(now() - 60, now() - 3600);
-    auth.users
-        .insert("handle".to_owned(), auth::User { role: Role::Daily });
-    let rig = rig_with(auth).await;
+    let rig = rig_with(aged_family(now_secs() - 60, now_secs() - 3600)).await;
 
     assert_eq!(rig.refresh("fam.secret").await.status(), 200);
 }
@@ -683,12 +671,12 @@ async fn the_discovery_document_and_key_set_are_served_for_stalwart() {
     let rig = rig().await;
 
     let discovery: Value = rig
-        .get("/corvid/auth/.well-known/openid-configuration")
+        .get("/internal/issuer/.well-known/openid-configuration")
         .await
         .json()
         .await
         .unwrap();
-    let jwks: Value = rig.get("/corvid/auth/jwks").await.json().await.unwrap();
+    let jwks: Value = rig.get("/internal/issuer/jwks").await.json().await.unwrap();
 
     assert_eq!(discovery["issuer"], ISSUER);
     assert_eq!(jwks, rig.issuer.jwks());
@@ -697,10 +685,12 @@ async fn the_discovery_document_and_key_set_are_served_for_stalwart() {
 #[tokio::test]
 async fn userinfo_names_the_user_of_a_daily_token() {
     let rig = rig().await;
-    let token = rig.issuer.mint(Audience::Daily, "handle", DAILY, now());
+    let token = rig
+        .issuer
+        .mint(Audience::Daily, "handle", DAILY, now_secs());
 
     let body: Value = reqwest::Client::new()
-        .get(format!("{}/corvid/auth/userinfo", rig.url))
+        .get(format!("{}/internal/issuer/userinfo", rig.url))
         .bearer_auth(token)
         .send()
         .await
@@ -715,10 +705,12 @@ async fn userinfo_names_the_user_of_a_daily_token() {
 #[tokio::test]
 async fn userinfo_refuses_a_master_token() {
     let rig = rig().await;
-    let token = rig.issuer.mint(Audience::Master, "handle", MASTER, now());
+    let token = rig
+        .issuer
+        .mint(Audience::Master, "handle", MASTER, now_secs());
 
     let response = reqwest::Client::new()
-        .get(format!("{}/corvid/auth/userinfo", rig.url))
+        .get(format!("{}/internal/issuer/userinfo", rig.url))
         .bearer_auth(token)
         .send()
         .await
@@ -880,7 +872,7 @@ async fn the_host_status_counts_passkeys_by_role() {
 
     let response = reqwest::Client::new()
         .get(format!("{}/internal/auth/status", rig.url))
-        .header("X-Signature", signature("status"))
+        .header("X-Signature", common::signature(SECRET, b"status"))
         .send()
         .await
         .unwrap();
@@ -903,7 +895,7 @@ async fn the_host_routes_refuse_an_unsigned_or_wrongly_signed_call() {
         .unwrap();
     let wrong = client
         .post(format!("{}/internal/auth/codes/daily", rig.url))
-        .header("X-Signature", signature("code master"))
+        .header("X-Signature", common::signature(SECRET, b"code master"))
         .send()
         .await
         .unwrap();
@@ -921,7 +913,10 @@ async fn the_host_removes_a_second_passkey_by_id() {
 
     let response = reqwest::Client::new()
         .delete(format!("{}/internal/auth/passkeys/{id}", rig.url))
-        .header("X-Signature", signature(&format!("remove-passkey {id}")))
+        .header(
+            "X-Signature",
+            common::signature(SECRET, format!("remove-passkey {id}").as_bytes()),
+        )
         .send()
         .await
         .unwrap();
@@ -935,7 +930,11 @@ async fn a_host_without_auth_config_answers_every_auth_route_with_auth_off() {
     let config = common::config(&dir.path().join("sentinel.json"), &dir.path().join("none"));
     let url = common::serve(config).await;
 
-    for path in ["/corvid/auth/passkeys", "/internal/auth/status"] {
+    for path in [
+        "/corvid/auth/passkeys",
+        "/internal/auth/status",
+        "/internal/issuer/jwks",
+    ] {
         let response = reqwest::get(format!("{url}{path}")).await.unwrap();
         assert_eq!(response.status(), 503);
         let body: Value = response.json().await.unwrap();
@@ -944,7 +943,7 @@ async fn a_host_without_auth_config_answers_every_auth_route_with_auth_off() {
 }
 
 fn rotated_family(rotated_at: i64) -> Auth {
-    let mut auth = aged_family(now() - 60, now() - 3600);
+    let mut auth = aged_family(now_secs() - 60, now_secs() - 3600);
     let family = auth.families.get_mut("fam").unwrap();
     family.current = code_hash("new");
     family.previous = Some(code_hash("old"));
@@ -954,7 +953,7 @@ fn rotated_family(rotated_at: i64) -> Auth {
 
 #[tokio::test]
 async fn the_token_a_lost_response_replaced_still_refreshes_inside_the_grace() {
-    let rig = rig_with(rotated_family(now() - 30)).await;
+    let rig = rig_with(rotated_family(now_secs() - 30)).await;
 
     let response = rig.refresh("fam.old").await;
 
@@ -964,7 +963,7 @@ async fn the_token_a_lost_response_replaced_still_refreshes_inside_the_grace() {
 
 #[tokio::test]
 async fn the_token_a_retry_replaced_is_the_one_that_works_after_it() {
-    let rig = rig_with(rotated_family(now() - 30)).await;
+    let rig = rig_with(rotated_family(now_secs() - 30)).await;
     let body: Value = rig.refresh("fam.old").await.json().await.unwrap();
     let retried = body["refresh_token"].as_str().unwrap().to_owned();
 
@@ -973,7 +972,7 @@ async fn the_token_a_retry_replaced_is_the_one_that_works_after_it() {
 
 #[tokio::test]
 async fn the_replaced_token_presented_after_the_grace_revokes_the_family_and_notices() {
-    let rig = rig_with(rotated_family(now() - 61)).await;
+    let rig = rig_with(rotated_family(now_secs() - 61)).await;
 
     assert_eq!(rig.refresh("fam.old").await.status(), 400);
 
@@ -1097,7 +1096,7 @@ async fn the_host_status_lists_the_roles_with_a_code_waiting() {
 
     let body: Value = reqwest::Client::new()
         .get(format!("{}/internal/auth/status", rig.url))
-        .header("X-Signature", signature("status"))
+        .header("X-Signature", common::signature(SECRET, b"status"))
         .send()
         .await
         .unwrap()

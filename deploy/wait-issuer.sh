@@ -19,11 +19,9 @@ resolve=(--resolve "${APP_URL#*://}:127.0.0.1")
 idp_answers() {
   curl -sf -o /dev/null --max-time 5 "${resolve[@]}" "$APP_URL/.well-known/openid-configuration"
 }
-# in_pod exits when the sentinel is not running yet, so the call is a subshell.
 sentinel_answers() {
   local code
-  code="$( (in_pod corvid-sentinel curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
-    "$CORVID_ISSUER_URL/.well-known/openid-configuration") 2>/dev/null)"
+  code="$(ISSUER_URL="$CORVID_ISSUER_URL" issuer_status)"
   [[ "$code" == 200 || "$code" == 503 ]]
 }
 

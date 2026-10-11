@@ -3,9 +3,7 @@ use p256::ecdsa::VerifyingKey;
 
 use super::webauthn::Refusal;
 
-/// COSE algorithm identifiers a credential may use: ES256 only.
-pub const ALGORITHMS: [i64; 1] = [-7];
-
+const ES256: i64 = -7;
 const EC2: i64 = 2;
 const P256: i64 = 1;
 
@@ -32,7 +30,7 @@ pub fn read_key(input: &mut &[u8]) -> Result<VerifyingKey, Refusal> {
         return Err(Refusal::Algorithm);
     }
     let algorithm = number(3).and_then(|n| i64::try_from(n).ok());
-    if !algorithm.is_some_and(|algorithm| ALGORITHMS.contains(&algorithm)) {
+    if algorithm != Some(ES256) {
         return Err(Refusal::Algorithm);
     }
     let (Some(x), Some(y)) = (coordinate(-2), coordinate(-3)) else {

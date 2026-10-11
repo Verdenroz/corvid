@@ -2,6 +2,7 @@ package com.verdenroz.corvid.core.data
 
 import com.verdenroz.corvid.core.auth.AuthFailure
 import com.verdenroz.corvid.core.auth.PasskeyException
+import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.resources.Res
 import com.verdenroz.corvid.core.text.resources.passkey_already_enrolled
@@ -23,6 +24,21 @@ fun PasskeyException.userMessage(): UiText =
         PasskeyException.NotAssociated -> uiText(Res.string.passkey_not_associated)
         PasskeyException.Unsupported -> uiText(Res.string.passkey_unsupported)
         is PasskeyException.Refused -> uiText(Res.string.passkey_refused, UiText.FromServer(message.orEmpty()))
+    }
+
+/** The result of [block], or [failed] with the message for a passkey, sentinel or network failure. */
+inline fun <T> catchingSignIn(
+    failed: (UiText) -> T,
+    block: () -> T,
+): T =
+    try {
+        block()
+    } catch (e: PasskeyException) {
+        failed(e.userMessage())
+    } catch (e: AuthFailure) {
+        failed(e.userMessage())
+    } catch (e: JmapException) {
+        failed(e.userMessage())
     }
 
 fun AuthFailure.userMessage(): UiText =

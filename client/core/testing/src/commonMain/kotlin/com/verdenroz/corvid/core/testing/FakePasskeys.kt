@@ -1,6 +1,5 @@
 package com.verdenroz.corvid.core.testing
 
-import com.verdenroz.corvid.core.jmap.JmapJson
 import io.ktor.client.engine.mock.MockRequestHandleScope
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.request.HttpRequestData
@@ -8,10 +7,8 @@ import io.ktor.client.request.HttpResponseData
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
-import io.ktor.http.content.OutgoingContent
 import io.ktor.http.headersOf
 import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -92,7 +89,7 @@ class FakePasskeys {
     ): HttpResponseData {
         masters += request.headers["X-Corvid-Master"]
         if (request.headers["X-Corvid-Master"] != masterToken) return scope.respond("", HttpStatusCode.Unauthorized)
-        val body = JmapJson.parseToJsonElement((request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()) as JsonObject
+        val body = body(request)
         minted += body.getValue("role").jsonPrimitive.content
         return json(
             scope,
@@ -103,10 +100,4 @@ class FakePasskeys {
             },
         )
     }
-
-    private fun json(
-        scope: MockRequestHandleScope,
-        status: HttpStatusCode,
-        body: JsonObject,
-    ): HttpResponseData = scope.respond(body.toString(), status, headersOf(HttpHeaders.ContentType, listOf("application/json")))
 }

@@ -96,8 +96,8 @@ for path in /corvid/auth/passkeys /corvid/auth/passkeys/abc /corvid/auth/enroll-
   check "$path with a refused credential gets Stalwart's 401" "$(fetch -X POST -d '{}' -u bad:bad "$url$path")" "401 stalwart"
   check "$path with an accepted credential reaches the sentinel" "$(fetch -X POST -d '{}' -u good:good "$url$path")" "200 sentinel"
 done
-for path in /corvid/auth/jwks /corvid/auth/userinfo /corvid/auth/.well-known/openid-configuration \
-  /corvid/auth/authorize /corvid/auth/other /internal/auth/status /internal/auth/codes/daily /internal/auth/passkeys/abc; do
+for path in /internal/issuer/jwks /internal/issuer/userinfo /internal/issuer/.well-known/openid-configuration \
+  /corvid/auth/jwks /corvid/auth/authorize /corvid/auth/other /internal/auth/status /internal/auth/codes/daily /internal/auth/passkeys/abc; do
   check "$path is never routed to the sentinel" "$(fetch -u good:good "$url$path")" "404 stalwart"
 done
 check "an app file without a credential stays with Stalwart" "$(fetch "$url/corvid/app/manifest.json")" "404 stalwart"

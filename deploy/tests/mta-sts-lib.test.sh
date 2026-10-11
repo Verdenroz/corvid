@@ -40,7 +40,7 @@ die() { echo "  DIED: $*" >&2; exit 1; }
 fail=0
 check() { if eval "$2"; then echo "  ok    $1"; else echo "  FAIL  $1"; fail=1; fi; }
 
-check "dots become hyphens" '[[ "$(mta_sts_worker_name nroz.dev)" == corvid-mta-sts-nroz-dev ]]'
+check "dots become hyphens" '[[ "$(worker_name corvid-mta-sts nroz.dev)" == corvid-mta-sts-nroz-dev ]]'
 
 check "no record is clear" '[[ "$(mta_sts_record_status "" mail.example.com 0)" == clear ]]'
 check "Stalwart's own CNAME is stale" \
@@ -55,7 +55,7 @@ mode: testing
 mx: mail.example.com
 max_age: 604800"
 # shellcheck disable=SC2034  # read inside the eval'd checks
-script="$(mta_sts_worker_script "$policy")"
+script="$(static_worker_script /.well-known/mta-sts.txt text/plain "$policy")"
 check "the worker script embeds the policy" '[[ "$script" == *"mx: mail.example.com"* ]]'
 check "the worker script serves it as text/plain" '[[ "$script" == *"text/plain"* ]]'
 check "the worker script answers only the well-known path" '[[ "$script" == *"/.well-known/mta-sts.txt"* ]]'
@@ -71,7 +71,7 @@ seed_cname "$zone" "mta-sts.$domain" "$hostname"
 declare -a stale_mta_sts=()
 mta_sts_preflight token "$domain" "$hostname" "$zone" 4443
 check "the stale CNAME is queued for removal" '(( ${#stale_mta_sts[@]} > 0 ))'
-worker_name="$(mta_sts_worker_name "$domain")"
+worker_name="$(worker_name corvid-mta-sts "$domain")"
 status=0
 ( mta_sts_publish token "$domain" "$zone" "$account" "$worker_name" "$policy" id1 ) || status=$?
 check "the Worker cannot bind while the stale record remains" '[[ $status -ne 0 ]]'
