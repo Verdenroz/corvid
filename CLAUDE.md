@@ -191,6 +191,11 @@ Caddyfile built from the same env vars as everything else. `core/discovery` hold
 - **A Caddy `respond` body with JSON braces needs backticks, and `{$VAR}` still expands inside
   them.** `/.well-known/corvid` is one such line; `caddy.test.sh` compares the served document
   byte for byte against the env values it started Caddy with.
+- **A Caddy `{$VAR:default}` falls back only when the variable is unset, not when it is empty.**
+  `render_units` wrote `CORVID_ASSETLINKS_HOST=` empty, so `host {$CORVID_ASSETLINKS_HOST:...}`
+  became a null matcher and Caddy refused to start: an update rolled back on a live host with every
+  check through Caddy answering `000`. `caddy.test.sh` now provisions the Caddyfile with the
+  `server.env` that `render_units` itself writes, both with app links on and off.
 - **A milter with `enable: true` also runs on mail the user sends.** It rewrote nothing, but it
   stamped `X-Corvid-Rewrite` on outgoing mail, naming the software to every recipient. The plan
   gates it on `is_empty(authenticated_as)`, the same rule Stalwart's own spam filter uses.
