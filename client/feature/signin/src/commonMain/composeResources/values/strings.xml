@@ -18,6 +18,7 @@
     <string name="signin_remembered">Last signed in as %1$s</string>
     <string name="signin_remembered_detail">Corvid remembers where this account lives. Your passkey still opens it.</string>
     <string name="signin_another">Use another account</string>
+    <string name="signin_as">Sign in as %1$s</string>
     <string name="signin_discovery_no_address">Enter your full email address, such as you@example.com.</string>
     <string name="signin_discovery_unreachable">Could not reach a Corvid server for %1$s. Check the address, or enter the server under Advanced.</string>
     <string name="signin_discovery_malformed">The server\'s sign-in details could not be read. Enter them under Advanced.</string>
