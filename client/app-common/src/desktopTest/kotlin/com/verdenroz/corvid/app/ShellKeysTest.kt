@@ -24,7 +24,7 @@ import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import com.verdenroz.corvid.core.ui.HandleKeys
-import com.verdenroz.corvid.core.ui.LocalPageKeys
+import com.verdenroz.corvid.core.ui.LocalEntryHandlers
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -46,7 +46,7 @@ class ShellKeysTest {
             val focus = remember { ShellFocus() }
             focus.ReclaimOn(rig.top)
             Column(focus.modifier(navigator::handleKey)) {
-                CompositionLocalProvider(LocalPageKeys provides navigator.keys(1)) {
+                CompositionLocalProvider(LocalEntryHandlers provides navigator.handlers(1)) {
                     HandleKeys { event -> (event.type == KeyEventType.KeyDown).also { if (it) rig.pressed += event.key } }
                     if (rig.field) BasicTextField("", {}, Modifier.testTag("field"))
                 }

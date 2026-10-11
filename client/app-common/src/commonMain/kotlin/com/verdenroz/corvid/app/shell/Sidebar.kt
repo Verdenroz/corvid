@@ -47,6 +47,7 @@ import com.verdenroz.corvid.appcommon.resources.write
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
+import com.verdenroz.corvid.core.designsystem.component.drawIndicator
 import org.jetbrains.compose.resources.stringResource
 
 private val EXPANDED_WIDTH = 232.dp
@@ -75,23 +76,28 @@ internal fun sidebarPlace(
         else -> SidebarPlace.Tab(root)
     }
 
+/** What the wide sidebar and the narrow drawer both list, and where each choice goes. */
+internal data class Places(
+    val place: SidebarPlace,
+    val inboxUnread: Int?,
+    val onSelect: (HomeTab) -> Unit,
+    val onFilters: () -> Unit,
+    val onSettings: () -> Unit,
+)
+
 /** Folders first, then the views of who wrote, then Filters and Settings at the foot; [expanded] false draws icons alone. */
 @Composable
 internal fun Sidebar(
-    place: SidebarPlace,
-    inboxUnread: Int?,
+    places: Places,
     expanded: Boolean,
     onWrite: () -> Unit,
-    onSelect: (HomeTab) -> Unit,
-    onFilters: () -> Unit,
-    onSettings: () -> Unit,
 ) {
     val colors = CorvidTheme.colors
     val width by animateDpAsState(if (expanded) EXPANDED_WIDTH else RAIL_WIDTH)
     Row(Modifier.fillMaxHeight().background(colors.surface)) {
         Column(Modifier.width(width).fillMaxHeight().padding(horizontal = 10.dp)) {
             WriteButton(expanded, onWrite, Modifier.padding(top = 14.dp, bottom = 14.dp))
-            Places(place, inboxUnread, expanded, ROW_HEIGHT, onSelect, onFilters, onSettings)
+            PlaceList(places, expanded, ROW_HEIGHT)
             Spacer(Modifier.height(12.dp))
         }
         VerticalDivider(color = colors.line)
@@ -100,15 +106,12 @@ internal fun Sidebar(
 
 /** Every home tab in a scrolling column, then Filters and Settings pinned at the foot; the sidebar and the narrow drawer share it. */
 @Composable
-internal fun ColumnScope.Places(
-    place: SidebarPlace,
-    inboxUnread: Int?,
+internal fun ColumnScope.PlaceList(
+    places: Places,
     expanded: Boolean,
     rowHeight: Dp,
-    onSelect: (HomeTab) -> Unit,
-    onFilters: () -> Unit,
-    onSettings: () -> Unit,
 ) {
+    val place = places.place
     Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
         HomeTab.entries.forEach { tab ->
             if (tab == HomeTab.People) SectionBreak()
@@ -117,13 +120,21 @@ internal fun ColumnScope.Places(
                 tab.icon(),
                 selected = place == SidebarPlace.Tab(tab),
                 expanded = expanded,
-                count = inboxUnread.takeIf { tab == HomeTab.Inbox },
+                count = places.inboxUnread.takeIf { tab == HomeTab.Inbox },
                 rowHeight = rowHeight,
-            ) { onSelect(tab) }
+            ) { places.onSelect(tab) }
         }
     }
     SectionBreak()
-    Item(stringResource(Res.string.tab_filters), CorvidIcons.Filter, place == SidebarPlace.Filters, expanded, null, rowHeight, onFilters)
+    Item(
+        stringResource(Res.string.tab_filters),
+        CorvidIcons.Filter,
+        place == SidebarPlace.Filters,
+        expanded,
+        null,
+        rowHeight,
+        places.onFilters,
+    )
     Item(
         stringResource(Res.string.settings_open),
         CorvidIcons.Settings,
@@ -131,7 +142,7 @@ internal fun ColumnScope.Places(
         expanded,
         null,
         rowHeight,
-        onSettings,
+        places.onSettings,
     )
 }
 

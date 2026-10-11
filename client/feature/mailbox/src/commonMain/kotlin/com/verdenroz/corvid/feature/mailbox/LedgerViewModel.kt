@@ -50,7 +50,11 @@ class LedgerViewModel(
     private var conversations: List<Conversation> = emptyList()
     private var canLoadMore = false
     private var hidden: Set<String> = emptySet()
+    private var settled: Set<String> = emptySet()
     private var paging: Job? = null
+    private var reload: Job? = null
+    private var onScreen = false
+    private var stale = false
 
     init {
         viewModelScope.launch { start() }
@@ -77,8 +81,26 @@ class LedgerViewModel(
     }
 
     /** A list whose mailbox did not exist yet looks for it again, as archiving makes one on first use. */
-    fun refresh(): Job? =
-        if (_state.value is LedgerUiState.Loaded) viewModelScope.launch { if (filter == null) start() else restartFromTop() } else null
+    fun refresh(): Job? = if (_state.value is LedgerUiState.Loaded) reload() else null
+
+    /** The mailbox changed on the server: a list on screen refetches now, one off screen when it is next shown. */
+    fun mailChanged() {
+        if (onScreen) refresh() else stale = true
+    }
+
+    fun shown(onScreen: Boolean) {
+        this.onScreen = onScreen
+        if (onScreen && stale) {
+            stale = false
+            refresh()
+        }
+    }
+
+    /** One refetch from the top at a time: a newer one cancels the one in flight, whose answer it would supersede. */
+    private fun reload(): Job {
+        reload?.cancel()
+        return viewModelScope.launch { if (filter == null) start() else restartFromTop() }.also { reload = it }
+    }
 
     private fun apply(patch: KeywordPatch) {
         if (_state.value !is LedgerUiState.Loaded || conversations.none { patch.emailId in it.emailIds }) return
@@ -86,18 +108,15 @@ class LedgerViewModel(
         publish()
     }
 
-    /** A row whose messages are moving is hidden at once, then refetched once the move ends, whichever way it went. */
+    /** A row whose messages are moving is hidden at once, and shown again by the first refetch after the move ends. */
     private fun onMove(move: MoveEvent) {
         if (_state.value !is LedgerUiState.Loaded || conversations.none { it.emailIds.any(move.ids::contains) }) return
-        if (!move.done) {
+        if (move.done) {
+            settled = settled + move.ids
+            reload()
+        } else {
             hidden = hidden + move.ids
             publish()
-            return
-        }
-        viewModelScope.launch {
-            restartFromTop()
-            hidden = hidden - move.ids
-            if (_state.value is LedgerUiState.Loaded) publish()
         }
     }
 
@@ -146,6 +165,10 @@ class LedgerViewModel(
                         return
                     }
                     conversations = if (anchor == null) page.conversations else conversations + page.conversations
+                    if (anchor == null) {
+                        hidden = hidden - settled
+                        settled = emptySet()
+                    }
                     queryState = page.queryState
                     canLoadMore = page.conversations.size == PAGE_SIZE
                     if (anchor == null) _total.value = page.total

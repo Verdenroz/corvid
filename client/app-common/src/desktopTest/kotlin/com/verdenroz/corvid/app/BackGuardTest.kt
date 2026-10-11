@@ -4,7 +4,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.runComposeUiTest
 import com.verdenroz.corvid.core.ui.GuardBack
-import com.verdenroz.corvid.core.ui.LocalBackGuard
+import com.verdenroz.corvid.core.ui.LocalEntryHandlers
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -14,7 +14,7 @@ class BackGuardTest {
         val nav = navigator(RecordingHolder(), Route.Filters)
         runComposeUiTest {
             setContent {
-                CompositionLocalProvider(LocalBackGuard provides nav.guard(1)) { GuardBack { takesBack } }
+                CompositionLocalProvider(LocalEntryHandlers provides nav.handlers(1)) { GuardBack { takesBack } }
             }
             runOnIdle { nav.handleBack() }
         }
@@ -36,7 +36,7 @@ class BackGuardTest {
         val nav = navigator(RecordingHolder(), Route.Filters)
         runComposeUiTest {
             setContent {
-                CompositionLocalProvider(LocalBackGuard provides nav.guard(1)) { GuardBack { true } }
+                CompositionLocalProvider(LocalEntryHandlers provides nav.handlers(1)) { GuardBack { true } }
             }
             runOnIdle { nav.openTab(HomeTab.Sent) }
         }

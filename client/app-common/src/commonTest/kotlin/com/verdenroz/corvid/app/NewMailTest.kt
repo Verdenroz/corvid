@@ -1,5 +1,6 @@
 package com.verdenroz.corvid.app
 
+import com.verdenroz.corvid.core.data.InboxArrival
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.testing.FakeEmail
 import com.verdenroz.corvid.core.testing.FakeIdentity
@@ -232,5 +233,20 @@ class NewMailTest {
             rig.newMail.check()
 
             assertEquals(listOf("new_mail_count[1]"), rig.notifier.shown.map { it.second })
+        }
+
+    @Test
+    fun `a quiet check asks the server nothing, and leaving quiet takes the baseline at once`() =
+        runTest {
+            var scans = 0
+            val newMail = NewMail({ emptyList<InboxArrival>().also { scans++ } }, RecordingNewMailNotifier(), KeyedTextResolver)
+
+            newMail.check()
+            newMail.attention(inboxInView = true, enabled = true)
+            newMail.check()
+            assertEquals(0, scans)
+            newMail.attention(inboxInView = false, enabled = true)
+
+            assertEquals(1, scans)
         }
 }

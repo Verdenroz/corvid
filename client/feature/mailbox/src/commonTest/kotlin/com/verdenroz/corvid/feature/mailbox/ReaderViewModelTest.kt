@@ -274,6 +274,23 @@ class ReaderViewModelTest {
         }
 
     @Test
+    fun `a thread opened from a list takes that list's kind, not one read off its messages`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox("sent", "Sent", "sent")
+            fake.mailboxes += FakeMailbox("trash", "Trash", "trash")
+            fake.emails += FakeEmail("e1", "t", setOf("trash"), "hello", "a@example.test", "2024-01-01T00:00:00Z", body = "hi")
+            fake.emails += FakeEmail("e2", "t", setOf("sent"), "Re: hello", "me@example.test", "2024-01-02T00:00:00Z", body = "hi")
+            val repository = repository(fake)
+
+            val fromTrash = track(ReaderViewModel(repository, "e1", ListKind.Trash)).state.first { it is ReaderUiState.Loaded }
+            val fromNoList = track(ReaderViewModel(repository, "e1")).state.first { it is ReaderUiState.Loaded }
+
+            assertEquals(ListKind.Trash, (fromTrash as ReaderUiState.Loaded).kind)
+            assertEquals(ListKind.Other, (fromNoList as ReaderUiState.Loaded).kind)
+        }
+
+    @Test
     fun `a star set elsewhere shows on the open thread`() =
         runViewModelTest {
             val fake = FakeJmapServer()

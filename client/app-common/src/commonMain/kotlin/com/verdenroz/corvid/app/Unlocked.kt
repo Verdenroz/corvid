@@ -27,6 +27,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.SaveableStateHolder
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
@@ -52,6 +53,8 @@ import com.verdenroz.corvid.app.shell.HomeContent
 import com.verdenroz.corvid.app.shell.KeyState
 import com.verdenroz.corvid.app.shell.NarrowTopBar
 import com.verdenroz.corvid.app.shell.NavDrawer
+import com.verdenroz.corvid.app.shell.Places
+import com.verdenroz.corvid.app.shell.SearchInput
 import com.verdenroz.corvid.app.shell.SearchTopBar
 import com.verdenroz.corvid.app.shell.Sidebar
 import com.verdenroz.corvid.app.shell.WideTopBar
@@ -68,14 +71,16 @@ import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.jmap.JmapClient
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.prefs.DevicePreferences
-import com.verdenroz.corvid.core.ui.LocalBackGuard
-import com.verdenroz.corvid.core.ui.LocalPageKeys
+import com.verdenroz.corvid.core.ui.LocalEntryHandlers
+import com.verdenroz.corvid.core.ui.LocalTopEntryKeys
 import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.core.ui.WIDE_LAYOUT
 import com.verdenroz.corvid.feature.compose.ComposeScreen
+import com.verdenroz.corvid.feature.compose.ComposeViewModel
 import com.verdenroz.corvid.feature.filters.FiltersScreen
+import com.verdenroz.corvid.feature.filters.FiltersViewModel
 import com.verdenroz.corvid.feature.mailbox.ActionNoticeBar
-import com.verdenroz.corvid.feature.mailbox.LedgerTab
+import com.verdenroz.corvid.feature.mailbox.MailActions
 import com.verdenroz.corvid.feature.mailbox.SearchScreen
 import com.verdenroz.corvid.feature.mailbox.SenderCard
 import com.verdenroz.corvid.feature.mailbox.SenderCardActions
@@ -118,31 +123,25 @@ internal fun UnlockedContent(
 
     val backStack = rememberSaveable(saver = RouteStackSaver) { mutableStateListOf<Route>(Route.Home(HomeTab.Inbox)) }
     val saved = rememberSaveableStateHolder()
-    val navigator = remember(backStack, saved) { Navigator(backStack, saved) }
+    val navigator = remember(backStack, saved, ledgers) { Navigator(backStack, saved, onLeave = ledgers::leave) }
     val newMail = rememberNewMail(scope, navigator)
     LaunchedEffect(scope) {
         newMail.check()
         followMailboxChanges(scope.get<JmapClient>().stateChanges()) {
             shell.refresh()
-            ledgers.refreshAll()
+            ledgers.mailChanged()
             newMail.check()
         }
     }
-    val route = navigator.route
     val entryKeys = (0 until navigator.depth).map(navigator::entryKey).toSet()
     LaunchedEffect(entryKeys) { models.retainOnly(entryKeys) }
-    DropOnLeave(navigator, ledgers)
-    val home = route is Route.Home
+    val home = navigator.route is Route.Home
     LaunchedEffect(home) { if (home) shell.refresh() }
     NavigationBackHandler(
         state = rememberNavigationEventState(NavigationEventInfo.None),
-        isBackEnabled = shellHandlesBack(route, navigator.depth),
+        isBackEnabled = navigator.handlesBack,
         onBackCompleted = navigator::handleBack,
     )
-
-    val shellFocus = remember { ShellFocus() }
-    val drawer = rememberDrawerState(DrawerValue.Closed)
-    val drawerScope = rememberCoroutineScope()
 
     val shellState by shell.state.collectAsState()
     val session = SettingsSession(hosts, shellState.identity, updates, onLock, onSignOut)
@@ -158,111 +157,125 @@ internal fun UnlockedContent(
         },
     ) {
         val wide = maxWidth >= WIDE_LAYOUT
-        var sidebarChoice by rememberSaveable { mutableStateOf<Boolean?>(null) }
-        val sidebarExpanded = sidebarChoice ?: (maxWidth >= SIDEBAR_EXPANDS)
         val searchInput = rememberSearchInput(navigator, wide)
-        LaunchedEffect(wide) { if (wide) drawer.snapTo(DrawerValue.Closed) }
-        CompositionLocalProvider(LocalWideLayout provides wide) {
-            shellFocus.ReclaimOn(navigator.entryKey(navigator.depth - 1))
-            NavDrawer(
-                state = drawer,
-                enabled = !wide && route is Route.Home,
-                place = sidebarPlace(navigator.homeTab, route),
-                inboxUnread = shellState.inboxUnread,
-                onSelect = navigator::openTab,
-                onFilters = { navigator.open(Route.Filters) },
-                onSettings = { navigator.open(Route.Settings) },
-            ) {
-                Column(
-                    Modifier.fillMaxSize().then(shellFocus.modifier(navigator::handleKey)).onPreviewKeyEvent { event ->
-                        (wide && event.isSearchShortcut()).also { if (it) searchInput.focus.requestFocus() }
-                    },
-                ) {
-                    NoticesBanner(notices, navigator)
-                    AppUpdatesBanner(updates)
-                    if (wide) {
-                        WideTopBar(
-                            key,
-                            shellState.identity,
-                            searchInput,
-                            onOpenSettings = { navigator.open(Route.Settings) },
-                            onToggleSidebar = { sidebarChoice = !sidebarExpanded },
-                        )
-                    }
-                    if (!wide && route is Route.Search) SearchTopBar(searchInput, navigator::handleBack)
-                    val top = navigator.depth - 1
-                    val floats = wide && top > 0 && (route is Route.Sender || route is Route.Compose)
-                    Row(Modifier.weight(1f)) {
-                        if (wide) {
-                            Sidebar(
-                                place = sidebarPlace(navigator.homeTab, route),
-                                inboxUnread = shellState.inboxUnread,
-                                expanded = sidebarExpanded,
-                                onWrite = { if (route !is Route.Compose) navigator.push(Route.Compose(ComposeIntent.New)) },
-                                onSelect = navigator::openTab,
-                                onFilters = { navigator.open(Route.Filters) },
-                                onSettings = { navigator.open(Route.Settings) },
-                            )
-                        }
-                        Box(Modifier.weight(1f)) {
-                            // One keyed call site for every visible entry, so crossing the breakpoint moves a screen rather than rebuilding it.
-                            (if (floats) listOf(top - 1, top) else listOf(top)).forEach { index ->
-                                val entryKey = navigator.entryKey(index)
-                                key(entryKey) {
-                                    val entry = navigator[index]
-                                    val floating = floats && index == top
-                                    if (floating && entry is Route.Sender) Scrim(navigator::back)
-                                    Box(if (floating) floating(entry, CorvidTheme.colors.line) else Modifier.fillMaxSize()) {
-                                        CompositionLocalProvider(
-                                            LocalBackGuard provides navigator.guard(index),
-                                            LocalPageKeys provides navigator.keys(index),
-                                        ) {
-                                            saved.SaveableStateProvider(entryKey) {
-                                                Page(
-                                                    entry,
-                                                    index,
-                                                    navigator,
-                                                    scope,
-                                                    models,
-                                                    ledgers,
-                                                    entryKey,
-                                                    session,
-                                                    searchInput.onText,
-                                                ) {
-                                                    Home(
-                                                        it,
-                                                        key,
-                                                        shellState,
-                                                        navigator,
-                                                        ledgers,
-                                                        onMenu = { drawerScope.launch { drawer.open() } },
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            ledgers.actions.notice.collectAsState().value?.let { notice ->
-                                ActionNoticeBar(
-                                    ledgers.actions,
-                                    notice,
-                                    Modifier
-                                        .align(if (wide) Alignment.BottomStart else Alignment.BottomCenter)
-                                        // A floating compose panel is 540dp wide and 24dp from the edge; the notice stays left of it.
-                                        .padding(
-                                            start = 16.dp,
-                                            end = if (floats && route is Route.Compose) 580.dp else 16.dp,
-                                            bottom = if (wide) 22.dp else 80.dp,
-                                        ),
-                                )
-                            }
+        val pages = Pages(navigator, saved, scope, models, ledgers, session, searchInput.onText)
+        val topKeys = remember(navigator) { navigator::handleKey }
+        CompositionLocalProvider(LocalWideLayout provides wide, LocalTopEntryKeys provides topKeys) {
+            Shell(pages, shellState, key, searchInput, notices, updates, roomForSidebar = maxWidth >= SIDEBAR_EXPANDS)
+        }
+    }
+}
+
+/** What every page on the stack is built from. */
+private class Pages(
+    val navigator: Navigator,
+    val saved: SaveableStateHolder,
+    val scope: Scope,
+    val models: EntryModels,
+    val ledgers: Ledgers,
+    val session: SettingsSession,
+    val onQuery: (String) -> Unit,
+)
+
+@Composable
+private fun Shell(
+    pages: Pages,
+    shellState: ShellState,
+    key: KeyState,
+    searchInput: SearchInput,
+    notices: Notices,
+    updates: AppUpdates,
+    roomForSidebar: Boolean,
+) {
+    val navigator = pages.navigator
+    val wide = LocalWideLayout.current
+    val route = navigator.route
+    val shellFocus = remember { ShellFocus() }
+    val drawer = rememberDrawerState(DrawerValue.Closed)
+    val drawerScope = rememberCoroutineScope()
+    var sidebarChoice by rememberSaveable { mutableStateOf<Boolean?>(null) }
+    val sidebarExpanded = sidebarChoice ?: roomForSidebar
+    val places =
+        Places(
+            sidebarPlace(navigator.homeTab, route),
+            shellState.inboxUnread,
+            onSelect = navigator::openTab,
+            onFilters = { navigator.open(Route.Filters) },
+            onSettings = { navigator.open(Route.Settings) },
+        )
+    val top = navigator.depth - 1
+    val floats = wide && top > 0 && (route is Route.Sender || route is Route.Compose)
+    LaunchedEffect(wide) { if (wide) drawer.snapTo(DrawerValue.Closed) }
+    shellFocus.ReclaimOn(navigator.entryKey(top))
+    NavDrawer(drawer, enabled = !wide && route is Route.Home, places) {
+        Column(
+            Modifier.fillMaxSize().then(shellFocus.modifier(navigator::handleKey)).onPreviewKeyEvent { event ->
+                (wide && event.isSearchShortcut()).also { if (it) searchInput.focus.requestFocus() }
+            },
+        ) {
+            NoticesBanner(notices, navigator)
+            AppUpdatesBanner(updates)
+            if (wide) {
+                WideTopBar(
+                    key,
+                    shellState.identity,
+                    searchInput,
+                    onOpenSettings = { navigator.open(Route.Settings) },
+                    onToggleSidebar = { sidebarChoice = !sidebarExpanded },
+                )
+            }
+            if (!wide && route is Route.Search) SearchTopBar(searchInput, navigator::handleBack)
+            Row(Modifier.weight(1f)) {
+                if (wide) Sidebar(places, sidebarExpanded, onWrite = { navigator.push(Route.Compose(ComposeIntent.New)) })
+                Box(Modifier.weight(1f)) {
+                    // One keyed call site for every visible entry, so crossing the breakpoint moves a screen rather than rebuilding it.
+                    (if (floats) listOf(top - 1, top) else listOf(top)).forEach { index ->
+                        Entry(index, floating = floats && index == top, pages) {
+                            Home(it, key, shellState, navigator, pages.ledgers, onMenu = { drawerScope.launch { drawer.open() } })
                         }
                     }
+                    Notice(pages.ledgers.actions, composeFloats = floats && route is Route.Compose)
                 }
             }
         }
     }
+}
+
+@Composable
+private fun BoxScope.Entry(
+    index: Int,
+    floating: Boolean,
+    pages: Pages,
+    home: @Composable (Route.Home) -> Unit,
+) {
+    val navigator = pages.navigator
+    val entryKey = navigator.entryKey(index)
+    key(entryKey) {
+        val route = navigator[index]
+        if (floating && route is Route.Sender) Scrim(navigator::back)
+        Box(if (floating) floating(route, CorvidTheme.colors.line) else Modifier.fillMaxSize()) {
+            CompositionLocalProvider(LocalEntryHandlers provides navigator.handlers(index)) {
+                pages.saved.SaveableStateProvider(entryKey) { Page(route, index, entryKey, pages, home) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.Notice(
+    actions: MailActions,
+    composeFloats: Boolean,
+) {
+    val notice = actions.notice.collectAsState().value ?: return
+    val wide = LocalWideLayout.current
+    ActionNoticeBar(
+        actions,
+        notice,
+        Modifier
+            .align(if (wide) Alignment.BottomStart else Alignment.BottomCenter)
+            // A floating compose panel is 540dp wide and 24dp from the edge; the notice stays left of it.
+            .padding(start = 16.dp, end = if (composeFloats) 580.dp else 16.dp, bottom = if (wide) 22.dp else 80.dp),
+    )
 }
 
 @Composable
@@ -302,10 +315,8 @@ internal fun Home(
     ledgers: Ledgers,
     onMenu: () -> Unit,
 ) {
-    val wide = LocalWideLayout.current
-    LaunchedEffect(route.tab) { if (route.tab == HomeTab.Drafts) ledgers.of(LedgerTab.Drafts).refresh() }
     Column {
-        if (!wide) {
+        if (!LocalWideLayout.current) {
             NarrowTopBar(
                 stringResource(route.tab.title()),
                 key,
@@ -318,7 +329,7 @@ internal fun Home(
         HomeContent(
             tab = route.tab,
             ledgers = ledgers,
-            onOpenEmail = { navigator.push(if (route.tab == HomeTab.Drafts) Route.Compose(ComposeIntent.Draft(it)) else Route.Reader(it)) },
+            onOpenEmail = navigator::openEmail,
             onOpenSender = { navigator.push(Route.Sender(it)) },
             onWrite = { navigator.push(Route.Compose(ComposeIntent.New)) },
         )
@@ -329,50 +340,36 @@ internal fun Home(
 private fun Page(
     route: Route,
     index: Int,
-    navigator: Navigator,
-    scope: Scope,
-    models: EntryModels,
-    ledgers: Ledgers,
     entryKey: String,
-    session: SettingsSession,
-    onQuery: (String) -> Unit,
-    files: AttachmentFiles = koinInject(),
+    pages: Pages,
     home: @Composable (Route.Home) -> Unit,
+    files: AttachmentFiles = koinInject(),
 ) {
+    val navigator = pages.navigator
+    val scope = pages.scope
+    val models = pages.models
     val mailbox = remember(scope) { scope.get<MailboxRepository>() }
     when (route) {
         is Route.Home -> home(route)
-        is Route.Reader ->
-            ReaderPage(
-                route,
-                listUnder(index, navigator, models, ledgers, mailbox),
-                mailbox,
-                files,
-                ledgers.actions,
-                navigator,
-                onCompose = { navigator.push(Route.Compose(it)) },
-                onOpenSender = { navigator.push(Route.Sender(it)) },
-            )
-        is Route.Search -> {
-            val search = route.query.takeIf { it.isNotBlank() }?.let { searchLedger(models, entryKey, mailbox, it) }
+        is Route.Reader -> ReaderPage(route, index, entryKey, models, mailbox, files, pages.ledgers, navigator)
+        is Route.Search ->
             SearchScreen(
-                viewModel = search,
-                actions = ledgers.actions,
+                viewModel = route.query.takeIf { it.isNotBlank() }?.let { pages.ledgers.search(models, entryKey, it) },
+                actions = pages.ledgers.actions,
                 query = route.query,
-                onOpenEmail = { navigator.push(Route.Reader(it)) },
+                onOpenEmail = navigator::openEmail,
                 onOpenSender = { navigator.push(Route.Sender(it)) },
-                onQuery = onQuery,
+                onQuery = pages.onQuery,
             )
-        }
         is Route.Compose ->
-            ComposeScreen(
-                remember(scope) { scope.get<ComposeRepository>() },
-                files,
-                route.intent,
-                onClose = navigator::back,
-            )
-        is Route.Filters -> FiltersScreen(remember(scope) { scope.get<FiltersRepository>() }, onBack = navigator::back)
-        is Route.Settings -> SettingsPage(scope, session, navigator, models, entryKey)
+            ComposeScreen(files, route.intent, onClose = navigator::back) { restore ->
+                models.of(entryKey, ComposeViewModel::class) { ComposeViewModel(scope.get<ComposeRepository>(), route.intent, restore) }
+            }
+        is Route.Filters ->
+            FiltersScreen(onBack = navigator::back) { draft ->
+                models.of(entryKey, FiltersViewModel::class) { FiltersViewModel(scope.get<FiltersRepository>(), draft) }
+            }
+        is Route.Settings -> SettingsPage(scope, pages.session, navigator, models, entryKey)
         is Route.ApproveDevice -> ApproveDevicePage(scope, navigator, models, entryKey)
         is Route.Notices -> {
             val viewModel = models.of(entryKey, NoticesViewModel::class) { NoticesViewModel(scope.get<NoticeRepository>()) }
@@ -386,16 +383,10 @@ private fun Page(
                 actions =
                     SenderCardActions(
                         close = navigator::back,
-                        openEmail = { navigator.push(Route.Reader(it)) },
+                        openEmail = navigator::openEmail,
                         compose = { navigator.push(Route.Compose(it)) },
                         makeFilter = { navigator.push(Route.Filters) },
                     ),
             )
     }
 }
-
-/** Whether back belongs to the shell at all; on the Inbox with nothing pushed it leaves the app. */
-internal fun shellHandlesBack(
-    route: Route,
-    depth: Int,
-): Boolean = depth > 1 || route != Route.Home(HomeTab.Inbox)

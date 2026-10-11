@@ -62,7 +62,7 @@ import kotlin.time.Clock
 /** What a card can ask the shell to do. */
 class SenderCardActions(
     val close: () -> Unit,
-    val openEmail: (String) -> Unit,
+    val openEmail: (EmailSummary) -> Unit,
     val compose: (ComposeIntent) -> Unit,
     val makeFilter: () -> Unit,
 )
@@ -197,7 +197,7 @@ private fun Actions(
 private fun History(
     recent: List<EmailSummary>,
     wide: Boolean,
-    onOpen: (String) -> Unit,
+    onOpen: (EmailSummary) -> Unit,
     modifier: Modifier,
 ) {
     val colors = CorvidTheme.colors
@@ -215,7 +215,7 @@ private fun History(
         }
         items(recent, key = { it.id }) { email ->
             Row(
-                Modifier.fillMaxWidth().clickable { onOpen(email.id) }.padding(vertical = 10.dp),
+                Modifier.fillMaxWidth().clickable { onOpen(email) }.padding(vertical = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text(

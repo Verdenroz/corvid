@@ -37,15 +37,16 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.navigationevent.NavigationEventInfo
-import androidx.navigationevent.compose.NavigationBackHandler
-import androidx.navigationevent.compose.rememberNavigationEventState
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.model.Conversation
+import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.core.text.asString
+import com.verdenroz.corvid.core.ui.GuardBack
+import com.verdenroz.corvid.core.ui.HandleKeys
+import com.verdenroz.corvid.core.ui.LocalTopEntryKeys
 import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.core.ui.QuietPane
 import com.verdenroz.corvid.feature.mailbox.resources.Res
@@ -74,7 +75,7 @@ fun LedgerScreen(
     viewModel: LedgerViewModel,
     actions: MailActions,
     tab: LedgerTab,
-    onOpenEmail: (String) -> Unit,
+    onOpenEmail: (EmailSummary) -> Unit,
     onOpenSender: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -86,15 +87,15 @@ internal suspend fun LedgerViewModel.refreshAndWait() {
 }
 
 /**
- * Ticks live only while the list is on screen: back or Escape clears them first, and leaving or opening a message drops them.
- * With [takeFocus] the list takes keyboard focus when shown, so its shortcuts answer without a click first.
+ * Back or Escape clears the ticks before it goes back; the shell drops them when the list is left. Keys come from the
+ * shell only while this list's entry is on top. With [takeFocus] the list takes keyboard focus when shown.
  */
 @Composable
 internal fun LedgerContent(
     viewModel: LedgerViewModel,
     actions: MailActions,
     emptyText: String,
-    onOpenEmail: (String) -> Unit,
+    onOpenEmail: (EmailSummary) -> Unit,
     onOpenSender: (String) -> Unit,
     modifier: Modifier = Modifier,
     takeFocus: Boolean = false,
@@ -110,17 +111,17 @@ internal fun LedgerContent(
     val menu = rememberMoveMenu(actions)
     val focusManager = LocalFocusManager.current
     val listFocus = remember { FocusRequester() }
-    DisposableEffect(viewModel) { onDispose { viewModel.clearSelection() } }
-    NavigationBackHandler(
-        state = rememberNavigationEventState(NavigationEventInfo.None),
-        isBackEnabled = selected.isNotEmpty(),
-        onBackCompleted = viewModel::clearSelection,
-    )
-    if (takeFocus) LaunchedEffect(Unit) { listFocus.requestFocus() }
-    val open: (String) -> Unit = { id ->
-        viewModel.clearSelection()
-        onOpenEmail(id)
+    DisposableEffect(viewModel) {
+        viewModel.shown(true)
+        onDispose { viewModel.shown(false) }
     }
+    GuardBack(enabled = selected.isNotEmpty()) {
+        viewModel.clearSelection()
+        true
+    }
+    if (takeFocus) LaunchedEffect(Unit) { listFocus.requestFocus() }
+    val conversations = (state as? LedgerUiState.Loaded)?.conversations.orEmpty()
+    val open: (String) -> Unit = { id -> conversations.firstOrNull { it.latest.id == id }?.let { onOpenEmail(it.latest) } }
     val onAction: (ConversationAction, ActionTarget) -> Unit = { action, target ->
         if (action == ConversationAction.Destroy) {
             doomed = target
@@ -133,30 +134,34 @@ internal fun LedgerContent(
         actions.moveTo(target.all, target.conversations, folder)
         viewModel.clearSelection()
     }
-    val conversations = (state as? LedgerUiState.Loaded)?.conversations.orEmpty()
-    val onKey: (ListKey) -> Boolean = { key ->
+    val onShortcut: (MailShortcut) -> Boolean = { shortcut ->
+        val rows = keyTarget(conversations, selected, focused)
+        val target = rows.target()
+        val action = shortcut.action(actionsFor(kind, target)).takeIf { rows.isNotEmpty() }
+        if (action != null && action.leavesList && rows.any { it.latest.id == focused }) {
+            focusManager.leaveRow(listFocus, toNeighbour = selected.isEmpty())
+        }
+        action?.let { onAction(it, target) } != null
+    }
+    val onListKey: (ListKey) -> Boolean = { key ->
         when (key) {
-            ListKey.Next, ListKey.Previous -> focusManager.step(key, rowFocused = focused != null)
+            ListKey.Next, ListKey.Previous -> focusManager.step(key, listFocus, rowFocused = focused != null)
             ListKey.Open -> focused?.let(open) != null
             ListKey.Toggle -> focused?.let(viewModel::toggleSelected) != null
-            else -> {
-                val rows = keyTarget(conversations, selected, focused)
-                val target = rows.target()
-                val action = key.action(kind, target)?.takeIf { rows.isNotEmpty() }
-                if (action != null && action.leavesList && rows.any { it.latest.id == focused }) {
-                    focusManager.leaveRow(listFocus, toNeighbour = selected.isEmpty())
-                }
-                action?.let { onAction(it, target) } != null
-            }
         }
     }
+    HandleKeys { event ->
+        val press = event.press()
+        press?.mailShortcut()?.let(onShortcut) ?: press?.listKey()?.let(onListKey) ?: false
+    }
+    val toTop = LocalTopEntryKeys.current
     Column(
         modifier
             .fillMaxSize()
             .focusRequester(listFocus)
             .focusProperties { onExit = { if (requestedFocusDirection.vertical) cancelFocusChange() } }
             .focusable()
-            .onKeyEvent { event -> event.listKey()?.let(onKey) ?: false },
+            .onKeyEvent(toTop),
     ) {
         doomed?.let { target ->
             DestroyQuestion(

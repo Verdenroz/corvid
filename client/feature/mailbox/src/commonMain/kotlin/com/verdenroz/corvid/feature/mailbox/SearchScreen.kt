@@ -26,6 +26,7 @@ import com.verdenroz.corvid.core.data.SearchScope
 import com.verdenroz.corvid.core.data.searchAnywhere
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.search_exclude_discarded
 import com.verdenroz.corvid.feature.mailbox.resources.search_hint_examples
@@ -46,7 +47,7 @@ fun SearchScreen(
     viewModel: LedgerViewModel?,
     actions: MailActions,
     query: String,
-    onOpenEmail: (String) -> Unit,
+    onOpenEmail: (EmailSummary) -> Unit,
     onOpenSender: (String) -> Unit,
     onQuery: (String) -> Unit,
     modifier: Modifier = Modifier,

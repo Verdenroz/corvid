@@ -16,7 +16,6 @@ import androidx.compose.ui.unit.dp
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
-import com.verdenroz.corvid.app.HomeTab
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import kotlinx.coroutines.launch
@@ -32,11 +31,7 @@ private val DRAWER_ROW = 48.dp
 internal fun NavDrawer(
     state: DrawerState,
     enabled: Boolean,
-    place: SidebarPlace,
-    inboxUnread: Int?,
-    onSelect: (HomeTab) -> Unit,
-    onFilters: () -> Unit,
-    onSettings: () -> Unit,
+    places: Places,
     content: @Composable () -> Unit,
 ) {
     val colors = CorvidTheme.colors
@@ -68,14 +63,14 @@ internal fun NavDrawer(
             ) {
                 Box(Modifier.padding(start = 24.dp, top = 20.dp, bottom = 14.dp)) { Wordmark() }
                 Column(Modifier.weight(1f).padding(start = 10.dp, end = 10.dp, bottom = 12.dp)) {
-                    Places(
-                        place,
-                        inboxUnread,
+                    PlaceList(
+                        places.copy(
+                            onSelect = { choose { places.onSelect(it) } },
+                            onFilters = { choose(places.onFilters) },
+                            onSettings = { choose(places.onSettings) },
+                        ),
                         expanded = true,
                         rowHeight = DRAWER_ROW,
-                        onSelect = { choose { onSelect(it) } },
-                        onFilters = { choose(onFilters) },
-                        onSettings = { choose(onSettings) },
                     )
                 }
             }

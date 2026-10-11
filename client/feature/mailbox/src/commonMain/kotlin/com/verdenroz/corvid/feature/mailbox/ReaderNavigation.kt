@@ -40,47 +40,20 @@ fun exitAfter(
     return if (advances && older != null) ReaderExit.Open(older) else ReaderExit.Back
 }
 
-/** The reader's keyboard commands, Gmail's letters. */
-enum class ReaderKey { Archive, Delete, Reply, ReplyAll, Forward, Star, Unread, Older, Newer, Back }
+/** The keys a reader answers besides the [MailShortcut]s, Gmail's letters. */
+internal enum class ReaderKey { Reply, ReplyAll, Forward, Older, Newer, Back }
 
-/** Null for a key the reader leaves alone, including anything held with Ctrl, Alt or Meta. */
-fun readerKey(
-    key: Key,
-    shift: Boolean,
-    modified: Boolean = false,
-): ReaderKey? =
-    when {
-        modified -> null
-        shift ->
-            when (key) {
-                Key.U -> ReaderKey.Unread
-                Key.Three, Key.Pound -> ReaderKey.Delete
-                else -> null
-            }
-        else ->
-            when (key) {
-                Key.E -> ReaderKey.Archive
-                Key.R -> ReaderKey.Reply
-                Key.A -> ReaderKey.ReplyAll
-                Key.F -> ReaderKey.Forward
-                Key.S -> ReaderKey.Star
-                Key.J -> ReaderKey.Older
-                Key.K -> ReaderKey.Newer
-                Key.U -> ReaderKey.Back
-                Key.Pound -> ReaderKey.Delete
-                else -> null
-            }
-    }
-
-/** The bar action a key stands for, picked from what the bar [offered] so a key never does what the bar would not. */
-fun ReaderKey.action(offered: List<ConversationAction>): ConversationAction? {
-    val wanted =
-        when (this) {
-            ReaderKey.Archive -> listOf(ConversationAction.Archive)
-            ReaderKey.Delete -> listOf(ConversationAction.Trash, ConversationAction.Destroy)
-            ReaderKey.Star -> listOf(ConversationAction.Star, ConversationAction.Unstar)
-            ReaderKey.Unread -> listOf(ConversationAction.MarkUnread)
-            else -> emptyList()
+internal fun Press.readerKey(): ReaderKey? =
+    if (shift) {
+        null
+    } else {
+        when (key) {
+            Key.R -> ReaderKey.Reply
+            Key.A -> ReaderKey.ReplyAll
+            Key.F -> ReaderKey.Forward
+            Key.J -> ReaderKey.Older
+            Key.K -> ReaderKey.Newer
+            Key.U -> ReaderKey.Back
+            else -> null
         }
-    return wanted.firstOrNull { it in offered }
-}
+    }

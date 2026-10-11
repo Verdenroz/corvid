@@ -26,7 +26,8 @@ interface NewMailNotifier {
 /**
  * Turns Inbox checks into one content-free notification with a running count. A message counts as new when it is
  * unread and arrived no earlier than the newest Inbox message the previous check saw, so mail moved back into the
- * Inbox, which keeps its old arrival time, never counts. The first check only sets that baseline.
+ * Inbox, which keeps its old arrival time, never counts. The first check only sets that baseline. While quiet a check
+ * scans nothing, and the baseline is taken again when it stops being quiet.
  */
 class NewMail(
     private val scan: suspend () -> List<InboxArrival>,
@@ -44,15 +45,24 @@ class NewMail(
     suspend fun attention(
         inboxInView: Boolean,
         enabled: Boolean,
-    ) = lock.withLock {
-        quiet = inboxInView || !enabled
-        if (quiet) {
-            pending = 0
-            notifier.clear()
-        }
+    ) {
+        val waking =
+            lock.withLock {
+                val was = quiet
+                quiet = inboxInView || !enabled
+                if (quiet) {
+                    pending = 0
+                    notifier.clear()
+                } else if (was) {
+                    started = false
+                }
+                was && !quiet
+            }
+        if (waking) check()
     }
 
     suspend fun check() {
+        if (quiet) return
         val arrivals =
             try {
                 scan()

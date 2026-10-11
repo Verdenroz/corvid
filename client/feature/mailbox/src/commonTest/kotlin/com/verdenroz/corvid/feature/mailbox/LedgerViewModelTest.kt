@@ -236,6 +236,27 @@ class LedgerViewModelTest {
         }
 
     @Test
+    fun `a mail change leaves a list off screen alone until it is shown again`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
+            var queries = 0
+            fake.beforeEmailQuery = { queries++ }
+            val vm = track(LedgerViewModel(repository(fake), LedgerTab.Inbox))
+            vm.state.first { it is LedgerUiState.Loaded }
+
+            fake.emails += FakeEmail("n", "n", setOf("inbox"), "new", "a@example.test", Instant.fromEpochSeconds(1).toString())
+            vm.mailChanged()
+            withContext(Dispatchers.Default) { delay(300) }
+            assertEquals(1, queries)
+            vm.shown(true)
+
+            val loaded = vm.state.first { it is LedgerUiState.Loaded && it.conversations.isNotEmpty() } as LedgerUiState.Loaded
+            assertEquals(listOf("n"), loaded.conversations.map { it.latest.id })
+            assertEquals(2, queries)
+        }
+
+    @Test
     fun `drafts of one thread are listed one by one, each opening in compose`() =
         runViewModelTest {
             val fake = FakeJmapServer()
