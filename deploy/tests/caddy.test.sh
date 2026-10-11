@@ -123,5 +123,19 @@ for path in /setup /setup/ /api/signup/setup /api/signup/setup/ /login/alternati
   check "$path POST on the identity provider's site is a 404" "$(fetch -X POST -d '{}' "$idp$path")" "404 "
 done
 
-[[ $fail -eq 0 ]] || "$engine" logs "$name" 2>&1 | tail -20
+# The env above is hand-written; a host gets server.env from render_units, including its empty values.
+# shellcheck source=../lib.sh
+. "$here/lib.sh"
+for publish in false true; do
+  mkdir -p "$work/host-$publish"
+  MAIL_HOSTNAME=n1.relay.example MAIL_DOMAIN=corvid.example WEB_PORT=4443 IDP_HOSTNAME=idp.corvid.example \
+    PUBLISH_MTA_STS=false PUBLISH_ASSETLINKS="$publish" ASSETLINKS="$links" \
+    ISSUER_URL=http://127.0.0.1:11333/internal/issuer CORVID_DIR="$work/host-$publish" CORVID_IMAGE=localhost/corvid:latest \
+    render_units "$work/host-$publish/units" "$here"
+  check "Caddy provisions the Caddyfile with the server.env render_units writes, app links $publish" \
+    "$("$engine" run --rm --env-file "$work/host-$publish/server.env" -v "$here/Caddyfile:/etc/caddy/Caddyfile:ro,z" \
+      "$image" caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >"$work/validate-$publish" 2>&1; echo $?)" 0
+done
+
+[[ $fail -eq 0 ]] || { "$engine" logs "$name" 2>&1 | tail -20; tail -3 "$work"/validate-* 2>/dev/null; }
 exit "$fail"
