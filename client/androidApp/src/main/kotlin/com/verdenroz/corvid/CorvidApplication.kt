@@ -17,6 +17,7 @@ import com.verdenroz.corvid.core.data.AttachmentFiles
 import com.verdenroz.corvid.core.discovery.platformDiscoveryModule
 import com.verdenroz.corvid.core.keyring.KeyHolder
 import com.verdenroz.corvid.core.prefs.platformPreferencesModule
+import com.verdenroz.corvid.feature.settings.BackgroundPush
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.startKoin
@@ -32,6 +33,7 @@ class CorvidApplication : Application() {
                 single<NewMailNotifier> { AndroidNewMailNotifier(androidContext()) }
                 single { AndroidNotificationPermission(androidContext()) } bind NotificationPermission::class
                 single<AppInstaller> { AndroidAppInstaller(androidContext()) }
+                single { AndroidBackgroundPush(androidContext()) } bind BackgroundPush::class
                 single { AndroidAttachmentFiles(androidContext()) } bind AttachmentFiles::class
             }
         val koin =

@@ -126,6 +126,7 @@ internal fun UnlockedContent(
     val saved = rememberSaveableStateHolder()
     val navigator = remember(backStack, saved, ledgers) { Navigator(backStack, saved, onLeave = ledgers::leave) }
     val newMail = rememberNewMail(scope, navigator)
+    FollowPushEndpoint(scope, hosts)
     LaunchedEffect(scope) {
         newMail.check()
         followMailboxChanges(scope.get<JmapClient>().stateChanges()) {

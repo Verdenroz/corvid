@@ -1,18 +1,23 @@
 package com.verdenroz.corvid
 
 import android.app.Notification
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import com.verdenroz.corvid.app.NewMailNotifier
 
-private const val CHANNEL_ID = "new-mail"
+internal const val NEW_MAIL_CHANNEL = "new-mail"
+internal const val PREVIEW_GROUP = "com.verdenroz.corvid.NEW_MAIL"
 private const val NOTIFICATION_ID = 2
 internal const val EXTRA_OPEN_INBOX = "com.verdenroz.corvid.OPEN_INBOX"
 
-/** One new-mail notification, replaced as the count grows, in its own channel that the lock screen never shows. */
+/** The new-mail channel, which the lock screen never shows. */
+internal fun Context.newMailChannel(): NotificationManager =
+    notificationChannel(NEW_MAIL_CHANNEL, R.string.new_mail_channel) { lockscreenVisibility = Notification.VISIBILITY_SECRET }
+
+/** One new-mail notification, replaced as the count grows; clearing it clears the pushed previews too. */
 class AndroidNewMailNotifier(private val context: Context) : NewMailNotifier {
-    private val manager =
-        context.notificationChannel(CHANNEL_ID, R.string.new_mail_channel) { lockscreenVisibility = Notification.VISIBILITY_SECRET }
+    private val manager = context.newMailChannel()
 
     override fun post(
         title: String,
@@ -20,7 +25,7 @@ class AndroidNewMailNotifier(private val context: Context) : NewMailNotifier {
     ) {
         val open = context.openApp(NOTIFICATION_ID, PendingIntent.FLAG_UPDATE_CURRENT) { putExtra(EXTRA_OPEN_INBOX, true) }
         val notification =
-            context.notification(CHANNEL_ID, title, text)
+            context.notification(NEW_MAIL_CHANNEL, title, text)
                 .setVisibility(Notification.VISIBILITY_SECRET)
                 .setOnlyAlertOnce(true)
                 .setContentIntent(open)
@@ -29,5 +34,8 @@ class AndroidNewMailNotifier(private val context: Context) : NewMailNotifier {
         manager.notify(NOTIFICATION_ID, notification)
     }
 
-    override fun clear() = manager.cancel(NOTIFICATION_ID)
+    override fun clear() {
+        manager.cancel(NOTIFICATION_ID)
+        manager.activeNotifications.filter { it.notification.group == PREVIEW_GROUP }.forEach { manager.cancel(it.tag, it.id) }
+    }
 }

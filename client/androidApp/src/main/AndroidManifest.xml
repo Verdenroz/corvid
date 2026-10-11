@@ -29,6 +29,14 @@
             </intent-filter>
         </activity>
 
+        <service
+            android:name=".CorvidPushService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="org.unifiedpush.android.connector.PUSH_EVENT" />
+            </intent-filter>
+        </service>
+
         <receiver
             android:name=".InstallStatusReceiver"
             android:exported="false" />

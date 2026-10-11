@@ -25,6 +25,46 @@ data class RememberedAccount(
     val email: String? = null,
 )
 
+/** A push endpoint and the RFC 8291 public keys that encrypt to it, base64url as the connector gives them. */
+data class PushSubscription(
+    val url: String,
+    val p256dh: String,
+    val auth: String,
+)
+
+/** Where background notifications stand between the platform, this device and the server. */
+enum class PushStatus {
+    Off,
+
+    /** Registered with the platform, which has not handed over an endpoint yet. */
+    Registering,
+
+    /** An endpoint is held that the server has not taken yet. */
+    Unsent,
+    Sent,
+
+    /** The server has no push or no device routes. */
+    OffOnServer,
+
+    /** The server does not know this device's name. */
+    NotApproved,
+
+    /** The server refused the endpoint as not one of Google's. */
+    Refused,
+
+    /** Turned off here; the server may hold the endpoint until a removal reaches it. */
+    Removing,
+
+    /** The platform could not register this app. */
+    Failed,
+}
+
+/** [subscription] is held from the platform's answer until background notifications are turned off. */
+data class PushSettings(
+    val status: PushStatus = PushStatus.Off,
+    val subscription: PushSubscription? = null,
+)
+
 /**
  * Choices that belong to this device and hold no mail, so they live in a plain file. [noticesSeen] is the newest
  * server notice id shown here; [newMailNotifications] says whether new Inbox mail posts a content-free notification.
@@ -35,4 +75,5 @@ data class DeviceSettings(
     val noticesSeen: Long = 0,
     val newMailNotifications: Boolean = true,
     val account: RememberedAccount? = null,
+    val push: PushSettings = PushSettings(),
 )

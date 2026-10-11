@@ -50,6 +50,17 @@ import com.verdenroz.corvid.feature.settings.resources.settings_new_mail
 import com.verdenroz.corvid.feature.settings.resources.settings_new_mail_detail
 import com.verdenroz.corvid.feature.settings.resources.settings_notices_detail
 import com.verdenroz.corvid.feature.settings.resources.settings_notices_row
+import com.verdenroz.corvid.feature.settings.resources.settings_push
+import com.verdenroz.corvid.feature.settings.resources.settings_push_failed
+import com.verdenroz.corvid.feature.settings.resources.settings_push_not_approved
+import com.verdenroz.corvid.feature.settings.resources.settings_push_off
+import com.verdenroz.corvid.feature.settings.resources.settings_push_refused
+import com.verdenroz.corvid.feature.settings.resources.settings_push_registering
+import com.verdenroz.corvid.feature.settings.resources.settings_push_removing
+import com.verdenroz.corvid.feature.settings.resources.settings_push_sent
+import com.verdenroz.corvid.feature.settings.resources.settings_push_server_off
+import com.verdenroz.corvid.feature.settings.resources.settings_push_unavailable
+import com.verdenroz.corvid.feature.settings.resources.settings_push_waiting
 import com.verdenroz.corvid.feature.settings.resources.settings_server
 import com.verdenroz.corvid.feature.settings.resources.settings_sign_out
 import com.verdenroz.corvid.feature.settings.resources.settings_sign_out_question
@@ -142,6 +153,16 @@ fun SettingsScreen(
                         label = { on -> stringResource(if (on) Res.string.settings_about_on else Res.string.settings_about_off) },
                         onSelect = viewModel::setNewMailNotifications,
                     )
+                    state.backgroundPush?.let { line ->
+                        ChoiceRow(
+                            title = stringResource(Res.string.settings_push),
+                            detail = stringResource(line.text()),
+                            options = listOf(true, false),
+                            selected = line.on,
+                            label = { on -> stringResource(if (on) Res.string.settings_about_on else Res.string.settings_about_off) },
+                            onSelect = viewModel::setBackgroundPush,
+                        )
+                    }
                     LinkRow(
                         title = stringResource(Res.string.settings_notices_row),
                         detail = stringResource(Res.string.settings_notices_detail),
@@ -207,4 +228,18 @@ private fun ThemeChoice.label() =
         ThemeChoice.System -> Res.string.settings_theme_system
         ThemeChoice.Light -> Res.string.settings_theme_light
         ThemeChoice.Dark -> Res.string.settings_theme_dark
+    }
+
+private fun BackgroundPushLine.text() =
+    when (this) {
+        BackgroundPushLine.Off -> Res.string.settings_push_off
+        BackgroundPushLine.Unavailable -> Res.string.settings_push_unavailable
+        BackgroundPushLine.Registering -> Res.string.settings_push_registering
+        BackgroundPushLine.Waiting -> Res.string.settings_push_waiting
+        BackgroundPushLine.Sent -> Res.string.settings_push_sent
+        BackgroundPushLine.OffOnServer -> Res.string.settings_push_server_off
+        BackgroundPushLine.NotApproved -> Res.string.settings_push_not_approved
+        BackgroundPushLine.Refused -> Res.string.settings_push_refused
+        BackgroundPushLine.Removing -> Res.string.settings_push_removing
+        BackgroundPushLine.Failed -> Res.string.settings_push_failed
     }

@@ -169,6 +169,7 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
             path.startsWith("/jmap/upload/") -> state.withLock { uploadResponse(request) }
             path.startsWith("/jmap/download/") -> downloadResponse(path)
             path.startsWith("/corvid/devices") -> devices.handle(this, request)
+            path == "/corvid/push/vapid" -> devices.vapid(this)
             path.startsWith("/corvid/app/") -> app.handle(this, request)
             path.startsWith("/i/") -> imageResponse(request, path)
             else -> webTier[path]?.handle(this, request) ?: respond("not found", HttpStatusCode.NotFound)

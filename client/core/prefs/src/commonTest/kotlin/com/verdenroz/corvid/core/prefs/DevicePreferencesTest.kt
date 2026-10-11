@@ -156,4 +156,63 @@ class DevicePreferencesTest {
     fun `each auto-lock choice maps to its minutes`() {
         assertEquals(listOf(1.minutes, 5.minutes, 15.minutes, 30.minutes), AutoLock.entries.map { it.timeout })
     }
+
+    @Test
+    fun `a new endpoint waits to be sent and the server's answer is recorded against it`() =
+        runTest {
+            val prefs = preferences()
+            val subscription = PushSubscription("https://push.example.com/up1", "key", "secret")
+
+            prefs.setPushSubscription(subscription)
+            runCurrent()
+            assertEquals(PushSettings(PushStatus.Unsent, subscription), prefs.settings.value.push)
+
+            prefs.recordPushAnswer(subscription, PushStatus.Sent)
+            runCurrent()
+
+            assertEquals(PushSettings(PushStatus.Sent, subscription), prefs.settings.value.push)
+        }
+
+    @Test
+    fun `an answer for an endpoint the connector has since replaced is dropped`() =
+        runTest {
+            val prefs = preferences()
+            val old = PushSubscription("https://push.example.com/up1", "key", "secret")
+            val new = PushSubscription("https://push.example.com/up2", "key2", "secret2")
+            prefs.setPushSubscription(old)
+            prefs.setPushSubscription(new)
+
+            prefs.recordPushAnswer(old, PushStatus.Sent)
+            runCurrent()
+
+            assertEquals(PushSettings(PushStatus.Unsent, new), prefs.settings.value.push)
+        }
+
+    @Test
+    fun `removing forgets the endpoint and a finished removal turns push off`() =
+        runTest {
+            val prefs = preferences()
+            prefs.setPushSubscription(PushSubscription("https://push.example.com/up1", "key", "secret"))
+
+            prefs.removePush()
+            runCurrent()
+            assertEquals(PushSettings(PushStatus.Removing), prefs.settings.value.push)
+
+            prefs.finishPushRemoval()
+            runCurrent()
+            assertEquals(PushSettings(), prefs.settings.value.push)
+        }
+
+    @Test
+    fun `a removal finishing after push was turned back on leaves the new registration alone`() =
+        runTest {
+            val prefs = preferences()
+            prefs.removePush()
+            prefs.setPushRegistering()
+
+            prefs.finishPushRemoval()
+            runCurrent()
+
+            assertEquals(PushSettings(PushStatus.Registering), prefs.settings.value.push)
+        }
 }
