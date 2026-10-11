@@ -121,6 +121,16 @@ impl Streams {
             .clone()
     }
 
+    /// The device's queue, unless `valid` fails. It runs under the same lock as [`Self::close`],
+    /// so a stream cannot open on a queue that a revoke has already swept.
+    fn open(&self, name: &str, valid: impl FnOnce() -> bool) -> Option<Arc<Queue>> {
+        let mut queues = self
+            .queues
+            .lock()
+            .expect("the streams lock is not poisoned");
+        valid().then(|| queues.entry(name.to_owned()).or_default().clone())
+    }
+
     pub(super) fn publish(&self, name: &str, body: &[u8]) {
         self.queue(name).push(URL_SAFE_NO_PAD.encode(body));
     }
@@ -164,7 +174,17 @@ pub(super) async fn serve(State(state): State<Shared>, headers: HeaderMap) -> Re
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.parse::<u64>().ok())
         .unwrap_or(0);
-    let queue = pusher.streams.queue(&name);
+    let still_theirs = || {
+        state.devices.read(|devices| {
+            devices
+                .pushes
+                .get(&name)
+                .is_some_and(|push| push.token_hash == hashed)
+        })
+    };
+    let Some(queue) = pusher.streams.open(&name, still_theirs) else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
     let events = stream::unfold((queue, resume), |(queue, last)| async move {
         let (id, data) = queue.next(last).await?;
         let event = Event::default().id(id.to_string()).event("push").data(data);
