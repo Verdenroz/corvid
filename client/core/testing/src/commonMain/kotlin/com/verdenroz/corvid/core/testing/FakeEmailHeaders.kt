@@ -5,10 +5,12 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlin.time.Instant
 
 internal fun JsonObject.requestedHeaders(): List<String> =
     get("properties")?.jsonArray?.map { it.jsonPrimitive.content }?.filter { it.startsWith("header:") }.orEmpty()
@@ -32,7 +34,11 @@ private fun String.render(form: String?): JsonElement =
         else -> JsonPrimitive(" $this")
     }
 
-/** `inMailbox`, `inMailboxOtherThan`, `hasKeyword`, `from`, `to`, `cc` and `bcc` (a case-insensitive substring of any address, as a server matches text), and AND/OR/NOT. */
+/**
+ * `inMailbox`, `inMailboxOtherThan`, `hasKeyword`, `notKeyword`, `hasAttachment`, `before`, `after`, `subject`, `text`
+ * (a quoted value as one phrase), `from`, `to`, `cc` and `bcc` (a case-insensitive substring of any address, as a server
+ * matches text), and AND/OR/NOT.
+ */
 internal fun FakeEmail.matches(filter: JsonObject?): Boolean {
     if (filter == null) return true
     filter["operator"]?.jsonPrimitive?.content?.let { operator ->
@@ -49,11 +55,19 @@ internal fun FakeEmail.matches(filter: JsonObject?): Boolean {
         when (key) {
             "inMailbox" -> wanted in mailboxIds
             "hasKeyword" -> wanted in keywords
+            "notKeyword" -> wanted !in keywords
+            "hasAttachment" -> hasAttachment == value.jsonPrimitive.boolean
+            "before" -> Instant.parse(receivedAt) < Instant.parse(wanted)
+            "after" -> Instant.parse(receivedAt) >= Instant.parse(wanted)
+            "subject" -> subject.orEmpty().contains(wanted, ignoreCase = true)
             "from" -> listOfNotNull(from, fromName).any { it.contains(wanted, ignoreCase = true) }
             "to" -> to.any { it.contains(wanted, ignoreCase = true) }
             "cc" -> cc.any { it.contains(wanted, ignoreCase = true) }
             "bcc" -> bcc.any { it.contains(wanted, ignoreCase = true) }
-            "text" -> (listOfNotNull(subject, from, fromName, preview, body) + to + cc + bcc).any { it.contains(wanted, ignoreCase = true) }
+            "text" -> {
+                val phrase = wanted.removeSurrounding("\"")
+                (listOfNotNull(subject, from, fromName, preview, body) + to + cc + bcc).any { it.contains(phrase, ignoreCase = true) }
+            }
             else -> error("unsupported filter $key")
         }
     }

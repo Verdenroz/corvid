@@ -173,6 +173,20 @@ class LedgerViewModelTest {
             val loaded = vm.state.first { it is LedgerUiState.Loaded } as LedgerUiState.Loaded
 
             assertEquals(listOf("b", "a"), loaded.conversations.map { it.latest.id })
+            assertEquals(2, vm.total.value)
+        }
+
+    @Test
+    fun `a tab has no result count`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
+            fake.emails += FakeEmail("a", "a", setOf("inbox"), "Lunch", "a@x.test", "2024-01-01T00:00:00Z")
+            val vm = track(LedgerViewModel(repository(fake), LedgerTab.Inbox))
+
+            vm.state.first { it is LedgerUiState.Loaded }
+
+            assertNull(vm.total.value)
         }
 
     @Test

@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.datetime.TimeZone
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -35,6 +36,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
+import kotlin.time.Clock
 import kotlin.time.Instant
 
 private const val PAGE_SIZE = 50
@@ -65,7 +67,8 @@ sealed interface MailFilter {
 }
 
 sealed interface EmailPage {
-    data class Found(val conversations: List<Conversation>, val queryState: String) : EmailPage
+    /** [total] counts every match, and is known only for the first page of a search. */
+    data class Found(val conversations: List<Conversation>, val queryState: String, val total: Int? = null) : EmailPage
 
     data object AnchorNotFound : EmailPage
 }
@@ -111,7 +114,11 @@ sealed interface ThreadLookup {
  * decide by comparing to the queryState it already holds; this repository
  * is stateless across pages.
  */
-class MailboxRepository(private val jmapClient: JmapClient) {
+class MailboxRepository(
+    private val jmapClient: JmapClient,
+    private val clock: Clock = Clock.System,
+    private val zone: TimeZone = TimeZone.currentSystemDefault(),
+) {
     private val sample = MailSample(jmapClient)
     private val vocabulary = SearchVocabulary(sample)
     private val identityLock = Mutex()
@@ -153,9 +160,10 @@ class MailboxRepository(private val jmapClient: JmapClient) {
         anchor: String?,
     ): EmailPage {
         val grouped = filter.threaded
+        val condition = serverFilter(filter) ?: return EmailPage.Found(emptyList(), queryState = "", total = 0)
         val queryArguments =
             buildJsonObject {
-                put("filter", serverFilter(filter))
+                put("filter", condition)
                 putJsonArray("sort") {
                     addJsonObject {
                         put("property", "receivedAt")
@@ -168,17 +176,26 @@ class MailboxRepository(private val jmapClient: JmapClient) {
                     put("anchor", it)
                     put("anchorOffset", 1)
                 }
+                if (anchor == null && filter is MailFilter.Search) put("calculateTotal", true)
             }
         return if (grouped) conversationPage(queryArguments) else messagePage(queryArguments)
     }
 
-    /** Starred and search leave out Trash and Junk, as mail deleted or marked spam is no longer the user's to find there. */
-    private suspend fun serverFilter(filter: MailFilter): JsonObject =
+    /**
+     * Starred and search leave out Trash and Junk, as mail deleted or marked spam is no longer the user's to find there,
+     * unless the search names a mailbox or says `in:anywhere`. Null when the search names a mailbox this account lacks.
+     */
+    private suspend fun serverFilter(filter: MailFilter): JsonObject? =
         when (filter) {
             is MailFilter.InMailbox -> buildJsonObject { put("inMailbox", filter.mailboxId) }
             is MailFilter.Starred -> outsideDiscarded(buildJsonObject { put("hasKeyword", CorvidKeywords.FLAGGED) })
-            is MailFilter.Search -> outsideDiscarded(vocabulary.searchFilter(filter.text))
+            is MailFilter.Search -> searchFilter(SearchQuery.parse(filter.text, clock.now(), zone))
         }
+
+    private suspend fun searchFilter(query: SearchQuery): JsonObject? {
+        val condition = query.toFilter(::mailboxId, vocabulary::searchFilter) ?: return null
+        return if (query.scope == SearchScope.OutsideDiscarded) outsideDiscarded(condition) else condition
+    }
 
     private suspend fun outsideDiscarded(condition: JsonObject): JsonObject {
         val discarded = listOfNotNull(mailboxId(TRASH), mailboxId(JUNK))
@@ -199,7 +216,8 @@ class MailboxRepository(private val jmapClient: JmapClient) {
         val emails = outcomes.get.resultOrThrow().getValue("list").jsonArray.map { it.jsonObject.toEmailSummary(domain) }
         val conversations =
             emails.map { Conversation(it, listOf(it.id), if (CorvidKeywords.SEEN in it.keywords) emptySet() else setOf(it.id)) }
-        return EmailPage.Found(conversations, outcomes.query.resultOrThrow().queryState())
+        val found = outcomes.query.resultOrThrow()
+        return EmailPage.Found(conversations, found.queryState(), found["total"]?.jsonPrimitive?.int)
     }
 
     private suspend fun conversationPage(queryArguments: JsonObject): EmailPage {

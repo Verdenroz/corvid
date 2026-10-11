@@ -184,6 +184,7 @@ internal fun UnlockedContent(
                                             ledgers,
                                             entryKey,
                                             session,
+                                            searchInput.onText,
                                         ) { Home(it, key, shellState, navigator, ledgers) }
                                     }
                                 }
@@ -278,6 +279,7 @@ private fun Page(
     ledgers: Ledgers,
     entryKey: String,
     session: SettingsSession,
+    onQuery: (String) -> Unit,
     home: @Composable (Route.Home) -> Unit,
 ) {
     val mailbox = remember(scope) { scope.get<MailboxRepository>() }
@@ -303,6 +305,7 @@ private fun Page(
                 query = route.query,
                 onOpenEmail = { navigator.push(Route.Reader(it)) },
                 onOpenSender = { navigator.push(Route.Sender(it)) },
+                onQuery = onQuery,
             )
         }
         is Route.Compose -> ComposeScreen(remember(scope) { scope.get<ComposeRepository>() }, route.intent, onClose = navigator::back)

@@ -33,6 +33,7 @@ data class FakeEmail(
     val htmlBody: String? = null,
     /** Raw header values by field name, in the order they appear in the message. */
     val headers: Map<String, List<String>> = emptyMap(),
+    val hasAttachment: Boolean = false,
 )
 
 data class FakeIdentity(

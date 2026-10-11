@@ -40,6 +40,11 @@ class LedgerViewModel(
     /** The rows ticked for a bulk action, by the id of each conversation's latest message. */
     val selected: StateFlow<Set<String>> = _selected
 
+    private val _total = MutableStateFlow<Int?>(null)
+
+    /** How many messages a search matched in all, as the server counted them with its first page; null for a tab. */
+    val total: StateFlow<Int?> = _total
+
     private var filter: MailFilter? = null
     private var queryState: String? = null
     private var conversations: List<Conversation> = emptyList()
@@ -134,6 +139,7 @@ class LedgerViewModel(
                     conversations = if (anchor == null) page.conversations else conversations + page.conversations
                     queryState = page.queryState
                     canLoadMore = page.conversations.size == PAGE_SIZE
+                    if (anchor == null) _total.value = page.total
                     publish()
                     if (anchor == null) _selected.update { selected -> selected intersect conversations.map { it.latest.id }.toSet() }
                 }
