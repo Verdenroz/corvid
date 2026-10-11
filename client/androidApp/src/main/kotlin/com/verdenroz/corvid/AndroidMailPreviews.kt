@@ -10,7 +10,7 @@ private const val UNREADABLE_TAG = "unreadable"
 
 /**
  * The pushed new-mail notifications, one per message tagged with its id, grouped under a summary on the new-mail
- * channel. Each names sender and subject; the lock screen gets only the public version.
+ * channel. Each names sender and subject and is hidden from the lock screen.
  */
 class AndroidMailPreviews(private val context: Context) {
     private val manager = context.newMailChannel()
@@ -37,17 +37,20 @@ class AndroidMailPreviews(private val context: Context) {
                 context.notification(NEW_MAIL_CHANNEL, preview.title.ifBlank { noSender }, preview.text(noSubject))
                     .setStyle(Notification.BigTextStyle().bigText(preview.bigText(noSubject)))
             }
-        val summary = generic().setGroupSummary(true).setGroupAlertBehavior(Notification.GROUP_ALERT_CHILDREN)
-        manager.notify(preview?.id ?: UNREADABLE_TAG, PREVIEW_ID, shown.inGroup(open).build())
+        // PRIVATE shows the content on the lock screen unless the user turned that off, and it is on by default.
+        val message = shown.setVisibility(Notification.VISIBILITY_SECRET)
+        val summary =
+            generic()
+                .setVisibility(Notification.VISIBILITY_PRIVATE)
+                .setPublicVersion(generic().build())
+                .setGroupSummary(true)
+                .setGroupAlertBehavior(Notification.GROUP_ALERT_CHILDREN)
+        manager.notify(preview?.id ?: UNREADABLE_TAG, PREVIEW_ID, message.inGroup(open).build())
         manager.notify(SUMMARY_ID, summary.inGroup(open).build())
     }
 
     private fun Notification.Builder.inGroup(open: PendingIntent): Notification.Builder =
-        setVisibility(Notification.VISIBILITY_PRIVATE)
-            .setPublicVersion(generic().build())
-            .setGroup(PREVIEW_GROUP)
-            .setContentIntent(open)
-            .setAutoCancel(true)
+        setGroup(PREVIEW_GROUP).setContentIntent(open).setAutoCancel(true)
 
     private fun generic(): Notification.Builder =
         context.notification(NEW_MAIL_CHANNEL, context.getString(R.string.app_name), context.getString(R.string.new_mail_channel))
