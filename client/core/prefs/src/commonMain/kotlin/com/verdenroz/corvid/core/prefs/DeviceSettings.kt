@@ -16,6 +16,16 @@ enum class AutoLock(val minutes: Int) {
 }
 
 /**
+ * The last account signed in here, so the next sign-in skips discovery. Addresses only: the tokens
+ * stay in memory. [email] is absent when the account was entered by server and issuer.
+ */
+data class RememberedAccount(
+    val server: String,
+    val issuer: String,
+    val email: String? = null,
+)
+
+/**
  * Choices that belong to this device and hold no mail, so they live in a plain file. [noticesSeen] is the newest
  * server notice id shown here; [newMailNotifications] says whether new Inbox mail posts a content-free notification.
  */
@@ -24,4 +34,5 @@ data class DeviceSettings(
     val autoLock: AutoLock = AutoLock.FiveMinutes,
     val noticesSeen: Long = 0,
     val newMailNotifications: Boolean = true,
+    val account: RememberedAccount? = null,
 )

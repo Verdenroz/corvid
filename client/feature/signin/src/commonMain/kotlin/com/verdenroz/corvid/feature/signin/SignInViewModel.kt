@@ -7,6 +7,8 @@ import com.verdenroz.corvid.core.domain.Discovery
 import com.verdenroz.corvid.core.domain.DiscoveryFailure
 import com.verdenroz.corvid.core.domain.SignIn
 import com.verdenroz.corvid.core.model.ServerAddress
+import com.verdenroz.corvid.core.prefs.DevicePreferences
+import com.verdenroz.corvid.core.prefs.RememberedAccount
 import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.uiText
 import com.verdenroz.corvid.feature.signin.resources.Res
@@ -18,7 +20,10 @@ import com.verdenroz.corvid.feature.signin.resources.signin_discovery_version
 import com.verdenroz.corvid.feature.signin.resources.signin_failed
 import com.verdenroz.corvid.feature.signin.resources.signin_issuer_not_https
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.publicvalue.multiplatform.oidc.OpenIdConnectException
 
@@ -47,9 +52,13 @@ val SignInUiState.discovery: Discovery?
 class SignInViewModel(
     private val discoverAccount: DiscoverAccount,
     private val signInUseCase: SignIn,
+    private val preferences: DevicePreferences,
 ) : ViewModel() {
     private val _state = MutableStateFlow<SignInUiState>(SignInUiState.Idle)
     val state: StateFlow<SignInUiState> = _state
+
+    val remembered: StateFlow<RememberedAccount?> =
+        preferences.settings.map { it.account }.stateIn(viewModelScope, SharingStarted.Eagerly, preferences.settings.value.account)
 
     fun discover(email: String) {
         viewModelScope.launch {
@@ -71,10 +80,27 @@ class SignInViewModel(
         server: String,
         issuer: String,
     ) {
+        val discovery = (_state.value as? SignInUiState.Discovered)?.discovery
+        signIn(RememberedAccount(server.trimEnd('/'), issuer.trimEnd('/')), discovery)
+    }
+
+    fun confirm(discovery: Discovery) {
+        signIn(RememberedAccount(discovery.server.baseUrl, discovery.issuer, discovery.email), discovery)
+    }
+
+    fun signInAs(account: RememberedAccount) {
+        signIn(account, discovery = null)
+    }
+
+    private fun signIn(
+        account: RememberedAccount,
+        discovery: Discovery?,
+    ) {
         viewModelScope.launch {
-            _state.value = SignInUiState.SigningIn((_state.value as? SignInUiState.Discovered)?.discovery)
+            _state.value = SignInUiState.SigningIn(discovery)
             try {
-                signInUseCase(ServerAddress(server.trimEnd('/')), issuer)
+                signInUseCase(ServerAddress(account.server), account.issuer)
+                preferences.rememberAccount(account)
                 _state.value = SignInUiState.Idle
             } catch (e: OpenIdConnectException) {
                 _state.value = SignInUiState.Failed(uiText(Res.string.signin_failed, UiText.FromServer(e.message)))

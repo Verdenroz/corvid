@@ -17,10 +17,14 @@ import com.verdenroz.corvid.core.designsystem.component.CorvidTextField
 import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.designsystem.component.PrimaryButton
 import com.verdenroz.corvid.core.domain.Discovery
+import com.verdenroz.corvid.core.model.hostOf
+import com.verdenroz.corvid.core.prefs.RememberedAccount
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.StatePane
 import com.verdenroz.corvid.feature.signin.resources.Res
 import com.verdenroz.corvid.feature.signin.resources.signin_advanced
+import com.verdenroz.corvid.feature.signin.resources.signin_another
+import com.verdenroz.corvid.feature.signin.resources.signin_as
 import com.verdenroz.corvid.feature.signin.resources.signin_change
 import com.verdenroz.corvid.feature.signin.resources.signin_confirm
 import com.verdenroz.corvid.feature.signin.resources.signin_continue
@@ -29,6 +33,8 @@ import com.verdenroz.corvid.feature.signin.resources.signin_discovering
 import com.verdenroz.corvid.feature.signin.resources.signin_email
 import com.verdenroz.corvid.feature.signin.resources.signin_in_progress
 import com.verdenroz.corvid.feature.signin.resources.signin_issuer
+import com.verdenroz.corvid.feature.signin.resources.signin_remembered
+import com.verdenroz.corvid.feature.signin.resources.signin_remembered_detail
 import com.verdenroz.corvid.feature.signin.resources.signin_server
 import com.verdenroz.corvid.feature.signin.resources.signin_submit
 import com.verdenroz.corvid.feature.signin.resources.signin_title
@@ -38,6 +44,46 @@ import org.koin.compose.viewmodel.koinViewModel
 
 @Composable
 fun SignInScreen(viewModel: SignInViewModel = koinViewModel()) {
+    var another by rememberSaveable { mutableStateOf(false) }
+    val remembered by viewModel.remembered.collectAsState()
+    val account = remembered.takeUnless { another }
+    val toggle = {
+        another = !another
+        viewModel.reset()
+    }
+    if (account != null) RememberedSignIn(viewModel, account, toggle) else AccountEntry(viewModel, remembered, toggle)
+}
+
+@Composable
+private fun RememberedSignIn(
+    viewModel: SignInViewModel,
+    account: RememberedAccount,
+    onAnother: () -> Unit,
+) {
+    val state by viewModel.state.collectAsState()
+    val signingIn = state is SignInUiState.SigningIn
+    StatePane(stringResource(Res.string.signin_title), detail = stringResource(Res.string.signin_remembered_detail)) {
+        Text(
+            stringResource(Res.string.signin_remembered, account.label),
+            style = CorvidTheme.type.name,
+            color = CorvidTheme.colors.ink,
+        )
+        (state as? SignInUiState.Failed)?.let { Problem(it.message.asString()) }
+        PrimaryButton(
+            stringResource(if (signingIn) Res.string.signin_in_progress else Res.string.signin_submit),
+            onClick = { viewModel.signInAs(account) },
+            enabled = !signingIn,
+        )
+        PillButton(stringResource(Res.string.signin_another), icon = null, onClick = onAnother)
+    }
+}
+
+@Composable
+private fun AccountEntry(
+    viewModel: SignInViewModel,
+    remembered: RememberedAccount?,
+    onRemembered: () -> Unit,
+) {
     var email by rememberSaveable { mutableStateOf("") }
     var server by rememberSaveable { mutableStateOf("") }
     var issuer by rememberSaveable { mutableStateOf("") }
@@ -75,7 +121,7 @@ fun SignInScreen(viewModel: SignInViewModel = koinViewModel()) {
         if (advanced || discovery != null) {
             PrimaryButton(
                 stringResource(if (signingIn) Res.string.signin_in_progress else Res.string.signin_submit),
-                onClick = { viewModel.signIn(server, issuer) },
+                onClick = { if (advanced || discovery == null) viewModel.signIn(server, issuer) else viewModel.confirm(discovery) },
                 enabled = !signingIn,
             )
         } else {
@@ -95,8 +141,11 @@ fun SignInScreen(viewModel: SignInViewModel = koinViewModel()) {
             if (discovery != null) PillButton(stringResource(Res.string.signin_change), icon = null, onClick = viewModel::reset)
             PillButton(stringResource(Res.string.signin_advanced), icon = null, onClick = { advanced = true })
         }
+        remembered?.let { PillButton(stringResource(Res.string.signin_as, it.label), icon = null, onClick = onRemembered) }
     }
 }
+
+private val RememberedAccount.label: String get() = email ?: hostOf(server)
 
 @Composable
 private fun Confirmation(discovery: Discovery) {
