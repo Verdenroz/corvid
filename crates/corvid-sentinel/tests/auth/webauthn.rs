@@ -335,7 +335,28 @@ fn an_assertion_whose_client_data_was_altered_after_signing_is_refused() {
 }
 
 #[test]
-fn authenticator_data_cut_short_is_refused() {
+fn a_credential_id_longer_than_the_spec_allows_is_refused() {
+    let mut soft = soft();
+    soft.credential_id = vec![7; 1024];
+
+    assert_eq!(
+        register(&mut soft, Policy::Synced).err(),
+        Some(Refusal::Malformed)
+    );
+}
+
+#[test]
+fn a_registration_reports_whether_the_credential_is_backup_eligible() {
+    let mut soft = soft();
+    assert!(!enrolled(&mut soft).backup_eligible);
+
+    soft.flags |= BACKUP_ELIGIBLE;
+
+    assert!(enrolled(&mut soft).backup_eligible);
+}
+
+#[test]
+fn authenticator_data_cut_short_after_signing_is_refused() {
     let mut soft = soft();
     let registration = enrolled(&mut soft);
     let mut response = soft.get(CHALLENGE);
@@ -343,6 +364,6 @@ fn authenticator_data_cut_short_is_refused() {
 
     assert_eq!(
         party().assert(&response, &registration.key, 0, CHALLENGE, Policy::Synced),
-        Err(Refusal::Malformed)
+        Err(Refusal::Signature)
     );
 }

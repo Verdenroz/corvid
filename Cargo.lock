@@ -679,6 +679,7 @@ dependencies = [
  "base64 0.23.1",
  "ciborium",
  "corvid-config",
+ "corvid-sentinel",
  "corvid-store",
  "futures-util",
  "hex",

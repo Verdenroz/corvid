@@ -18,6 +18,7 @@ pub(super) const ATTESTED: u8 = 0x40;
 
 const FIXED_LENGTH: usize = 37;
 const AAGUID_LENGTH: usize = 16;
+const MAX_CREDENTIAL_ID: usize = 1023;
 
 /// Why a ceremony response was not accepted.
 #[derive(Debug, PartialEq, Eq)]
@@ -61,6 +62,8 @@ pub struct Registration {
     pub credential_id: Vec<u8>,
     pub key: VerifyingKey,
     pub sign_count: u32,
+    pub backup_eligible: bool,
+    pub aaguid: [u8; AAGUID_LENGTH],
 }
 
 pub struct RelyingParty {
@@ -121,21 +124,24 @@ impl RelyingParty {
             return Err(Refusal::Malformed);
         }
 
-        let mut rest = data
+        let aaguid = data
             .attested
-            .get(AAGUID_LENGTH..)
+            .get(..AAGUID_LENGTH)
             .ok_or(Refusal::Malformed)?;
+        let rest = &data.attested[AAGUID_LENGTH..];
         let length = rest.get(..2).ok_or(Refusal::Malformed)?;
         let length = usize::from(u16::from_be_bytes([length[0], length[1]]));
         let credential_id = rest.get(2..2 + length).ok_or(Refusal::Malformed)?;
-        if credential_id.is_empty() {
+        if !(1..=MAX_CREDENTIAL_ID).contains(&length) {
             return Err(Refusal::Malformed);
         }
-        rest = &rest[2 + length..];
+        let mut key = &rest[2 + length..];
         Ok(Registration {
             credential_id: credential_id.to_vec(),
-            key: cose::read_key(&mut rest)?,
+            key: cose::read_key(&mut key)?,
             sign_count: data.sign_count,
+            backup_eligible: data.flags & BACKUP_ELIGIBLE != 0,
+            aaguid: aaguid.try_into().expect("sliced to the AAGUID length"),
         })
     }
 
@@ -150,7 +156,6 @@ impl RelyingParty {
         policy: Policy,
     ) -> Result<u32, Refusal> {
         self.check_client_data(&response.client_data_json, "webauthn.get", challenge)?;
-        let data = self.auth_data(&response.authenticator_data, policy)?;
         let signed = [
             &response.authenticator_data,
             Sha256::digest(&response.client_data_json).as_slice(),
@@ -159,6 +164,7 @@ impl RelyingParty {
         let signature = Signature::from_der(&response.signature).map_err(|_| Refusal::Signature)?;
         key.verify(&signed, &signature)
             .map_err(|_| Refusal::Signature)?;
+        let data = self.auth_data(&response.authenticator_data, policy)?;
         // Synced passkeys report 0 forever, which is not a regression.
         if (data.sign_count != 0 || stored_count != 0) && data.sign_count <= stored_count {
             return Err(Refusal::CounterRegression);
