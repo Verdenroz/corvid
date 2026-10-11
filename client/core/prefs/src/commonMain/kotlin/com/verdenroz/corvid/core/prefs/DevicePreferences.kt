@@ -16,6 +16,9 @@ import kotlinx.coroutines.flow.stateIn
 private val THEME = stringPreferencesKey("theme")
 private val AUTO_LOCK_MINUTES = intPreferencesKey("auto_lock_minutes")
 private val NOTICES_SEEN = longPreferencesKey("notices_seen")
+private val ACCOUNT_SERVER = stringPreferencesKey("account_server")
+private val ACCOUNT_ISSUER = stringPreferencesKey("account_issuer")
+private val ACCOUNT_EMAIL = stringPreferencesKey("account_email")
 
 private fun deviceNameKey(server: String) = stringPreferencesKey("device_name.$server")
 
@@ -42,6 +45,14 @@ class DevicePreferences(
         store.edit { it[NOTICES_SEEN] = id }
     }
 
+    suspend fun rememberAccount(account: RememberedAccount) {
+        store.edit {
+            it[ACCOUNT_SERVER] = account.server
+            it[ACCOUNT_ISSUER] = account.issuer
+            if (account.email == null) it.remove(ACCOUNT_EMAIL) else it[ACCOUNT_EMAIL] = account.email
+        }
+    }
+
     suspend fun deviceName(server: String): String? = store.data.first()[deviceNameKey(server)]
 
     suspend fun setDeviceName(
@@ -58,5 +69,12 @@ internal fun decode(preferences: Preferences): DeviceSettings {
         theme = ThemeChoice.entries.firstOrNull { it.name == preferences[THEME] } ?: defaults.theme,
         autoLock = AutoLock.entries.firstOrNull { it.minutes == preferences[AUTO_LOCK_MINUTES] } ?: defaults.autoLock,
         noticesSeen = preferences[NOTICES_SEEN] ?: defaults.noticesSeen,
+        account = decodeAccount(preferences),
     )
+}
+
+private fun decodeAccount(preferences: Preferences): RememberedAccount? {
+    val server = preferences[ACCOUNT_SERVER] ?: return null
+    val issuer = preferences[ACCOUNT_ISSUER] ?: return null
+    return RememberedAccount(server, issuer, preferences[ACCOUNT_EMAIL])
 }

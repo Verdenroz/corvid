@@ -10,6 +10,7 @@ kotlin {
             implementation(projects.core.testing)
         }
         commonMain.dependencies {
+            implementation(projects.core.prefs)
             implementation(libs.kalinjul.oidc.core)
         }
     }
