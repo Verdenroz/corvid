@@ -108,21 +108,31 @@ fun fileSize(bytes: Long): UiText {
  * marked as an attachment is always kept, whatever its HTML references.
  */
 internal fun JsonObject.attachmentList(html: String?): List<Attachment> =
-    (get("attachments") as? JsonArray).orEmpty()
-        .map { it.jsonObject }
-        .filterNot { it.drawnInline(html) }
-        .mapNotNull { part ->
-            val blobId = part.text("blobId") ?: return@mapNotNull null
-            Attachment(
-                blobId = blobId,
-                name = part.text("name"),
-                type = part.text("type") ?: UNKNOWN_TYPE,
-                size = part["size"]?.jsonPrimitive?.longOrNull ?: 0,
-            )
-        }
+    parts().filterNot { it.drawnInline(html) }.mapNotNull { it.toAttachment() }
+
+/** The parts [html] draws by `cid:`, keyed by their content id in lower case. */
+internal fun JsonObject.inlineImages(html: String?): Map<String, Attachment> =
+    parts().filter { it.drawnInline(html) }.mapNotNull { part ->
+        val cid = part.cid() ?: return@mapNotNull null
+        part.toAttachment()?.let { cid.lowercase() to it }
+    }.toMap()
+
+private fun JsonObject.parts(): List<JsonObject> = (get("attachments") as? JsonArray).orEmpty().map { it.jsonObject }
+
+private fun JsonObject.toAttachment(): Attachment? {
+    val blobId = text("blobId") ?: return null
+    return Attachment(
+        blobId = blobId,
+        name = text("name"),
+        type = text("type") ?: UNKNOWN_TYPE,
+        size = get("size")?.jsonPrimitive?.longOrNull ?: 0,
+    )
+}
+
+private fun JsonObject.cid(): String? = text("cid")?.removeSurrounding("<", ">")
 
 private fun JsonObject.drawnInline(html: String?): Boolean {
-    val cid = text("cid")?.removeSurrounding("<", ">") ?: return false
+    val cid = cid() ?: return false
     return text("disposition") != "attachment" && html != null && html.contains("cid:$cid", ignoreCase = true)
 }
 

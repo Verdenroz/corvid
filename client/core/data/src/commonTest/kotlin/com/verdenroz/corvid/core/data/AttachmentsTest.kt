@@ -67,6 +67,27 @@ class AttachmentsTest {
         }
 
     @Test
+    fun `an image the html draws by cid loads from the server's copy of that part`() =
+        runTest {
+            val fake = server()
+            fake.blobs["b-logo"] = byteArrayOf(1, 2, 3)
+            val repository = MailboxRepository(fake.client())
+            val detail = assertIs<EmailLookup.Found>(repository.getEmail("e1")).detail
+
+            assertContentEquals(byteArrayOf(1, 2, 3), repository.messageImage(detail, "cid:LOGO@x"))
+        }
+
+    @Test
+    fun `a cid the message does not carry loads nothing`() =
+        runTest {
+            val repository = MailboxRepository(server().client())
+            val detail = assertIs<EmailLookup.Found>(repository.getEmail("e1")).detail
+
+            assertEquals(null, repository.messageImage(detail, "cid:missing@x"))
+            assertEquals(null, repository.messageImage(detail, "https://tracker.test/pixel.png"))
+        }
+
+    @Test
     fun `a list row knows its message carries a file`() =
         runTest {
             val page = assertIs<EmailPage.Found>(MailboxRepository(server().client()).page(MailFilter.InMailbox("inbox"), anchor = null))

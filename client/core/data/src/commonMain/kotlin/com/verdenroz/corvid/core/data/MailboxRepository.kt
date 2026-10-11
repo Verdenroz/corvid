@@ -1,7 +1,9 @@
 package com.verdenroz.corvid.core.data
 
+import com.verdenroz.corvid.core.html.CID
 import com.verdenroz.corvid.core.html.flattenHtml
 import com.verdenroz.corvid.core.jmap.JmapClient
+import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.jmap.MethodOutcome
 import com.verdenroz.corvid.core.jmap.callOne
 import com.verdenroz.corvid.core.jmap.resultOrThrow
@@ -147,6 +149,20 @@ class MailboxRepository(
 
     /** Never fetches outside [imageProxyBase], whatever the caller passes. */
     suspend fun proxiedImage(url: String): ByteArray? = if (url.startsWith(imageProxyBase)) jmapClient.fetchPublic(url) else null
+
+    /** An image [email]'s HTML draws: a `cid:` part of the message from the server, anything else only through [proxiedImage]. */
+    suspend fun messageImage(
+        email: EmailDetail,
+        url: String,
+    ): ByteArray? {
+        if (!url.startsWith(CID, ignoreCase = true)) return proxiedImage(url)
+        val part = email.inlineImages[url.drop(CID.length).lowercase()] ?: return null
+        return try {
+            download(part)
+        } catch (e: JmapException) {
+            null
+        }
+    }
 
     /** The attachment's bytes, as the server stores the decoded part. */
     suspend fun download(attachment: Attachment): ByteArray =
@@ -627,6 +643,7 @@ private fun JsonObject.toEmailDetail(ownDomain: String?): EmailDetail {
         provenance = provenance(from, ownDomain),
         mailboxIds = (get("mailboxIds") as? JsonObject)?.keys.orEmpty(),
         attachments = attachmentList(html?.html),
+        inlineImages = inlineImages(html?.html),
     )
 }
 

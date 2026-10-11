@@ -162,6 +162,11 @@ class HtmlToBlocksTest {
     }
 
     @Test
+    fun `an image drawn from a part of the message keeps its cid as its url`() {
+        assertEquals(listOf(HtmlBlock.Image("cid:logo@x", "logo", null)), blocks("<img src=' cid:logo@x ' alt='logo'>"))
+    }
+
+    @Test
     fun `an image anywhere else never gets a url and keeps its alt`() {
         val sources =
             listOf(
@@ -171,7 +176,6 @@ class HtmlToBlocksTest {
                 "https://mail.test:4443@evil.test/i/a.png",
                 "http://mail.test:4443/i/a.png",
                 "data:image/png;base64,AAAA",
-                "cid:logo@x",
                 "//mail.test:4443/i/a.png",
                 "/i/a.png",
                 "",

@@ -9,7 +9,8 @@ import kotlin.time.Instant
  * bodyTruncated reflects the server's own isTruncated flag at maxBodyValueBytes, not a client guess.
  * html is the message's HTML part as sent, null when it has none; body is always the plain-text form.
  * mailboxIds are the mailboxes it is filed in, which decide whether it can be archived or only deleted for good.
- * attachments are the files it carries, leaving out the inline images its HTML draws by `cid:`.
+ * attachments are the files it carries, leaving out the inline images its HTML draws by `cid:`;
+ * inlineImages are those, by content id in lower case, without its angle brackets.
  */
 data class EmailDetail(
     val id: String,
@@ -29,6 +30,7 @@ data class EmailDetail(
     val provenance: Provenance,
     val mailboxIds: Set<String> = emptySet(),
     val attachments: List<Attachment> = emptyList(),
+    val inlineImages: Map<String, Attachment> = emptyMap(),
 )
 
 /** [truncated] is the server's own flag, as for [EmailDetail.bodyTruncated]. */
