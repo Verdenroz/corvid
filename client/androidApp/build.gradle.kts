@@ -8,8 +8,6 @@ android {
     namespace = "com.verdenroz.corvid"
     defaultConfig {
         applicationId = "com.verdenroz.corvid"
-        // Consumed by oidc-appsupport's own manifest to install the redirect intent filter.
-        addManifestPlaceholders(mapOf("oidcRedirectScheme" to "com.verdenroz.corvid"))
     }
 }
 
@@ -26,6 +24,9 @@ dependencies {
     implementation(projects.feature.settings)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.core.ktx)
+    // Credential Manager before API 34 asks Play services for passkeys; 34 and later has them built in.
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play.services.auth)
     implementation(libs.koin.core)
     implementation(libs.koin.android)
     implementation(libs.koin.compose)

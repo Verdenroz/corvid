@@ -10,6 +10,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(projects.core.jmap)
+            api(projects.core.auth)
             api(projects.core.text)
             implementation(projects.core.common)
             api(libs.ktor.client.mock)

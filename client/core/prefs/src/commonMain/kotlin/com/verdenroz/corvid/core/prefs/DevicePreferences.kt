@@ -20,6 +20,8 @@ private val AUTO_LOCK_MINUTES = intPreferencesKey("auto_lock_minutes")
 private val NOTICES_SEEN = longPreferencesKey("notices_seen")
 private val NEW_MAIL_NOTIFICATIONS = booleanPreferencesKey("new_mail_notifications")
 private val ACCOUNT_SERVER = stringPreferencesKey("account_server")
+
+// Written by builds that signed in through an identity provider; read nowhere, removed on the next sign-in.
 private val ACCOUNT_ISSUER = stringPreferencesKey("account_issuer")
 private val ACCOUNT_EMAIL = stringPreferencesKey("account_email")
 private val PUSH_STATUS = stringPreferencesKey("push_status")
@@ -61,7 +63,7 @@ class DevicePreferences(
     suspend fun rememberAccount(account: RememberedAccount) {
         store.edit {
             it[ACCOUNT_SERVER] = account.server
-            it[ACCOUNT_ISSUER] = account.issuer
+            it.remove(ACCOUNT_ISSUER)
             if (account.email == null) it.remove(ACCOUNT_EMAIL) else it[ACCOUNT_EMAIL] = account.email
         }
     }
@@ -163,6 +165,5 @@ private fun MutablePreferences.writePush(push: PushSettings) {
 
 private fun decodeAccount(preferences: Preferences): RememberedAccount? {
     val server = preferences[ACCOUNT_SERVER] ?: return null
-    val issuer = preferences[ACCOUNT_ISSUER] ?: return null
-    return RememberedAccount(server, issuer, preferences[ACCOUNT_EMAIL])
+    return RememberedAccount(server, preferences[ACCOUNT_EMAIL])
 }

@@ -17,11 +17,10 @@ enum class AutoLock(val minutes: Int) {
 
 /**
  * The last account signed in here, so the next sign-in skips discovery. Addresses only: the tokens
- * stay in memory. [email] is absent when the account was entered by server and issuer.
+ * stay in memory. [email] is absent when the account was entered by server address.
  */
 data class RememberedAccount(
     val server: String,
-    val issuer: String,
     val email: String? = null,
 )
 

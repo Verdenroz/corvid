@@ -1,6 +1,7 @@
 package com.verdenroz.corvid.core.auth
 
 import com.verdenroz.corvid.core.jmap.AuthLatch
+import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.model.ServerAddress
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -9,16 +10,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import org.publicvalue.multiplatform.oidc.ExperimentalOpenIdConnect
-import org.publicvalue.multiplatform.oidc.OpenIdConnectClient
-import org.publicvalue.multiplatform.oidc.OpenIdConnectException
-import org.publicvalue.multiplatform.oidc.types.remote.AccessTokenResponse
-import org.publicvalue.multiplatform.oidc.types.remote.ErrorResponse
-import org.publicvalue.multiplatform.oidc.util.accessTokenExpired
+import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
 
 private val REFRESH_MARGIN = 60.seconds
-private const val DISCOVERY_PATH = "/.well-known/openid-configuration"
 
 sealed interface AuthState {
     data object SignedOut : AuthState
@@ -28,27 +23,21 @@ sealed interface AuthState {
 
 /**
  * Holds tokens in memory only: nothing here ever touches disk.
- * [adopt] pairs tokens with the exact [OpenIdConnectClient] that issued them,
- * since discovery is per server address and only known once signed in.
  * Observes the [AuthLatch] so the first 401 from any endpoint signs out
- * exactly the way an invalid_grant refresh does.
+ * exactly the way a refresh the server refuses does.
  */
-@OptIn(ExperimentalOpenIdConnect::class)
 class TokenSource(
     private val authLatch: AuthLatch,
     scope: CoroutineScope,
+    private val api: AuthApi,
+    private val clock: Clock = Clock.System,
 ) {
     private val _state = MutableStateFlow<AuthState>(AuthState.SignedOut)
     val state: StateFlow<AuthState> = _state
 
     private val refreshMutex = Mutex()
-    private var client: OpenIdConnectClient? = null
-    private var tokens: AccessTokenResponse? = null
+    private var tokens: AuthTokens? = null
     private var server: ServerAddress? = null
-
-    /** The identity provider this session signed in through, for display; null while signed out. */
-    val issuerUrl: String?
-        get() = client?.config?.discoveryUri?.removeSuffix(DISCOVERY_PATH)
 
     init {
         // Unconfined so a trip wipes the token in the same call, not on the
@@ -60,18 +49,15 @@ class TokenSource(
     }
 
     fun adopt(
-        client: OpenIdConnectClient,
-        tokens: AccessTokenResponse,
+        tokens: AuthTokens,
         server: ServerAddress,
     ) {
-        this.client = client
         this.tokens = tokens
         this.server = server
-        _state.value = AuthState.SignedIn(tokens.access_token, server)
+        _state.value = AuthState.SignedIn(tokens.accessToken, server)
     }
 
     fun signOut() {
-        client = null
         tokens = null
         server = null
         _state.value = AuthState.SignedOut
@@ -79,32 +65,37 @@ class TokenSource(
 
     /**
      * Never returns a token expiring within [REFRESH_MARGIN]: it refreshes
-     * first, once, or gives up. Two callers racing a refresh share one
-     * request, since a rotated refresh token would fail the second one.
+     * first, once, or gives up. Callers racing a refresh share one request:
+     * a refresh token is good once, so a second request would be a reuse and
+     * end the sign-in.
      */
     suspend fun currentBearerToken(): String? {
         val current = tokens ?: return null
-        if (!current.accessTokenExpired(REFRESH_MARGIN)) return current.access_token
+        if (!current.expiresSoon()) return current.accessToken
         return refreshMutex.withLock {
             val stillCurrent = tokens ?: return@withLock null
-            if (!stillCurrent.accessTokenExpired(REFRESH_MARGIN)) return@withLock stillCurrent.access_token
+            if (!stillCurrent.expiresSoon()) return@withLock stillCurrent.accessToken
             refresh(stillCurrent)
         }
     }
 
-    private suspend fun refresh(current: AccessTokenResponse): String? {
-        val activeClient = client ?: return signOutAndReturnNull()
+    private fun AuthTokens.expiresSoon() = expiresAt - clock.now() <= REFRESH_MARGIN
+
+    private suspend fun refresh(current: AuthTokens): String? {
         val activeServer = server ?: return signOutAndReturnNull()
-        val refreshToken = current.refresh_token ?: return signOutAndReturnNull()
+        val refreshToken = current.refreshToken ?: return signOutAndReturnNull()
         return try {
-            val refreshed = activeClient.refreshToken(refreshToken)
-            this.tokens = refreshed
-            _state.value = AuthState.SignedIn(refreshed.access_token, activeServer)
-            refreshed.access_token
-        } catch (e: OpenIdConnectException.UnsuccessfulTokenRequest) {
-            if (e.errorResponse?.error == ErrorResponse.Error.invalid_grant) signOut()
+            when (val refreshed = api.refresh(activeServer, refreshToken)) {
+                is Refreshed.Tokens -> {
+                    tokens = refreshed.tokens
+                    _state.value = AuthState.SignedIn(refreshed.tokens.accessToken, activeServer)
+                    refreshed.tokens.accessToken
+                }
+                Refreshed.InvalidGrant -> signOutAndReturnNull()
+            }
+        } catch (e: JmapException) {
             null
-        } catch (e: OpenIdConnectException) {
+        } catch (e: AuthFailure) {
             null
         }
     }

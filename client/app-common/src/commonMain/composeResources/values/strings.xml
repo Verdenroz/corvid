@@ -22,7 +22,6 @@
     <string name="enroll_ask_again">Ask again</string>
     <string name="enroll_self_approve">Approve with the admin passkey</string>
     <string name="enroll_self_approving">Waiting for the admin sign-in.</string>
-    <string name="enroll_self_failed_signin">The admin sign-in did not finish.</string>
     <string name="enroll_self_failed_not_accepted">The admin sign-in was not accepted.</string>
     <string name="enroll_self_failed_refused">That sign-in is not the admin's. Use the admin passkey.</string>
     <string name="enroll_self_failed_upstream">The server could not make the key; try again.</string>

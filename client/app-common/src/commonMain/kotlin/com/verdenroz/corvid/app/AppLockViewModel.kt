@@ -5,7 +5,6 @@ import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.appcommon.resources.Res
 import com.verdenroz.corvid.appcommon.resources.enroll_self_failed_not_accepted
 import com.verdenroz.corvid.appcommon.resources.enroll_self_failed_refused
-import com.verdenroz.corvid.appcommon.resources.enroll_self_failed_signin
 import com.verdenroz.corvid.appcommon.resources.enroll_self_failed_upstream
 import com.verdenroz.corvid.appcommon.resources.unreachable_heartbeat
 import com.verdenroz.corvid.appcommon.resources.unreachable_key_damaged
@@ -13,7 +12,9 @@ import com.verdenroz.corvid.appcommon.resources.unreachable_key_unreachable
 import com.verdenroz.corvid.appcommon.resources.unreachable_request_failed
 import com.verdenroz.corvid.appcommon.resources.unreachable_server
 import com.verdenroz.corvid.appcommon.resources.unreachable_session
+import com.verdenroz.corvid.core.auth.AuthFailure
 import com.verdenroz.corvid.core.auth.AuthState
+import com.verdenroz.corvid.core.auth.PasskeyException
 import com.verdenroz.corvid.core.auth.TokenSource
 import com.verdenroz.corvid.core.data.userMessage
 import com.verdenroz.corvid.core.domain.MasterSignIn
@@ -43,7 +44,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
-import org.publicvalue.multiplatform.oidc.OpenIdConnectException
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
@@ -115,7 +115,7 @@ class AppLockViewModel(
     fun signOut() = tokenSource.signOut()
 
     private val accountHosts: AccountHosts?
-        get() = serverHost?.let { AccountHosts(it, tokenSource.issuerUrl) }
+        get() = serverHost?.let(::AccountHosts)
 
     /** Throttled by [reconnectPolicy], the same policy an automatic reconnect would use. */
     fun retry() {
@@ -242,8 +242,10 @@ class AppLockViewModel(
                             ApproveOutcome.UpstreamFailed -> open.failed(uiText(Res.string.enroll_self_failed_upstream))
                         }
                     }
-                } catch (e: OpenIdConnectException) {
-                    open.failed(uiText(Res.string.enroll_self_failed_signin))
+                } catch (e: PasskeyException) {
+                    open.failed(e.userMessage())
+                } catch (e: AuthFailure) {
+                    open.failed(e.userMessage())
                 } catch (e: JmapException) {
                     open.failed(e.userMessage())
                 } ?: return@launch
@@ -347,13 +349,10 @@ class AppLockViewModel(
     }
 }
 
-/** The signed-in server's hostname and, when there is an identity provider, its hostname. */
+/** The signed-in server's hostname. */
 data class AccountHosts(
     val server: String,
-    val identityProviderUrl: String?,
 ) {
-    val identityProvider: String? get() = identityProviderUrl?.let(::hostOf)
-
     /** The first label of [server], the key pill's name for the machine holding the key. */
     val short: String get() = shortHost(server)
 }

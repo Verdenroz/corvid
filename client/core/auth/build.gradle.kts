@@ -10,9 +10,7 @@ kotlin {
         commonMain.dependencies {
             api(projects.core.jmap)
             api(projects.core.model)
-            api(libs.kalinjul.oidc.core)
-            api(libs.kalinjul.oidc.appsupport)
-            api(libs.kalinjul.oidc.preferences)
+            implementation(libs.kotlinx.serialization.json)
             implementation(libs.koin.core)
         }
         commonTest.dependencies {

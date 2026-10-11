@@ -7,6 +7,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 private const val DOCUMENT = """{"version":1,"server":"https://mail.example.com:4443","issuer":"https://idp.example.com:4443"}"""
+private const val DOCUMENT_V2 = """{"version":2,"server":"https://mail.example.com:4443"}"""
 
 private class Rig(
     srv: Map<String, SrvTarget> = emptyMap(),
@@ -40,12 +41,8 @@ class DiscoverAccountTest {
 
             val found = rig.discover("mailuser@example.com")
 
-            assertEquals(
-                Discovery(ServerAddress("https://mail.example.com:4443"), "https://idp.example.com:4443", "mailuser@example.com"),
-                found,
-            )
+            assertEquals(Discovery(ServerAddress("https://mail.example.com:4443"), "mailuser@example.com"), found)
             assertEquals("mail.example.com", found.serverHost)
-            assertEquals("idp.example.com", found.issuerHost)
         }
 
     @Test
@@ -100,27 +97,51 @@ class DiscoverAccountTest {
         }
 
     @Test
-    fun `a document missing the issuer is malformed`() =
+    fun `a version 1 document is read for its server alone`() =
         runTest {
-            val rig = serving("""{"version":1,"server":"https://mail.example.com"}""")
+            val found = serving(DOCUMENT).discover("mailuser@example.com")
+
+            assertEquals(ServerAddress("https://mail.example.com:4443"), found.server)
+        }
+
+    @Test
+    fun `a version 2 document names only the server`() =
+        runTest {
+            val found = serving(DOCUMENT_V2).discover("mailuser@example.com")
+
+            assertEquals(ServerAddress("https://mail.example.com:4443"), found.server)
+        }
+
+    @Test
+    fun `a version 1 document without an issuer is still read`() =
+        runTest {
+            val found = serving("""{"version":1,"server":"https://mail.example.com"}""").discover("mailuser@example.com")
+
+            assertEquals(ServerAddress("https://mail.example.com"), found.server)
+        }
+
+    @Test
+    fun `a document without a server is malformed`() =
+        runTest {
+            val rig = serving("""{"version":2}""")
 
             assertFailsWith<DiscoveryFailure.Malformed> { rig.discover("mailuser@example.com") }
         }
 
     @Test
-    fun `a document of another version is refused`() =
+    fun `a document of a version nobody here knows is refused`() =
         runTest {
-            val rig = serving(DOCUMENT.replace("\"version\":1", "\"version\":2"))
+            val rig = serving(DOCUMENT.replace("\"version\":1", "\"version\":3"))
 
             assertFailsWith<DiscoveryFailure.UnsupportedVersion> { rig.discover("mailuser@example.com") }
         }
 
     @Test
-    fun `an http issuer is refused`() =
+    fun `an http issuer in a version 1 document is no reason to refuse it`() =
         runTest {
-            val rig = serving(DOCUMENT.replace("https://idp", "http://idp"))
+            val found = serving(DOCUMENT.replace("https://idp", "http://idp")).discover("mailuser@example.com")
 
-            assertFailsWith<DiscoveryFailure.NotHttps> { rig.discover("mailuser@example.com") }
+            assertEquals(ServerAddress("https://mail.example.com:4443"), found.server)
         }
 
     @Test

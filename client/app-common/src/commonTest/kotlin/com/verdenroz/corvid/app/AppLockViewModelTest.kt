@@ -3,13 +3,14 @@ package com.verdenroz.corvid.app
 import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.appcommon.resources.Res
 import com.verdenroz.corvid.appcommon.resources.enroll_self_failed_not_accepted
-import com.verdenroz.corvid.appcommon.resources.enroll_self_failed_signin
 import com.verdenroz.corvid.appcommon.resources.unreachable_heartbeat
 import com.verdenroz.corvid.appcommon.resources.unreachable_key_damaged
 import com.verdenroz.corvid.appcommon.resources.unreachable_key_unreachable
 import com.verdenroz.corvid.appcommon.resources.unreachable_request_failed
 import com.verdenroz.corvid.core.auth.AuthState
+import com.verdenroz.corvid.core.auth.PasskeyException
 import com.verdenroz.corvid.core.auth.TokenSource
+import com.verdenroz.corvid.core.data.userMessage
 import com.verdenroz.corvid.core.domain.MasterSignIn
 import com.verdenroz.corvid.core.jmap.AuthLatch
 import com.verdenroz.corvid.core.jmap.createJmapHttpClient
@@ -19,8 +20,10 @@ import com.verdenroz.corvid.core.keyring.KeyState
 import com.verdenroz.corvid.core.model.ServerAddress
 import com.verdenroz.corvid.core.prefs.DevicePreferences
 import com.verdenroz.corvid.core.prefs.DeviceSettings
+import com.verdenroz.corvid.core.testing.FakeAuthApi
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.InMemoryPreferencesStore
+import com.verdenroz.corvid.core.testing.authTokens
 import com.verdenroz.corvid.core.text.uiText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -39,8 +42,6 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.koin.dsl.koinApplication
-import org.publicvalue.multiplatform.oidc.OpenIdConnectException
-import org.publicvalue.multiplatform.oidc.types.remote.AccessTokenResponse
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -48,23 +49,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
-import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
 
 private const val BASE_URL = "http://127.0.0.1:9999"
-
-private fun freshToken() =
-    AccessTokenResponse(
-        access_token = "at1",
-        token_type = "Bearer",
-        expires_in = 3600,
-        refresh_token = "rt1",
-        refresh_token_expires_in = null,
-        refresh_expires_in = null,
-        id_token = null,
-        scope = null,
-        received_at = Clock.System.now().epochSeconds,
-    )
 
 /**
  * [AppLockViewModel] does its work on [viewModelScope], a [CoroutineScope]
@@ -85,7 +72,7 @@ private class Harness(
 ) {
     val devicePreferences = DevicePreferences(store, scope, DeviceSettings())
     val authLatch = AuthLatch()
-    val tokenSource = TokenSource(authLatch, scope)
+    val tokenSource = TokenSource(authLatch, scope, FakeAuthApi())
     val keyHolder = KeyHolder()
     val viewModel =
         AppLockViewModel(
@@ -98,7 +85,7 @@ private class Harness(
             devicePreferences = devicePreferences,
         )
 
-    fun signIn() = tokenSource.adopt(FakeOidcClient { freshToken() }, freshToken(), ServerAddress(BASE_URL))
+    fun signIn() = tokenSource.adopt(authTokens(), ServerAddress(BASE_URL))
 }
 
 private fun fakeMasterSignIn(token: suspend () -> String) =
@@ -439,14 +426,14 @@ class AppLockViewModelTest {
     fun `a cancelled admin sign-in sends nothing and leaves the request open with a message`() =
         runTest(testDispatcher) {
             val fake = FakeJmapServer()
-            val cancelled = fakeMasterSignIn { throw OpenIdConnectException.AuthenticationCancelled("cancelled") }
+            val cancelled = fakeMasterSignIn { throw PasskeyException.Cancelled }
             val harness = harness(backgroundScope, fake, cancelled)
             harness.requestKey("laptop-1")
 
             harness.viewModel.approveWithAdminPasskey()
             val open = harness.awaitSelfApprovalFailure()
 
-            assertEquals(SelfApproval.Failed(uiText(Res.string.enroll_self_failed_signin)), open.selfApproval)
+            assertEquals(SelfApproval.Failed(PasskeyException.Cancelled.userMessage()), open.selfApproval)
             assertEquals(emptyList(), fake.devices.approvals)
         }
 

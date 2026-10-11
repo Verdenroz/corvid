@@ -11,13 +11,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import com.verdenroz.corvid.app.AppPresence
 import com.verdenroz.corvid.app.BackgroundDropController
 import com.verdenroz.corvid.app.CorvidApp
-import com.verdenroz.corvid.core.auth.privateAndroidFlowQualifier
 import org.koin.android.ext.android.inject
-import org.publicvalue.multiplatform.oidc.appsupport.AndroidCodeAuthFlowFactory
 
 class MainActivity : ComponentActivity() {
-    private val authFlowFactory: AndroidCodeAuthFlowFactory by inject()
-    private val privateAuthFlowFactory: AndroidCodeAuthFlowFactory by inject(privateAndroidFlowQualifier)
+    private val authenticator: AndroidAuthenticator by inject()
     private val backgroundDropController: BackgroundDropController by inject()
     private val presence: AppPresence by inject()
     private val notificationPermission: AndroidNotificationPermission by inject()
@@ -29,8 +26,7 @@ class MainActivity : ComponentActivity() {
         if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE == 0) {
             window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         }
-        authFlowFactory.registerActivity(this)
-        privateAuthFlowFactory.registerActivity(this)
+        authenticator.attach(this)
         attachmentFiles.register(this)
         enableEdgeToEdge()
         notificationPermission.attach(registerForActivityResult(ActivityResultContracts.RequestPermission()) {})
@@ -44,6 +40,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        authenticator.attach(null)
         notificationPermission.attach(null)
         super.onDestroy()
     }

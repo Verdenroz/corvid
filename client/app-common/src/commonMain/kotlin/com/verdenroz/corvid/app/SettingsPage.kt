@@ -1,8 +1,11 @@
 package com.verdenroz.corvid.app
 
 import androidx.compose.runtime.Composable
-import com.verdenroz.corvid.core.auth.accountSettingsUrl
+import com.verdenroz.corvid.core.auth.AuthState
+import com.verdenroz.corvid.core.auth.PasskeyRepository
+import com.verdenroz.corvid.core.auth.TokenSource
 import com.verdenroz.corvid.core.data.UpdateRepository
+import com.verdenroz.corvid.core.domain.EnrollPasskey
 import com.verdenroz.corvid.core.domain.MasterSignIn
 import com.verdenroz.corvid.core.keyring.DeviceApprovalRepository
 import com.verdenroz.corvid.core.keyring.PushEndpointRepository
@@ -13,6 +16,8 @@ import com.verdenroz.corvid.feature.settings.AccountFacts
 import com.verdenroz.corvid.feature.settings.ApproveDeviceScreen
 import com.verdenroz.corvid.feature.settings.ApproveDeviceViewModel
 import com.verdenroz.corvid.feature.settings.BackgroundPush
+import com.verdenroz.corvid.feature.settings.PasskeysScreen
+import com.verdenroz.corvid.feature.settings.PasskeysViewModel
 import com.verdenroz.corvid.feature.settings.SettingsScreen
 import com.verdenroz.corvid.feature.settings.SettingsViewModel
 import org.koin.compose.getKoin
@@ -55,8 +60,6 @@ internal fun SettingsPage(
             name = session.identity?.name?.takeIf { it.isNotBlank() },
             address = session.identity?.email,
             server = session.hosts.server,
-            identityProvider = session.hosts.identityProvider,
-            manageSignInUrl = session.hosts.identityProviderUrl?.let(::accountSettingsUrl),
         )
     SettingsScreen(
         viewModel,
@@ -69,6 +72,7 @@ internal fun SettingsPage(
         onOpenFilters = { navigator.push(Route.Filters) },
         onOpenNotices = { navigator.push(Route.Notices) },
         onOpenApproveDevice = { navigator.push(Route.ApproveDevice) },
+        onOpenPasskeys = { navigator.push(Route.Passkeys) },
     )
 }
 
@@ -83,4 +87,22 @@ internal fun ApproveDevicePage(
     val viewModel =
         models.of(entryKey, ApproveDeviceViewModel::class) { ApproveDeviceViewModel(scope.get<DeviceApprovalRepository>(), masterSignIn) }
     ApproveDeviceScreen(viewModel, onBack = navigator::back)
+}
+
+@Composable
+internal fun PasskeysPage(
+    scope: Scope,
+    navigator: Navigator,
+    models: EntryModels,
+    entryKey: String,
+    masterSignIn: MasterSignIn = koinInject(),
+    enrollPasskey: EnrollPasskey = koinInject(),
+    tokenSource: TokenSource = koinInject(),
+) {
+    val viewModel =
+        models.of(entryKey, PasskeysViewModel::class) {
+            val server = checkNotNull((tokenSource.state.value as? AuthState.SignedIn)?.server) { "not signed in" }
+            PasskeysViewModel(scope.get<PasskeyRepository>(), masterSignIn, enrollPasskey, server)
+        }
+    PasskeysScreen(viewModel, onBack = navigator::back)
 }
