@@ -9,10 +9,9 @@ use axum::body::Bytes;
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode, Uri};
 use base64::Engine;
-use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use corvid_sentinel::devices::{self, Devices};
 use hkdf::Hkdf;
-use hmac::{Hmac, Mac};
 use p256::ecdh::diffie_hellman;
 use p256::ecdsa::signature::Verifier;
 use p256::ecdsa::{Signature, VerifyingKey};
@@ -88,6 +87,13 @@ impl Phone {
         Self {
             secret: SecretKey::from_slice(&[7; 32]).unwrap(),
             auth: [9; 16],
+        }
+    }
+
+    fn other() -> Self {
+        Self {
+            secret: SecretKey::from_slice(&[8; 32]).unwrap(),
+            auth: [10; 16],
         }
     }
 
@@ -169,11 +175,12 @@ impl PushRig {
         let body = json!({"events": [{"id": "1", "createdAt": "2026-10-11T15:19:07Z",
             "type": "message-ingest.ham", "data": {"accountId": 2, "documentId": 1, "mailboxId": [0]}}]})
         .to_string();
-        let mut mac = <Hmac<Sha256>>::new_from_slice(SECRET).unwrap();
-        mac.update(body.as_bytes());
         reqwest::Client::new()
             .post(format!("{}/webhook/mail", self.rig.url))
-            .header("X-Signature", STANDARD.encode(mac.finalize().into_bytes()))
+            .header(
+                "X-Signature",
+                super::webhook_signature(SECRET, body.as_bytes()),
+            )
             .body(body)
             .send()
             .await
@@ -183,9 +190,9 @@ impl PushRig {
     fn pushes(&self) -> Option<devices::Push> {
         devices::open(&self.rig.state)
             .unwrap()
-            .pushes
+            .approved
             .get("phone")
-            .cloned()
+            .and_then(|device| device.push.clone())
     }
 }
 
@@ -252,40 +259,15 @@ impl PushRig {
     }
 }
 
-/// `2026-10-11T15:19:07Z` for `secs_ago` seconds before now.
-fn received(secs_ago: u64) -> String {
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs()
-        - secs_ago;
-    let (days, rest) = ((secs / 86400) as i64, secs % 86400);
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let year_of_era = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let day_of_year = doe - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
-    let shifted_month = (5 * day_of_year + 2) / 153;
-    let day = day_of_year - (153 * shifted_month + 2) / 5 + 1;
-    let month = if shifted_month < 10 {
-        shifted_month + 3
-    } else {
-        shifted_month - 9
-    };
-    let year = year_of_era + era * 400 + i64::from(month <= 2);
-    format!(
-        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
-        rest / 3600,
-        rest % 3600 / 60,
-        rest % 60
-    )
+fn received(secs_ago: i64) -> String {
+    corvid_sentinel::rfc3339(corvid_sentinel::now_secs() - secs_ago)
 }
 
 fn email(id: &str, mailbox: &str, keywords: Value) -> Value {
     email_received(id, mailbox, keywords, 0)
 }
 
-fn email_received(id: &str, mailbox: &str, keywords: Value, secs_ago: u64) -> Value {
+fn email_received(id: &str, mailbox: &str, keywords: Value, secs_ago: i64) -> Value {
     json!({"id": id, "from": [{"name": "Ada Lovelace", "email": "ada@outside.test"}],
            "subject": "Notes on the engine", "preview": "Note G is the long one. ".repeat(20),
            "receivedAt": received(secs_ago), "mailboxIds": {mailbox: true}, "keywords": keywords})
@@ -593,10 +575,11 @@ async fn a_stream_registration_answers_with_a_token_and_the_sentinel_keeps_only_
 
     assert_eq!(URL_SAFE_NO_PAD.decode(&token).unwrap().len(), 32);
     let stored = rig.pushes().unwrap();
-    assert_eq!(stored.endpoint, "corvid-stream");
     assert_eq!(
-        stored.token_hash.unwrap(),
-        hex::encode(Sha256::digest(token.as_bytes()))
+        stored.target,
+        devices::Target::Stream {
+            token_hash: hex::encode(Sha256::digest(token.as_bytes()))
+        }
     );
 }
 
@@ -703,14 +686,32 @@ async fn approving_a_name_again_ends_the_old_devices_stream() {
 }
 
 #[tokio::test]
-async fn registering_again_replaces_the_token_and_ends_the_old_stream() {
+async fn registering_the_same_stream_again_changes_nothing_and_keeps_the_stream_open() {
     let rig = push_rig().await;
     rig.rig.approved("phone").await;
     let phone = Phone::new();
-    let old = rig.register_stream("phone", &phone).await;
+    let token = rig.register_stream("phone", &phone).await;
+    let mut stream = Stream::open(&rig, &token, None).await;
+
+    let again = rig
+        .register("phone", &phone.registration("corvid-stream"))
+        .await;
+    rig.rig.stalwart.deliver(email("m1", INBOX, json!({})));
+    rig.arrived().await;
+
+    assert_eq!(again.status(), 204);
+    let (_, body) = stream.next().await.unwrap();
+    assert_eq!(phone.decrypt(&body)["id"], "m1");
+}
+
+#[tokio::test]
+async fn registering_other_keys_replaces_the_token_and_ends_the_old_stream() {
+    let rig = push_rig().await;
+    rig.rig.approved("phone").await;
+    let old = rig.register_stream("phone", &Phone::new()).await;
     let mut stream = Stream::open(&rig, &old, None).await;
 
-    let new = rig.register_stream("phone", &phone).await;
+    let new = rig.register_stream("phone", &Phone::other()).await;
 
     assert!(stream.next().await.is_none());
     assert_ne!(old, new);

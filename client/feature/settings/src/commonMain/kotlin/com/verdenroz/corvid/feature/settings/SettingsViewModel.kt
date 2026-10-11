@@ -18,7 +18,7 @@ import kotlinx.coroutines.launch
 data class SettingsUiState(
     val settings: DeviceSettings,
     val confirmingSignOut: Boolean = false,
-    val backgroundPush: BackgroundPushLine? = null,
+    val backgroundPush: BackgroundPushState? = null,
 )
 
 class SettingsViewModel(
@@ -30,6 +30,7 @@ class SettingsViewModel(
     private val vapidKey: suspend () -> String? = { null },
 ) : ViewModel() {
     private val confirmingSignOut = MutableStateFlow(false)
+    private val transport = backgroundPush?.transport()
 
     val state: StateFlow<SettingsUiState> =
         combine(preferences.settings, confirmingSignOut, ::uiState)
@@ -41,7 +42,9 @@ class SettingsViewModel(
     ) = SettingsUiState(
         settings,
         confirmingSignOut,
-        backgroundPush?.let { backgroundPushLine(settings.push.status, settings.push.subscription, it.transport()) },
+        transport?.let {
+            BackgroundPushState(settings.push.status, settings.push.subscription?.ownConnection ?: (it == PushTransport.OwnConnection))
+        },
     )
 
     fun selectTheme(theme: ThemeChoice) {
@@ -70,9 +73,10 @@ class SettingsViewModel(
         askNotificationPermission()
         viewModelScope.launch {
             preferences.setPushRegistering()
-            when (push.transport()) {
-                PushTransport.OwnConnection -> preferences.setPushSubscription(push.registerOwnConnection())
-                PushTransport.Google -> registerWithGoogle(push)
+            if (transport == PushTransport.OwnConnection) {
+                preferences.setPushSubscription(push.registerOwnConnection())
+            } else {
+                registerWithGoogle(push)
             }
         }
     }
@@ -97,14 +101,5 @@ class SettingsViewModel(
         confirmingSignOut.value = false
     }
 
-    /** Pushes end first: a signed-out device would otherwise go on showing an account's mail. */
-    fun confirmSignOut() {
-        val push = backgroundPush
-        if (push == null || state.value.backgroundPush?.on != true) return onSignOut()
-        push.unregister()
-        viewModelScope.launch {
-            preferences.removePush()
-            onSignOut()
-        }
-    }
+    fun confirmSignOut() = onSignOut()
 }

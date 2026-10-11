@@ -9,7 +9,6 @@ use tokio::signal;
 
 /// Where the host's update directory is mounted; absent where no host updater exists.
 const UPDATE_DIR: &str = "/var/lib/corvid-update";
-const FCM_ORIGIN: &str = "https://fcm.googleapis.com";
 const UPDATE_POLL: Duration = Duration::from_secs(60);
 
 #[tokio::main]
@@ -80,11 +79,15 @@ fn device_config(
         std::process::exit(1);
     });
     let push = push.then(|| {
-        devices::PushConfig::open(&settings.state, server.acme_contact.as_str(), FCM_ORIGIN)
-            .unwrap_or_else(|error| {
-                tracing::error!(%error, "refusing to start without a readable VAPID key");
-                std::process::exit(1);
-            })
+        devices::PushConfig::open(
+            &settings.state,
+            server.acme_contact.as_str(),
+            devices::FCM_ORIGIN,
+        )
+        .unwrap_or_else(|error| {
+            tracing::error!(%error, "refusing to start without a readable VAPID key");
+            std::process::exit(1);
+        })
     });
     devices::Config {
         secret: webhook_secret,

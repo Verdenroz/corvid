@@ -56,7 +56,7 @@ class FakeDevices(private val blobs: MutableMap<String, ByteArray>) {
     /** Answers a push endpoint not under this prefix 422, as the sentinel does one that is not FCM's. */
     var pushBase: String = "https://fcm.googleapis.com/"
 
-    /** What a registration for the own connection is answered with, as the sentinel issues one. */
+    /** What the first registration of an own connection is answered with; registering the same one again answers 204. */
     var streamToken: String = "stream-token"
 
     /** What `/corvid/push/vapid` publishes. */
@@ -233,6 +233,7 @@ class FakeDevices(private val blobs: MutableMap<String, ByteArray>) {
                 val sent = body(request)
                 val endpoint = sent.getValue("endpoint").jsonPrimitive.content
                 when {
+                    endpoint == "corvid-stream" && pushEndpoints[name] == sent -> scope.respond("", HttpStatusCode.NoContent)
                     endpoint == "corvid-stream" -> {
                         pushEndpoints[name] = sent
                         json(scope, HttpStatusCode.OK, buildJsonObject { put("token", streamToken) })

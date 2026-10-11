@@ -10,6 +10,7 @@ kotlin {
         commonMain.dependencies {
             api(projects.core.jmap)
             implementation(projects.core.common)
+            implementation(projects.core.prefs)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.koin.core)
         }

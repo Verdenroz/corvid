@@ -2,6 +2,8 @@ package com.verdenroz.corvid
 
 import android.content.Context
 import android.util.Base64
+import com.verdenroz.corvid.core.jmap.EventParser
+import com.verdenroz.corvid.core.jmap.ReconnectPolicy
 import com.verdenroz.corvid.core.prefs.DevicePreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -23,8 +25,6 @@ private val CONNECT_TIMEOUT_MS = 15.seconds.inWholeMilliseconds
 
 // The server sends a keepalive every 240 s, so a quieter connection is dead.
 private val READ_TIMEOUT_MS = 5.minutes.inWholeMilliseconds
-private val FIRST_RETRY = 2.seconds
-private val LAST_RETRY = 5.minutes
 
 private enum class Ended { Dropped, Revoked }
 
@@ -37,29 +37,27 @@ internal class PushStream(
     private val previews = AndroidMailPreviews(context)
 
     suspend fun run() {
-        var retry = FIRST_RETRY
+        val policy = ReconnectPolicy()
         while (coroutineContext.isActive) {
             val settings = preferences.settings.value
             val server = settings.account?.server
             val token = settings.push.streamToken
             if (server == null || token == null) return
-            val started = System.nanoTime()
             val ended =
                 try {
-                    connect(server, token)
+                    connect(server, token, policy)
                 } catch (e: IOException) {
                     Ended.Dropped
                 }
             if (ended == Ended.Revoked) return preferences.setPushFailed()
-            if (System.nanoTime() - started > LAST_RETRY.inWholeNanoseconds) retry = FIRST_RETRY
-            delay(retry)
-            retry = minOf(retry * 2, LAST_RETRY)
+            delay(policy.nextDelay())
         }
     }
 
     private suspend fun connect(
         server: String,
         token: String,
+        policy: ReconnectPolicy,
     ): Ended {
         val connection = URL("$server/corvid/push/stream").openConnection() as HttpURLConnection
         connection.connectTimeout = CONNECT_TIMEOUT_MS.toInt()
@@ -68,7 +66,7 @@ internal class PushStream(
         connection.setRequestProperty("Accept", "text/event-stream")
         preferences.streamCursor()?.let { connection.setRequestProperty("Last-Event-ID", it) }
         return coroutineScope {
-            val reading = async(Dispatchers.IO) { read(connection) }
+            val reading = async(Dispatchers.IO) { read(connection, policy) }
             try {
                 reading.await()
             } finally {
@@ -77,14 +75,18 @@ internal class PushStream(
         }
     }
 
-    private suspend fun read(connection: HttpURLConnection): Ended {
+    private suspend fun read(
+        connection: HttpURLConnection,
+        policy: ReconnectPolicy,
+    ): Ended {
         if (connection.responseCode == UNAUTHORIZED) return Ended.Revoked
         if (connection.responseCode != HttpURLConnection.HTTP_OK) return Ended.Dropped
-        val parser = SseParser()
+        val parser = EventParser()
         connection.inputStream.bufferedReader().useLines { lines ->
             for (line in lines) {
-                val event = parser.feed(line) ?: continue
-                if (event.event == "push") show(event.data)
+                val event = parser.line(line) ?: continue
+                policy.reset()
+                if (event.name == "push") show(event.data)
                 event.id?.let { preferences.setStreamCursor(it) }
             }
         }
@@ -99,7 +101,6 @@ internal class PushStream(
             } catch (e: GeneralSecurityException) {
                 null
             }
-        val notice = pushNotice(content ?: return, decrypted = true) ?: return
-        previews.post((notice as? PushNotice.Mail)?.preview)
+        previews.show(content ?: return, decrypted = true)
     }
 }

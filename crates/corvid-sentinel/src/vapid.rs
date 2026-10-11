@@ -13,7 +13,7 @@ use p256::ecdsa::SigningKey;
 use p256::ecdsa::signature::Signer;
 use serde_json::json;
 
-use crate::webpush::random_bytes;
+use crate::webpush::random_secret;
 
 const LIFETIME_SECONDS: u64 = 12 * 3600;
 
@@ -44,7 +44,7 @@ impl Vapid {
             .create_new(true)
             .mode(0o400)
             .open(&pending)?;
-        file.write_all(&Self::generate().to_bytes())?;
+        file.write_all(&SigningKey::from(random_secret()).to_bytes())?;
         file.sync_all()?;
         // A hard link fails when the key exists, and a reader never sees it half written.
         match fs::hard_link(&pending, path) {
@@ -52,14 +52,6 @@ impl Vapid {
             _ => {}
         }
         fs::remove_file(&pending)
-    }
-
-    fn generate() -> SigningKey {
-        loop {
-            if let Ok(key) = SigningKey::from_slice(&random_bytes::<32>()) {
-                return key;
-            }
-        }
     }
 
     /// The uncompressed point, base64url, as a browser or app registers it.

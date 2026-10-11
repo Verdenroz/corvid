@@ -38,8 +38,7 @@ class CorvidPushService : PushService() {
         message: PushMessage,
         instance: String,
     ) {
-        val notice = pushNotice(message.content, message.decrypted) ?: return
-        previews.post((notice as? PushNotice.Mail)?.preview)
+        previews.show(message.content, message.decrypted)
     }
 
     override fun onRegistrationFailed(

@@ -4,6 +4,7 @@ import com.verdenroz.corvid.core.jmap.AuthLatch
 import com.verdenroz.corvid.core.jmap.JmapClient
 import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.jmap.createJmapHttpClient
+import com.verdenroz.corvid.core.prefs.PushStatus
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import io.ktor.http.HttpMethod
 import kotlinx.coroutines.test.runTest
@@ -28,7 +29,7 @@ class PushEndpointRepositoryTest {
         runTest {
             fake.devices.enroll("phone")
 
-            assertEquals(PushAnswer.Accepted, repository().store("phone", ENDPOINT, "p256", "auth").answer)
+            assertEquals(PushStatus.Sent, repository().store("phone", ENDPOINT, "p256", "auth").status)
 
             val expected =
                 buildJsonObject {
@@ -46,13 +47,13 @@ class PushEndpointRepositoryTest {
 
             val result = repository().store("phone", "corvid-stream", "p256", "auth")
 
-            assertEquals(PushResult(PushAnswer.Accepted, fake.devices.streamToken), result)
+            assertEquals(PushResult(PushStatus.Sent, fake.devices.streamToken), result)
         }
 
     @Test
     fun `a device the server never approved is reported, not thrown`() =
         runTest {
-            assertEquals(PushAnswer.NotApproved, repository().store("phone", ENDPOINT, "p256", "auth").answer)
+            assertEquals(PushStatus.NotApproved, repository().store("phone", ENDPOINT, "p256", "auth").status)
             assertFalse(latch.tripped.value)
         }
 
@@ -61,7 +62,7 @@ class PushEndpointRepositoryTest {
         runTest {
             fake.devices.enroll("phone")
 
-            assertEquals(PushAnswer.Refused, repository().store("phone", "https://ntfy.sh/abc", "p256", "auth").answer)
+            assertEquals(PushStatus.Refused, repository().store("phone", "https://ntfy.sh/abc", "p256", "auth").status)
             assertTrue(fake.devices.pushEndpoints.isEmpty())
         }
 
@@ -71,12 +72,12 @@ class PushEndpointRepositoryTest {
             fake.devices.enroll("phone")
             val repository = repository()
             fake.devices.pushOff = true
-            assertEquals(PushAnswer.OffOnServer, repository.store("phone", ENDPOINT, "p256", "auth").answer)
-            assertEquals(PushAnswer.OffOnServer, repository.remove("phone"))
+            assertEquals(PushStatus.OffOnServer, repository.store("phone", ENDPOINT, "p256", "auth").status)
+            repository.remove("phone")
 
             fake.devices.pushOff = false
             fake.devices.off = true
-            assertEquals(PushAnswer.OffOnServer, repository.store("phone", ENDPOINT, "p256", "auth").answer)
+            assertEquals(PushStatus.OffOnServer, repository.store("phone", ENDPOINT, "p256", "auth").status)
         }
 
     @Test
@@ -86,8 +87,8 @@ class PushEndpointRepositoryTest {
             val repository = repository()
             repository.store("phone", ENDPOINT, "p256", "auth")
 
-            assertEquals(PushAnswer.Accepted, repository.remove("phone"))
-            assertEquals(PushAnswer.Accepted, repository.remove("phone"))
+            repository.remove("phone")
+            repository.remove("phone")
 
             assertTrue(fake.devices.pushEndpoints.isEmpty())
             assertEquals(

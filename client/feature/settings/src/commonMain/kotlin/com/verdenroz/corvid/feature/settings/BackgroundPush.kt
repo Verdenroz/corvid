@@ -26,34 +26,10 @@ interface BackgroundPush {
     fun unregister()
 }
 
-/** What the background notifications row says, and whether it reads as on. */
-enum class BackgroundPushLine(val on: Boolean) {
-    Off(false),
-    OffOwnConnection(false),
-    Registering(true),
-    Waiting(true),
-    Sent(true),
-    SentOwnConnection(true),
-    OffOnServer(true),
-    NotApproved(true),
-    Refused(true),
-    Removing(false),
-    Failed(false),
+/** What the background notifications row shows: where the push stands, and which transport it reads as. */
+data class BackgroundPushState(
+    val status: PushStatus,
+    val ownConnection: Boolean,
+) {
+    val on: Boolean get() = status != PushStatus.Off && status != PushStatus.Removing && status != PushStatus.Failed
 }
-
-internal fun backgroundPushLine(
-    status: PushStatus,
-    subscription: PushSubscription?,
-    transport: PushTransport,
-): BackgroundPushLine =
-    when (status) {
-        PushStatus.Off -> if (transport == PushTransport.OwnConnection) BackgroundPushLine.OffOwnConnection else BackgroundPushLine.Off
-        PushStatus.Registering -> BackgroundPushLine.Registering
-        PushStatus.Unsent -> BackgroundPushLine.Waiting
-        PushStatus.Sent -> if (subscription?.ownConnection == true) BackgroundPushLine.SentOwnConnection else BackgroundPushLine.Sent
-        PushStatus.OffOnServer -> BackgroundPushLine.OffOnServer
-        PushStatus.NotApproved -> BackgroundPushLine.NotApproved
-        PushStatus.Refused -> BackgroundPushLine.Refused
-        PushStatus.Removing -> BackgroundPushLine.Removing
-        PushStatus.Failed -> BackgroundPushLine.Failed
-    }

@@ -31,12 +31,16 @@ impl Receiver {
 
 /// One `aes128gcm` body for [`Receiver`], under a fresh sender key and salt.
 pub fn encrypt(receiver: &Receiver, plaintext: &[u8]) -> Vec<u8> {
-    let sender = loop {
+    encrypt_with(receiver, plaintext, &random_secret(), random_bytes())
+}
+
+/// A fresh P-256 secret; a draw that is not a valid scalar is drawn again.
+pub(crate) fn random_secret() -> SecretKey {
+    loop {
         if let Ok(key) = SecretKey::from_slice(&random_bytes::<32>()) {
-            break key;
+            return key;
         }
-    };
-    encrypt_with(receiver, plaintext, &sender, random_bytes())
+    }
 }
 
 pub(crate) fn random_bytes<const N: usize>() -> [u8; N] {

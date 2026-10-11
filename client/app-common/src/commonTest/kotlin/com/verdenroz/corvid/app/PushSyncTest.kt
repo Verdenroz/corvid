@@ -91,17 +91,20 @@ class PushSyncTest {
         }
 
     @Test
-    fun `an own connection the server already took is not registered again on unlock`() =
+    fun `an own connection registered again on the next unlock keeps its token`() =
         runTest {
             val preferences = preferences()
-            val own = PushSubscription(OWN_CONNECTION, "p256", "auth")
-            preferences.setPushSubscription(own)
-            preferences.recordPushAnswer(own, PushStatus.Sent, "tok")
+            preferences.setPushSubscription(PushSubscription(OWN_CONNECTION, "p256", "auth"))
+            follow(fake, preferences)
+            until { preferences.settings.value.push.status == PushStatus.Sent }
+            val first = preferences.settings.value.push
 
             follow(fake, preferences)
+            until { fake.devices.pushCalls.size == 2 }
+            runCurrent()
 
-            assertEquals(emptyList(), fake.devices.pushCalls)
-            assertEquals("tok", preferences.settings.value.push.streamToken)
+            assertEquals(first, preferences.settings.value.push)
+            assertEquals(fake.devices.streamToken, first.streamToken)
         }
 
     @Test

@@ -11,6 +11,9 @@ import com.verdenroz.corvid.app.NewMailNotifier
 import com.verdenroz.corvid.app.NoticeNotifier
 import com.verdenroz.corvid.app.NotificationPermission
 import com.verdenroz.corvid.app.di.appModules
+import com.verdenroz.corvid.app.endPushOnSignOut
+import com.verdenroz.corvid.core.auth.AuthState
+import com.verdenroz.corvid.core.auth.TokenSource
 import com.verdenroz.corvid.core.auth.platformAuthModule
 import com.verdenroz.corvid.core.common.di.applicationScopeQualifier
 import com.verdenroz.corvid.core.data.AppInstaller
@@ -51,7 +54,11 @@ class CorvidApplication : Application() {
         val keyHolder = koin.get<KeyHolder>()
         registerNetworkLossTrigger(keyHolder)
         registerScreenOffTrigger(keyHolder)
-        keepStreamRunning(koin.get<DevicePreferences>(), koin.get(applicationScopeQualifier))
+        val preferences = koin.get<DevicePreferences>()
+        val scope = koin.get<CoroutineScope>(applicationScopeQualifier)
+        keepStreamRunning(preferences, scope)
+        val signedIn = koin.get<TokenSource>().state.map { it is AuthState.SignedIn }
+        scope.launch { endPushOnSignOut(signedIn, koin.get(), preferences) }
     }
 
     // The own connection runs exactly while the server has issued a token for it.

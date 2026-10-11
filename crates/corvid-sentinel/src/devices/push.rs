@@ -1,33 +1,40 @@
 //! New-mail previews pushed to approved devices. Stalwart's `message-ingest.ham` WebHook only
 //! wakes the watcher; it carries no subject, so the watcher reads what changed in the mail account
 //! as the admin API key and pushes each new Inbox message, encrypted to each device's own keys,
-//! to the FCM endpoint the device registered.
+//! to the FCM endpoint the device registered or onto its own stream.
 
 use std::io;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use axum::Json;
+use axum::Router;
 use axum::body::Bytes;
-use axum::extract::{Path, State};
+use axum::extract::{DefaultBodyLimit, Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
+use axum::routing::{get, post, put};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use futures_util::future::join_all;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::sync::Notify;
 
 use super::keys::{self, Keys, checked};
-use super::state::{Devices, Push};
-use super::stream::{self, Streams};
+use super::state::{Push, Target};
+use super::stream;
 use super::{Off, Shared, commit, valid_name};
 use crate::vapid::Vapid;
+use crate::webhook::Kind;
 use crate::webpush::{self, Receiver, random_bytes};
 
-const MAX_ENDPOINT: usize = 512;
-const FCM_AUDIENCE: &str = "https://fcm.googleapis.com";
+pub const FCM_ORIGIN: &str = "https://fcm.googleapis.com";
 const FCM_HOST: &str = "fcm.googleapis.com";
 const FCM_PATHS: [&str; 2] = ["/fcm/send/", "/wp/"];
+const MAX_ENDPOINT: usize = 512;
+const PUSH_BODY_LIMIT: usize = 2048;
+const WEBHOOK_BODY_LIMIT: usize = 1 << 20;
 const PREVIEW_CHARS: usize = 200;
 const MAX_CHANGES: u64 = 256;
 const MAX_PER_WAKE: usize = 20;
@@ -35,6 +42,7 @@ const BASELINE_RETRY: Duration = Duration::from_secs(5);
 const SEND_TIMEOUT: Duration = Duration::from_secs(10);
 const SEEN: &str = "$seen";
 const FRESH_SECONDS: i64 = 15 * 60;
+const HAM: &str = "message-ingest.ham";
 
 pub struct Config {
     vapid: Vapid,
@@ -54,29 +62,60 @@ impl Config {
     }
 }
 
-pub(super) struct Pusher {
-    vapid: Vapid,
-    contact: String,
-    fcm_origin: String,
+/// The device state with what only a host that pushes needs. Its routes exist only then.
+struct PushState {
+    device: Shared,
+    config: Config,
     http: reqwest::Client,
     arrived: Notify,
-    pub(super) streams: Streams,
 }
 
-impl Pusher {
-    pub(super) fn new(config: Config) -> Self {
-        Self {
-            vapid: config.vapid,
-            contact: config.contact,
-            fcm_origin: config.fcm_origin,
-            http: reqwest::Client::builder()
-                .timeout(SEND_TIMEOUT)
-                .build()
-                .expect("a client with a timeout builds"),
-            arrived: Notify::new(),
-            streams: Streams::default(),
-        }
+type Pushing = Arc<PushState>;
+
+pub(super) fn routes(device: Shared, config: Config) -> Router {
+    let state = Arc::new(PushState {
+        device: device.clone(),
+        config,
+        http: reqwest::Client::builder()
+            .timeout(SEND_TIMEOUT)
+            .build()
+            .expect("a client with a timeout builds"),
+        arrived: Notify::new(),
+    });
+    tokio::spawn(watch(state.clone()));
+    let registration = Router::new()
+        .route(
+            "/corvid/devices/{name}/push",
+            put(register).delete(unregister),
+        )
+        .layer(DefaultBodyLimit::max(PUSH_BODY_LIMIT))
+        .with_state(state.clone());
+    let webhook = Router::new()
+        .route("/webhook/mail", post(arrived))
+        .layer(DefaultBodyLimit::max(WEBHOOK_BODY_LIMIT))
+        .with_state(state.clone());
+    let key = Router::new()
+        .route("/corvid/push/vapid", get(vapid_key))
+        .with_state(state);
+    let stream = Router::new()
+        .route("/corvid/push/stream", get(stream::serve))
+        .with_state(device);
+    registration.merge(webhook).merge(key).merge(stream)
+}
+
+/// The push routes on a host whose config has devices but no `sentinel.push`.
+pub(super) fn off() -> Router {
+    async fn off() -> (StatusCode, Json<Off>) {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(Off { error: "push_off" }),
+        )
     }
+    Router::new()
+        .route("/corvid/devices/{name}/push", put(off).delete(off))
+        .route("/corvid/push/vapid", get(off))
+        .route("/corvid/push/stream", get(off))
+        .route("/webhook/mail", post(|| async { StatusCode::NO_CONTENT }))
 }
 
 /// The path and query of an endpoint FCM issued, or `None` for anything else, so the sentinel
@@ -97,23 +136,17 @@ fn fcm_target(endpoint: &str) -> Option<String> {
     issued.then(|| endpoint[url.origin().ascii_serialization().len()..].to_owned())
 }
 
-fn push_off() -> (StatusCode, Json<Off>) {
-    (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(Off { error: "push_off" }),
-    )
+fn refuse(status: StatusCode) -> (StatusCode, Json<Off>) {
+    (status, Json(Off { error: "refused" }))
 }
 
-pub(super) async fn vapid_key(
-    State(state): State<Shared>,
-) -> Result<Json<Value>, (StatusCode, Json<Off>)> {
-    let pusher = state.push.as_ref().ok_or_else(push_off)?;
-    Ok(Json(json!({"publicKey": pusher.vapid.public_key()})))
+async fn vapid_key(State(state): State<Pushing>) -> Json<Value> {
+    Json(json!({"publicKey": state.config.vapid.public_key()}))
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(super) struct Registration {
+struct Registration {
     endpoint: String,
     p256dh: String,
     auth: String,
@@ -124,102 +157,110 @@ fn receiver(p256dh: &str, auth: &str) -> Option<Receiver> {
     Receiver::new(&decode(p256dh)?, &decode(auth)?)
 }
 
+enum Registered {
+    NotApproved,
+    Unchanged,
+    Changed,
+}
+
 /// Stores where a device takes its pushes. Only a device already approved may have one, and
 /// only an endpoint FCM issued or the sentinel's own stream. A stream registration answers with
-/// the token its connection reads with; the sentinel keeps only the token's hash.
-pub(super) async fn register(
-    State(state): State<Shared>,
+/// the token its connection reads with; the sentinel keeps only the token's hash. Registering
+/// what the device already holds changes nothing, so an open stream stays open.
+async fn register(
+    State(state): State<Pushing>,
     Path(name): Path<String>,
     Json(registration): Json<Registration>,
 ) -> Result<Response, (StatusCode, Json<Off>)> {
-    state.push.as_ref().ok_or_else(push_off)?;
-    let refuse = |status: StatusCode| (status, Json(Off { error: "refused" }));
     if !valid_name(&name) || receiver(&registration.p256dh, &registration.auth).is_none() {
         return Err(refuse(StatusCode::BAD_REQUEST));
     }
-    let own_stream = registration.endpoint == stream::ENDPOINT;
-    if !own_stream && fcm_target(&registration.endpoint).is_none() {
-        return Err(refuse(StatusCode::UNPROCESSABLE_ENTITY));
-    }
     let token = URL_SAFE_NO_PAD.encode(random_bytes::<32>());
+    let own_stream = registration.endpoint == stream::ENDPOINT;
+    let target = if own_stream {
+        Target::Stream {
+            token_hash: stream::hash(&token),
+        }
+    } else {
+        let endpoint = fcm_target(&registration.endpoint)
+            .ok_or_else(|| refuse(StatusCode::UNPROCESSABLE_ENTITY))?;
+        Target::Fcm { endpoint }
+    };
     let push = Push {
-        endpoint: registration.endpoint,
         p256dh: registration.p256dh,
         auth: registration.auth,
-        token_hash: own_stream.then(|| stream::hash(&token)),
+        target,
     };
     let ended = name.clone();
-    let stored = commit(state.clone(), move |devices| {
-        if !devices.approved.contains_key(&name) {
-            return (None, false);
+    let outcome = commit(state.device.clone(), move |devices| {
+        let Some(device) = devices.approved.get(&name) else {
+            return (None, Registered::NotApproved);
+        };
+        if device.push.as_ref().is_some_and(|held| held.same_as(&push)) {
+            return (None, Registered::Unchanged);
         }
         let mut next = devices.clone();
-        next.pushes.insert(name, push);
+        next.approved.get_mut(&name).expect("read above").push = Some(push);
+        (Some(next), Registered::Changed)
+    })
+    .await
+    .map_err(refuse)?;
+    match outcome {
+        Registered::NotApproved => Err(refuse(StatusCode::NOT_FOUND)),
+        Registered::Unchanged => Ok(StatusCode::NO_CONTENT.into_response()),
+        Registered::Changed => {
+            state.device.streams.close(&ended);
+            Ok(if own_stream {
+                Json(json!({"token": token})).into_response()
+            } else {
+                StatusCode::NO_CONTENT.into_response()
+            })
+        }
+    }
+}
+
+async fn unregister(
+    State(state): State<Pushing>,
+    Path(name): Path<String>,
+) -> Result<StatusCode, (StatusCode, Json<Off>)> {
+    let ended = name.clone();
+    let known = commit(state.device.clone(), move |devices| {
+        let Some(device) = devices.approved.get(&name) else {
+            return (None, false);
+        };
+        if device.push.is_none() {
+            return (None, true);
+        }
+        let mut next = devices.clone();
+        next.approved.get_mut(&name).expect("read above").push = None;
         (Some(next), true)
     })
     .await
     .map_err(refuse)?;
-    if !stored {
+    if !known {
         return Err(refuse(StatusCode::NOT_FOUND));
     }
-    state.end_stream(&ended);
-    Ok(if own_stream {
-        Json(json!({"token": token})).into_response()
-    } else {
-        StatusCode::NO_CONTENT.into_response()
-    })
-}
-
-pub(super) async fn unregister(
-    State(state): State<Shared>,
-    Path(name): Path<String>,
-) -> Result<StatusCode, (StatusCode, Json<Off>)> {
-    if state.push.is_none() {
-        return Err(push_off());
-    }
-    let ended = name.clone();
-    let known = commit(state.clone(), move |devices| {
-        if !devices.approved.contains_key(&name) {
-            return (None, false);
-        }
-        let mut next = devices.clone();
-        let removed = next.pushes.remove(&name).is_some();
-        (removed.then_some(next), true)
-    })
-    .await
-    .map_err(|status| (status, Json(Off { error: "refused" })))?;
-    if !known {
-        return Err((StatusCode::NOT_FOUND, Json(Off { error: "refused" })));
-    }
-    state.end_stream(&ended);
+    state.device.streams.close(&ended);
     Ok(StatusCode::NO_CONTENT)
 }
 
 /// Stalwart's signed `message-ingest.ham` batch. It only wakes the watcher, so a batch arriving
 /// while one is being read coalesces into one more read.
-pub(super) async fn arrived(
-    State(state): State<Shared>,
-    headers: HeaderMap,
-    body: Bytes,
-) -> StatusCode {
+async fn arrived(State(state): State<Pushing>, headers: HeaderMap, body: Bytes) -> StatusCode {
     let signature = headers
         .get("X-Signature")
         .and_then(|value| value.to_str().ok());
-    if !crate::verify(&state.secret, &body, signature) {
+    if !crate::verify(&state.device.secret, &body, signature) {
         return StatusCode::UNAUTHORIZED;
     }
-    let Some(pusher) = state.push.as_ref() else {
-        return StatusCode::NO_CONTENT;
-    };
-    let delivered = serde_json::from_slice::<Value>(&body).is_ok_and(|batch| {
-        batch["events"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .any(|event| event["type"] == "message-ingest.ham")
+    let delivered = crate::parse(&body).is_ok_and(|batch| {
+        batch
+            .events
+            .iter()
+            .any(|event| matches!(&event.kind, Kind::Other(kind) if kind == HAM))
     });
     if delivered {
-        pusher.arrived.notify_one();
+        state.arrived.notify_one();
     }
     StatusCode::NO_CONTENT
 }
@@ -232,12 +273,10 @@ struct Mailbox {
 }
 
 /// Runs for the life of the process. Mail delivered before the first baseline is not pushed.
-pub(super) async fn watch(state: Shared) {
-    let Some(pusher) = state.push.as_ref() else {
-        return;
-    };
+async fn watch(state: Pushing) {
+    let keys = &state.device.keys;
     let mut mailbox = loop {
-        match baseline(&state.keys).await {
+        match baseline(keys).await {
             Ok(mailbox) => break mailbox,
             Err(error) => {
                 tracing::info!(%error, "push: the mail account is not readable yet");
@@ -246,13 +285,13 @@ pub(super) async fn watch(state: Shared) {
         }
     };
     loop {
-        pusher.arrived.notified().await;
-        match arrivals(&state.keys, &mailbox).await {
+        state.arrived.notified().await;
+        match arrivals(keys, &mailbox).await {
             Ok(Changes::Since(next, messages)) => {
                 mailbox.state = next;
-                deliver(&state, pusher, &messages).await;
+                deliver(&state, &messages).await;
             }
-            Ok(Changes::Lost) => match baseline(&state.keys).await {
+            Ok(Changes::Lost) => match baseline(keys).await {
                 Ok(fresh) => mailbox = fresh,
                 Err(error) => tracing::warn!(%error, "push: cannot take a new baseline"),
             },
@@ -366,68 +405,75 @@ fn preview(email: &Value) -> Vec<u8> {
     .into_bytes()
 }
 
-async fn deliver(state: &Shared, pusher: &Pusher, messages: &[Value]) {
+async fn deliver(state: &Pushing, messages: &[Value]) {
     if messages.len() > MAX_PER_WAKE {
         tracing::info!(
             skipped = messages.len() - MAX_PER_WAKE,
             "push: more new mail than one wake pushes"
         );
     }
-    let devices: Vec<(String, Push)> = state.devices.read(|devices: &Devices| {
+    let plaintexts: Vec<Vec<u8>> = messages.iter().take(MAX_PER_WAKE).map(preview).collect();
+    let devices: Vec<(String, Push)> = state.device.devices.read(|devices| {
         devices
-            .pushes
+            .approved
             .iter()
-            .map(|(name, push)| (name.clone(), push.clone()))
+            .filter_map(|(name, device)| Some((name.clone(), device.push.clone()?)))
             .collect()
     });
-    for (name, push) in devices {
-        let Some(receiver) = receiver(&push.p256dh, &push.auth) else {
-            continue;
-        };
-        if push.endpoint == stream::ENDPOINT {
-            for email in messages.iter().take(MAX_PER_WAKE) {
-                pusher
-                    .streams
-                    .publish(&name, &webpush::encrypt(&receiver, &preview(email)));
-            }
-            continue;
+    join_all(
+        devices
+            .into_iter()
+            .map(|(name, push)| push_to(state, name, push, &plaintexts)),
+    )
+    .await;
+}
+
+/// One device's share of a wake, in order. FCM that stops answering ends the device's share, so a
+/// hung endpoint costs one timeout, not one per message.
+async fn push_to(state: &Pushing, name: String, push: Push, plaintexts: &[Vec<u8>]) {
+    let Some(receiver) = receiver(&push.p256dh, &push.auth) else {
+        return;
+    };
+    let Target::Fcm { endpoint } = &push.target else {
+        for plaintext in plaintexts {
+            let body = webpush::encrypt(&receiver, plaintext);
+            state.device.streams.publish(&name, &body);
         }
-        let Some(target) = fcm_target(&push.endpoint) else {
-            continue;
-        };
-        let url = format!("{}{target}", pusher.fcm_origin);
-        for email in messages.iter().take(MAX_PER_WAKE) {
-            match send(pusher, &url, &receiver, &preview(email)).await {
-                Ok(status) if status == StatusCode::NOT_FOUND || status == StatusCode::GONE => {
-                    forget(state.clone(), name.clone(), push.endpoint.clone()).await;
-                    break;
-                }
-                Ok(status) if !status.is_success() => {
-                    tracing::warn!(device = %name, %status, "push: FCM refused a push");
-                }
-                Ok(_) => {}
-                Err(error) => {
-                    tracing::warn!(device = %name, %error, "push: FCM is unreachable")
-                }
+        return;
+    };
+    let url = format!("{}{endpoint}", state.config.fcm_origin);
+    for plaintext in plaintexts {
+        match send(state, &url, &receiver, plaintext).await {
+            Ok(status) if status == StatusCode::NOT_FOUND || status == StatusCode::GONE => {
+                return forget(state, name, push).await;
+            }
+            Ok(status) if !status.is_success() => {
+                tracing::warn!(device = %name, %status, "push: FCM refused a push");
+            }
+            Ok(_) => {}
+            Err(error) => {
+                tracing::warn!(device = %name, %error, "push: FCM is unreachable");
+                return;
             }
         }
     }
 }
 
 async fn send(
-    pusher: &Pusher,
+    state: &Pushing,
     url: &str,
     receiver: &Receiver,
     plaintext: &[u8],
 ) -> Result<StatusCode, reqwest::Error> {
-    let response = pusher
+    let config = &state.config;
+    let response = state
         .http
         .post(url)
         .header(
             "Authorization",
-            pusher
+            config
                 .vapid
-                .authorization(FCM_AUDIENCE, &pusher.contact, SystemTime::now()),
+                .authorization(FCM_ORIGIN, &config.contact, SystemTime::now()),
         )
         .header("Content-Encoding", "aes128gcm")
         .header("Content-Type", "application/octet-stream")
@@ -439,19 +485,16 @@ async fn send(
     Ok(StatusCode::from_u16(response.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY))
 }
 
-/// An endpoint FCM no longer knows is dropped, unless the device has registered another
+/// A registration FCM no longer knows is dropped, unless the device has registered another
 /// since it was read.
-async fn forget(state: Shared, name: String, endpoint: String) {
-    let outcome = commit(state, move |devices| {
-        if devices
-            .pushes
-            .get(&name)
-            .is_none_or(|push| push.endpoint != endpoint)
-        {
-            return (None, ());
+async fn forget(state: &Pushing, name: String, held: Push) {
+    let outcome = commit(state.device.clone(), move |devices| {
+        match devices.approved.get(&name) {
+            Some(device) if device.push.as_ref() == Some(&held) => {}
+            _ => return (None, ()),
         }
         let mut next = devices.clone();
-        next.pushes.remove(&name);
+        next.approved.get_mut(&name).expect("read above").push = None;
         (Some(next), ())
     })
     .await;

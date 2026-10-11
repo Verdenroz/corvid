@@ -1,7 +1,6 @@
 package com.verdenroz.corvid.app
 
 import com.verdenroz.corvid.core.jmap.JmapException
-import com.verdenroz.corvid.core.keyring.PushAnswer
 import com.verdenroz.corvid.core.keyring.PushEndpointRepository
 import com.verdenroz.corvid.core.prefs.DevicePreferences
 import com.verdenroz.corvid.core.prefs.PushSettings
@@ -22,7 +21,7 @@ class PushSync(
 ) {
     suspend fun run() {
         preferences.settings.map { it.push }.distinctUntilChanged().collectIndexed { index, push ->
-            if (index == 0 && !push.holdsOwnConnection || push.status == PushStatus.Unsent || push.status == PushStatus.Removing) sync(push)
+            if (index == 0 || push.status == PushStatus.Unsent || push.status == PushStatus.Removing) sync(push)
         }
     }
 
@@ -31,7 +30,11 @@ class PushSync(
         try {
             if (subscription != null) {
                 val result = endpoints.store(deviceName, subscription.url, subscription.p256dh, subscription.auth)
-                preferences.recordPushAnswer(subscription, result.answer.status(), result.token)
+                preferences.recordPushAnswer(
+                    subscription,
+                    result.status,
+                    result.token ?: push.streamToken.takeIf { result.status == PushStatus.Sent },
+                )
             } else if (push.status == PushStatus.Removing) {
                 endpoints.remove(deviceName)
                 preferences.finishPushRemoval()
@@ -40,15 +43,4 @@ class PushSync(
             return
         }
     }
-
-    /** Registering an own connection again would replace the token the open stream reads with. */
-    private val PushSettings.holdsOwnConnection get() = subscription?.ownConnection == true && streamToken != null
-
-    private fun PushAnswer.status(): PushStatus =
-        when (this) {
-            PushAnswer.Accepted -> PushStatus.Sent
-            PushAnswer.OffOnServer -> PushStatus.OffOnServer
-            PushAnswer.NotApproved -> PushStatus.NotApproved
-            PushAnswer.Refused -> PushStatus.Refused
-        }
 }

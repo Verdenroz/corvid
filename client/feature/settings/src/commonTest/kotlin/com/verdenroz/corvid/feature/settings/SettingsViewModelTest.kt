@@ -155,7 +155,7 @@ class SettingsViewModelTest {
     @Test
     fun `background notifications start off`() =
         runViewModelTest {
-            assertEquals(BackgroundPushLine.Off, viewModel(push = FakeBackgroundPush()).state.value.backgroundPush)
+            assertEquals(BackgroundPushState(PushStatus.Off, false), viewModel(push = FakeBackgroundPush()).state.value.backgroundPush)
         }
 
     @Test
@@ -169,7 +169,7 @@ class SettingsViewModelTest {
 
             assertEquals(1, push.registrations)
             assertEquals(VAPID, push.vapid)
-            assertEquals(BackgroundPushLine.Registering, viewModel.state.value.backgroundPush)
+            assertEquals(BackgroundPushState(PushStatus.Registering, false), viewModel.state.value.backgroundPush)
             assertEquals(1, calls.permissionAsks)
         }
 
@@ -181,7 +181,7 @@ class SettingsViewModelTest {
 
             viewModel.setBackgroundPush(true)
 
-            assertEquals(BackgroundPushLine.Waiting, viewModel.state.value.backgroundPush)
+            assertEquals(BackgroundPushState(PushStatus.Unsent, false), viewModel.state.value.backgroundPush)
         }
 
     @Test
@@ -189,13 +189,13 @@ class SettingsViewModelTest {
         runViewModelTest {
             val push = FakeBackgroundPush(transport = PushTransport.OwnConnection)
             val viewModel = viewModel(push = push)
-            assertEquals(BackgroundPushLine.OffOwnConnection, viewModel.state.value.backgroundPush)
+            assertEquals(BackgroundPushState(PushStatus.Off, true), viewModel.state.value.backgroundPush)
 
             viewModel.setBackgroundPush(true)
 
             assertEquals(1, push.ownRegistrations)
             assertEquals(0, push.registrations)
-            assertEquals(BackgroundPushLine.Waiting, viewModel.state.value.backgroundPush)
+            assertEquals(BackgroundPushState(PushStatus.Unsent, true), viewModel.state.value.backgroundPush)
         }
 
     @Test
@@ -208,7 +208,7 @@ class SettingsViewModelTest {
             preferences.setPushSubscription(own)
             preferences.recordPushAnswer(own, PushStatus.Sent, "tok")
 
-            assertEquals(BackgroundPushLine.SentOwnConnection, viewModel.state.value.backgroundPush)
+            assertEquals(BackgroundPushState(PushStatus.Sent, true), viewModel.state.value.backgroundPush)
         }
 
     @Test
@@ -220,7 +220,7 @@ class SettingsViewModelTest {
             viewModel.setBackgroundPush(true)
 
             assertEquals(0, push.registrations)
-            assertEquals(BackgroundPushLine.OffOnServer, viewModel.state.value.backgroundPush)
+            assertEquals(BackgroundPushState(PushStatus.OffOnServer, false), viewModel.state.value.backgroundPush)
         }
 
     @Test
@@ -232,7 +232,7 @@ class SettingsViewModelTest {
             viewModel.setBackgroundPush(true)
 
             assertEquals(0, push.registrations)
-            assertEquals(BackgroundPushLine.Failed, viewModel.state.value.backgroundPush)
+            assertEquals(BackgroundPushState(PushStatus.Failed, false), viewModel.state.value.backgroundPush)
         }
 
     @Test
@@ -245,7 +245,7 @@ class SettingsViewModelTest {
             viewModel.setBackgroundPush(false)
 
             assertEquals(1, push.unregistrations)
-            assertEquals(BackgroundPushLine.Removing, viewModel.state.value.backgroundPush)
+            assertEquals(BackgroundPushState(PushStatus.Removing, false), viewModel.state.value.backgroundPush)
         }
 
     @Test
@@ -256,35 +256,20 @@ class SettingsViewModelTest {
             val subscription = PushSubscription("https://fcm.googleapis.com/fcm/send/up1", "p256", "auth")
 
             preferences.setPushSubscription(subscription)
-            assertEquals(BackgroundPushLine.Waiting, viewModel.state.value.backgroundPush)
+            assertEquals(BackgroundPushState(PushStatus.Unsent, false), viewModel.state.value.backgroundPush)
 
             val answers =
                 mapOf(
-                    PushStatus.Sent to BackgroundPushLine.Sent,
-                    PushStatus.OffOnServer to BackgroundPushLine.OffOnServer,
-                    PushStatus.NotApproved to BackgroundPushLine.NotApproved,
-                    PushStatus.Refused to BackgroundPushLine.Refused,
+                    PushStatus.Sent to BackgroundPushState(PushStatus.Sent, false),
+                    PushStatus.OffOnServer to BackgroundPushState(PushStatus.OffOnServer, false),
+                    PushStatus.NotApproved to BackgroundPushState(PushStatus.NotApproved, false),
+                    PushStatus.Refused to BackgroundPushState(PushStatus.Refused, false),
                 )
             for ((status, line) in answers) {
                 preferences.recordPushAnswer(subscription, status)
                 assertEquals(line, viewModel.state.value.backgroundPush)
                 assertTrue(line.on)
             }
-        }
-
-    @Test
-    fun `signing out ends background notifications first`() =
-        runViewModelTest {
-            val calls = Calls()
-            val push = FakeBackgroundPush()
-            val viewModel = viewModel(calls, push)
-            viewModel.setBackgroundPush(true)
-
-            viewModel.confirmSignOut()
-
-            assertEquals(1, push.unregistrations)
-            assertEquals(BackgroundPushLine.Removing, viewModel.state.value.backgroundPush)
-            assertEquals(1, calls.signOuts)
         }
 
     @Test

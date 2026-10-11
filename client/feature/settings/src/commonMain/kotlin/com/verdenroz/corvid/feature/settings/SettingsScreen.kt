@@ -23,6 +23,7 @@ import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.prefs.AutoLock
+import com.verdenroz.corvid.core.prefs.PushStatus
 import com.verdenroz.corvid.core.prefs.ThemeChoice
 import com.verdenroz.corvid.core.ui.DiscardQuestion
 import com.verdenroz.corvid.core.ui.LocalWideLayout
@@ -154,12 +155,12 @@ fun SettingsScreen(
                         label = { on -> stringResource(if (on) Res.string.settings_about_on else Res.string.settings_about_off) },
                         onSelect = viewModel::setNewMailNotifications,
                     )
-                    state.backgroundPush?.let { line ->
+                    state.backgroundPush?.let { row ->
                         ChoiceRow(
                             title = stringResource(Res.string.settings_push),
-                            detail = stringResource(line.text()),
+                            detail = stringResource(row.text()),
                             options = listOf(true, false),
-                            selected = line.on,
+                            selected = row.on,
                             label = { on -> stringResource(if (on) Res.string.settings_about_on else Res.string.settings_about_off) },
                             onSelect = viewModel::setBackgroundPush,
                         )
@@ -231,17 +232,15 @@ private fun ThemeChoice.label() =
         ThemeChoice.Dark -> Res.string.settings_theme_dark
     }
 
-private fun BackgroundPushLine.text() =
-    when (this) {
-        BackgroundPushLine.Off -> Res.string.settings_push_off
-        BackgroundPushLine.OffOwnConnection -> Res.string.settings_push_off_own_connection
-        BackgroundPushLine.Registering -> Res.string.settings_push_registering
-        BackgroundPushLine.Waiting -> Res.string.settings_push_waiting
-        BackgroundPushLine.Sent -> Res.string.settings_push_sent
-        BackgroundPushLine.SentOwnConnection -> Res.string.settings_push_sent_own_connection
-        BackgroundPushLine.OffOnServer -> Res.string.settings_push_server_off
-        BackgroundPushLine.NotApproved -> Res.string.settings_push_not_approved
-        BackgroundPushLine.Refused -> Res.string.settings_push_refused
-        BackgroundPushLine.Removing -> Res.string.settings_push_removing
-        BackgroundPushLine.Failed -> Res.string.settings_push_failed
+private fun BackgroundPushState.text() =
+    when (status) {
+        PushStatus.Off -> if (ownConnection) Res.string.settings_push_off_own_connection else Res.string.settings_push_off
+        PushStatus.Registering -> Res.string.settings_push_registering
+        PushStatus.Unsent -> Res.string.settings_push_waiting
+        PushStatus.Sent -> if (ownConnection) Res.string.settings_push_sent_own_connection else Res.string.settings_push_sent
+        PushStatus.OffOnServer -> Res.string.settings_push_server_off
+        PushStatus.NotApproved -> Res.string.settings_push_not_approved
+        PushStatus.Refused -> Res.string.settings_push_refused
+        PushStatus.Removing -> Res.string.settings_push_removing
+        PushStatus.Failed -> Res.string.settings_push_failed
     }

@@ -290,7 +290,7 @@ impl Keys {
 
 /// A reference to `path` in the answer of call `call` of the same batch. Stalwart resolves
 /// these into query results only, not into the `created` of a set.
-pub(super) fn back(call: &str, method: &str, path: &str) -> Value {
+fn back(call: &str, method: &str, path: &str) -> Value {
     json!({"resultOf": call, "name": method, "path": path})
 }
 

@@ -29,30 +29,15 @@ data class MailPreview(
     fun bigText(noSubject: String): String = listOf(text(noSubject), preview).filter { it.isNotBlank() }.joinToString("\n")
 }
 
-/** What one push asks the phone to show. */
-sealed interface PushNotice {
-    /** Decrypted, so from the server, but not a payload this app reads: a newer version, say. */
-    data object Generic : PushNotice
-
-    data class Mail(val preview: MailPreview) : PushNotice
-}
-
-/**
- * Null, so nothing is posted, for a body the connector could not decrypt: it hands one over as is, and anyone who
- * can reach the push host can post to the endpoint.
- */
-fun pushNotice(
-    content: ByteArray,
-    decrypted: Boolean,
-): PushNotice? {
-    if (!decrypted) return null
+/** Null for a body that is not a payload this app reads: garbage, a missing field, or a newer version. */
+fun readMailPreview(content: ByteArray): MailPreview? {
     val mail =
         try {
             pushJson.decodeFromString<PushedMail>(content.decodeToString())
         } catch (e: IllegalArgumentException) {
-            return PushNotice.Generic
+            return null
         }
-    if (mail.v != 1) return PushNotice.Generic
+    if (mail.v != 1) return null
     val sender = mail.from?.let { it.name?.takeIf(String::isNotBlank) ?: it.email }.orEmpty()
-    return PushNotice.Mail(MailPreview(mail.id, sender, mail.subject, mail.preview))
+    return MailPreview(mail.id, sender, mail.subject, mail.preview)
 }

@@ -2,15 +2,11 @@ package com.verdenroz.corvid
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertIs
 import kotlin.test.assertNull
 
 private fun push(json: String) = json.encodeToByteArray()
 
-private fun mailPreview(
-    content: ByteArray,
-    decrypted: Boolean,
-): MailPreview? = (pushNotice(content, decrypted) as? PushNotice.Mail)?.preview
+private fun mailPreview(content: ByteArray) = readMailPreview(content)
 
 class MailPreviewTest {
     @Test
@@ -20,7 +16,6 @@ class MailPreviewTest {
                 push(
                     """{"v":1,"id":"e1","from":{"name":"Ada Lovelace","email":"ada@x.test"},"subject":"Engines","preview":"Notes on G"}""",
                 ),
-                decrypted = true,
             )
 
         assertEquals(MailPreview("e1", "Ada Lovelace", "Engines", "Notes on G"), preview)
@@ -29,8 +24,8 @@ class MailPreviewTest {
     @Test
     fun `a sender with no name is titled by address`() {
         val nameless =
-            mailPreview(push("""{"v":1,"id":"e1","from":{"name":null,"email":"ada@x.test"},"subject":"s","preview":"p"}"""), true)
-        val blank = mailPreview(push("""{"v":1,"id":"e1","from":{"name":" ","email":"ada@x.test"},"subject":"s","preview":"p"}"""), true)
+            mailPreview(push("""{"v":1,"id":"e1","from":{"name":null,"email":"ada@x.test"},"subject":"s","preview":"p"}"""))
+        val blank = mailPreview(push("""{"v":1,"id":"e1","from":{"name":" ","email":"ada@x.test"},"subject":"s","preview":"p"}"""))
 
         assertEquals("ada@x.test", nameless?.title)
         assertEquals("ada@x.test", blank?.title)
@@ -38,7 +33,7 @@ class MailPreviewTest {
 
     @Test
     fun `a message with no sender is pushed with a blank title`() {
-        val preview = mailPreview(push("""{"v":1,"id":"e1","from":null,"subject":"Engines","preview":"p"}"""), true)
+        val preview = mailPreview(push("""{"v":1,"id":"e1","from":null,"subject":"Engines","preview":"p"}"""))
 
         assertEquals(MailPreview("e1", "", "Engines", "p"), preview)
     }
@@ -48,20 +43,13 @@ class MailPreviewTest {
         val preview =
             mailPreview(
                 push("""{"v":1,"id":"e1","from":{"email":"ada@x.test","role":"x"},"subject":"s","preview":"p","receivedAt":"now"}"""),
-                true,
             )
 
         assertEquals("e1", preview?.id)
     }
 
     @Test
-    fun `a body the connector could not decrypt posts nothing, however well formed`() {
-        assertNull(pushNotice(push("""{"v":1,"id":"e1","from":{"email":"ceo@bank.test"},"subject":"Wire now","preview":""}"""), false))
-        assertNull(pushNotice(byteArrayOf(0x00, 0xff.toByte(), 0x13), false))
-    }
-
-    @Test
-    fun `a decrypted body that is garbage, missing a field or another version posts a generic notice`() {
+    fun `a body that is garbage, missing a field or another version reads as nothing`() {
         val unreadable =
             listOf(
                 byteArrayOf(0x00, 0xff.toByte(), 0x13),
@@ -69,7 +57,7 @@ class MailPreviewTest {
                 push("""{"v":2,"id":"e1","from":{"email":"ada@x.test"},"subject":"s","preview":"p"}"""),
                 push("""["v",1]"""),
             )
-        for (content in unreadable) assertIs<PushNotice.Generic>(pushNotice(content, true))
+        for (content in unreadable) assertNull(readMailPreview(content))
     }
 
     @Test

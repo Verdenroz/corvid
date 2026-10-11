@@ -19,6 +19,7 @@ dependencies {
     implementation(projects.core.auth)
     implementation(projects.core.data)
     implementation(projects.core.discovery)
+    implementation(projects.core.jmap)
     implementation(projects.core.model)
     implementation(projects.core.prefs)
     implementation(projects.core.keyring)

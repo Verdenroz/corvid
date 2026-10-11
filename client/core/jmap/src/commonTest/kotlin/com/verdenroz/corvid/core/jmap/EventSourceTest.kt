@@ -54,9 +54,16 @@ class EventParserTest {
 
     @Test
     fun `comments and unknown fields are skipped`() {
-        val events = parse(": keep-alive", "id: 7", "retry: 100", "event: state", "data:x", "")
+        val events = parse(": keep-alive", "retry: 100", "event: state", "data:x", "")
 
         assertEquals(listOf(ServerEvent("state", "x")), events)
+    }
+
+    @Test
+    fun `an event carries its id and the next one starts without it`() {
+        val events = parse("id: 7", "event: push", "data: a", "", "event: push", "data: b", "")
+
+        assertEquals(listOf(ServerEvent("push", "a", "7"), ServerEvent("push", "b")), events)
     }
 
     @Test

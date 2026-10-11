@@ -100,9 +100,13 @@ wait_for http://127.0.0.1:8080/healthz/live || { echo "Stalwart never restarted"
 create_admin_api_key "$work/corvid.env" || { echo "the admin API key was not created" >&2; exit 1; }
 load_env "$work/corvid.env"
 
-domain_id="$(stalwart-cli query Domain --json | python3 -I -c '
+# The id of the first object of KIND whose FIELD equals VALUE.
+stalwart_id() {
+  stalwart-cli query "$1" --json | python3 -c '
 import json, sys
-print(next(o["id"] for o in map(json.loads, filter(str.strip, sys.stdin)) if o.get("name") == "rig.test"))')"
+print(next(o["id"] for o in map(json.loads, filter(str.strip, sys.stdin)) if o.get(sys.argv[1]) == sys.argv[2]))' "$2" "$3"
+}
+domain_id="$(stalwart_id Domain name rig.test)"
 # Spam filtering is off so a test sender with no SPF record is delivered as ham, the event pushed.
 {
   cat <<JSON
@@ -117,14 +121,12 @@ JSON
 export STALWART_URL="http://127.0.0.1:$mail_port"
 wait_for "$STALWART_URL/healthz/live" || { echo "Stalwart never listened on $mail_port" >&2; exit 1; }
 
-account="$(stalwart-cli query Account --json | python3 -I -c '
-import json, sys
-print(next(o["id"] for o in map(json.loads, filter(str.strip, sys.stdin)) if o.get("emailAddress") == "mailuser@rig.test"))')"
+account="$(MAIL_USER=mailuser MAIL_DOMAIN=rig.test account_id)"
 # Approved devices, as approvals would have recorded them, with key nodes already gone, which
 # revoke counts as destroyed. Push registration needs no more.
 python3 -I - "$work/devices.json" "$account" <<'PY'
 import hashlib, json, sys
-payload = json.dumps({"requests": {}, "approved": {name: {"accountId": sys.argv[2], "nodeId": "zzzzzz", "blobId": "x"} for name in ("phone", "tablet")}, "pushes": {}})
+payload = json.dumps({"requests": {}, "approved": {name: {"accountId": sys.argv[2], "nodeId": "zzzzzz", "blobId": "x"} for name in ("phone", "tablet")}})
 body = "2\n" + payload
 open(sys.argv[1], "w").write(hashlib.sha256(body.encode()).hexdigest() + "\n" + body)
 PY
@@ -281,9 +283,9 @@ check "the stream carries the same message" "$(field id <<<"$streamed")" "$(fiel
 
 echo "== a JMAP append and a revoked device"
 inbox="$(printf '{"using":["urn:ietf:params:jmap:core","urn:ietf:params:jmap:mail"],"methodCalls":[["Mailbox/query",{"accountId":"%s","filter":{"role":"inbox"}},"m"]]}' "$account" |
-  curl_authed -s -H 'content-type: application/json' --data-binary @- "$STALWART_URL/jmap/" | field methodResponses 0 1 ids 0)"
+  jmap_call "$account" | field methodResponses 0 1 ids 0)"
 printf '{"using":["urn:ietf:params:jmap:core","urn:ietf:params:jmap:mail"],"methodCalls":[["Email/set",{"accountId":"%s","create":{"d":{"mailboxIds":{"%s":true},"from":[{"email":"mailuser@rig.test"}],"subject":"appended","receivedAt":"2020-01-01T00:00:00Z","bodyValues":{"b":{"value":"x"}},"textBody":[{"partId":"b","type":"text/plain"}]}}},"s"]]}' \
-  "$account" "$inbox" | curl_authed -s -H 'content-type: application/json' --data-binary @- "$STALWART_URL/jmap/" > "$work/append.json"
+  "$account" "$inbox" | jmap_call "$account" > "$work/append.json"
 check "the JMAP append created a message" "$(field methodResponses 0 1 created d id < "$work/append.json" | grep -c .)" 1
 sleep 4
 check "a message appended over JMAP is not pushed to FCM" "$(pushes)" 1

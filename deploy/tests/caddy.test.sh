@@ -25,7 +25,7 @@ class Stalwart(http.server.BaseHTTPRequestHandler):
     def log_message(self, *a): pass
 class Sentinel(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path == "/corvid/push/flush":
+        if self.headers.get("X-Stub") == "slow":
             self.send_response(200); self.send_header("Content-Type", "text/event-stream"); self.end_headers()
             self.wfile.write(b"first\n"); self.wfile.flush(); time.sleep(4); self.wfile.write(b"second\n"); return
         self.send_response(200); self.end_headers(); self.wfile.write(b"sentinel")
@@ -80,7 +80,9 @@ check "the push stream reaches the sentinel on a bearer token Stalwart never see
   "$(fetch -H 'Authorization: Bearer stream-token' "$url/corvid/push/stream")" "200 sentinel"
 check "the push stream reaches the sentinel with no credential at all" "$(fetch "$url/corvid/push/stream")" "200 sentinel"
 check "a stream event arrives while the upstream is still open" \
-  "$(curl -sk -N --max-time 2 --resolve "localhost:$port:127.0.0.1" "$url/corvid/push/flush" 2>/dev/null)" "first"
+  "$(curl -sk -N --max-time 2 -H "X-Stub: slow" --resolve "localhost:$port:127.0.0.1" "$url/corvid/push/stream" 2>/dev/null)" "first"
+check "another path under /corvid/push stays with Stalwart" "$(fetch "$url/corvid/push/other")" "404 stalwart"
+check "and does not reach the sentinel with a credential either" "$(fetch -u good:good "$url/corvid/push/other")" "404 stalwart"
 check "the host-only revoke route is never routed to the sentinel" \
   "$(fetch -X POST -d '{}' -u good:good "$url/internal/devices/phone")" "404 stalwart"
 check "an app file without a credential stays with Stalwart" "$(fetch "$url/corvid/app/manifest.json")" "404 stalwart"

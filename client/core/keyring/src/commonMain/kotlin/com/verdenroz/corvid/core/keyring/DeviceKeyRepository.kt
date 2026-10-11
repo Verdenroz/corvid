@@ -16,10 +16,10 @@ internal const val DEVICES_PATH = "/corvid/devices"
 /** A 404 is the sentinel's own answer for an unknown name; a 503 may mean approval is off. */
 internal val DEVICES_PASS_THROUGH = setOf(HttpStatusCode.NotFound, HttpStatusCode.ServiceUnavailable)
 
-/** True for the sentinel's answer on a host without `sentinel.devices`; any other 503 is the server failing. */
-internal fun WebReply.approvalOff(): Boolean {
+/** True for the sentinel's answer on a host without a section the route needs; any other 503 is the server failing. */
+internal fun WebReply.approvalOff(vararg off: String = arrayOf("devices_off")): Boolean {
     if (status != HttpStatusCode.ServiceUnavailable) return false
-    if (body?.get("error")?.jsonPrimitive?.contentOrNull == "devices_off") return true
+    if (body?.get("error")?.jsonPrimitive?.contentOrNull in off) return true
     throw JmapException(JmapError.Server(status.value))
 }
 
