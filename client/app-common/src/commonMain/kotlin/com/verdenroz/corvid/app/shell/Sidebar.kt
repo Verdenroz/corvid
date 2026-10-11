@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -35,6 +36,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.app.HomeTab
 import com.verdenroz.corvid.app.Route
@@ -51,6 +53,7 @@ private val EXPANDED_WIDTH = 232.dp
 private val RAIL_WIDTH = 66.dp
 private val ICON_START = 14.dp
 private val ICON_SIZE = 18.dp
+private val ROW_HEIGHT = 38.dp
 
 /** What the sidebar marks as current: a home tab, or one of the pages at its foot. */
 internal sealed interface SidebarPlace {
@@ -88,25 +91,48 @@ internal fun Sidebar(
     Row(Modifier.fillMaxHeight().background(colors.surface)) {
         Column(Modifier.width(width).fillMaxHeight().padding(horizontal = 10.dp)) {
             WriteButton(expanded, onWrite, Modifier.padding(top = 14.dp, bottom = 14.dp))
-            Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                HomeTab.entries.forEach { tab ->
-                    if (tab == HomeTab.People) SectionBreak()
-                    Item(
-                        stringResource(tab.title()),
-                        tab.icon(),
-                        selected = place == SidebarPlace.Tab(tab),
-                        expanded = expanded,
-                        count = inboxUnread.takeIf { tab == HomeTab.Inbox },
-                    ) { onSelect(tab) }
-                }
-            }
-            SectionBreak()
-            Item(stringResource(Res.string.tab_filters), CorvidIcons.Filter, place == SidebarPlace.Filters, expanded, null, onFilters)
-            Item(stringResource(Res.string.settings_open), CorvidIcons.Settings, place == SidebarPlace.Settings, expanded, null, onSettings)
+            Places(place, inboxUnread, expanded, ROW_HEIGHT, onSelect, onFilters, onSettings)
             Spacer(Modifier.height(12.dp))
         }
         VerticalDivider(color = colors.line)
     }
+}
+
+/** Every home tab in a scrolling column, then Filters and Settings pinned at the foot; the sidebar and the narrow drawer share it. */
+@Composable
+internal fun ColumnScope.Places(
+    place: SidebarPlace,
+    inboxUnread: Int?,
+    expanded: Boolean,
+    rowHeight: Dp,
+    onSelect: (HomeTab) -> Unit,
+    onFilters: () -> Unit,
+    onSettings: () -> Unit,
+) {
+    Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+        HomeTab.entries.forEach { tab ->
+            if (tab == HomeTab.People) SectionBreak()
+            Item(
+                stringResource(tab.title()),
+                tab.icon(),
+                selected = place == SidebarPlace.Tab(tab),
+                expanded = expanded,
+                count = inboxUnread.takeIf { tab == HomeTab.Inbox },
+                rowHeight = rowHeight,
+            ) { onSelect(tab) }
+        }
+    }
+    SectionBreak()
+    Item(stringResource(Res.string.tab_filters), CorvidIcons.Filter, place == SidebarPlace.Filters, expanded, null, rowHeight, onFilters)
+    Item(
+        stringResource(Res.string.settings_open),
+        CorvidIcons.Settings,
+        place == SidebarPlace.Settings,
+        expanded,
+        null,
+        rowHeight,
+        onSettings,
+    )
 }
 
 @Composable
@@ -150,6 +176,7 @@ private fun Item(
     selected: Boolean,
     expanded: Boolean,
     count: Int?,
+    rowHeight: Dp,
     onClick: () -> Unit,
 ) {
     val colors = CorvidTheme.colors
@@ -161,7 +188,7 @@ private fun Item(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .height(38.dp)
+                .height(rowHeight)
                 .clip(CorvidShape.small)
                 .clickable(role = Role.Tab, onClick = onClick)
                 .semantics {

@@ -22,9 +22,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.appcommon.resources.Res
 import com.verdenroz.corvid.appcommon.resources.app_name
+import com.verdenroz.corvid.appcommon.resources.drawer_open
 import com.verdenroz.corvid.appcommon.resources.search_placeholder
 import com.verdenroz.corvid.appcommon.resources.settings_open
 import com.verdenroz.corvid.appcommon.resources.sidebar_toggle
@@ -100,10 +102,13 @@ internal fun WideTopBar(
     }
 }
 
+/** Narrow: the drawer's menu button, then the name of the folder on screen. */
 @Composable
 internal fun NarrowTopBar(
+    title: String,
     key: KeyState,
     identity: Identity?,
+    onMenu: () -> Unit,
     onSearch: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
@@ -111,10 +116,26 @@ internal fun NarrowTopBar(
     Column(Modifier.background(colors.surface)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 10.dp, top = 4.dp, bottom = 6.dp),
+            modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 10.dp, top = 4.dp, bottom = 6.dp),
         ) {
-            Wordmark()
-            Spacer(Modifier.weight(1f))
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier =
+                    Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .clickable(onClickLabel = stringResource(Res.string.drawer_open), role = Role.Button, onClick = onMenu),
+            ) {
+                Icon(CorvidIcons.Menu, contentDescription = null, tint = colors.inkMuted)
+            }
+            Text(
+                title,
+                style = CorvidTheme.type.title,
+                color = colors.ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).padding(start = 4.dp, end = 8.dp),
+            )
             Box(
                 contentAlignment = Alignment.Center,
                 modifier =

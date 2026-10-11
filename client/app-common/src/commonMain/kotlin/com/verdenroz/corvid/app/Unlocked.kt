@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CornerSize
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -24,6 +26,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
@@ -48,11 +51,12 @@ import androidx.navigationevent.compose.rememberNavigationEventState
 import com.verdenroz.corvid.app.shell.HomeContent
 import com.verdenroz.corvid.app.shell.KeyState
 import com.verdenroz.corvid.app.shell.NarrowTopBar
+import com.verdenroz.corvid.app.shell.NavDrawer
 import com.verdenroz.corvid.app.shell.SearchTopBar
 import com.verdenroz.corvid.app.shell.Sidebar
-import com.verdenroz.corvid.app.shell.TabsBar
 import com.verdenroz.corvid.app.shell.WideTopBar
 import com.verdenroz.corvid.app.shell.sidebarPlace
+import com.verdenroz.corvid.app.shell.title
 import com.verdenroz.corvid.core.data.AttachmentFiles
 import com.verdenroz.corvid.core.data.ComposeRepository
 import com.verdenroz.corvid.core.data.FiltersRepository
@@ -77,6 +81,8 @@ import com.verdenroz.corvid.feature.mailbox.SenderCard
 import com.verdenroz.corvid.feature.mailbox.SenderCardActions
 import com.verdenroz.corvid.feature.settings.NoticesScreen
 import com.verdenroz.corvid.feature.settings.NoticesViewModel
+import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import org.koin.core.scope.Scope
 
@@ -135,6 +141,8 @@ internal fun UnlockedContent(
     )
 
     val shellFocus = remember { ShellFocus() }
+    val drawer = rememberDrawerState(DrawerValue.Closed)
+    val drawerScope = rememberCoroutineScope()
 
     val shellState by shell.state.collectAsState()
     val session = SettingsSession(hosts, shellState.identity, updates, onLock, onSignOut)
@@ -153,82 +161,102 @@ internal fun UnlockedContent(
         var sidebarChoice by rememberSaveable { mutableStateOf<Boolean?>(null) }
         val sidebarExpanded = sidebarChoice ?: (maxWidth >= SIDEBAR_EXPANDS)
         val searchInput = rememberSearchInput(navigator, wide)
+        LaunchedEffect(wide) { if (wide) drawer.snapTo(DrawerValue.Closed) }
         CompositionLocalProvider(LocalWideLayout provides wide) {
             shellFocus.ReclaimOn(navigator.entryKey(navigator.depth - 1))
-            Column(
-                Modifier.fillMaxSize().then(shellFocus.modifier(navigator::handleKey)).onPreviewKeyEvent { event ->
-                    (wide && event.isSearchShortcut()).also { if (it) searchInput.focus.requestFocus() }
-                },
+            NavDrawer(
+                state = drawer,
+                enabled = !wide && route is Route.Home,
+                place = sidebarPlace(navigator.homeTab, route),
+                inboxUnread = shellState.inboxUnread,
+                onSelect = navigator::openTab,
+                onFilters = { navigator.open(Route.Filters) },
+                onSettings = { navigator.open(Route.Settings) },
             ) {
-                NoticesBanner(notices, navigator)
-                AppUpdatesBanner(updates)
-                if (wide) {
-                    WideTopBar(
-                        key,
-                        shellState.identity,
-                        searchInput,
-                        onOpenSettings = { navigator.open(Route.Settings) },
-                        onToggleSidebar = { sidebarChoice = !sidebarExpanded },
-                    )
-                }
-                if (!wide && route is Route.Search) SearchTopBar(searchInput, navigator::handleBack)
-                val top = navigator.depth - 1
-                val floats = wide && top > 0 && (route is Route.Sender || route is Route.Compose)
-                Row(Modifier.weight(1f)) {
+                Column(
+                    Modifier.fillMaxSize().then(shellFocus.modifier(navigator::handleKey)).onPreviewKeyEvent { event ->
+                        (wide && event.isSearchShortcut()).also { if (it) searchInput.focus.requestFocus() }
+                    },
+                ) {
+                    NoticesBanner(notices, navigator)
+                    AppUpdatesBanner(updates)
                     if (wide) {
-                        Sidebar(
-                            place = sidebarPlace(navigator.homeTab, route),
-                            inboxUnread = shellState.inboxUnread,
-                            expanded = sidebarExpanded,
-                            onWrite = { if (route !is Route.Compose) navigator.push(Route.Compose(ComposeIntent.New)) },
-                            onSelect = navigator::openTab,
-                            onFilters = { navigator.open(Route.Filters) },
-                            onSettings = { navigator.open(Route.Settings) },
+                        WideTopBar(
+                            key,
+                            shellState.identity,
+                            searchInput,
+                            onOpenSettings = { navigator.open(Route.Settings) },
+                            onToggleSidebar = { sidebarChoice = !sidebarExpanded },
                         )
                     }
-                    Box(Modifier.weight(1f)) {
-                        // One keyed call site for every visible entry, so crossing the breakpoint moves a screen rather than rebuilding it.
-                        (if (floats) listOf(top - 1, top) else listOf(top)).forEach { index ->
-                            val entryKey = navigator.entryKey(index)
-                            key(entryKey) {
-                                val entry = navigator[index]
-                                val floating = floats && index == top
-                                if (floating && entry is Route.Sender) Scrim(navigator::back)
-                                Box(if (floating) floating(entry, CorvidTheme.colors.line) else Modifier.fillMaxSize()) {
-                                    CompositionLocalProvider(
-                                        LocalBackGuard provides navigator.guard(index),
-                                        LocalPageKeys provides navigator.keys(index),
-                                    ) {
-                                        saved.SaveableStateProvider(entryKey) {
-                                            Page(
-                                                entry,
-                                                index,
-                                                navigator,
-                                                scope,
-                                                models,
-                                                ledgers,
-                                                entryKey,
-                                                session,
-                                                searchInput.onText,
-                                            ) { Home(it, key, shellState, navigator, ledgers) }
+                    if (!wide && route is Route.Search) SearchTopBar(searchInput, navigator::handleBack)
+                    val top = navigator.depth - 1
+                    val floats = wide && top > 0 && (route is Route.Sender || route is Route.Compose)
+                    Row(Modifier.weight(1f)) {
+                        if (wide) {
+                            Sidebar(
+                                place = sidebarPlace(navigator.homeTab, route),
+                                inboxUnread = shellState.inboxUnread,
+                                expanded = sidebarExpanded,
+                                onWrite = { if (route !is Route.Compose) navigator.push(Route.Compose(ComposeIntent.New)) },
+                                onSelect = navigator::openTab,
+                                onFilters = { navigator.open(Route.Filters) },
+                                onSettings = { navigator.open(Route.Settings) },
+                            )
+                        }
+                        Box(Modifier.weight(1f)) {
+                            // One keyed call site for every visible entry, so crossing the breakpoint moves a screen rather than rebuilding it.
+                            (if (floats) listOf(top - 1, top) else listOf(top)).forEach { index ->
+                                val entryKey = navigator.entryKey(index)
+                                key(entryKey) {
+                                    val entry = navigator[index]
+                                    val floating = floats && index == top
+                                    if (floating && entry is Route.Sender) Scrim(navigator::back)
+                                    Box(if (floating) floating(entry, CorvidTheme.colors.line) else Modifier.fillMaxSize()) {
+                                        CompositionLocalProvider(
+                                            LocalBackGuard provides navigator.guard(index),
+                                            LocalPageKeys provides navigator.keys(index),
+                                        ) {
+                                            saved.SaveableStateProvider(entryKey) {
+                                                Page(
+                                                    entry,
+                                                    index,
+                                                    navigator,
+                                                    scope,
+                                                    models,
+                                                    ledgers,
+                                                    entryKey,
+                                                    session,
+                                                    searchInput.onText,
+                                                ) {
+                                                    Home(
+                                                        it,
+                                                        key,
+                                                        shellState,
+                                                        navigator,
+                                                        ledgers,
+                                                        onMenu = { drawerScope.launch { drawer.open() } },
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }
                             }
-                        }
-                        ledgers.actions.notice.collectAsState().value?.let { notice ->
-                            ActionNoticeBar(
-                                ledgers.actions,
-                                notice,
-                                Modifier
-                                    .align(if (wide) Alignment.BottomStart else Alignment.BottomCenter)
-                                    // A floating compose panel is 540dp wide and 24dp from the edge; the notice stays left of it.
-                                    .padding(
-                                        start = 16.dp,
-                                        end = if (floats && route is Route.Compose) 580.dp else 16.dp,
-                                        bottom = if (wide) 22.dp else 80.dp,
-                                    ),
-                            )
+                            ledgers.actions.notice.collectAsState().value?.let { notice ->
+                                ActionNoticeBar(
+                                    ledgers.actions,
+                                    notice,
+                                    Modifier
+                                        .align(if (wide) Alignment.BottomStart else Alignment.BottomCenter)
+                                        // A floating compose panel is 540dp wide and 24dp from the edge; the notice stays left of it.
+                                        .padding(
+                                            start = 16.dp,
+                                            end = if (floats && route is Route.Compose) 580.dp else 16.dp,
+                                            bottom = if (wide) 22.dp else 80.dp,
+                                        ),
+                                )
+                            }
                         }
                     }
                 }
@@ -266,30 +294,25 @@ private fun BoxScope.floating(
     }
 
 @Composable
-private fun Home(
+internal fun Home(
     route: Route.Home,
     key: KeyState,
     shellState: ShellState,
     navigator: Navigator,
     ledgers: Ledgers,
+    onMenu: () -> Unit,
 ) {
     val wide = LocalWideLayout.current
     LaunchedEffect(route.tab) { if (route.tab == HomeTab.Drafts) ledgers.of(LedgerTab.Drafts).refresh() }
     Column {
         if (!wide) {
             NarrowTopBar(
+                stringResource(route.tab.title()),
                 key,
                 shellState.identity,
+                onMenu = onMenu,
                 onSearch = { navigator.push(Route.Search("")) },
                 onOpenSettings = { navigator.push(Route.Settings) },
-            )
-        }
-        if (!wide) {
-            TabsBar(
-                current = route.tab,
-                inboxUnread = shellState.inboxUnread,
-                onSelect = navigator::selectTab,
-                onFilters = { navigator.push(Route.Filters) },
             )
         }
         HomeContent(
