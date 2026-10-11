@@ -12,6 +12,7 @@ pub fn config(state_path: &Path, update_dir: &Path) -> Config {
         update_dir: update_dir.to_owned(),
         update_poll: Duration::from_secs(60),
         devices: None,
+        auth: None,
     }
 }
 

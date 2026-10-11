@@ -191,3 +191,32 @@ fn a_token_with_an_hmac_header_is_refused() {
         Some(Invalid("not an access token of this issuer"))
     );
 }
+
+#[test]
+fn a_master_token_verifies_once_and_is_then_spent() {
+    let issuer = issuer();
+    let token = issuer.mint(Audience::Master, "handle", "mailuser-admin", NOW);
+
+    assert!(issuer.verify_master(&token, NOW).is_ok());
+
+    assert_eq!(
+        issuer.verify_master(&token, NOW).err(),
+        Some(Invalid("already used"))
+    );
+}
+
+#[test]
+fn a_spent_id_is_forgotten_once_its_token_has_expired() {
+    let issuer = issuer();
+    let spent = issuer.mint(Audience::Master, "handle", "mailuser-admin", NOW);
+    issuer.verify_master(&spent, NOW).unwrap();
+    let later = NOW + 10 * 60;
+
+    let fresh = issuer.mint(Audience::Master, "handle", "mailuser-admin", later);
+
+    assert!(issuer.verify_master(&fresh, later).is_ok());
+    assert_eq!(
+        issuer.verify_master(&spent, later).err(),
+        Some(Invalid("expired"))
+    );
+}

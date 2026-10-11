@@ -5,7 +5,10 @@ mod push;
 mod stalwart;
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
+use corvid_sentinel::auth::soft::signing_key;
+use corvid_sentinel::auth::{Audience, Issuer};
 use corvid_sentinel::devices::{self, Approved, Devices, Request, Stage};
 use idp::{ISSUER, Idp, claims, header, now, sign, token};
 use serde_json::{Value, json};
@@ -32,6 +35,10 @@ async fn rig_with(devices: Devices) -> Rig {
 }
 
 async fn rig_full(devices: Devices, fcm_origin: Option<&str>) -> Rig {
+    rig_all(devices, fcm_origin, None).await
+}
+
+async fn rig_all(devices: Devices, fcm_origin: Option<&str>, local: Option<Arc<Issuer>>) -> Rig {
     let dir = tempfile::tempdir().unwrap();
     let state = dir.path().join("devices.json");
     let idp = Idp::start(ADMIN).await;
@@ -52,6 +59,7 @@ async fn rig_full(devices: Devices, fcm_origin: Option<&str>) -> Rig {
         stalwart_url: stalwart.url.clone(),
         stalwart_token: TOKEN.to_owned(),
         push: fcm_origin.map(|origin| devices::PushConfig::open(&state, CONTACT, origin).unwrap()),
+        local,
     });
     Rig {
         url: common::serve(config).await,
@@ -634,4 +642,84 @@ fn webhook_signature(secret: &[u8], body: &[u8]) -> String {
 fn base64_url(text: &str) -> String {
     use base64::Engine;
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(text)
+}
+
+const AUTH_URL: &str = "http://127.0.0.1:11333/corvid/auth";
+
+fn issuer() -> Arc<Issuer> {
+    Arc::new(Issuer::new(signing_key(), AUTH_URL.to_owned()))
+}
+
+#[tokio::test]
+async fn a_master_token_the_sentinel_issued_approves_a_device() {
+    let issuer = issuer();
+    let rig = rig_all(Devices::default(), None, Some(issuer.clone())).await;
+    let (id, code) = rig.request("phone").await;
+    let token = issuer.mint(Audience::Master, "handle", ADMIN, now());
+
+    let response = rig.approve(&id, &code, Some(&token)).await;
+
+    assert_eq!(response.status(), 200);
+    assert_eq!(rig.status(&id).await, "approved");
+}
+
+#[tokio::test]
+async fn a_sentinel_master_token_approves_one_request_and_no_second() {
+    let issuer = issuer();
+    let rig = rig_all(Devices::default(), None, Some(issuer.clone())).await;
+    let token = issuer.mint(Audience::Master, "handle", ADMIN, now());
+    let (first, first_code) = rig.request("phone").await;
+    let (second, second_code) = rig.request("tablet").await;
+    assert_eq!(
+        rig.approve(&first, &first_code, Some(&token))
+            .await
+            .status(),
+        200
+    );
+
+    assert_eq!(
+        rig.approve(&second, &second_code, Some(&token))
+            .await
+            .status(),
+        401
+    );
+
+    assert_eq!(rig.status(&second).await, "pending");
+}
+
+#[tokio::test]
+async fn a_sentinel_daily_token_cannot_approve_a_device() {
+    let issuer = issuer();
+    let rig = rig_all(Devices::default(), None, Some(issuer.clone())).await;
+    let (id, code) = rig.request("phone").await;
+    let token = issuer.mint(Audience::Daily, "handle", ADMIN, now());
+
+    assert_eq!(rig.approve(&id, &code, Some(&token)).await.status(), 401);
+}
+
+#[tokio::test]
+async fn a_sentinel_master_token_for_another_user_is_refused() {
+    let issuer = issuer();
+    let rig = rig_all(Devices::default(), None, Some(issuer.clone())).await;
+    let (id, code) = rig.request("phone").await;
+    let token = issuer.mint(Audience::Master, "handle", "someone-else", now());
+
+    assert_eq!(rig.approve(&id, &code, Some(&token)).await.status(), 403);
+}
+
+#[tokio::test]
+async fn a_pocket_id_token_still_approves_while_the_sentinel_issues_its_own() {
+    let rig = rig_all(Devices::default(), None, Some(issuer())).await;
+    let (id, code) = rig.request("phone").await;
+
+    assert_eq!(rig.approve(&id, &code, Some(&token())).await.status(), 200);
+}
+
+#[tokio::test]
+async fn a_sentinel_token_from_another_key_is_refused() {
+    let rig = rig_all(Devices::default(), None, Some(issuer())).await;
+    let (id, code) = rig.request("phone").await;
+    let token = issuer().mint(Audience::Master, "handle", ADMIN, now());
+
+    assert_eq!(rig.approve(&id, &code, Some(&token)).await.status(), 401);
 }

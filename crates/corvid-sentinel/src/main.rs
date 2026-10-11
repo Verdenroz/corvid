@@ -54,6 +54,7 @@ async fn main() -> ExitCode {
         update_dir: UPDATE_DIR.into(),
         update_poll: UPDATE_POLL,
         devices,
+        auth: None,
     });
 
     tokio::spawn(watcher);
@@ -101,6 +102,7 @@ fn device_config(
         stalwart_url: settings.stalwart_url,
         stalwart_token,
         push,
+        local: None,
     }
 }
 

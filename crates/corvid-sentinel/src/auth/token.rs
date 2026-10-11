@@ -1,5 +1,8 @@
 //! The access tokens the sentinel signs as the OIDC issuer Stalwart's directory trusts.
 
+use std::collections::HashMap;
+use std::sync::{Mutex, PoisonError};
+
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use p256::ecdsa::signature::{Signer, Verifier};
@@ -64,6 +67,9 @@ pub struct Issuer {
     key: SigningKey,
     kid: String,
     url: String,
+    /// Master token ids already used, with their expiry. A restart forgets them, which is safe:
+    /// a token lives five minutes and a restart takes longer to come back.
+    spent: Mutex<HashMap<String, i64>>,
 }
 
 impl Issuer {
@@ -73,7 +79,12 @@ impl Issuer {
         let kid = URL_SAFE_NO_PAD.encode(Sha256::digest(format!(
             r#"{{"crv":"P-256","kty":"EC","x":"{x}","y":"{y}"}}"#
         )));
-        Self { key, kid, url }
+        Self {
+            key,
+            kid,
+            url,
+            spent: Mutex::default(),
+        }
     }
 
     pub fn discovery(&self) -> Value {
@@ -144,6 +155,19 @@ impl Issuer {
             return Err(Invalid("expired"));
         }
         Ok(claims)
+    }
+}
+
+impl Issuer {
+    /// The claims of a master token, which is good for one request: its id is spent here.
+    pub fn verify_master(&self, token: &str, now: i64) -> Result<Claims, Invalid> {
+        let claims = self.verify(token, Audience::Master, now)?;
+        let mut spent = self.spent.lock().unwrap_or_else(PoisonError::into_inner);
+        spent.retain(|_, expires| *expires > now);
+        match spent.insert(claims.jti.clone(), claims.exp) {
+            Some(_) => Err(Invalid("already used")),
+            None => Ok(claims),
+        }
     }
 }
 
