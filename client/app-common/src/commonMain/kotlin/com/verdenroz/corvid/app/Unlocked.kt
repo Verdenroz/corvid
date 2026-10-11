@@ -99,12 +99,6 @@ internal fun UnlockedContent(
     val updates = rememberAppUpdates(scope)
     val ledgers = remember(repository) { Ledgers(repository) }
     DisposableEffect(ledgers) { onDispose { ledgers.clear() } }
-    LaunchedEffect(scope) {
-        followMailboxChanges(scope.get<JmapClient>().stateChanges()) {
-            shell.refresh()
-            ledgers.refreshAll()
-        }
-    }
     val models = remember(scope) { EntryModels() }
     DisposableEffect(models) { onDispose { models.clear() } }
 
@@ -117,6 +111,15 @@ internal fun UnlockedContent(
     val backStack = rememberSaveable(saver = RouteStackSaver) { mutableStateListOf<Route>(Route.Home(HomeTab.Inbox)) }
     val saved = rememberSaveableStateHolder()
     val navigator = remember(backStack, saved) { Navigator(backStack, saved) }
+    val newMail = rememberNewMail(scope, navigator)
+    LaunchedEffect(scope) {
+        newMail.check()
+        followMailboxChanges(scope.get<JmapClient>().stateChanges()) {
+            shell.refresh()
+            ledgers.refreshAll()
+            newMail.check()
+        }
+    }
     val route = navigator.route
     val entryKeys = (0 until navigator.depth).map(navigator::entryKey).toSet()
     LaunchedEffect(entryKeys) { models.retainOnly(entryKeys) }

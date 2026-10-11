@@ -105,4 +105,27 @@ class NavigatorTest {
 
         assertEquals(Route.Search(""), nav.route)
     }
+
+    @Test
+    fun `showing the inbox pops every pushed screen and leaves another tab`() {
+        val holder = RecordingHolder()
+        val nav = navigator(holder, Route.Settings, Route.Notices)
+        nav.selectTab(HomeTab.Sent)
+
+        nav.showInbox()
+
+        assertEquals(Route.Home(HomeTab.Inbox), nav.route)
+        assertEquals(1, nav.depth)
+        assertEquals(2, holder.removed.size)
+    }
+
+    @Test
+    fun `showing the inbox leaves a message being written on screen`() {
+        val nav = navigator(RecordingHolder(), Route.Reader("e1"), Route.Compose(ComposeIntent.New))
+
+        nav.showInbox()
+
+        assertEquals(Route.Compose(ComposeIntent.New), nav.route)
+        assertEquals(3, nav.depth)
+    }
 }

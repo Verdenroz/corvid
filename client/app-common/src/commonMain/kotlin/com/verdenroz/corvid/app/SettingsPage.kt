@@ -32,8 +32,10 @@ internal fun SettingsPage(
     models: EntryModels,
     entryKey: String,
     preferences: DevicePreferences = koinInject(),
+    permission: NotificationPermission = koinInject(),
 ) {
-    val viewModel = models.of(entryKey, SettingsViewModel::class) { SettingsViewModel(preferences, session.onLock, session.onSignOut) }
+    val viewModel =
+        models.of(entryKey, SettingsViewModel::class) { SettingsViewModel(preferences, session.onLock, session.onSignOut, permission::ask) }
     val about = models.of(entryKey, AboutViewModel::class) { AboutViewModel(scope.get<UpdateRepository>()) }
     val account =
         AccountFacts(

@@ -93,6 +93,9 @@ data class KeywordPatch(val emailId: String, val patch: Map<String, Boolean>) {
     }
 }
 
+/** One Inbox message as a new-mail check sees it: no sender, subject or body, only when it arrived and whether it is read. */
+data class InboxArrival(val id: String, val receivedAt: Instant, val seen: Boolean)
+
 sealed interface EmailLookup {
     data class Found(val detail: EmailDetail) : EmailLookup
 
@@ -146,6 +149,46 @@ class MailboxRepository(
 
     /** Counts change with every message, so this always asks the server; for the id alone use [mailboxId]. */
     suspend fun findMailboxByRole(role: String): Mailbox? = mailboxes().firstOrNull { it.role == role }
+
+    /**
+     * The newest Inbox messages, read or not, leaving out any from the account's own address, so mail sent to
+     * oneself never counts as arriving. Fetches ids, arrival times and keywords only.
+     */
+    suspend fun inboxArrivals(): List<InboxArrival> {
+        val inbox = mailboxId(INBOX) ?: return emptyList()
+        val own = identity()?.email
+        val query =
+            buildJsonObject {
+                putJsonObject("filter") {
+                    put("operator", "AND")
+                    putJsonArray("conditions") {
+                        addJsonObject { put("inMailbox", inbox) }
+                        own?.let {
+                            addJsonObject {
+                                put("operator", "NOT")
+                                putJsonArray("conditions") { addJsonObject { put("from", it) } }
+                            }
+                        }
+                    }
+                }
+                putJsonArray("sort") {
+                    addJsonObject {
+                        put("property", "receivedAt")
+                        put("isAscending", false)
+                    }
+                }
+                put("limit", PAGE_SIZE)
+            }
+        val found = jmapClient.queryAndGet(query, listOf("id", "receivedAt", "keywords")).get.resultOrThrow()
+        return found.getValue("list").jsonArray.map {
+            val email = it.jsonObject
+            InboxArrival(
+                id = email.getValue("id").jsonPrimitive.content,
+                receivedAt = Instant.parse(email.getValue("receivedAt").jsonPrimitive.content),
+                seen = CorvidKeywords.SEEN in email.getValue("keywords").jsonObject.keys,
+            )
+        }
+    }
 
     /** The id of the mailbox with [role], fetched once: roles do not move while the app is open. */
     suspend fun mailboxId(role: String): String? =

@@ -3,4 +3,5 @@
     <string name="app_name">Corvid</string>
     <string name="notice_channel">Server notices</string>
     <string name="notice_generic">A server notice</string>
+    <string name="new_mail_channel">New mail</string>
 </resources>

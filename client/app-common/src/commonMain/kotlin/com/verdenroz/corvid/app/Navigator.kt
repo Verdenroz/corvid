@@ -59,6 +59,13 @@ internal class Navigator(
         stack[0] = Route.Home(tab)
     }
 
+    /** Returns to the Inbox tab with nothing pushed, unless a message is being written, which is left on screen. */
+    fun showInbox() {
+        if (stack.any { it is Route.Compose }) return
+        while (stack.size > 1) back()
+        selectTab(HomeTab.Inbox)
+    }
+
     /** Pops a pushed screen; from a home tab other than Inbox, returns to Inbox. */
     fun back() {
         if (stack.size > 1) {

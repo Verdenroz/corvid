@@ -26,6 +26,8 @@ import com.verdenroz.corvid.core.ui.DiscardQuestion
 import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.core.ui.PageHeader
 import com.verdenroz.corvid.feature.settings.resources.Res
+import com.verdenroz.corvid.feature.settings.resources.settings_about_off
+import com.verdenroz.corvid.feature.settings.resources.settings_about_on
 import com.verdenroz.corvid.feature.settings.resources.settings_account
 import com.verdenroz.corvid.feature.settings.resources.settings_address
 import com.verdenroz.corvid.feature.settings.resources.settings_appearance
@@ -44,6 +46,8 @@ import com.verdenroz.corvid.feature.settings.resources.settings_lock_now
 import com.verdenroz.corvid.feature.settings.resources.settings_manage_sign_in
 import com.verdenroz.corvid.feature.settings.resources.settings_manage_sign_in_detail
 import com.verdenroz.corvid.feature.settings.resources.settings_name
+import com.verdenroz.corvid.feature.settings.resources.settings_new_mail
+import com.verdenroz.corvid.feature.settings.resources.settings_new_mail_detail
 import com.verdenroz.corvid.feature.settings.resources.settings_notices
 import com.verdenroz.corvid.feature.settings.resources.settings_notices_detail
 import com.verdenroz.corvid.feature.settings.resources.settings_notices_row
@@ -127,6 +131,14 @@ fun SettingsScreen(
                     )
                 }
                 SettingsSection(stringResource(Res.string.settings_notices)) {
+                    ChoiceRow(
+                        title = stringResource(Res.string.settings_new_mail),
+                        detail = stringResource(Res.string.settings_new_mail_detail),
+                        options = listOf(true, false),
+                        selected = state.settings.newMailNotifications,
+                        label = { stringResource(if (it) Res.string.settings_about_on else Res.string.settings_about_off) },
+                        onSelect = viewModel::setNewMailNotifications,
+                    )
                     LinkRow(
                         title = stringResource(Res.string.settings_notices_row),
                         detail = stringResource(Res.string.settings_notices_detail),

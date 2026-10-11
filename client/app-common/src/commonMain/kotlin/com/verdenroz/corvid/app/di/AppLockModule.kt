@@ -1,6 +1,7 @@
 package com.verdenroz.corvid.app.di
 
 import com.verdenroz.corvid.app.AppLockViewModel
+import com.verdenroz.corvid.app.AppPresence
 import com.verdenroz.corvid.app.BackgroundDropController
 import com.verdenroz.corvid.app.IdleTimeoutController
 import com.verdenroz.corvid.app.UnlockedScopeHolder
@@ -13,6 +14,7 @@ import org.koin.dsl.module
 val appLockModule =
     module {
         single { UnlockedScopeHolder(koin = getKoin()) }
+        single { AppPresence() }
         single {
             IdleTimeoutController(
                 scope = get(applicationScopeQualifier),
