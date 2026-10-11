@@ -34,6 +34,7 @@ const MAX_PER_WAKE: usize = 20;
 const BASELINE_RETRY: Duration = Duration::from_secs(5);
 const SEND_TIMEOUT: Duration = Duration::from_secs(10);
 const SEEN: &str = "$seen";
+const FRESH_SECONDS: i64 = 15 * 60;
 
 pub struct Config {
     vapid: Vapid,
@@ -292,7 +293,8 @@ enum Changes {
     Lost,
 }
 
-/// The messages created since the held state that sit in the Inbox unread, oldest change first.
+/// The messages created since the held state that sit in the Inbox unread and arrived recently, so
+/// an import or restore of old mail, or a catch-up after downtime, is not announced as new.
 async fn arrivals(keys: &Keys, mailbox: &Mailbox) -> Result<Changes, keys::Error> {
     let mut since = mailbox.state.clone();
     let mut created: Vec<Value> = Vec::new();
@@ -323,15 +325,21 @@ async fn arrivals(keys: &Keys, mailbox: &Mailbox) -> Result<Changes, keys::Error
         .batch(&[(
             "Email/get",
             json!({"accountId": mailbox.account, "ids": created,
-                   "properties": ["id", "from", "subject", "preview", "mailboxIds", "keywords"]}),
+                   "properties": ["id", "from", "subject", "preview", "receivedAt", "mailboxIds", "keywords"]}),
         )])
         .await?;
+    let now = crate::dates::now_secs();
     let messages = checked("Email/get", &answers[0])?["list"]
         .as_array()
         .into_iter()
         .flatten()
         .filter(|email| {
-            email["mailboxIds"][&mailbox.inbox] == true && email["keywords"][SEEN] != true
+            email["mailboxIds"][&mailbox.inbox] == true
+                && email["keywords"][SEEN] != true
+                && email["receivedAt"]
+                    .as_str()
+                    .and_then(crate::dates::seconds)
+                    .is_some_and(|received| now - received <= FRESH_SECONDS)
         })
         .cloned()
         .collect();

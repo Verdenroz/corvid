@@ -252,10 +252,43 @@ impl PushRig {
     }
 }
 
+/// `2026-10-11T15:19:07Z` for `secs_ago` seconds before now.
+fn received(secs_ago: u64) -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+        - secs_ago;
+    let (days, rest) = ((secs / 86400) as i64, secs % 86400);
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let year_of_era = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let day_of_year = doe - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let shifted_month = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * shifted_month + 2) / 5 + 1;
+    let month = if shifted_month < 10 {
+        shifted_month + 3
+    } else {
+        shifted_month - 9
+    };
+    let year = year_of_era + era * 400 + i64::from(month <= 2);
+    format!(
+        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
+        rest / 3600,
+        rest % 3600 / 60,
+        rest % 60
+    )
+}
+
 fn email(id: &str, mailbox: &str, keywords: Value) -> Value {
+    email_received(id, mailbox, keywords, 0)
+}
+
+fn email_received(id: &str, mailbox: &str, keywords: Value, secs_ago: u64) -> Value {
     json!({"id": id, "from": [{"name": "Ada Lovelace", "email": "ada@outside.test"}],
            "subject": "Notes on the engine", "preview": "Note G is the long one. ".repeat(20),
-           "mailboxIds": {mailbox: true}, "keywords": keywords})
+           "receivedAt": received(secs_ago), "mailboxIds": {mailbox: true}, "keywords": keywords})
 }
 
 #[tokio::test]
@@ -315,6 +348,30 @@ async fn mail_already_read_or_filed_outside_the_inbox_is_not_pushed() {
         .map(|posted| phone.decrypt(&posted.body)["id"].clone())
         .collect();
     assert_eq!(ids, [json!("new")]);
+}
+
+#[tokio::test]
+async fn mail_received_long_ago_is_not_pushed_next_to_fresh_mail() {
+    let rig = push_rig().await;
+    rig.rig.approved("phone").await;
+    let phone = Phone::new();
+    rig.register("phone", &phone.registration(&format!("{BASE}/upAbC123")))
+        .await;
+
+    rig.rig
+        .stalwart
+        .deliver(email_received("restored", INBOX, json!({}), 3 * 3600));
+    rig.rig.stalwart.deliver(email("fresh", INBOX, json!({})));
+    rig.arrived().await;
+    rig.fcm.wait_for(1).await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    let posted = rig.fcm.posted.lock().unwrap();
+    let ids: Vec<Value> = posted
+        .iter()
+        .map(|posted| phone.decrypt(&posted.body)["id"].clone())
+        .collect();
+    assert_eq!(ids, [json!("fresh")]);
 }
 
 #[tokio::test]
