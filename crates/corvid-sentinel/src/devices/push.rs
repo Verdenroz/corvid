@@ -10,6 +10,7 @@ use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
+use axum::response::{IntoResponse, Response};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use serde::Deserialize;
@@ -18,9 +19,10 @@ use tokio::sync::Notify;
 
 use super::keys::{self, Keys, checked};
 use super::state::{Devices, Push};
+use super::stream::{self, Streams};
 use super::{Off, Shared, commit, valid_name};
 use crate::vapid::Vapid;
-use crate::webpush::{self, Receiver};
+use crate::webpush::{self, Receiver, random_bytes};
 
 const MAX_ENDPOINT: usize = 512;
 const FCM_AUDIENCE: &str = "https://fcm.googleapis.com";
@@ -57,6 +59,7 @@ pub(super) struct Pusher {
     fcm_origin: String,
     http: reqwest::Client,
     arrived: Notify,
+    pub(super) streams: Streams,
 }
 
 impl Pusher {
@@ -70,6 +73,7 @@ impl Pusher {
                 .build()
                 .expect("a client with a timeout builds"),
             arrived: Notify::new(),
+            streams: Streams::default(),
         }
     }
 }
@@ -120,25 +124,30 @@ fn receiver(p256dh: &str, auth: &str) -> Option<Receiver> {
 }
 
 /// Stores where a device takes its pushes. Only a device already approved may have one, and
-/// only an endpoint FCM issued.
+/// only an endpoint FCM issued or the sentinel's own stream. A stream registration answers with
+/// the token its connection reads with; the sentinel keeps only the token's hash.
 pub(super) async fn register(
     State(state): State<Shared>,
     Path(name): Path<String>,
     Json(registration): Json<Registration>,
-) -> Result<StatusCode, (StatusCode, Json<Off>)> {
+) -> Result<Response, (StatusCode, Json<Off>)> {
     state.push.as_ref().ok_or_else(push_off)?;
     let refuse = |status: StatusCode| (status, Json(Off { error: "refused" }));
     if !valid_name(&name) || receiver(&registration.p256dh, &registration.auth).is_none() {
         return Err(refuse(StatusCode::BAD_REQUEST));
     }
-    if fcm_target(&registration.endpoint).is_none() {
+    let own_stream = registration.endpoint == stream::ENDPOINT;
+    if !own_stream && fcm_target(&registration.endpoint).is_none() {
         return Err(refuse(StatusCode::UNPROCESSABLE_ENTITY));
     }
+    let token = URL_SAFE_NO_PAD.encode(random_bytes::<32>());
     let push = Push {
         endpoint: registration.endpoint,
         p256dh: registration.p256dh,
         auth: registration.auth,
+        token_hash: own_stream.then(|| stream::hash(&token)),
     };
+    let ended = name.clone();
     let stored = commit(state.clone(), move |devices| {
         if !devices.approved.contains_key(&name) {
             return (None, false);
@@ -149,11 +158,15 @@ pub(super) async fn register(
     })
     .await
     .map_err(refuse)?;
-    if stored {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err(refuse(StatusCode::NOT_FOUND))
+    if !stored {
+        return Err(refuse(StatusCode::NOT_FOUND));
     }
+    state.end_stream(&ended);
+    Ok(if own_stream {
+        Json(json!({"token": token})).into_response()
+    } else {
+        StatusCode::NO_CONTENT.into_response()
+    })
 }
 
 pub(super) async fn unregister(
@@ -163,6 +176,7 @@ pub(super) async fn unregister(
     if state.push.is_none() {
         return Err(push_off());
     }
+    let ended = name.clone();
     let known = commit(state.clone(), move |devices| {
         if !devices.approved.contains_key(&name) {
             return (None, false);
@@ -173,11 +187,11 @@ pub(super) async fn unregister(
     })
     .await
     .map_err(|status| (status, Json(Off { error: "refused" })))?;
-    if known {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err((StatusCode::NOT_FOUND, Json(Off { error: "refused" })))
+    if !known {
+        return Err((StatusCode::NOT_FOUND, Json(Off { error: "refused" })));
     }
+    state.end_stream(&ended);
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Stalwart's signed `message-ingest.ham` batch. It only wakes the watcher, so a batch arriving
@@ -359,10 +373,18 @@ async fn deliver(state: &Shared, pusher: &Pusher, messages: &[Value]) {
             .collect()
     });
     for (name, push) in devices {
-        let (Some(target), Some(receiver)) = (
-            fcm_target(&push.endpoint),
-            receiver(&push.p256dh, &push.auth),
-        ) else {
+        let Some(receiver) = receiver(&push.p256dh, &push.auth) else {
+            continue;
+        };
+        if push.endpoint == stream::ENDPOINT {
+            for email in messages.iter().take(MAX_PER_WAKE) {
+                pusher
+                    .streams
+                    .publish(&name, &webpush::encrypt(&receiver, &preview(email)));
+            }
+            continue;
+        }
+        let Some(target) = fcm_target(&push.endpoint) else {
             continue;
         };
         let url = format!("{}{target}", pusher.fcm_origin);

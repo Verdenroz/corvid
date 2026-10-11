@@ -46,6 +46,8 @@ pub struct Push {
     pub endpoint: String,
     pub p256dh: String,
     pub auth: String,
+    /// SHA-256 of the bearer token a device on its own connection reads its stream with.
+    pub token_hash: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -98,7 +100,8 @@ corvid_store::pin_shape!(Approved {
 corvid_store::pin_shape!(Push {
     endpoint,
     p256dh,
-    auth
+    auth,
+    token_hash
 });
 corvid_store::pin_shape!(Devices {
     requests,

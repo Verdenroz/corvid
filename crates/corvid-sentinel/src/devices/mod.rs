@@ -6,6 +6,7 @@ mod keys;
 mod master;
 mod push;
 mod state;
+mod stream;
 
 use std::io;
 use std::path::PathBuf;
@@ -56,6 +57,14 @@ struct DeviceState {
     push: Option<push::Pusher>,
 }
 
+impl DeviceState {
+    fn end_stream(&self, name: &str) {
+        if let Some(push) = &self.push {
+            push.streams.close(name);
+        }
+    }
+}
+
 type Shared = Arc<DeviceState>;
 
 /// Runs a state change off the async threads, since it writes the state file.
@@ -92,6 +101,7 @@ pub fn routes(config: Config) -> Router {
         .with_state(state.clone());
     let vapid = Router::new()
         .route("/corvid/push/vapid", get(push::vapid_key))
+        .route("/corvid/push/stream", get(stream::serve))
         .with_state(state.clone());
     let webhook = Router::new()
         .route("/webhook/mail", post(push::arrived))
@@ -134,6 +144,7 @@ pub fn off() -> Router {
         .route("/corvid/devices/{name}/push", put(off).delete(off))
         .route("/internal/devices/{name}", delete(off))
         .route("/corvid/push/vapid", get(off))
+        .route("/corvid/push/stream", get(off))
         .route("/webhook/mail", post(|| async { StatusCode::NO_CONTENT }))
 }
 
@@ -369,7 +380,8 @@ async fn record(
     name: String,
     approved: Approved,
 ) -> Result<(), StatusCode> {
-    commit(state, move |devices| {
+    let ended = name.clone();
+    commit(state.clone(), move |devices| {
         let mut next = devices.clone();
         if let Some(request) = next.requests.get_mut(&id) {
             request.stage = Stage::Approved;
@@ -378,7 +390,9 @@ async fn record(
         next.approved.insert(name, approved);
         (Some(next), ())
     })
-    .await
+    .await?;
+    state.end_stream(&ended);
+    Ok(())
 }
 
 async fn forget(state: Shared, id: String) -> Result<(), StatusCode> {
@@ -426,12 +440,14 @@ async fn revoke(
         tracing::warn!(%error, "a device key could not be destroyed");
         StatusCode::BAD_GATEWAY
     })?;
-    commit(state, move |devices| {
+    let ended = name.clone();
+    commit(state.clone(), move |devices| {
         let mut next = devices.clone();
         next.approved.remove(&name);
         next.pushes.remove(&name);
         (Some(next), ())
     })
     .await?;
+    state.end_stream(&ended);
     Ok(StatusCode::NO_CONTENT)
 }

@@ -19,7 +19,7 @@ use p256::ecdsa::{Signature, VerifyingKey};
 use p256::elliptic_curve::sec1::ToSec1Point;
 use p256::{PublicKey, SecretKey};
 use serde_json::{Value, json};
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
 use tokio::net::TcpListener;
 
 use super::stalwart::{ARCHIVE, INBOX};
@@ -186,6 +186,69 @@ impl PushRig {
             .pushes
             .get("phone")
             .cloned()
+    }
+}
+
+/// An open SSE stream, read one event at a time.
+struct Stream {
+    response: reqwest::Response,
+    pending: String,
+}
+
+impl Stream {
+    async fn open(rig: &PushRig, token: &str, last: Option<&str>) -> Self {
+        let mut request = reqwest::Client::new()
+            .get(format!("{}/corvid/push/stream", rig.rig.url))
+            .bearer_auth(token);
+        if let Some(last) = last {
+            request = request.header("Last-Event-ID", last);
+        }
+        let response = request.send().await.unwrap();
+        assert_eq!(response.status(), 200);
+        assert_eq!(response.headers()["content-type"], "text/event-stream");
+        Self {
+            response,
+            pending: String::new(),
+        }
+    }
+
+    /// The next `push` event as its id and decoded body, or `None` once the server ends the stream.
+    async fn next(&mut self) -> Option<(String, Vec<u8>)> {
+        loop {
+            if let Some((block, rest)) = self.pending.split_once("\n\n") {
+                let block = block.to_owned();
+                self.pending = rest.to_owned();
+                let field = |name: &str| {
+                    block
+                        .lines()
+                        .find_map(|line| line.strip_prefix(&format!("{name}: ")))
+                        .map(str::to_owned)
+                };
+                if let (Some(id), Some(data)) = (field("id"), field("data")) {
+                    assert_eq!(field("event").as_deref(), Some("push"));
+                    return Some((id, URL_SAFE_NO_PAD.decode(data).unwrap()));
+                }
+                continue;
+            }
+            let chunk = tokio::time::timeout(Duration::from_secs(5), self.response.chunk())
+                .await
+                .expect("the stream went quiet")
+                .unwrap()?;
+            self.pending.push_str(core::str::from_utf8(&chunk).unwrap());
+        }
+    }
+}
+
+impl PushRig {
+    async fn register_stream(&self, name: &str, phone: &Phone) -> String {
+        let response = self
+            .register(name, &phone.registration("corvid-stream"))
+            .await;
+        assert_eq!(response.status(), 200);
+        response.json::<Value>().await.unwrap()["token"]
+            .as_str()
+            .unwrap()
+            .to_owned()
     }
 }
 
@@ -462,4 +525,136 @@ async fn a_host_without_push_config_answers_push_off() {
         response.json::<Value>().await.unwrap(),
         json!({"error": "push_off"})
     );
+}
+
+#[tokio::test]
+async fn a_stream_registration_answers_with_a_token_and_the_sentinel_keeps_only_its_hash() {
+    let rig = push_rig().await;
+    rig.rig.approved("phone").await;
+
+    let token = rig.register_stream("phone", &Phone::new()).await;
+
+    assert_eq!(URL_SAFE_NO_PAD.decode(&token).unwrap().len(), 32);
+    let stored = rig.pushes().unwrap();
+    assert_eq!(stored.endpoint, "corvid-stream");
+    assert_eq!(
+        stored.token_hash.unwrap(),
+        hex::encode(Sha256::digest(token.as_bytes()))
+    );
+}
+
+#[tokio::test]
+async fn the_stream_refuses_a_missing_wrong_or_fcm_registered_devices_token() {
+    let rig = push_rig().await;
+    rig.rig.approved("phone").await;
+    rig.rig.approved("tablet").await;
+    rig.register_stream("phone", &Phone::new()).await;
+    rig.register(
+        "tablet",
+        &Phone::new().registration(&format!("{BASE}/upAbC123")),
+    )
+    .await;
+    let url = format!("{}/corvid/push/stream", rig.rig.url);
+
+    let none = reqwest::get(&url).await.unwrap();
+    let wrong = reqwest::Client::new()
+        .get(&url)
+        .bearer_auth("not-a-token")
+        .send()
+        .await
+        .unwrap();
+    let fcm_device = reqwest::Client::new()
+        .get(&url)
+        .bearer_auth(hex::encode(Sha256::digest(b"")))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(none.status(), 401);
+    assert_eq!(wrong.status(), 401);
+    assert_eq!(fcm_device.status(), 401);
+}
+
+#[tokio::test]
+async fn new_mail_reaches_an_open_stream_as_the_same_encrypted_preview() {
+    let rig = push_rig().await;
+    rig.rig.approved("phone").await;
+    let phone = Phone::new();
+    let token = rig.register_stream("phone", &phone).await;
+    let mut stream = Stream::open(&rig, &token, None).await;
+
+    rig.rig.stalwart.deliver(email("m1", INBOX, json!({})));
+    rig.arrived().await;
+
+    let (_, body) = stream.next().await.unwrap();
+    let shown = phone.decrypt(&body);
+    assert_eq!(shown["id"], "m1");
+    assert_eq!(shown["subject"], "Notes on the engine");
+    assert_eq!(rig.fcm.count(), 0);
+}
+
+#[tokio::test]
+async fn a_reconnect_replays_what_it_missed_after_the_last_event_id() {
+    let rig = push_rig().await;
+    rig.rig.approved("phone").await;
+    let phone = Phone::new();
+    let token = rig.register_stream("phone", &phone).await;
+    let mut first = Stream::open(&rig, &token, None).await;
+    rig.rig.stalwart.deliver(email("m1", INBOX, json!({})));
+    rig.arrived().await;
+    let (seen, _) = first.next().await.unwrap();
+    drop(first);
+
+    rig.rig.stalwart.deliver(email("m2", INBOX, json!({})));
+    rig.arrived().await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let mut second = Stream::open(&rig, &token, Some(&seen)).await;
+
+    let (_, body) = second.next().await.unwrap();
+    assert_eq!(phone.decrypt(&body)["id"], "m2");
+}
+
+#[tokio::test]
+async fn revoking_a_device_ends_its_open_stream_and_its_token_is_refused() {
+    let rig = push_rig().await;
+    rig.rig.approved("phone").await;
+    let token = rig.register_stream("phone", &Phone::new()).await;
+    let mut stream = Stream::open(&rig, &token, None).await;
+
+    assert_eq!(rig.rig.revoke("phone").await.status(), 204);
+
+    assert!(stream.next().await.is_none());
+    let again = reqwest::Client::new()
+        .get(format!("{}/corvid/push/stream", rig.rig.url))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(again.status(), 401);
+}
+
+#[tokio::test]
+async fn approving_a_name_again_ends_the_old_devices_stream() {
+    let rig = push_rig().await;
+    rig.rig.approved("phone").await;
+    let token = rig.register_stream("phone", &Phone::new()).await;
+    let mut stream = Stream::open(&rig, &token, None).await;
+
+    rig.rig.approved("phone").await;
+
+    assert!(stream.next().await.is_none());
+}
+
+#[tokio::test]
+async fn registering_again_replaces_the_token_and_ends_the_old_stream() {
+    let rig = push_rig().await;
+    rig.rig.approved("phone").await;
+    let phone = Phone::new();
+    let old = rig.register_stream("phone", &phone).await;
+    let mut stream = Stream::open(&rig, &old, None).await;
+
+    let new = rig.register_stream("phone", &phone).await;
+
+    assert!(stream.next().await.is_none());
+    assert_ne!(old, new);
 }
