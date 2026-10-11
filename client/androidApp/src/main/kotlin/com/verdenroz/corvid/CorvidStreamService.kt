@@ -38,7 +38,13 @@ class CorvidStreamService : Service() {
         startId: Int,
     ): Int {
         ServiceCompat.startForeground(this, CONNECTION_ID, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-        if (stream == null) stream = scope.launch { PushStream(this@CorvidStreamService, preferences).run() }
+        if (stream == null) {
+            stream =
+                scope.launch {
+                    PushStream(this@CorvidStreamService, preferences).run()
+                    stopSelf()
+                }
+        }
         return START_STICKY
     }
 

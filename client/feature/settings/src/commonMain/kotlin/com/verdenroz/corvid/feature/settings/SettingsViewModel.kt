@@ -97,5 +97,14 @@ class SettingsViewModel(
         confirmingSignOut.value = false
     }
 
-    fun confirmSignOut() = onSignOut()
+    /** Pushes end first: a signed-out device would otherwise go on showing an account's mail. */
+    fun confirmSignOut() {
+        val push = backgroundPush
+        if (push == null || state.value.backgroundPush?.on != true) return onSignOut()
+        push.unregister()
+        viewModelScope.launch {
+            preferences.removePush()
+            onSignOut()
+        }
+    }
 }

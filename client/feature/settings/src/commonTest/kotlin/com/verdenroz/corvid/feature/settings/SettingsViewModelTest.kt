@@ -273,6 +273,21 @@ class SettingsViewModelTest {
         }
 
     @Test
+    fun `signing out ends background notifications first`() =
+        runViewModelTest {
+            val calls = Calls()
+            val push = FakeBackgroundPush()
+            val viewModel = viewModel(calls, push)
+            viewModel.setBackgroundPush(true)
+
+            viewModel.confirmSignOut()
+
+            assertEquals(1, push.unregistrations)
+            assertEquals(BackgroundPushLine.Removing, viewModel.state.value.backgroundPush)
+            assertEquals(1, calls.signOuts)
+        }
+
+    @Test
     fun `turning on what is already on registers nothing more`() =
         runViewModelTest {
             val push = FakeBackgroundPush()
