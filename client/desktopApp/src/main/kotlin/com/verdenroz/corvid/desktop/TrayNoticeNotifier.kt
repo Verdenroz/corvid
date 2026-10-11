@@ -4,7 +4,6 @@ import androidx.compose.ui.window.Notification
 import androidx.compose.ui.window.TrayState
 import androidx.compose.ui.window.isTraySupported
 import com.verdenroz.corvid.app.NewMailNotifier
-import com.verdenroz.corvid.app.NoticeNotifier
 import java.io.IOException
 
 /**
@@ -12,7 +11,7 @@ import java.io.IOException
  * gets `notify-send` instead; where neither exists the banner is all there is. A shown notification cannot be
  * withdrawn on either path, so [clear] does nothing.
  */
-class TrayNoticeNotifier : NoticeNotifier, NewMailNotifier {
+class TrayNoticeNotifier : NewMailNotifier {
     @Volatile
     private var tray: TrayState? = null
 
@@ -34,11 +33,6 @@ class TrayNoticeNotifier : NoticeNotifier, NewMailNotifier {
             }
         }
     }
-
-    override fun show(
-        title: String,
-        text: String,
-    ) = post(title, text)
 
     override fun clear() = Unit
 }

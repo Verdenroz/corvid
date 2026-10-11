@@ -32,8 +32,7 @@ class CorvidApplication : Application() {
                 single<NewMailNotifier> { AndroidNewMailNotifier(androidContext()) }
                 single { AndroidNotificationPermission(androidContext()) } bind NotificationPermission::class
                 single<AppInstaller> { AndroidAppInstaller(androidContext()) }
-                single { AndroidAttachmentFiles(androidContext()) }
-                single<AttachmentFiles> { get<AndroidAttachmentFiles>() }
+                single { AndroidAttachmentFiles(androidContext()) } bind AttachmentFiles::class
             }
         val koin =
             startKoin {

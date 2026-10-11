@@ -13,13 +13,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.time.Instant
 
-/** Shows the one new-mail notification; each platform app provides one. It is given a count and never any mail. */
-interface NewMailNotifier {
-    fun show(
-        title: String,
-        text: String,
-    )
-
+/** Posts the one new-mail notification; each platform app provides one. It is given a count and never any mail. */
+interface NewMailNotifier : NoticeNotifier {
     fun clear()
 }
 
@@ -65,7 +60,7 @@ class NewMail(
             remember(arrivals)
             if (fresh.isEmpty() || quiet) return
             pending += fresh.size
-            notifier.show(text.resolve(uiText(Res.string.new_mail_title)), text.resolve(uiPlural(Res.plurals.new_mail_count, pending)))
+            notifier.post(text.resolve(uiText(Res.string.new_mail_title)), text.resolve(uiPlural(Res.plurals.new_mail_count, pending)))
         }
     }
 

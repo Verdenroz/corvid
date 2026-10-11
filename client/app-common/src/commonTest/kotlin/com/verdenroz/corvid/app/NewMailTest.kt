@@ -1,12 +1,14 @@
 package com.verdenroz.corvid.app
 
+import com.verdenroz.corvid.core.data.ARCHIVE
+import com.verdenroz.corvid.core.data.INBOX
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.testing.FakeEmail
 import com.verdenroz.corvid.core.testing.FakeIdentity
 import com.verdenroz.corvid.core.testing.FakeJmapServer
-import com.verdenroz.corvid.core.testing.FakeMailbox
 import com.verdenroz.corvid.core.testing.KeyedTextResolver
 import com.verdenroz.corvid.core.testing.client
+import com.verdenroz.corvid.core.testing.withRoleMailboxes
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -19,7 +21,7 @@ private class RecordingNewMailNotifier : NewMailNotifier {
     val shown = mutableListOf<Pair<String, String>>()
     var clears = 0
 
-    override fun show(
+    override fun post(
         title: String,
         text: String,
     ) {
@@ -59,8 +61,7 @@ private class MailRig(val fake: FakeJmapServer, val notifier: RecordingNewMailNo
 
 private suspend fun mailRig(): MailRig {
     val fake = FakeJmapServer()
-    fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
-    fake.mailboxes += FakeMailbox(id = "archive", name = "Archive", role = "archive")
+    fake.withRoleMailboxes(INBOX, ARCHIVE)
     fake.identities += FakeIdentity(id = "i1", email = OWN)
     val notifier = RecordingNewMailNotifier()
     val newMail = NewMail(MailboxRepository(fake.client())::inboxArrivals, notifier, KeyedTextResolver)
