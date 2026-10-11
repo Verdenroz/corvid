@@ -90,8 +90,9 @@ internal fun WideTopBar(
                 }
                 Wordmark()
             }
-            SearchField(search, shortcutHint = true, modifier = Modifier.weight(1f, fill = false).widthIn(max = 520.dp))
-            Spacer(Modifier.weight(0.01f))
+            Box(Modifier.weight(1f)) {
+                SearchField(search, shortcutHint = true, modifier = Modifier.widthIn(max = 720.dp))
+            }
             KeyPill(key)
             AccountAvatar(identity, onOpenSettings)
         }
