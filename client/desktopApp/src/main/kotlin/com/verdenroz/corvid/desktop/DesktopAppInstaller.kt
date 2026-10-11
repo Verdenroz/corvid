@@ -15,7 +15,10 @@ class DesktopAppInstaller(
     private val appPath: String? = System.getProperty("jpackage.app-path"),
     private val relaunch: (File) -> Unit = ::relaunchAndExit,
 ) : AppInstaller {
-    override val platform = if (System.getProperty("os.name").startsWith("Linux")) AppPlatform.Linux else null
+    /** Only the managed install can be replaced, so any other copy, such as a development run, is never offered an update. */
+    override val platform by lazy {
+        AppPlatform.Linux.takeIf { System.getProperty("os.name").startsWith("Linux") && installation.manages(appPath) }
+    }
 
     override suspend fun install(file: File): InstallResult {
         if (!installation.manages(appPath)) return InstallResult.Failed("Install Corvid with the setup script to get automatic updates")
