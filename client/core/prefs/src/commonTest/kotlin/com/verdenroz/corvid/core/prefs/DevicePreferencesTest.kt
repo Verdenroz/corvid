@@ -13,6 +13,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.time.Duration.Companion.minutes
 
 private fun TestScope.preferences(store: DataStore<Preferences> = InMemoryPreferencesStore()) =
@@ -83,6 +84,41 @@ class DevicePreferencesTest {
             assertEquals("laptop-1", prefs.deviceName("mail.example.com"))
             assertEquals(null, prefs.deviceName("other.example.com"))
         }
+
+    @Test
+    fun `a signed-in account is remembered with its email and leaves the other choices alone`() =
+        runTest {
+            val prefs = preferences()
+            prefs.setTheme(ThemeChoice.Dark)
+
+            prefs.rememberAccount(RememberedAccount("https://mail.example.com:4443", "https://idp.example.com:4443", "you@example.com"))
+            runCurrent()
+
+            assertEquals(
+                DeviceSettings(
+                    ThemeChoice.Dark,
+                    account = RememberedAccount("https://mail.example.com:4443", "https://idp.example.com:4443", "you@example.com"),
+                ),
+                prefs.settings.value,
+            )
+        }
+
+    @Test
+    fun `an account remembered without an email replaces the last one and drops its email`() =
+        runTest {
+            val prefs = preferences()
+            prefs.rememberAccount(RememberedAccount("https://mail.example.com", "https://idp.example.com", "you@example.com"))
+
+            prefs.rememberAccount(RememberedAccount("https://other.example.org", "https://idp.example.org"))
+            runCurrent()
+
+            assertEquals(RememberedAccount("https://other.example.org", "https://idp.example.org"), prefs.settings.value.account)
+        }
+
+    @Test
+    fun `a server stored without an issuer is no account to offer`() {
+        assertNull(decode(preferencesOf(stringPreferencesKey("account_server") to "https://mail.example.com")).account)
+    }
 
     @Test
     fun `a stored notice id is read back`() {
