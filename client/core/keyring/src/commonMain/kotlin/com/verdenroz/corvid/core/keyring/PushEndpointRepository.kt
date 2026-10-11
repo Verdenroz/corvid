@@ -24,6 +24,9 @@ enum class PushAnswer {
     Refused,
 }
 
+/** [token] is what the server issued for reading an own connection; Google endpoints have none. */
+data class PushResult(val answer: PushAnswer, val token: String? = null)
+
 private const val VAPID_PATH = "/corvid/push/vapid"
 private val OFF_ERRORS = setOf("push_off", "devices_off")
 private val PUSH_PASS_THROUGH = DEVICES_PASS_THROUGH + HttpStatusCode.UnprocessableEntity
@@ -36,14 +39,15 @@ class PushEndpointRepository(private val jmapClient: JmapClient) {
         endpoint: String,
         p256dh: String,
         auth: String,
-    ): PushAnswer {
+    ): PushResult {
         val body =
             buildJsonObject {
                 put("endpoint", endpoint)
                 put("p256dh", p256dh)
                 put("auth", auth)
             }
-        return jmapClient.webSend(HttpMethod.Put, path(deviceName), body, passThrough = PUSH_PASS_THROUGH).answer()
+        val reply = jmapClient.webSend(HttpMethod.Put, path(deviceName), body, passThrough = PUSH_PASS_THROUGH)
+        return PushResult(reply.answer(), reply.body?.get("token")?.jsonPrimitive?.contentOrNull)
     }
 
     /** The key a push to this server must be signed with, or null where the server pushes nothing. */

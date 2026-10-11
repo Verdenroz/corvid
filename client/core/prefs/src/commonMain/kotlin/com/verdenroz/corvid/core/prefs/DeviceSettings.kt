@@ -25,12 +25,17 @@ data class RememberedAccount(
     val email: String? = null,
 )
 
+/** The endpoint of a device that takes its pushes over its own connection to the server instead of through Google. */
+const val OWN_CONNECTION = "corvid-stream"
+
 /** A push endpoint and the RFC 8291 public keys that encrypt to it, base64url as the connector gives them. */
 data class PushSubscription(
     val url: String,
     val p256dh: String,
     val auth: String,
-)
+) {
+    val ownConnection: Boolean get() = url == OWN_CONNECTION
+}
 
 /** Where background notifications stand between the platform, this device and the server. */
 enum class PushStatus {
@@ -59,10 +64,14 @@ enum class PushStatus {
     Failed,
 }
 
-/** [subscription] is held from the platform's answer until background notifications are turned off. */
+/**
+ * [subscription] is held from the platform's answer until background notifications are turned off. [streamToken] is what
+ * the server issued for reading an own connection, and exists only once the server has taken that subscription.
+ */
 data class PushSettings(
     val status: PushStatus = PushStatus.Off,
     val subscription: PushSubscription? = null,
+    val streamToken: String? = null,
 )
 
 /**

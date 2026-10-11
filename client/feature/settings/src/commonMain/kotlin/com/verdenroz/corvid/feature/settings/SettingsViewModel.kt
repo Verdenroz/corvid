@@ -30,17 +30,19 @@ class SettingsViewModel(
     private val vapidKey: suspend () -> String? = { null },
 ) : ViewModel() {
     private val confirmingSignOut = MutableStateFlow(false)
-    private val unavailable = MutableStateFlow(false)
 
     val state: StateFlow<SettingsUiState> =
-        combine(preferences.settings, confirmingSignOut, unavailable, ::uiState)
-            .stateIn(viewModelScope, SharingStarted.Eagerly, uiState(preferences.settings.value, false, false))
+        combine(preferences.settings, confirmingSignOut, ::uiState)
+            .stateIn(viewModelScope, SharingStarted.Eagerly, uiState(preferences.settings.value, false))
 
     private fun uiState(
         settings: DeviceSettings,
         confirmingSignOut: Boolean,
-        unavailable: Boolean,
-    ) = SettingsUiState(settings, confirmingSignOut, backgroundPush?.let { backgroundPushLine(settings.push.status, unavailable) })
+    ) = SettingsUiState(
+        settings,
+        confirmingSignOut,
+        backgroundPush?.let { backgroundPushLine(settings.push.status, settings.push.subscription, it.transport()) },
+    )
 
     fun selectTheme(theme: ThemeChoice) {
         viewModelScope.launch { preferences.setTheme(theme) }
@@ -60,27 +62,29 @@ class SettingsViewModel(
     fun setBackgroundPush(on: Boolean) {
         val push = backgroundPush ?: return
         if (on == state.value.backgroundPush?.on) return
-        unavailable.value = false
         if (!on) {
             push.unregister()
             viewModelScope.launch { preferences.removePush() }
             return
         }
         askNotificationPermission()
-        if (!push.available()) {
-            unavailable.value = true
-            return
-        }
         viewModelScope.launch {
             preferences.setPushRegistering()
-            val vapid =
-                try {
-                    vapidKey()
-                } catch (e: JmapException) {
-                    return@launch preferences.setPushFailed()
-                }
-            if (vapid == null) preferences.setPushOffOnServer() else push.register(vapid)
+            when (push.transport()) {
+                PushTransport.OwnConnection -> preferences.setPushSubscription(push.registerOwnConnection())
+                PushTransport.Google -> registerWithGoogle(push)
+            }
         }
+    }
+
+    private suspend fun registerWithGoogle(push: BackgroundPush) {
+        val vapid =
+            try {
+                vapidKey()
+            } catch (e: JmapException) {
+                return preferences.setPushFailed()
+            }
+        if (vapid == null) preferences.setPushOffOnServer() else push.register(vapid)
     }
 
     fun lockNow() = onLock()

@@ -31,8 +31,9 @@
     <string name="settings_new_mail_detail">Says only that mail arrived, never who sent it or what it says, and only while the app holds its key.</string>
     <string name="settings_push">Background notifications</string>
     <string name="settings_push_off">Sender, subject and a line of each new message while Corvid is closed. Encrypted for this phone and hidden on the lock screen.</string>
-    <string name="settings_push_unavailable">This phone has no Google Play services or microG, so there is nothing to push through.</string>
+    <string name="settings_push_off_own_connection">This phone has no Google Play services or microG. Corvid can keep its own connection to your server open instead, with a quiet notification you can swipe away. Hidden on the lock screen.</string>
     <string name="settings_push_registering">Registering with Google.</string>
+    <string name="settings_push_sent_own_connection">On. Corvid holds a connection to your server and shows each preview as it arrives.</string>
     <string name="settings_push_waiting">Registered here, not yet on the server. Sent while the app is unlocked.</string>
     <string name="settings_push_sent">On. Previews pass through Google as ciphertext; Google learns only when mail arrived.</string>
     <string name="settings_push_server_off">This server sends no background notifications.</string>

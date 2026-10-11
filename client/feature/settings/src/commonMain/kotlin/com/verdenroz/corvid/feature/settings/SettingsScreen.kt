@@ -54,12 +54,13 @@ import com.verdenroz.corvid.feature.settings.resources.settings_push
 import com.verdenroz.corvid.feature.settings.resources.settings_push_failed
 import com.verdenroz.corvid.feature.settings.resources.settings_push_not_approved
 import com.verdenroz.corvid.feature.settings.resources.settings_push_off
+import com.verdenroz.corvid.feature.settings.resources.settings_push_off_own_connection
 import com.verdenroz.corvid.feature.settings.resources.settings_push_refused
 import com.verdenroz.corvid.feature.settings.resources.settings_push_registering
 import com.verdenroz.corvid.feature.settings.resources.settings_push_removing
 import com.verdenroz.corvid.feature.settings.resources.settings_push_sent
+import com.verdenroz.corvid.feature.settings.resources.settings_push_sent_own_connection
 import com.verdenroz.corvid.feature.settings.resources.settings_push_server_off
-import com.verdenroz.corvid.feature.settings.resources.settings_push_unavailable
 import com.verdenroz.corvid.feature.settings.resources.settings_push_waiting
 import com.verdenroz.corvid.feature.settings.resources.settings_server
 import com.verdenroz.corvid.feature.settings.resources.settings_sign_out
@@ -233,10 +234,11 @@ private fun ThemeChoice.label() =
 private fun BackgroundPushLine.text() =
     when (this) {
         BackgroundPushLine.Off -> Res.string.settings_push_off
-        BackgroundPushLine.Unavailable -> Res.string.settings_push_unavailable
+        BackgroundPushLine.OffOwnConnection -> Res.string.settings_push_off_own_connection
         BackgroundPushLine.Registering -> Res.string.settings_push_registering
         BackgroundPushLine.Waiting -> Res.string.settings_push_waiting
         BackgroundPushLine.Sent -> Res.string.settings_push_sent
+        BackgroundPushLine.SentOwnConnection -> Res.string.settings_push_sent_own_connection
         BackgroundPushLine.OffOnServer -> Res.string.settings_push_server_off
         BackgroundPushLine.NotApproved -> Res.string.settings_push_not_approved
         BackgroundPushLine.Refused -> Res.string.settings_push_refused

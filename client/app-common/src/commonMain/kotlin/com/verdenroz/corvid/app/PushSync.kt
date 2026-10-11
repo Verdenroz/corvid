@@ -22,7 +22,7 @@ class PushSync(
 ) {
     suspend fun run() {
         preferences.settings.map { it.push }.distinctUntilChanged().collectIndexed { index, push ->
-            if (index == 0 || push.status == PushStatus.Unsent || push.status == PushStatus.Removing) sync(push)
+            if (index == 0 && !push.holdsOwnConnection || push.status == PushStatus.Unsent || push.status == PushStatus.Removing) sync(push)
         }
     }
 
@@ -30,8 +30,8 @@ class PushSync(
         val subscription = push.subscription
         try {
             if (subscription != null) {
-                val answer = endpoints.store(deviceName, subscription.url, subscription.p256dh, subscription.auth)
-                preferences.recordPushAnswer(subscription, answer.status())
+                val result = endpoints.store(deviceName, subscription.url, subscription.p256dh, subscription.auth)
+                preferences.recordPushAnswer(subscription, result.answer.status(), result.token)
             } else if (push.status == PushStatus.Removing) {
                 endpoints.remove(deviceName)
                 preferences.finishPushRemoval()
@@ -40,6 +40,9 @@ class PushSync(
             return
         }
     }
+
+    /** Registering an own connection again would replace the token the open stream reads with. */
+    private val PushSettings.holdsOwnConnection get() = subscription?.ownConnection == true && streamToken != null
 
     private fun PushAnswer.status(): PushStatus =
         when (this) {

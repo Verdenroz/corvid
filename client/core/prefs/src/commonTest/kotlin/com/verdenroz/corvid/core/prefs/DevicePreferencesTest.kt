@@ -174,6 +174,33 @@ class DevicePreferencesTest {
         }
 
     @Test
+    fun `an own connection keeps the token the server issued until the connection is turned off`() =
+        runTest {
+            val prefs = preferences()
+            val subscription = PushSubscription(OWN_CONNECTION, "key", "secret")
+            prefs.setPushSubscription(subscription)
+
+            prefs.recordPushAnswer(subscription, PushStatus.Sent, streamToken = "tok")
+            runCurrent()
+            assertEquals(PushSettings(PushStatus.Sent, subscription, "tok"), prefs.settings.value.push)
+
+            prefs.removePush()
+            runCurrent()
+            assertEquals(PushSettings(PushStatus.Removing), prefs.settings.value.push)
+        }
+
+    @Test
+    fun `the last event read from the own connection is remembered`() =
+        runTest {
+            val prefs = preferences()
+            assertNull(prefs.streamCursor())
+
+            prefs.setStreamCursor("1790000000123")
+
+            assertEquals("1790000000123", prefs.streamCursor())
+        }
+
+    @Test
     fun `an answer for an endpoint the connector has since replaced is dropped`() =
         runTest {
             val prefs = preferences()

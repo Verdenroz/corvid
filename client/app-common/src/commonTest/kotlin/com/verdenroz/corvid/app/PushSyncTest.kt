@@ -3,6 +3,7 @@ package com.verdenroz.corvid.app
 import com.verdenroz.corvid.core.keyring.PushEndpointRepository
 import com.verdenroz.corvid.core.prefs.DevicePreferences
 import com.verdenroz.corvid.core.prefs.DeviceSettings
+import com.verdenroz.corvid.core.prefs.OWN_CONNECTION
 import com.verdenroz.corvid.core.prefs.PushSettings
 import com.verdenroz.corvid.core.prefs.PushStatus
 import com.verdenroz.corvid.core.prefs.PushSubscription
@@ -74,6 +75,33 @@ class PushSyncTest {
             until { fake.devices.pushCalls.isNotEmpty() }
 
             assertEquals(listOf(HttpMethod.Put to "phone"), fake.devices.pushCalls)
+        }
+
+    @Test
+    fun `an own connection is sent once and the token the server issues is recorded`() =
+        runTest {
+            val preferences = preferences()
+            val own = PushSubscription(OWN_CONNECTION, "p256", "auth")
+            preferences.setPushSubscription(own)
+
+            follow(fake, preferences)
+            until { preferences.settings.value.push.status == PushStatus.Sent }
+
+            assertEquals(PushSettings(PushStatus.Sent, own, fake.devices.streamToken), preferences.settings.value.push)
+        }
+
+    @Test
+    fun `an own connection the server already took is not registered again on unlock`() =
+        runTest {
+            val preferences = preferences()
+            val own = PushSubscription(OWN_CONNECTION, "p256", "auth")
+            preferences.setPushSubscription(own)
+            preferences.recordPushAnswer(own, PushStatus.Sent, "tok")
+
+            follow(fake, preferences)
+
+            assertEquals(emptyList(), fake.devices.pushCalls)
+            assertEquals("tok", preferences.settings.value.push.streamToken)
         }
 
     @Test

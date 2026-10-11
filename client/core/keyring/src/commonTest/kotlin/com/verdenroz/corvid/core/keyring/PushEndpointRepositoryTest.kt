@@ -28,7 +28,7 @@ class PushEndpointRepositoryTest {
         runTest {
             fake.devices.enroll("phone")
 
-            assertEquals(PushAnswer.Accepted, repository().store("phone", ENDPOINT, "p256", "auth"))
+            assertEquals(PushAnswer.Accepted, repository().store("phone", ENDPOINT, "p256", "auth").answer)
 
             val expected =
                 buildJsonObject {
@@ -40,9 +40,19 @@ class PushEndpointRepositoryTest {
         }
 
     @Test
+    fun `the own connection's registration answers with the token to read it with`() =
+        runTest {
+            fake.devices.enroll("phone")
+
+            val result = repository().store("phone", "corvid-stream", "p256", "auth")
+
+            assertEquals(PushResult(PushAnswer.Accepted, fake.devices.streamToken), result)
+        }
+
+    @Test
     fun `a device the server never approved is reported, not thrown`() =
         runTest {
-            assertEquals(PushAnswer.NotApproved, repository().store("phone", ENDPOINT, "p256", "auth"))
+            assertEquals(PushAnswer.NotApproved, repository().store("phone", ENDPOINT, "p256", "auth").answer)
             assertFalse(latch.tripped.value)
         }
 
@@ -51,7 +61,7 @@ class PushEndpointRepositoryTest {
         runTest {
             fake.devices.enroll("phone")
 
-            assertEquals(PushAnswer.Refused, repository().store("phone", "https://ntfy.sh/abc", "p256", "auth"))
+            assertEquals(PushAnswer.Refused, repository().store("phone", "https://ntfy.sh/abc", "p256", "auth").answer)
             assertTrue(fake.devices.pushEndpoints.isEmpty())
         }
 
@@ -61,12 +71,12 @@ class PushEndpointRepositoryTest {
             fake.devices.enroll("phone")
             val repository = repository()
             fake.devices.pushOff = true
-            assertEquals(PushAnswer.OffOnServer, repository.store("phone", ENDPOINT, "p256", "auth"))
+            assertEquals(PushAnswer.OffOnServer, repository.store("phone", ENDPOINT, "p256", "auth").answer)
             assertEquals(PushAnswer.OffOnServer, repository.remove("phone"))
 
             fake.devices.pushOff = false
             fake.devices.off = true
-            assertEquals(PushAnswer.OffOnServer, repository.store("phone", ENDPOINT, "p256", "auth"))
+            assertEquals(PushAnswer.OffOnServer, repository.store("phone", ENDPOINT, "p256", "auth").answer)
         }
 
     @Test

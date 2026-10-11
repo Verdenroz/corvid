@@ -5,6 +5,7 @@ import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.prefs.AutoLock
 import com.verdenroz.corvid.core.prefs.DevicePreferences
 import com.verdenroz.corvid.core.prefs.DeviceSettings
+import com.verdenroz.corvid.core.prefs.OWN_CONNECTION
 import com.verdenroz.corvid.core.prefs.PushStatus
 import com.verdenroz.corvid.core.prefs.PushSubscription
 import com.verdenroz.corvid.core.prefs.ThemeChoice
@@ -30,15 +31,21 @@ private class Calls {
 }
 
 private class FakeBackgroundPush(
-    var google: Boolean = true,
+    val transport: PushTransport = PushTransport.Google,
     val arriving: PushSubscription? = null,
 ) : BackgroundPush {
     var registrations = 0
+    var ownRegistrations = 0
     var unregistrations = 0
     var vapid: String? = null
     lateinit var preferences: DevicePreferences
 
-    override fun available() = google
+    override fun transport() = transport
+
+    override fun registerOwnConnection(): PushSubscription {
+        ownRegistrations++
+        return PushSubscription(OWN_CONNECTION, "p256", "auth")
+    }
 
     override fun register(vapid: String) {
         registrations++
@@ -178,16 +185,30 @@ class SettingsViewModelTest {
         }
 
     @Test
-    fun `with no Google services nothing registers and the row says so`() =
+    fun `without Google services the row offers the own connection and turning it on makes its keys`() =
         runViewModelTest {
-            val push = FakeBackgroundPush(google = false)
+            val push = FakeBackgroundPush(transport = PushTransport.OwnConnection)
             val viewModel = viewModel(push = push)
+            assertEquals(BackgroundPushLine.OffOwnConnection, viewModel.state.value.backgroundPush)
 
             viewModel.setBackgroundPush(true)
 
+            assertEquals(1, push.ownRegistrations)
             assertEquals(0, push.registrations)
-            assertEquals(BackgroundPushLine.Unavailable, viewModel.state.value.backgroundPush)
-            assertFalse(viewModel.state.value.backgroundPush!!.on)
+            assertEquals(BackgroundPushLine.Waiting, viewModel.state.value.backgroundPush)
+        }
+
+    @Test
+    fun `an own connection the server took reads as a connection, not as Google`() =
+        runViewModelTest {
+            val preferences = DevicePreferences(InMemoryPreferencesStore(), CoroutineScope(Dispatchers.Main), DeviceSettings())
+            val viewModel = viewModel(push = FakeBackgroundPush(transport = PushTransport.OwnConnection), preferences = preferences)
+            val own = PushSubscription(OWN_CONNECTION, "p256", "auth")
+
+            preferences.setPushSubscription(own)
+            preferences.recordPushAnswer(own, PushStatus.Sent, "tok")
+
+            assertEquals(BackgroundPushLine.SentOwnConnection, viewModel.state.value.backgroundPush)
         }
 
     @Test

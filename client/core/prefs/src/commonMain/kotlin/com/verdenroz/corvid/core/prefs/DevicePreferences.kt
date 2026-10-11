@@ -26,6 +26,8 @@ private val PUSH_STATUS = stringPreferencesKey("push_status")
 private val PUSH_URL = stringPreferencesKey("push_url")
 private val PUSH_P256DH = stringPreferencesKey("push_p256dh")
 private val PUSH_AUTH = stringPreferencesKey("push_auth")
+private val PUSH_TOKEN = stringPreferencesKey("push_token")
+private val STREAM_CURSOR = stringPreferencesKey("stream_cursor")
 
 private fun deviceNameKey(server: String) = stringPreferencesKey("device_name.$server")
 
@@ -86,12 +88,22 @@ class DevicePreferences(
         store.edit { it.writePush(PushSettings(PushStatus.Failed)) }
     }
 
-    /** Records the server's answer for [subscription], unless the distributor has replaced it since. */
+    /** Records the server's answer for [subscription], unless the connector has replaced it since. */
     suspend fun recordPushAnswer(
         subscription: PushSubscription,
         status: PushStatus,
+        streamToken: String? = null,
     ) {
-        store.edit { if (decodePush(it).subscription == subscription) it.writePush(PushSettings(status, subscription)) }
+        store.edit {
+            if (decodePush(it).subscription == subscription) it.writePush(PushSettings(status, subscription, streamToken))
+        }
+    }
+
+    /** The id of the last event read from the own connection, to resume after. */
+    suspend fun streamCursor(): String? = store.data.first()[STREAM_CURSOR]
+
+    suspend fun setStreamCursor(id: String) {
+        store.edit { it[STREAM_CURSOR] = id }
     }
 
     /** Ends a removal the server has taken, unless background notifications were turned back on meanwhile. */
@@ -127,11 +139,12 @@ private fun decodePush(preferences: Preferences): PushSettings {
     val p256dh = preferences[PUSH_P256DH]
     val auth = preferences[PUSH_AUTH]
     val subscription = if (url != null && p256dh != null && auth != null) PushSubscription(url, p256dh, auth) else null
-    return PushSettings(status, subscription)
+    return PushSettings(status, subscription, preferences[PUSH_TOKEN])
 }
 
 private fun MutablePreferences.writePush(push: PushSettings) {
     this[PUSH_STATUS] = push.status.name
+    push.streamToken?.let { this[PUSH_TOKEN] = it } ?: remove(PUSH_TOKEN)
     val subscription = push.subscription
     if (subscription == null) {
         remove(PUSH_URL)

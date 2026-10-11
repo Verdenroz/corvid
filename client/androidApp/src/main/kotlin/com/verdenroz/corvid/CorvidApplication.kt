@@ -12,12 +12,18 @@ import com.verdenroz.corvid.app.NoticeNotifier
 import com.verdenroz.corvid.app.NotificationPermission
 import com.verdenroz.corvid.app.di.appModules
 import com.verdenroz.corvid.core.auth.platformAuthModule
+import com.verdenroz.corvid.core.common.di.applicationScopeQualifier
 import com.verdenroz.corvid.core.data.AppInstaller
 import com.verdenroz.corvid.core.data.AttachmentFiles
 import com.verdenroz.corvid.core.discovery.platformDiscoveryModule
 import com.verdenroz.corvid.core.keyring.KeyHolder
+import com.verdenroz.corvid.core.prefs.DevicePreferences
 import com.verdenroz.corvid.core.prefs.platformPreferencesModule
 import com.verdenroz.corvid.feature.settings.BackgroundPush
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.startKoin
@@ -45,6 +51,19 @@ class CorvidApplication : Application() {
         val keyHolder = koin.get<KeyHolder>()
         registerNetworkLossTrigger(keyHolder)
         registerScreenOffTrigger(keyHolder)
+        keepStreamRunning(koin.get<DevicePreferences>(), koin.get(applicationScopeQualifier))
+    }
+
+    // The own connection runs exactly while the server has issued a token for it.
+    private fun keepStreamRunning(
+        preferences: DevicePreferences,
+        scope: CoroutineScope,
+    ) {
+        scope.launch {
+            preferences.settings.map { it.push.streamToken != null }.distinctUntilChanged().collect { wanted ->
+                if (wanted) CorvidStreamService.start(this@CorvidApplication) else CorvidStreamService.stop(this@CorvidApplication)
+            }
+        }
     }
 
     // A lost network drops the key immediately, with no grace timer.
