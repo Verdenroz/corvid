@@ -88,14 +88,25 @@ class FakeAuthenticator : Authenticator {
     val calls: MutableList<String> = mutableListOf()
     var failure: Exception? = null
 
-    override suspend fun create(options: String): String {
+    /** The server each prompt was asked for, in order. */
+    val servers: MutableList<ServerAddress> = mutableListOf()
+
+    override suspend fun create(
+        server: ServerAddress,
+        options: String,
+    ): String {
         calls += "create $options"
+        servers += server
         failure?.let { throw it }
         return "created:$options"
     }
 
-    override suspend fun get(options: String): String {
+    override suspend fun get(
+        server: ServerAddress,
+        options: String,
+    ): String {
         calls += "get $options"
+        servers += server
         failure?.let { throw it }
         return "asserted:$options"
     }

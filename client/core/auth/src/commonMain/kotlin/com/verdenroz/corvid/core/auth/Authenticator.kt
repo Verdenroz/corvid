@@ -1,15 +1,25 @@
 package com.verdenroz.corvid.core.auth
 
+import com.verdenroz.corvid.core.model.ServerAddress
+
 /**
  * The platform's passkey prompt. Both calls take and return WebAuthn Level 3 JSON, the shape the
  * sentinel serves and Credential Manager speaks, so the platform code never parses a ceremony.
+ * [server] is the address the web tier was dialled at, which a client that signs the ceremony
+ * itself names as its origin; Android derives its own from the signing key.
  */
 interface Authenticator {
     /** Makes a passkey from `PublicKeyCredentialCreationOptionsJSON`; answers the `RegistrationResponseJSON`. */
-    suspend fun create(options: String): String
+    suspend fun create(
+        server: ServerAddress,
+        options: String,
+    ): String
 
     /** Signs in with a passkey from `PublicKeyCredentialRequestOptionsJSON`; answers the `AuthenticationResponseJSON`. */
-    suspend fun get(options: String): String
+    suspend fun get(
+        server: ServerAddress,
+        options: String,
+    ): String
 }
 
 /** Why the platform's passkey prompt did not produce a credential. */

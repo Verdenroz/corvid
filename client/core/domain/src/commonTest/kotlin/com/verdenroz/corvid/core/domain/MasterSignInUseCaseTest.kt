@@ -46,6 +46,7 @@ class MasterSignInUseCaseTest {
 
             assertEquals(listOf("loginOptions master", "loginFinish asserted:request-options:master"), api.calls)
             assertEquals(listOf("get request-options:master"), authenticator.calls)
+            assertEquals(listOf(SERVER), authenticator.servers)
         }
 
     @Test

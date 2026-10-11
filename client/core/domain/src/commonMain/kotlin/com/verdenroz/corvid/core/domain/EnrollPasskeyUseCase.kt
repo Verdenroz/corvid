@@ -23,6 +23,6 @@ class EnrollPasskeyUseCase(
         code: String,
     ): PasskeyRole {
         val options = authApi.registerOptions(server, code)
-        return authApi.registerFinish(server, authenticator.create(options))
+        return authApi.registerFinish(server, authenticator.create(server, options))
     }
 }

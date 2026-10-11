@@ -21,6 +21,7 @@ import androidx.credentials.exceptions.publickeycredential.CreatePublicKeyCreden
 import androidx.credentials.exceptions.publickeycredential.GetPublicKeyCredentialDomException
 import com.verdenroz.corvid.core.auth.Authenticator
 import com.verdenroz.corvid.core.auth.PasskeyException
+import com.verdenroz.corvid.core.model.ServerAddress
 import java.lang.ref.WeakReference
 
 /**
@@ -35,7 +36,10 @@ class AndroidAuthenticator : Authenticator {
         this.activity = activity?.let(::WeakReference)
     }
 
-    override suspend fun create(options: String): String {
+    override suspend fun create(
+        server: ServerAddress,
+        options: String,
+    ): String {
         val host = shown()
         return try {
             val response = CredentialManager.create(host).createCredential(host, CreatePublicKeyCredentialRequest(options))
@@ -45,7 +49,10 @@ class AndroidAuthenticator : Authenticator {
         }
     }
 
-    override suspend fun get(options: String): String {
+    override suspend fun get(
+        server: ServerAddress,
+        options: String,
+    ): String {
         val host = shown()
         return try {
             val request = GetCredentialRequest(listOf(GetPublicKeyCredentialOption(options)))

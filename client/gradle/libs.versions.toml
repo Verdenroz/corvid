@@ -19,6 +19,7 @@ jetbrainsLifecycle = "2.10.0"
 jetbrainsNavigation = "2.9.2"
 ktor = "3.5.2"
 androidxCredentials = "1.6.0"
+jna = "5.17.0"
 tink = "1.23.0"
 ksoup = "0.2.6"
 datastore = "1.2.1"
@@ -65,6 +66,7 @@ ktor-client-auth = { group = "io.ktor", name = "ktor-client-auth", version.ref =
 ktor-server-core = { group = "io.ktor", name = "ktor-server-core", version.ref = "ktor" }
 ktor-server-netty = { group = "io.ktor", name = "ktor-server-netty", version.ref = "ktor" }
 ktor-server-content-negotiation = { group = "io.ktor", name = "ktor-server-content-negotiation", version.ref = "ktor" }
+jna = { group = "net.java.dev.jna", name = "jna", version.ref = "jna" }
 androidx-credentials = { group = "androidx.credentials", name = "credentials", version.ref = "androidxCredentials" }
 androidx-credentials-play-services-auth = { group = "androidx.credentials", name = "credentials-play-services-auth", version.ref = "androidxCredentials" }
 androidx-datastore-preferences-core = { group = "androidx.datastore", name = "datastore-preferences-core", version.ref = "datastore" }

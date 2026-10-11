@@ -36,4 +36,14 @@ check test ! -e "$HOME/.local/share/corvid/versions/.partial-8"
 XDG_DATA_HOME="$work/xdg" bash "$here/scripts/install-desktop.sh" "$work/good.tar.gz" > /dev/null
 check test -x "$work/xdg/corvid/versions/0/corvid/bin/corvid"
 
+mkdir -p "$work/bin"
+printf '#!/bin/sh\necho "\tlibfido2.so.1 (libc6,x86-64) => /usr/lib/libfido2.so.1"\n' > "$work/bin/ldconfig"
+chmod +x "$work/bin/ldconfig"
+warned="$(PATH="$work/bin:$PATH" bash "$here/scripts/install-desktop.sh" --version-code 9 "$work/good.tar.gz" 2>&1 > /dev/null)"
+check test -z "$warned"
+printf '#!/bin/sh\n' > "$work/bin/ldconfig"
+warned="$(PATH="$work/bin:$PATH" bash "$here/scripts/install-desktop.sh" --version-code 10 "$work/good.tar.gz" 2>&1 > /dev/null)"
+check test -n "$warned"
+check test "$(readlink "$HOME/.local/share/corvid/current")" = "versions/10"
+
 exit $fail

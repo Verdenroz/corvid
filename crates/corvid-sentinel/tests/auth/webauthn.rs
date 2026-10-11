@@ -367,3 +367,42 @@ fn authenticator_data_cut_short_after_signing_is_refused() {
         Err(Refusal::Signature)
     );
 }
+
+fn desktop_attestation_object(authenticator_data: &[u8]) -> Vec<u8> {
+    let length = authenticator_data.len() as u16;
+    let mut object = vec![0xa3, 0x63];
+    object.extend(b"fmt");
+    object.extend([0x64]);
+    object.extend(b"none");
+    object.extend([0x67]);
+    object.extend(b"attStmt");
+    object.extend([0xa0, 0x68]);
+    object.extend(b"authData");
+    object.extend([0x59]);
+    object.extend(length.to_be_bytes());
+    object.extend(authenticator_data);
+    object
+}
+
+#[test]
+fn the_attestation_object_the_desktop_app_builds_by_hand_registers() {
+    let mut soft = soft();
+    let mut response = soft.create(CHALLENGE);
+    let parsed: ciborium::Value =
+        ciborium::from_reader(response.attestation_object.as_slice()).unwrap();
+    let authenticator_data = parsed
+        .as_map()
+        .unwrap()
+        .iter()
+        .find(|(key, _)| key.as_text() == Some("authData"))
+        .and_then(|(_, value)| value.as_bytes())
+        .unwrap()
+        .clone();
+    response.attestation_object = desktop_attestation_object(&authenticator_data);
+
+    assert!(
+        party()
+            .register(&response, CHALLENGE, Policy::Synced)
+            .is_ok()
+    );
+}

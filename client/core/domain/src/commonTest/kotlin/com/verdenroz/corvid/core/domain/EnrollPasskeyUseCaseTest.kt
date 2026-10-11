@@ -27,6 +27,7 @@ class EnrollPasskeyUseCaseTest {
 
             assertEquals(PasskeyRole.Master, role)
             assertEquals(listOf("create creation-options:ABCD-EFGH"), authenticator.calls)
+            assertEquals(listOf(SERVER), authenticator.servers)
             assertEquals(listOf("registerOptions ABCD-EFGH", "registerFinish created:creation-options:ABCD-EFGH"), api.calls)
         }
 

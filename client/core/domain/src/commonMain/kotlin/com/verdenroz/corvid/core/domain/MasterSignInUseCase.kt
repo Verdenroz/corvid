@@ -22,6 +22,6 @@ class MasterSignInUseCase(
     override suspend fun <T> withAdminToken(use: suspend (String) -> T): T {
         val server = checkNotNull((tokenSource.state.value as? AuthState.SignedIn)?.server) { "not signed in" }
         val options = authApi.loginOptions(server, PasskeyRole.Master)
-        return use(authApi.loginFinish(server, authenticator.get(options)).accessToken)
+        return use(authApi.loginFinish(server, authenticator.get(server, options)).accessToken)
     }
 }

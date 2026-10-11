@@ -18,9 +18,11 @@ import com.verdenroz.corvid.app.EscapeBack
 import com.verdenroz.corvid.app.NewMailNotifier
 import com.verdenroz.corvid.app.NoticeNotifier
 import com.verdenroz.corvid.app.NotificationPermission
+import com.verdenroz.corvid.app.SecurityKeyDialog
 import com.verdenroz.corvid.app.di.appModules
 import com.verdenroz.corvid.core.auth.Authenticator
-import com.verdenroz.corvid.core.auth.UnsupportedAuthenticator
+import com.verdenroz.corvid.core.auth.DesktopAuthenticator
+import com.verdenroz.corvid.core.auth.SecurityKeyPrompt
 import com.verdenroz.corvid.core.data.AppInstaller
 import com.verdenroz.corvid.core.data.AttachmentFiles
 import com.verdenroz.corvid.core.discovery.platformDiscoveryModule
@@ -32,12 +34,13 @@ import javax.imageio.ImageIO
 
 fun main() {
     val notifier = TrayNoticeNotifier()
+    val keyPrompt = SecurityKeyPrompt()
     val notices =
         module {
             single<NoticeNotifier> { notifier }
             single<NewMailNotifier> { notifier }
             single<NotificationPermission> { NoPermissionNeeded }
-            single<Authenticator> { UnsupportedAuthenticator }
+            single<Authenticator> { DesktopAuthenticator(keyPrompt) }
             single<AppInstaller> { DesktopAppInstaller() }
             single<AttachmentFiles> { DesktopAttachmentFiles() }
         }
@@ -69,6 +72,7 @@ fun main() {
             val focused = LocalWindowInfo.current.isWindowFocused
             LaunchedEffect(focused, windowState.isMinimized) { presence.shown(focused && !windowState.isMinimized) }
             CorvidApp()
+            SecurityKeyDialog(keyPrompt)
         }
     }
 }

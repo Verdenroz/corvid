@@ -25,7 +25,7 @@ class SignInUseCase(
 ) : SignIn {
     override suspend operator fun invoke(server: ServerAddress) {
         val options = authApi.loginOptions(server, PasskeyRole.Daily)
-        val tokens = authApi.loginFinish(server, authenticator.get(options))
+        val tokens = authApi.loginFinish(server, authenticator.get(server, options))
         tokenSource.adopt(tokens, server)
         authLatch.clear()
     }

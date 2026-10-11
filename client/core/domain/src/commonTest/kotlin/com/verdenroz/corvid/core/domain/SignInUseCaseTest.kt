@@ -35,6 +35,7 @@ class SignInUseCaseTest {
             assertEquals(listOf("get request-options:daily"), authenticator.calls)
             assertEquals(listOf("loginOptions daily", "loginFinish asserted:request-options:daily"), api.calls)
             assertEquals(AuthState.SignedIn("daily-at", SERVER), tokenSource.state.value)
+            assertEquals(listOf(SERVER), authenticator.servers)
         }
 
     @Test
