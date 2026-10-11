@@ -42,6 +42,7 @@ for port, handler in ((8080, Stalwart), (11333, Sentinel), (1411, Idp)):
 ' &
 stubs=$!
 
+links='[{"relation":["delegate_permission/common.get_login_creds"],"target":{"namespace":"android_app","package_name":"org.example","sha256_cert_fingerprints":["AB:CD"]}}]'
 mkdir -p "$work/apps/current"
 printf 'manifest' > "$work/apps/current/manifest.json"
 chmod -R a+rX "$work/apps"
@@ -51,6 +52,7 @@ chmod -R a+rX "$work/apps"
 "$engine" run -d --name "$name" --network host \
   -e CORVID_WEB_HOSTNAME=localhost -e CORVID_WEB_PORT="$port" -e CORVID_MTA_STS_SITE= \
   -e CORVID_MAIL_DOMAIN=localhost -e CORVID_IDP_HOSTNAME=idp.localhost \
+  -e CORVID_ASSETLINKS_HOST=localhost -e "CORVID_ASSETLINKS=$links" \
   -v "$work/Caddyfile:/etc/caddy/Caddyfile:ro,z" -v "$work/apps:/srv/corvid-apps:ro,z" "$image" >/dev/null
 
 fetch() {
@@ -107,7 +109,13 @@ check "the discovery document names the web tier and the issuer" "$(fetch "$url/
 check "the discovery document ignores a credential" "$(fetch -u bad:bad "$url/.well-known/corvid")" "200 $doc"
 check "the discovery document is JSON" "$(curl -sk --max-time 5 -o /dev/null -w '%{content_type}' --resolve "localhost:$port:127.0.0.1" "$url/.well-known/corvid")" application/json
 check "everything else goes to Stalwart" "$(fetch "$url/jmap/session")" "200 stalwart"
+check "the app links document is served on the mail domain" "$(fetch "$url/.well-known/assetlinks.json")" "200 $links"
+check "the app links document ignores a credential" "$(fetch -u bad:bad "$url/.well-known/assetlinks.json")" "200 $links"
+check "the app links document is JSON and not a redirect" \
+  "$(curl -sk --max-time 5 -o /dev/null -w '%{content_type} %{redirect_url}' --resolve "localhost:$port:127.0.0.1" "$url/.well-known/assetlinks.json")" "application/json "
+check "another path under .well-known stays with Stalwart" "$(fetch "$url/.well-known/other")" "404 stalwart"
 idp="https://idp.localhost:$port"
+check "the app links document is not served on the identity provider's site" "$(fetch "$idp/.well-known/assetlinks.json")" "200 idp"
 check "the identity provider's site reaches Pocket-ID" "$(fetch "$idp/api/users")" "200 idp"
 for path in /setup /setup/ /api/signup/setup /api/signup/setup/ /login/alternative/device /login/alternative/device/x \
   /api/device-login/requests /api/device-login/requests/x/exchange /api/device-login/verification; do

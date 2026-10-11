@@ -75,6 +75,35 @@ check "no answer from the sentinel is a failure that prints nothing" 'out="$(dec
 REPLY_FROM_SENTINEL='502\nbad gateway\n'
 check "any other status is a failure too" 'out="$(decide)"; [[ $? -ne 0 && -z "$out" ]]'
 
+echo "== assetlinks_verdict"
+python3 -c '
+import http.server, socketserver
+DOC = b"[{\"relation\": []}]"
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == "/ok": self.send_response(200); self.send_header("Content-Type", "application/json"); body = DOC
+        elif self.path == "/other": self.send_response(200); self.send_header("Content-Type", "application/json"); body = b"[]"
+        elif self.path == "/text": self.send_response(200); self.send_header("Content-Type", "text/plain"); body = DOC
+        elif self.path == "/moved": self.send_response(301); self.send_header("Location", "/ok"); body = b""
+        else: self.send_response(404); body = b""
+        self.end_headers(); self.wfile.write(body)
+    def log_message(self, *a): pass
+s = socketserver.TCPServer(("127.0.0.1", 0), H)
+open("'"$work"'/port", "w").write(str(s.server_address[1]))
+s.serve_forever()' &
+server=$!
+trap 'kill "$server" 2>/dev/null; rm -rf "$work"' EXIT
+for _ in $(seq 1 50); do [[ -s "$work/port" ]] && break; sleep 0.1; done
+doc='[{"relation": []}]'
+verdict() { bash -c ". \"$here/lib.sh\"; assetlinks_verdict \"\$1\" \"\$2\"" _ "http://127.0.0.1:$(cat "$work/port")$1" "$doc"; }
+check "the expected document as JSON is ok" '[[ "$(verdict /ok)" == ok* ]]'
+check "a different document is bad" '[[ "$(verdict /other)" == bad* ]]'
+check "the right document with the wrong type is bad" '[[ "$(verdict /text)" == bad*"not application/json"* ]]'
+check "a redirect is bad even though it leads to the document" '[[ "$(verdict /moved)" == bad*redirect* ]]'
+check "not served is only a warning" '[[ "$(verdict /absent)" == warn*404* ]]'
+check "an address nothing listens on is only a warning" \
+  '[[ "$(bash -c ". \"$here/lib.sh\"; assetlinks_verdict http://127.0.0.1:1/x \"\$1\"" _ "$doc")" == warn* ]]'
+
 echo "== no other script embeds the password in curl's argv"
 hits="$(grep -l 'curl.*-u.*STALWART_PASSWORD' "$here"/*.sh 2>/dev/null | grep -v '/lib\.sh$' || true)"
 check "grep finds no such call site" '[[ -z "$hits" ]]'

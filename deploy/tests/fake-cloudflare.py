@@ -2,11 +2,11 @@
 """A fake Cloudflare, just enough of the API for cloudflare.py's own tests. Never the real one.
 
 Prints its port on stdout, then serves until killed. --deny-scripts and --deny-domains make the
-matching Workers endpoints 403, for the missing-permission tests.
+matching Workers endpoints 403, for the missing-permission tests (--deny-domains also covers routes).
 """
 import http.server, json, socketserver, sys, urllib.parse
 
-state = {"scripts": {}, "domains": {}, "records": {}, "next_id": 1,
+state = {"scripts": {}, "domains": {}, "records": {}, "routes": {}, "next_id": 1,
          "deny_scripts": "--deny-scripts" in sys.argv, "deny_domains": "--deny-domains" in sys.argv}
 DENIED = {"success": False, "errors": [{"code": 10000, "message": "Authentication error"}]}
 
@@ -46,6 +46,10 @@ class H(http.server.BaseHTTPRequestHandler):
             hostname = qs.get("hostname", [None])[0]
             found = [dict(v, id=k) for k, v in state["domains"].items() if not hostname or v["hostname"] == hostname]
             return self.reply(200, {"success": True, "result": found})
+        if path == "/client/v4/zones/z1/workers/routes":
+            if state["deny_domains"]:
+                return self.reply(403, DENIED)
+            return self.reply(200, {"success": True, "result": [dict(v, id=k) for k, v in state["routes"].items()]})
         if path.startswith("/client/v4/zones/z1/dns_records"):
             name = qs.get("name", [None])[0]
             kind = qs.get("type", [None])[0]
@@ -88,6 +92,13 @@ class H(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+        if self.path == "/client/v4/zones/z1/workers/routes":
+            if state["deny_domains"]:
+                return self.reply(403, DENIED)
+            rid = f"w{state['next_id']}"
+            state["next_id"] += 1
+            state["routes"][rid] = body
+            return self.reply(200, {"success": True, "result": dict(body, id=rid)})
         # A Workers custom domain blocks a plain DNS record at its hostname, same as the reverse.
         if any(d["hostname"] == body.get("name") for d in state["domains"].values()):
             return self.reply(409, {"success": False, "errors": [{"message": "a Workers custom domain already exists for this hostname"}]})
@@ -107,6 +118,7 @@ class H(http.server.BaseHTTPRequestHandler):
         state["domains"].pop(rid, None)
         state["scripts"].pop(rid, None)
         state["records"].pop(rid, None)
+        state["routes"].pop(rid, None)
         return self.reply(200, {"success": True, "result": {}})
 
 

@@ -1,11 +1,20 @@
 # All values come from server.env, rendered from config.yaml. TLS-ALPN cannot be used off 443,
 # so certificates come from the http-01 challenge on port 80. CORVID_MTA_STS_SITE is empty
-# unless the web tier holds 443, the only port senders fetch an MTA-STS policy from.
-{$CORVID_WEB_HOSTNAME}:{$CORVID_WEB_PORT} {$CORVID_MTA_STS_SITE} {
+# unless the web tier holds 443, the only port senders fetch an MTA-STS policy from. The same
+# goes for CORVID_ASSETLINKS_SITE, the mail domain's own name when Caddy serves its app links.
+{$CORVID_WEB_HOSTNAME}:{$CORVID_WEB_PORT} {$CORVID_MTA_STS_SITE} {$CORVID_ASSETLINKS_SITE} {
 	@mta_sts host mta-sts.{$CORVID_MAIL_DOMAIN}
 	handle @mta_sts {
 		rewrite * /.well-known/mta-sts.txt
 		reverse_proxy 127.0.0.1:8080
+	}
+	@assetlinks {
+		host {$CORVID_ASSETLINKS_HOST:assetlinks.invalid}
+		path /.well-known/assetlinks.json
+	}
+	handle @assetlinks {
+		header Content-Type application/json
+		respond `{$CORVID_ASSETLINKS}` 200
 	}
 	handle /i/* {
 		reverse_proxy 127.0.0.1:8081

@@ -39,6 +39,7 @@ fn shell_prints_the_server_section_of_the_template() {
             "ISSUER_URL",
             "PUBLISH_MTA_STS",
             "PUBLISH_TLSA",
+            "PUBLISH_ASSETLINKS",
             "MTA_STS_MODE",
             "MTA_STS_ID",
             "CLIENT_SOURCES",

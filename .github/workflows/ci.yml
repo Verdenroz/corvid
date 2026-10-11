@@ -105,6 +105,8 @@ jobs:
       - run: bash deploy/tests/install.test.sh
       - run: bash deploy/tests/cloudflare.test.sh
       - run: bash deploy/tests/mta-sts-lib.test.sh
+      - run: bash deploy/tests/assetlinks-lib.test.sh
+      - run: bash deploy/tests/server-config-lib.test.sh
       - run: bash deploy/tests/idp-hostname.test.sh
       - run: bash deploy/tests/idp-dns-lib.test.sh
       - run: bash deploy/tests/srv-dns-lib.test.sh

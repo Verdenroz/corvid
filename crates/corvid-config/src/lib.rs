@@ -63,6 +63,11 @@ pub struct Server {
     /// lists and the sentinel accepts as WebAuthn origins. Defaults to the official release.
     #[serde(default = "official_apps")]
     pub android_apps: Vec<AndroidApp>,
+    /// Serve `/.well-known/assetlinks.json` from the web tier on the mail domain's own name.
+    /// Needs `web_port` 443 and the mail domain's A record pointing at this server. Off, a
+    /// Cloudflare Worker serves it or the operator does.
+    #[serde(default)]
+    pub assetlinks_caddy: bool,
     /// Who may reach the ports mail apps use: 465, 587, 993 and `web_port`.
     #[serde(default)]
     pub client_access: ClientAccess,
@@ -283,6 +288,16 @@ impl Server {
                 "server.hostname {} is not within server.host_zone {}",
                 self.hostname.0, zone.0
             )));
+        }
+        Ok(())
+    }
+
+    fn check_assetlinks_caddy(&self) -> Result<(), Error> {
+        if self.assetlinks_caddy && self.web_port.0 != 443 {
+            return Err(Error(
+                "server.assetlinks_caddy needs web_port 443: Android fetches assetlinks.json on 443 only"
+                    .to_owned(),
+            ));
         }
         Ok(())
     }
@@ -611,6 +626,7 @@ impl Config {
         if let Some(server) = &config.server {
             server.check_host_zone()?;
             server.check_idp_hostname()?;
+            server.check_assetlinks_caddy()?;
         }
         Ok(config)
     }
@@ -642,7 +658,7 @@ impl Config {
         Ok(format!(
             "MAIL_DOMAIN={}\nMAIL_HOSTNAME={}\nMAIL_USER={}\nACME_CONTACT={}\nWEB_PORT={}\nHOST_ZONE={}\n\
              IDP_HOSTNAME={}\nADMIN_USER={}\nIDP_URL={}\nSENTINEL_URL=http://{}\nISSUER_URL={}\nPUBLISH_MTA_STS={}\n\
-             PUBLISH_TLSA={}\nMTA_STS_MODE={}\nMTA_STS_ID={}\nCLIENT_SOURCES={}\nUPDATE_AUTO={}\n",
+             PUBLISH_TLSA={}\nPUBLISH_ASSETLINKS={}\nMTA_STS_MODE={}\nMTA_STS_ID={}\nCLIENT_SOURCES={}\nUPDATE_AUTO={}\n",
             server.domain.0,
             server.hostname.0,
             server.mail_user.0,
@@ -656,6 +672,7 @@ impl Config {
             issuer_url(&sentinel_addr),
             server.web_port.0 == 443,
             server.host_zone.is_none(),
+            server.assetlinks_caddy,
             server.mta_sts_mode.as_str(),
             server.mta_sts_id(),
             server.client_access.sources(),
@@ -848,7 +865,7 @@ mod server_tests {
                  ACME_CONTACT=you@elsewhere.example\nWEB_PORT=4443\nHOST_ZONE=\n\
                  IDP_HOSTNAME=idp.example.com\nADMIN_USER=alice-admin\n\
                  IDP_URL=http://127.0.0.1:1411\nSENTINEL_URL=http://127.0.0.1:11333\n\
-                 ISSUER_URL=http://127.0.0.1:11333/corvid/auth\nPUBLISH_MTA_STS=false\nPUBLISH_TLSA=true\nMTA_STS_MODE=testing\nMTA_STS_ID={id}\nCLIENT_SOURCES=any\nUPDATE_AUTO=true\n"
+                 ISSUER_URL=http://127.0.0.1:11333/corvid/auth\nPUBLISH_MTA_STS=false\nPUBLISH_TLSA=true\nPUBLISH_ASSETLINKS=false\nMTA_STS_MODE=testing\nMTA_STS_ID={id}\nCLIENT_SOURCES=any\nUPDATE_AUTO=true\n"
             )
         );
     }
@@ -965,6 +982,26 @@ mod server_tests {
         assert!(
             Config::parse("sentinel:\n  state: /s\n  auth:\n    state: /a\n    key: /k\n").is_err()
         );
+    }
+
+    #[test]
+    fn caddy_serves_assetlinks_only_when_asked_and_only_on_443() {
+        let off = Config::parse(SERVER).unwrap().shell().unwrap();
+        assert!(
+            off.lines().any(|l| l == "PUBLISH_ASSETLINKS=false"),
+            "{off}"
+        );
+
+        let on = Config::parse(&format!(
+            "{SERVER}  web_port: 443\n  assetlinks_caddy: true\n"
+        ))
+        .unwrap()
+        .shell()
+        .unwrap();
+        assert!(on.lines().any(|l| l == "PUBLISH_ASSETLINKS=true"), "{on}");
+
+        let error = Config::parse(&format!("{SERVER}  assetlinks_caddy: true\n")).unwrap_err();
+        assert!(error.to_string().contains("web_port 443"), "{error}");
     }
 
     #[test]

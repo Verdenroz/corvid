@@ -125,6 +125,23 @@ else
   done
 fi
 
+echo "== app links =="
+# Credential Manager reads this on 443 with no redirect, so it is fetched the way a phone would,
+# through real DNS. Not served is a warning, since mail does not wait on the Android app; a
+# document that differs, a redirect or the wrong type is a failure, since it is worse than none.
+links_url="https://$MAIL_DOMAIN/.well-known/assetlinks.json"
+expected="$(corvid_config assetlinks 2>/dev/null)" || expected=
+if [[ -z "$expected" ]]; then
+  warn "corvid-config could not render the app links, so $links_url is not checked"
+else
+  verdict="$(assetlinks_verdict "$links_url" "$expected")"
+  case "${verdict%% *}" in
+    ok) ok "${verdict#* }" ;;
+    warn) warn "${verdict#* }" ;;
+    *) bad "${verdict#* }" ;;
+  esac
+fi
+
 echo "== app release =="
 if [[ ! -e "$CORVID_DIR/apps/current/manifest.json" ]]; then
   warn "no app release in this image"
