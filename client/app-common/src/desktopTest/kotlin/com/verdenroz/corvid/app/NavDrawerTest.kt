@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ComposeUiTest
@@ -15,8 +16,11 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.runDesktopComposeUiTest
+import androidx.compose.ui.test.swipe
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
@@ -38,6 +42,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
 
 @OptIn(ExperimentalTestApi::class)
@@ -61,36 +66,47 @@ class NavDrawerTest {
     private val menu =
         SemanticsMatcher("opens the drawer") { it.config.getOrNull(SemanticsActions.OnClick)?.label == "Open folders" }
 
-    private fun narrowHome(check: ComposeUiTest.() -> Unit) =
-        runDesktopComposeUiTest(width = 400, height = 860) {
-            setContent {
-                val saved = rememberSaveableStateHolder()
-                navigator = remember { Navigator(mutableStateListOf(Route.Home(HomeTab.Inbox)), saved) }
-                val scope = rememberCoroutineScope()
-                val key = remember { KeyState("n1", MutableStateFlow(null), 5.minutes) {} }
-                escape.Attach()
-                NavigationBackHandler(
-                    state = rememberNavigationEventState(NavigationEventInfo.None),
-                    isBackEnabled = true,
-                    onBackCompleted = { shellBacks++ },
-                )
-                CorvidTheme(darkTheme = false) {
-                    CompositionLocalProvider(LocalWideLayout provides false) {
-                        NavDrawer(
-                            state = drawer,
-                            enabled = navigator.route is Route.Home,
-                            places = Places(sidebarPlace(navigator.homeTab, navigator.route), 1, navigator::openTab, {}, {}),
-                        ) {
-                            Home(Route.Home(navigator.homeTab), key, ShellState(), navigator, ledgers) { scope.launch { drawer.open() } }
-                        }
+    private fun narrowHome(
+        open: Boolean = true,
+        check: ComposeUiTest.() -> Unit,
+    ) = runDesktopComposeUiTest(width = 400, height = 860) {
+        setContent {
+            val saved = rememberSaveableStateHolder()
+            navigator = remember { Navigator(mutableStateListOf(Route.Home(HomeTab.Inbox)), saved) }
+            val scope = rememberCoroutineScope()
+            val key = remember { KeyState("n1", MutableStateFlow(null), 5.minutes) {} }
+            escape.Attach()
+            NavigationBackHandler(
+                state = rememberNavigationEventState(NavigationEventInfo.None),
+                isBackEnabled = true,
+                onBackCompleted = { shellBacks++ },
+            )
+            CorvidTheme(darkTheme = false) {
+                CompositionLocalProvider(LocalWideLayout provides false) {
+                    NavDrawer(
+                        state = drawer,
+                        enabled = navigator.route is Route.Home,
+                        places =
+                            Places(
+                                sidebarPlace(navigator.homeTab, navigator.route, navigator.searching),
+                                1,
+                                navigator::openTab,
+                                {},
+                                {},
+                            ),
+                    ) {
+                        Home(Route.Home(navigator.homeTab), key, ShellState(), navigator, ledgers) { scope.launch { drawer.open() } }
                     }
                 }
             }
-            waitUntil(timeoutMillis = 5_000) { shows("kept subject") }
+        }
+        waitUntil(timeoutMillis = 5_000) { shows("kept subject") }
+        if (open) {
             onNode(menu).performClick()
             waitUntil(timeoutMillis = 5_000) { drawer.currentValue == DrawerValue.Open && !drawer.isAnimationRunning }
-            check()
         }
+        check()
+    }
 
     private fun ComposeUiTest.shows(text: String) = onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
 
@@ -112,6 +128,23 @@ class NavDrawerTest {
             waitUntil(timeoutMillis = 5_000) { drawer.isClosed && !drawer.isAnimationRunning }
             assertEquals(0, shellBacks)
             assertEquals(HomeTab.Inbox, navigator.homeTab)
+        }
+    }
+
+    @Test
+    fun `a swipe right that starts away from the edge leaves the drawer closed`() {
+        narrowHome(open = false) {
+            onRoot().performTouchInput { swipe(Offset(centerX - 100f, bottom - 120f), Offset(right - 10f, bottom - 120f)) }
+            waitForIdle()
+            assertTrue(drawer.isClosed)
+        }
+    }
+
+    @Test
+    fun `a swipe right from the start edge opens the drawer`() {
+        narrowHome(open = false) {
+            onRoot().performTouchInput { swipe(Offset(left + 4f, bottom - 120f), Offset(left + 300f, bottom - 120f)) }
+            waitUntil(timeoutMillis = 5_000) { drawer.currentValue == DrawerValue.Open && !drawer.isAnimationRunning }
         }
     }
 }

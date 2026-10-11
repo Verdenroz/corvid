@@ -1,7 +1,11 @@
 package com.verdenroz.corvid.app.shell
 
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CornerSize
@@ -10,8 +14,13 @@ import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
@@ -22,10 +31,11 @@ import kotlinx.coroutines.launch
 
 private val DRAWER_WIDTH = 296.dp
 private val DRAWER_ROW = 48.dp
+private val EDGE = 20.dp
 
 /**
- * Narrow only: the sidebar's places in a drawer from the start edge. A swipe right opens it while
- * [enabled]; Back, the scrim and any choice close it.
+ * Narrow only: the sidebar's places in a drawer from the start edge. While [enabled], only a swipe right that starts on
+ * the edge strip opens it; Back, the scrim, a swipe left and any choice close it.
  */
 @Composable
 internal fun NavDrawer(
@@ -52,7 +62,7 @@ internal fun NavDrawer(
     }
     ModalNavigationDrawer(
         drawerState = state,
-        gesturesEnabled = enabled || opening || state.isOpen,
+        gesturesEnabled = opening || state.isOpen,
         scrimColor = colors.scrim,
         drawerContent = {
             ModalDrawerSheet(
@@ -75,6 +85,28 @@ internal fun NavDrawer(
                 }
             }
         },
-        content = content,
+    ) {
+        Box(Modifier.fillMaxSize()) {
+            content()
+            if (enabled && !opening) EdgeStrip(onOpen = { scope.launch { state.open() } })
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.EdgeStrip(onOpen: () -> Unit) {
+    val reach = with(LocalDensity.current) { EDGE.toPx() }
+    val open by rememberUpdatedState(onOpen)
+    Box(
+        Modifier.align(Alignment.CenterStart).fillMaxHeight().width(EDGE).pointerInput(Unit) {
+            var dragged = 0f
+            detectHorizontalDragGestures(onDragStart = { dragged = 0f }) { change, amount ->
+                dragged += amount
+                if (dragged > reach) {
+                    change.consume()
+                    open()
+                }
+            }
+        },
     )
 }

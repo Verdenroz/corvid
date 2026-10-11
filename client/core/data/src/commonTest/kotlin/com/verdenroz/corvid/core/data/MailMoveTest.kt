@@ -10,6 +10,7 @@ import com.verdenroz.corvid.core.testing.withRoleMailboxes
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -32,6 +33,19 @@ class MailMoveTest {
 
             assertEquals(setOf("work"), fake.boxesOf("m1"))
             assertEquals(setOf("m1"), move.moved)
+        }
+
+    @Test
+    fun `the Email state an archive produced is known as the client's own`() =
+        runTest {
+            val fake = server("archive")
+            fake.emails += message("m1", "inbox")
+            val repository = MailboxRepository(fake.client())
+
+            repository.archive(listOf("m1"))
+
+            assertTrue(repository.isOwnEmailState("s1"))
+            assertFalse(repository.isOwnEmailState("s0"))
         }
 
     @Test

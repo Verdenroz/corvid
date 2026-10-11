@@ -20,7 +20,9 @@ import com.verdenroz.corvid.core.model.HtmlBody
 import com.verdenroz.corvid.core.model.Identity
 import com.verdenroz.corvid.core.model.Mailbox
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.datetime.TimeZone
@@ -44,6 +46,7 @@ import kotlin.time.Instant
 
 private const val PAGE_SIZE = 50
 private const val SET_CHUNK = 250
+private const val OWN_STATES = 16
 const val INBOX = "inbox"
 const val SENT = "sent"
 const val DRAFTS = "drafts"
@@ -146,6 +149,11 @@ class MailboxRepository(
 
     /** Every archive, trash, undo and delete, as it starts and as it ends, so each list can hide and then refetch its own rows. */
     val moves: SharedFlow<MoveEvent> = _moves
+
+    private val ownStates = MutableStateFlow<List<String>>(emptyList())
+
+    /** Whether [state] is an Email state one of this client's own recent writes produced, so a push of it brings nothing new. */
+    fun isOwnEmailState(state: String): Boolean = state in ownStates.value
 
     /** The one path images in delivered mail may load from: the milter rewrites each remote image to it. */
     val imageProxyBase: String get() = "${jmapClient.webBase}/i/"
@@ -534,6 +542,7 @@ class MailboxRepository(
                 if (destroy.isNotEmpty()) putJsonArray("destroy") { destroy.forEach { add(JsonPrimitive(it)) } }
             }
         val result = jmapClient.callOne("Email/set", arguments)
+        result["newState"]?.jsonPrimitive?.contentOrNull?.let { state -> ownStates.update { (it + state).takeLast(OWN_STATES) } }
         val notUpdated = update.keys.mapNotNull { id -> result.setErrorReason("notUpdated", id)?.let { id to it } }
         val notDestroyed = destroy.mapNotNull { id -> result.setErrorReason("notDestroyed", id)?.let { id to it } }
         return (notUpdated + notDestroyed).toMap()

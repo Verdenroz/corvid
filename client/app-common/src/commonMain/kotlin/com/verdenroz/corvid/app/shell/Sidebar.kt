@@ -56,23 +56,30 @@ private val ICON_START = 14.dp
 private val ICON_SIZE = 18.dp
 private val ROW_HEIGHT = 38.dp
 
-/** What the sidebar marks as current: a home tab, or one of the pages at its foot. */
+/** What the sidebar marks as current: a home tab, one of the pages at its foot, or nothing while a search is open. */
 internal sealed interface SidebarPlace {
     data class Tab(val tab: HomeTab) : SidebarPlace
 
     data object Filters : SidebarPlace
 
     data object Settings : SidebarPlace
+
+    data object Search : SidebarPlace
 }
 
-/** A page opened from the sidebar's foot marks that page; anything else keeps the tab it was opened from. */
+/**
+ * A page opened from the sidebar's foot marks that page, and search results, or anything opened from them, mark no
+ * place, since they come from every folder; anything else keeps the tab it was opened from.
+ */
 internal fun sidebarPlace(
     root: HomeTab,
     top: Route,
+    searching: Boolean,
 ): SidebarPlace =
-    when (top) {
-        Route.Filters -> SidebarPlace.Filters
-        Route.Settings, Route.Notices, Route.ApproveDevice -> SidebarPlace.Settings
+    when {
+        top == Route.Filters -> SidebarPlace.Filters
+        top == Route.Settings || top == Route.Notices || top == Route.ApproveDevice -> SidebarPlace.Settings
+        searching -> SidebarPlace.Search
         else -> SidebarPlace.Tab(root)
     }
 
