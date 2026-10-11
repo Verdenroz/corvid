@@ -20,9 +20,9 @@ recovery_pw=RigRecovery-93kQxz7pW
 work="$(mktemp -d)"
 mail="corvid-rig-push-$$"
 volumes=("$mail-etc" "$mail-data")
-proxy_pid= sentinel_pid= stream_pid=
+proxy_pid='' sentinel_pid='' stream_pid=''
 trap '"$engine" rm -f "$mail" >/dev/null 2>&1; "$engine" volume rm "${volumes[@]}" >/dev/null 2>&1
-  for pid in $proxy_pid $sentinel_pid $stream_pid; do kill "$pid" 2>/dev/null; done
+  kill "$proxy_pid" "$sentinel_pid" "$stream_pid" 2>/dev/null
   rm -rf "$work"' EXIT
 
 command -v stalwart-cli >/dev/null || { echo "stalwart-cli not found" >&2; exit 69; }

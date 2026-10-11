@@ -25,6 +25,15 @@ impl Vapid {
     /// Reads the key at `path`, creating it read-only on first use. It is never replaced: every
     /// registration made under the old key would stop being accepted.
     pub fn open(path: &Path) -> io::Result<Self> {
+        if !path.exists() {
+            Self::create(path)?;
+        }
+        SigningKey::from_slice(&fs::read(path)?)
+            .map(|key| Self { key })
+            .map_err(|error| io::Error::new(ErrorKind::InvalidData, error))
+    }
+
+    fn create(path: &Path) -> io::Result<()> {
         let pending = path.with_extension("key.tmp");
         match fs::remove_file(&pending) {
             Err(error) if error.kind() != ErrorKind::NotFound => return Err(error),
@@ -42,10 +51,7 @@ impl Vapid {
             Err(error) if error.kind() != ErrorKind::AlreadyExists => return Err(error),
             _ => {}
         }
-        fs::remove_file(&pending)?;
-        SigningKey::from_slice(&fs::read(path)?)
-            .map(|key| Self { key })
-            .map_err(|error| io::Error::new(ErrorKind::InvalidData, error))
+        fs::remove_file(&pending)
     }
 
     fn generate() -> SigningKey {
