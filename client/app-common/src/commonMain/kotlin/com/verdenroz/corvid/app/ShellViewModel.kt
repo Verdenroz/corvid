@@ -2,6 +2,7 @@ package com.verdenroz.corvid.app
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.verdenroz.corvid.core.data.INBOX
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.model.Identity
@@ -23,7 +24,7 @@ class ShellViewModel(private val repository: MailboxRepository) : ViewModel() {
     fun refresh() {
         viewModelScope.launch {
             try {
-                val unread = repository.findMailboxByRole("inbox")?.unreadEmails
+                val unread = repository.findMailboxByRole(INBOX)?.unreadEmails
                 val identity = repository.identity()
                 _state.update { it.copy(inboxUnread = unread, identity = identity) }
             } catch (e: JmapException) {

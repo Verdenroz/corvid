@@ -1,11 +1,18 @@
 package com.verdenroz.corvid.feature.mailbox
 
+import com.verdenroz.corvid.core.data.ARCHIVE
+import com.verdenroz.corvid.core.data.INBOX
+import com.verdenroz.corvid.core.data.JUNK
 import com.verdenroz.corvid.core.data.MailboxRepository
+import com.verdenroz.corvid.core.data.TRASH
+import com.verdenroz.corvid.core.model.CorvidKeywords
 import com.verdenroz.corvid.core.testing.FakeEmail
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.FakeMailbox
+import com.verdenroz.corvid.core.testing.boxesOf
 import com.verdenroz.corvid.core.testing.client
 import com.verdenroz.corvid.core.testing.runViewModelTest
+import com.verdenroz.corvid.core.testing.withRoleMailboxes
 import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.uiPlural
 import com.verdenroz.corvid.feature.mailbox.resources.Res
@@ -23,14 +30,10 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 private fun server() =
-    FakeJmapServer().apply {
-        mailboxes += FakeMailbox("inbox", "Inbox", "inbox")
-        mailboxes += FakeMailbox("trash", "Trash", "trash")
-        mailboxes += FakeMailbox("archive", "Archive", "archive")
-        emails += FakeEmail("m1", "m1", setOf("inbox"), "subject", "a@example.test", "2024-01-01T00:00:00Z", keywords = setOf("\$seen"))
+    FakeJmapServer().withRoleMailboxes(INBOX, TRASH, ARCHIVE).apply {
+        emails +=
+            FakeEmail("m1", "m1", setOf(INBOX), "subject", "a@example.test", "2024-01-01T00:00:00Z", keywords = setOf(CorvidKeywords.SEEN))
     }
-
-private fun FakeJmapServer.boxesOf(id: String) = emails.single { it.id == id }.mailboxIds
 
 class MailActionsTest {
     @Test
@@ -76,7 +79,7 @@ class MailActionsTest {
                 patched.await()
             }
 
-            assertTrue("\$seen" !in fake.emails.single().keywords)
+            assertTrue(CorvidKeywords.SEEN !in fake.emails.single().keywords)
             assertNull(actions.notice.value)
         }
 
@@ -84,7 +87,7 @@ class MailActionsTest {
     fun `reported spam lands in junk and undo puts it back in the inbox`() =
         runViewModelTest {
             val fake = server()
-            fake.mailboxes += FakeMailbox("junk", "Junk", "junk")
+            fake.withRoleMailboxes(JUNK)
             val actions = track(MailActions(MailboxRepository(fake.client())))
 
             actions.reportSpam(setOf("m1"), conversations = 1)

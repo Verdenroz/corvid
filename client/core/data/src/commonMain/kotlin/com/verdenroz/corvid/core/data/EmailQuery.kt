@@ -7,8 +7,37 @@ import com.verdenroz.corvid.core.jmap.resultReference
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
+
+internal val NEWEST_FIRST = receivedAtSort(ascending = false)
+
+internal fun receivedAtSort(ascending: Boolean): JsonArray =
+    buildJsonArray {
+        addJsonObject {
+            put("property", "receivedAt")
+            put("isAscending", ascending)
+        }
+    }
+
+/** An RFC 8621 FilterOperator: AND, OR or NOT over [conditions]. */
+internal fun operator(
+    name: String,
+    conditions: List<JsonObject>,
+): JsonObject =
+    buildJsonObject {
+        put("operator", name)
+        putJsonArray("conditions") { conditions.forEach { add(it) } }
+    }
+
+/** A FilterCondition on one property. */
+internal fun condition(
+    property: String,
+    value: String,
+): JsonObject = buildJsonObject { put(property, value) }
 
 internal class QueryAndGet(val query: MethodOutcome, val get: MethodOutcome)
 

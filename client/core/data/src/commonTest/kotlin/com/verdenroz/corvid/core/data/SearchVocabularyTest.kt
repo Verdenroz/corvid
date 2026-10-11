@@ -32,7 +32,7 @@ private fun server() =
                 .copy(preview = "Invoice paid")
     }
 
-private suspend fun filter(text: String) = SearchVocabulary(MailSample(server().client())).searchFilter(text)
+private suspend fun filter(text: String) = SearchVocabulary(MailSample(server().client())).completions(text)
 
 private fun JsonObject.conditions() = getValue("conditions").jsonArray.map { it.jsonObject }
 
@@ -67,15 +67,6 @@ class SearchVocabularyTest {
             val leaves = filter("invo").leaves()
 
             assertEquals(listOf("invo", "invoice", "invoices"), leaves.filter { it.first == "text" }.map { it.second })
-        }
-
-    @Test
-    fun `earlier words must all match and only the last is completed`() =
-        runTest {
-            val filter = filter("paid invo")
-
-            assertEquals("AND", filter.getValue("operator").jsonPrimitive.content)
-            assertEquals(buildJsonObject { put("text", "paid") }, filter.conditions().first())
         }
 
     @Test

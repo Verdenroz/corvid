@@ -3,8 +3,8 @@ package com.verdenroz.corvid.core.data
 import com.verdenroz.corvid.core.model.CorvidKeywords
 import com.verdenroz.corvid.core.testing.FakeEmail
 import com.verdenroz.corvid.core.testing.FakeJmapServer
-import com.verdenroz.corvid.core.testing.FakeMailbox
 import com.verdenroz.corvid.core.testing.client
+import com.verdenroz.corvid.core.testing.withRoleMailboxes
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.TimeZone
 import kotlin.test.Test
@@ -21,18 +21,14 @@ private object FixedClock : Clock {
 }
 
 private fun server() =
-    FakeJmapServer().apply {
-        mailboxes += FakeMailbox("inbox", "Inbox", INBOX)
-        mailboxes += FakeMailbox("sent", "Sent", "sent")
-        mailboxes += FakeMailbox("trash", "Trash", TRASH)
-        mailboxes += FakeMailbox("junk", "Junk", JUNK)
+    FakeJmapServer().withRoleMailboxes(INBOX, SENT, TRASH, JUNK).apply {
         emails +=
             email("invoice", INBOX, "Your invoice", "billing@shop.test", "2026-10-09")
                 .copy(hasAttachment = true, cc = listOf("accounts@shop.test"))
         emails +=
             email("lunch", INBOX, "Lunch on Friday", "ada@friends.test", "2026-06-01")
                 .copy(keywords = setOf(CorvidKeywords.SEEN, CorvidKeywords.FLAGGED), preview = "the usual place")
-        emails += email("reply", "sent", "Re: Lunch on Friday", "me@home.test", "2026-06-02").copy(to = listOf("ada@friends.test"))
+        emails += email("reply", SENT, "Re: Lunch on Friday", "me@home.test", "2026-06-02").copy(to = listOf("ada@friends.test"))
         emails += email("binned", TRASH, "Old invoice", "billing@shop.test", "2025-01-01")
         emails += email("spam", JUNK, "Invoice overdue!!", "scam@bad.test", "2026-10-08")
     }

@@ -2,8 +2,8 @@ package com.verdenroz.corvid.core.data
 
 import com.verdenroz.corvid.core.testing.FakeEmail
 import com.verdenroz.corvid.core.testing.FakeJmapServer
-import com.verdenroz.corvid.core.testing.FakeMailbox
 import com.verdenroz.corvid.core.testing.client
+import com.verdenroz.corvid.core.testing.withRoleMailboxes
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
@@ -141,8 +141,7 @@ class ThreadsTest {
     fun `starred leaves out a starred message in trash or junk`() =
         runTest {
             val fake = FakeJmapServer()
-            fake.mailboxes += FakeMailbox("trash", "Trash", "trash")
-            fake.mailboxes += FakeMailbox("junk", "Junk", "junk")
+            fake.withRoleMailboxes(TRASH, JUNK)
             val starred = setOf("\$seen", "\$flagged")
             fake.emails += message("a1", "a", "2024-01-01T00:00:00Z", keywords = starred)
             fake.emails += message("b1", "b", "2024-01-02T00:00:00Z", mailbox = "trash", keywords = starred)
@@ -157,7 +156,7 @@ class ThreadsTest {
     fun `a search leaves out trash`() =
         runTest {
             val fake = FakeJmapServer()
-            fake.mailboxes += FakeMailbox("trash", "Trash", "trash")
+            fake.withRoleMailboxes(TRASH)
             fake.emails += message("a1", "a", "2024-01-01T00:00:00Z")
             fake.emails += message("b1", "b", "2024-01-02T00:00:00Z", mailbox = "trash")
 

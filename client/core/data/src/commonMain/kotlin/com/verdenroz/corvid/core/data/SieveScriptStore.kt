@@ -59,7 +59,7 @@ internal class SieveScriptStore(private val jmapClient: JmapClient) {
         val snapshot = snapshot()
         snapshot.foreignActive?.let { if (!replaceForeign) return SaveResult.NeedsConfirmation(it.name) }
 
-        val trashId = snapshot.mailboxes.firstOrNull { it.role == "trash" }?.id
+        val trashId = snapshot.mailboxes.firstOrNull { it.role == TRASH }?.id
         if (script.needsTrash && trashId == null) return SaveResult.Rejected(uiText(Res.string.no_trash_folder))
         val blobId = jmapClient.uploadBlob(script.render(trashId).encodeToByteArray(), SIEVE_TYPE)
         val reason = jmapClient.callOne("SieveScript/set", setScript(snapshot.own, blobId)).setFailure(snapshot.own)

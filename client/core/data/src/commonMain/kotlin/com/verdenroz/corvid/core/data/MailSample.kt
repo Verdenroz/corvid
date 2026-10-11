@@ -6,14 +6,12 @@ import com.verdenroz.corvid.core.model.CorvidKeywords
 import com.verdenroz.corvid.core.model.EmailAddress
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
-import kotlinx.serialization.json.putJsonArray
 import kotlin.time.Instant
 
 private const val SAMPLE = 500
@@ -40,12 +38,7 @@ internal class MailSample(private val jmapClient: JmapClient) {
     private suspend fun fetch(): List<SampledEmail> {
         val query =
             buildJsonObject {
-                putJsonArray("sort") {
-                    addJsonObject {
-                        put("property", "receivedAt")
-                        put("isAscending", false)
-                    }
-                }
+                put("sort", NEWEST_FIRST)
                 put("limit", SAMPLE)
             }
         return jmapClient.queryAndGet(query, SAMPLE_PROPERTIES).get.resultOrThrow()

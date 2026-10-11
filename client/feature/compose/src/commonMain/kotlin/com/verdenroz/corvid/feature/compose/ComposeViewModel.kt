@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.core.data.ComposeRepository
 import com.verdenroz.corvid.core.data.Contact
+import com.verdenroz.corvid.core.data.DRAFTS
 import com.verdenroz.corvid.core.data.DraftSaveResult
 import com.verdenroz.corvid.core.data.PickedFile
 import com.verdenroz.corvid.core.data.SendResult
@@ -89,7 +90,7 @@ class ComposeViewModel(
                     // Suggestions are a convenience; a field typed in full still sends.
                     emptyList()
                 }
-            _state.update { if (it is ComposeUiState.Editing) it.suggesting() else it }
+            updateEditing { suggesting() }
         }
     }
 
@@ -285,7 +286,7 @@ class ComposeViewModel(
                 } catch (e: JmapException) {
                     e.userMessage()
                 }
-            _state.update { if (it is ComposeUiState.Editing) it.copy(saveFailed = failure != null) else it }
+            updateEditing { copy(saveFailed = failure != null) }
             failure
         }
 
@@ -295,12 +296,12 @@ class ComposeViewModel(
     ): UiText? {
         if (form.isBlank()) {
             current.draftId?.let { composeRepository.discard(it) }
-            _state.update { if (it is ComposeUiState.Editing) it.copy(draftId = null, stored = form) else it }
+            updateEditing { copy(draftId = null, stored = form) }
             return null
         }
         return when (val saved = composeRepository.save(form.applyTo(current.seed), current.draftId)) {
             is DraftSaveResult.Saved -> {
-                _state.update { if (it is ComposeUiState.Editing) it.copy(draftId = saved.emailId, stored = form) else it }
+                updateEditing { copy(draftId = saved.emailId, stored = form) }
                 null
             }
             is DraftSaveResult.Rejected -> UiText.FromServer(saved.reason)
@@ -326,7 +327,7 @@ private fun SendUnavailable.message() =
         is SendUnavailable.NoIdentity -> uiText(Res.string.compose_no_identity)
         is SendUnavailable.NoMailbox ->
             uiText(
-                if (role == "drafts") Res.string.compose_no_drafts_mailbox else Res.string.compose_no_sent_mailbox,
+                if (role == DRAFTS) Res.string.compose_no_drafts_mailbox else Res.string.compose_no_sent_mailbox,
             )
     }
 

@@ -1,8 +1,10 @@
 package com.verdenroz.corvid.feature.mailbox
 
 import com.verdenroz.corvid.core.data.ARCHIVE
+import com.verdenroz.corvid.core.data.DRAFTS
 import com.verdenroz.corvid.core.data.INBOX
 import com.verdenroz.corvid.core.data.JUNK
+import com.verdenroz.corvid.core.data.SENT
 import com.verdenroz.corvid.core.data.TRASH
 import com.verdenroz.corvid.core.model.Conversation
 import com.verdenroz.corvid.core.text.UiText
@@ -11,8 +13,8 @@ import com.verdenroz.corvid.core.text.UiText
 enum class LedgerTab(val role: String?) {
     Inbox(INBOX),
     Starred(null),
-    Sent("sent"),
-    Drafts("drafts"),
+    Sent(SENT),
+    Drafts(DRAFTS),
     Archive(ARCHIVE),
     Junk(JUNK),
     Trash(TRASH),

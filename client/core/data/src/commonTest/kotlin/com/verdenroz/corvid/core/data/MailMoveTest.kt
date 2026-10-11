@@ -4,7 +4,9 @@ import com.verdenroz.corvid.core.model.HeaderField
 import com.verdenroz.corvid.core.testing.FakeEmail
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.FakeMailbox
+import com.verdenroz.corvid.core.testing.boxesOf
 import com.verdenroz.corvid.core.testing.client
+import com.verdenroz.corvid.core.testing.withRoleMailboxes
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -16,13 +18,7 @@ private fun message(
     vararg mailboxes: String,
 ) = FakeEmail(id, id, mailboxes.toSet(), "subject", "$id@example.test", "2024-01-01T00:00:00Z")
 
-private fun server(vararg roles: String) =
-    FakeJmapServer().apply {
-        mailboxes += FakeMailbox("inbox", "Inbox", "inbox")
-        roles.forEach { mailboxes += FakeMailbox(it, it, it) }
-    }
-
-private fun FakeJmapServer.boxesOf(id: String) = emails.single { it.id == id }.mailboxIds
+private fun server(vararg roles: String) = FakeJmapServer().withRoleMailboxes(INBOX, *roles)
 
 class MailMoveTest {
     @Test

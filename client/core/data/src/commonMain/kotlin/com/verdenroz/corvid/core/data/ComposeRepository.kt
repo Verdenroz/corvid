@@ -208,8 +208,8 @@ class ComposeRepository(
             outcomes.getValue("c1").resultOrThrow().getValue("list").jsonArray
                 .map { it.jsonObject }
                 .associate { it["role"]?.jsonPrimitive?.contentOrNull to it.getValue("id").jsonPrimitive.content }
-        val draftsId = roles["drafts"] ?: return Loaded.Unavailable(SendUnavailable.NoMailbox("drafts"))
-        val sentId = roles["sent"] ?: return Loaded.Unavailable(SendUnavailable.NoMailbox("sent"))
+        val draftsId = roles[DRAFTS] ?: return Loaded.Unavailable(SendUnavailable.NoMailbox(DRAFTS))
+        val sentId = roles[SENT] ?: return Loaded.Unavailable(SendUnavailable.NoMailbox(SENT))
         return Loaded.Ready(identity, draftsId, sentId)
     }
 }

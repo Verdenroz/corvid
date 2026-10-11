@@ -28,7 +28,6 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
@@ -46,9 +45,12 @@ import kotlin.time.Instant
 private const val PAGE_SIZE = 50
 private const val SET_CHUNK = 250
 const val INBOX = "inbox"
+const val SENT = "sent"
+const val DRAFTS = "drafts"
 const val TRASH = "trash"
 const val ARCHIVE = "archive"
 const val JUNK = "junk"
+private val MAILBOX_PROPERTIES = listOf("id", "name", "role", "parentId", "totalEmails", "unreadEmails")
 private const val MAX_BODY_VALUE_BYTES = 262_144
 internal val EMAIL_PROPERTIES =
     listOf("id", "threadId", "subject", "from", "receivedAt", "keywords", "preview", "hasAttachment") + PROVENANCE_PROPERTIES
@@ -134,6 +136,7 @@ class MailboxRepository(
     private val rolesLock = Mutex()
     private var identities: List<Identity>? = null
     private var roleIds: Map<String, String>? = null
+    private var lastMailboxes: List<Mailbox>? = null
     private val _keywordPatches = MutableSharedFlow<KeywordPatch>(extraBufferCapacity = 16)
 
     /** Every patch [updateKeywords] got through, so a list already on screen can apply it without refetching. */
@@ -168,11 +171,31 @@ class MailboxRepository(
     suspend fun download(attachment: Attachment): ByteArray =
         jmapClient.downloadBlob(attachment.blobId, attachment.fileName(), attachment.type)
 
+    /** Every mailbox with its counts, fetched now; [knownMailboxes] answers with this list until the next call. */
     suspend fun mailboxes(): List<Mailbox> =
-        jmapClient.callOne("Mailbox/get", JsonObject(emptyMap())).getValue("list").jsonArray.map { it.jsonObject.toMailbox() }
+        fetchMailboxes(ids = null).also { boxes ->
+            lastMailboxes = boxes
+            rolesLock.withLock { if (roleIds == null) roleIds = boxes.roleIds() }
+        }
+
+    /** The last [mailboxes] answer, fetched only when there is none, so its counts may be stale. */
+    suspend fun knownMailboxes(): List<Mailbox> = lastMailboxes ?: mailboxes()
 
     /** Counts change with every message, so this always asks the server; for the id alone use [mailboxId]. */
-    suspend fun findMailboxByRole(role: String): Mailbox? = mailboxes().firstOrNull { it.role == role }
+    suspend fun findMailboxByRole(role: String): Mailbox? {
+        val ids = rolesLock.withLock { roleIds } ?: return mailboxes().firstOrNull { it.role == role }
+        val id = ids[role] ?: return null
+        return fetchMailboxes(listOf(id)).firstOrNull()
+    }
+
+    private suspend fun fetchMailboxes(ids: List<String>?): List<Mailbox> {
+        val arguments =
+            buildJsonObject {
+                ids?.let { putJsonArray("ids") { it.forEach { id -> add(JsonPrimitive(id)) } } }
+                putJsonArray("properties") { MAILBOX_PROPERTIES.forEach { add(JsonPrimitive(it)) } }
+            }
+        return jmapClient.callOne("Mailbox/get", arguments).getValue("list").jsonArray.map { it.jsonObject.toMailbox() }
+    }
 
     /**
      * The newest Inbox messages, read or not, leaving out any from the account's own address, so mail sent to
@@ -181,26 +204,11 @@ class MailboxRepository(
     suspend fun inboxArrivals(): List<InboxArrival> {
         val inbox = mailboxId(INBOX) ?: return emptyList()
         val own = identity()?.email
+        val notOwn = own?.let { operator("NOT", listOf(condition("from", it))) }
         val query =
             buildJsonObject {
-                putJsonObject("filter") {
-                    put("operator", "AND")
-                    putJsonArray("conditions") {
-                        addJsonObject { put("inMailbox", inbox) }
-                        own?.let {
-                            addJsonObject {
-                                put("operator", "NOT")
-                                putJsonArray("conditions") { addJsonObject { put("from", it) } }
-                            }
-                        }
-                    }
-                }
-                putJsonArray("sort") {
-                    addJsonObject {
-                        put("property", "receivedAt")
-                        put("isAscending", false)
-                    }
-                }
+                put("filter", operator("AND", listOfNotNull(condition("inMailbox", inbox), notOwn)))
+                put("sort", NEWEST_FIRST)
                 put("limit", PAGE_SIZE)
             }
         val found = jmapClient.queryAndGet(query, listOf("id", "receivedAt", "keywords")).get.resultOrThrow()
@@ -217,9 +225,15 @@ class MailboxRepository(
     /** The id of the mailbox with [role], fetched once: roles do not move while the app is open. */
     suspend fun mailboxId(role: String): String? =
         rolesLock.withLock {
-            val ids = roleIds ?: mailboxes().mapNotNull { box -> box.role?.let { it to box.id } }.toMap().also { roleIds = it }
+            val ids = roleIds ?: fetchMailboxes(ids = null).also { lastMailboxes = it }.roleIds().also { roleIds = it }
             ids[role]
         }
+
+    /** Whether [mailboxIds] is Trash alone or Junk alone, where a message can be deleted for good. */
+    suspend fun discardedOnly(mailboxIds: Set<String>): Boolean {
+        val discarded = listOfNotNull(mailboxId(TRASH), mailboxId(JUNK)).map(::setOf)
+        return mailboxIds in discarded
+    }
 
     /** Lists conversations, newest first, unless the filter is not [MailFilter.threaded]; then each row is one message. */
     suspend fun page(
@@ -231,12 +245,7 @@ class MailboxRepository(
         val queryArguments =
             buildJsonObject {
                 put("filter", condition)
-                putJsonArray("sort") {
-                    addJsonObject {
-                        put("property", "receivedAt")
-                        put("isAscending", false)
-                    }
-                }
+                put("sort", NEWEST_FIRST)
                 put("collapseThreads", grouped)
                 put("limit", PAGE_SIZE)
                 anchor?.let {
@@ -254,26 +263,21 @@ class MailboxRepository(
      */
     private suspend fun serverFilter(filter: MailFilter): JsonObject? =
         when (filter) {
-            is MailFilter.InMailbox -> buildJsonObject { put("inMailbox", filter.mailboxId) }
-            is MailFilter.Starred -> outsideDiscarded(buildJsonObject { put("hasKeyword", CorvidKeywords.FLAGGED) })
+            is MailFilter.InMailbox -> condition("inMailbox", filter.mailboxId)
+            is MailFilter.Starred -> outsideDiscarded(condition("hasKeyword", CorvidKeywords.FLAGGED))
             is MailFilter.Search -> searchFilter(SearchQuery.parse(filter.text, clock.now(), zone))
         }
 
     private suspend fun searchFilter(query: SearchQuery): JsonObject? {
-        val condition = query.toFilter(::mailboxId, vocabulary::searchFilter) ?: return null
+        val condition = query.toFilter(::mailboxId, vocabulary::completions) ?: return null
         return if (query.scope == SearchScope.OutsideDiscarded) outsideDiscarded(condition) else condition
     }
 
     private suspend fun outsideDiscarded(condition: JsonObject): JsonObject {
         val discarded = listOfNotNull(mailboxId(TRASH), mailboxId(JUNK))
         if (discarded.isEmpty()) return condition
-        return buildJsonObject {
-            put("operator", "AND")
-            putJsonArray("conditions") {
-                add(condition)
-                addJsonObject { putJsonArray("inMailboxOtherThan") { discarded.forEach { add(JsonPrimitive(it)) } } }
-            }
-        }
+        val outside = buildJsonObject { putJsonArray("inMailboxOtherThan") { discarded.forEach { add(JsonPrimitive(it)) } } }
+        return operator("AND", listOf(condition, outside))
     }
 
     private suspend fun messagePage(queryArguments: JsonObject): EmailPage {
@@ -356,7 +360,7 @@ class MailboxRepository(
         ids: List<String>,
         patch: Map<String, Boolean>,
     ): Map<String, String> {
-        val refused = patchEmails(ids.associateWith { patch.pointers("keywords") })
+        val refused = setEmails(update = ids.associateWith { patch.pointers("keywords") })
         ids.filter { it !in refused }.forEach { _keywordPatches.emit(KeywordPatch(it, patch)) }
         return refused
     }
@@ -398,8 +402,8 @@ class MailboxRepository(
      */
     suspend fun destroy(ids: Collection<String>): Map<String, String> =
         moving(ids) {
-            val discarded = listOfNotNull(mailboxId(TRASH), mailboxId(JUNK)).map(::setOf)
-            destroyNow(mailboxIdsOf(ids).filterValues { it in discarded }.keys)
+            val doomed = mailboxIdsOf(ids).filterValues { discardedOnly(it) }.keys
+            if (doomed.isEmpty()) emptyMap() else setEmails(destroy = doomed)
         }
 
     /**
@@ -408,40 +412,37 @@ class MailboxRepository(
      */
     suspend fun empty(role: String): Emptied {
         val box = mailboxId(role) ?: return Emptied(0, emptyMap())
-        val ids = idsIn(box)
-        if (ids.isEmpty()) return Emptied(0, emptyMap())
-        return moving(ids) {
-            val (doomed, kept) = ids.chunked(SET_CHUNK).flatMap { mailboxIdsOf(it).entries }.partition { it.value == setOf(box) }
-            val destroyed = doomed.map { it.key }.chunked(SET_CHUNK).flatMap { destroyNow(it).entries }
-            val unfiled =
-                kept.chunked(SET_CHUNK).flatMap { chunk ->
-                    patchEmails(chunk.associate { (id, boxes) -> id to mailboxPatch(boxes, boxes - box).pointers("mailboxIds") }).entries
-                }
-            val refused = (destroyed + unfiled).associate { it.key to it.value }
-            Emptied(doomed.count { it.key !in refused }, refused)
+        val filed = filedIn(box)
+        if (filed.isEmpty()) return Emptied(0, emptyMap())
+        return moving(filed.keys) {
+            val doomed = filed.filterValues { it == setOf(box) }.keys
+            val refused =
+                filed.entries.chunked(SET_CHUNK).flatMap { chunk ->
+                    val (gone, kept) = chunk.partition { it.key in doomed }
+                    val unfiled = kept.associate { (id, boxes) -> id to mailboxPatch(boxes, boxes - box).pointers("mailboxIds") }
+                    setEmails(update = unfiled, destroy = gone.map { it.key }).entries
+                }.associate { it.key to it.value }
+            Emptied(doomed.count { it !in refused }, refused)
         }
     }
 
-    private suspend fun destroyNow(ids: Collection<String>): Map<String, String> {
-        if (ids.isEmpty()) return emptyMap()
-        val arguments = buildJsonObject { putJsonArray("destroy") { ids.forEach { add(JsonPrimitive(it)) } } }
-        val result = jmapClient.callOne("Email/set", arguments)
-        return ids.mapNotNull { id -> result.setErrorReason("notDestroyed", id)?.let { id to it } }.toMap()
-    }
-
-    private suspend fun idsIn(mailboxId: String): List<String> {
-        val ids = mutableListOf<String>()
+    /** Every message in [mailboxId] with the mailboxes it is filed in, a page of ids and their mailboxes per request. */
+    private suspend fun filedIn(mailboxId: String): Map<String, Set<String>> {
+        val filed = mutableMapOf<String, Set<String>>()
+        var position = 0
         do {
-            val arguments =
+            val query =
                 buildJsonObject {
-                    put("filter", buildJsonObject { put("inMailbox", mailboxId) })
-                    put("position", ids.size)
+                    put("filter", condition("inMailbox", mailboxId))
+                    put("position", position)
                     put("limit", SET_CHUNK)
                 }
-            val page = jmapClient.callOne("Email/query", arguments).idList("ids")
-            ids += page
-        } while (page.size == SET_CHUNK)
-        return ids
+            val outcomes = jmapClient.queryAndGet(query, listOf("mailboxIds"))
+            val found = outcomes.query.resultOrThrow().idList("ids").size
+            filed += outcomes.get.resultOrThrow().keySets("mailboxIds")
+            position += found
+        } while (found == SET_CHUNK)
+        return filed
     }
 
     private suspend fun fileIn(
@@ -464,12 +465,7 @@ class MailboxRepository(
 
     /** Every header field of one message, unfolded and in order; null when it is gone. */
     suspend fun headers(id: String): List<HeaderField>? {
-        val arguments =
-            buildJsonObject {
-                putJsonArray("ids") { add(JsonPrimitive(id)) }
-                putJsonArray("properties") { add(JsonPrimitive("headers")) }
-            }
-        val found = jmapClient.callOne("Email/get", arguments).getValue("list").jsonArray.firstOrNull() ?: return null
+        val found = getEmails(listOf(id), "headers").getValue("list").jsonArray.firstOrNull() ?: return null
         return found.jsonObject.getValue("headers").jsonArray.map {
             HeaderField(it.jsonObject.getValue("name").jsonPrimitive.content, unfold(it.jsonObject.getValue("value").jsonPrimitive.content))
         }
@@ -495,15 +491,18 @@ class MailboxRepository(
     private suspend fun keySets(
         ids: Collection<String>,
         property: String,
-    ): Map<String, Set<String>> {
+    ): Map<String, Set<String>> = getEmails(ids, property).keySets(property)
+
+    private suspend fun getEmails(
+        ids: Collection<String>,
+        property: String,
+    ): JsonObject {
         val arguments =
             buildJsonObject {
                 putJsonArray("ids") { ids.forEach { add(JsonPrimitive(it)) } }
                 putJsonArray("properties") { add(JsonPrimitive(property)) }
             }
-        return jmapClient.callOne("Email/get", arguments).getValue("list").jsonArray.associate {
-            it.jsonObject.getValue("id").jsonPrimitive.content to it.jsonObject.getValue(property).jsonObject.keys
-        }
+        return jmapClient.callOne("Email/get", arguments)
     }
 
     private suspend fun move(
@@ -511,22 +510,33 @@ class MailboxRepository(
         after: Map<String, Set<String>>,
     ): MailMove {
         if (before.isEmpty()) return MailMove.NONE
-        val refused = patchEmails(before.mapValues { (id, boxes) -> mailboxPatch(boxes, after.getValue(id)).pointers("mailboxIds") })
+        val refused = setEmails(update = before.mapValues { (id, boxes) -> mailboxPatch(boxes, after.getValue(id)).pointers("mailboxIds") })
         return MailMove(before, after, refused)
     }
 
-    /** One Email/set of JSON-pointer patches by message; returns the server's reason for each id it refused. */
-    private suspend fun patchEmails(patches: Map<String, Map<String, Boolean>>): Map<String, String> {
+    /**
+     * One Email/set of JSON-pointer patches by message and of messages to delete for good;
+     * returns the server's reason for each id it refused.
+     */
+    private suspend fun setEmails(
+        update: Map<String, Map<String, Boolean>> = emptyMap(),
+        destroy: Collection<String> = emptyList(),
+    ): Map<String, String> {
         val arguments =
             buildJsonObject {
-                putJsonObject("update") {
-                    patches.forEach { (id, patch) ->
-                        putJsonObject(id) { patch.forEach { (path, set) -> put(path, if (set) JsonPrimitive(true) else JsonNull) } }
+                if (update.isNotEmpty()) {
+                    putJsonObject("update") {
+                        update.forEach { (id, patch) ->
+                            putJsonObject(id) { patch.forEach { (path, set) -> put(path, if (set) JsonPrimitive(true) else JsonNull) } }
+                        }
                     }
                 }
+                if (destroy.isNotEmpty()) putJsonArray("destroy") { destroy.forEach { add(JsonPrimitive(it)) } }
             }
         val result = jmapClient.callOne("Email/set", arguments)
-        return patches.keys.mapNotNull { id -> result.setErrorReason("notUpdated", id)?.let { id to it } }.toMap()
+        val notUpdated = update.keys.mapNotNull { id -> result.setErrorReason("notUpdated", id)?.let { id to it } }
+        val notDestroyed = destroy.mapNotNull { id -> result.setErrorReason("notDestroyed", id)?.let { id to it } }
+        return (notUpdated + notDestroyed).toMap()
     }
 
     /** Null when the server will not make one. */
@@ -605,6 +615,14 @@ internal fun JsonObject.addressList(key: String): List<EmailAddress> =
     (get(key) as? JsonArray)?.mapNotNull { it.jsonObject.toEmailAddress() }.orEmpty()
 
 internal fun JsonObject.idList(key: String): List<String> = (get(key) as? JsonArray)?.map { it.jsonPrimitive.content }.orEmpty()
+
+/** The keys of one object-valued [property] of each message an Email/get listed, by message id. */
+private fun JsonObject.keySets(property: String): Map<String, Set<String>> =
+    getValue("list").jsonArray.associate {
+        it.jsonObject.getValue("id").jsonPrimitive.content to it.jsonObject.getValue(property).jsonObject.keys
+    }
+
+private fun List<Mailbox>.roleIds(): Map<String, String> = mapNotNull { box -> box.role?.let { it to box.id } }.toMap()
 
 /**
  * textBody already picks the best single-part representation per RFC 8621; an

@@ -7,9 +7,9 @@ import com.verdenroz.corvid.core.model.EmailAddress
 import com.verdenroz.corvid.core.testing.FakeAttachment
 import com.verdenroz.corvid.core.testing.FakeEmail
 import com.verdenroz.corvid.core.testing.FakeJmapServer
-import com.verdenroz.corvid.core.testing.FakeMailbox
 import com.verdenroz.corvid.core.testing.KeyedTextResolver
 import com.verdenroz.corvid.core.testing.client
+import com.verdenroz.corvid.core.testing.withRoleMailboxes
 import com.verdenroz.corvid.core.testing.withSendableAccount
 import com.verdenroz.corvid.core.text.resources.Res
 import com.verdenroz.corvid.core.text.resources.size_bytes
@@ -33,7 +33,7 @@ private val STRAY =
 
 private fun server(): FakeJmapServer {
     val fake = FakeJmapServer().withSendableAccount()
-    fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
+    fake.withRoleMailboxes(INBOX)
     fake.emails +=
         FakeEmail(
             id = "e1",

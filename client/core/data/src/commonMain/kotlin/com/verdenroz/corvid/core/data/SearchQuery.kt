@@ -9,7 +9,6 @@ import kotlinx.datetime.minus
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import kotlinx.serialization.json.putJsonArray
 import kotlin.time.Clock
 import kotlin.time.Instant
 
@@ -17,7 +16,7 @@ private const val ANYWHERE = "anywhere"
 private val FIELDS = setOf("from", "to", "cc", "subject")
 private val OPERATORS = FIELDS + setOf("has", "is", "in", "before", "after", "older_than", "newer_than")
 private val MAILBOX_ROLES =
-    mapOf(INBOX to INBOX, "sent" to "sent", "drafts" to "drafts", TRASH to TRASH, JUNK to JUNK, "spam" to JUNK, ARCHIVE to ARCHIVE)
+    listOf(INBOX, SENT, DRAFTS, TRASH, JUNK, ARCHIVE).associateWith { it } + ("spam" to JUNK)
 private val DATE = Regex("(\\d{4})[-/](\\d{1,2})[-/](\\d{1,2})")
 private val AGE = Regex("(\\d{1,4})([dmy])")
 
@@ -100,24 +99,16 @@ internal suspend fun SearchQuery.toFilter(
 
 private suspend fun SearchTerm.condition(mailboxId: suspend (String) -> String?): JsonObject? =
     when (this) {
-        is SearchTerm.Word -> buildJsonObject { put("text", text) }
-        is SearchTerm.Phrase -> buildJsonObject { put("text", "\"$text\"") }
-        is SearchTerm.Field -> buildJsonObject { put(property, value) }
+        is SearchTerm.Word -> condition("text", text)
+        is SearchTerm.Phrase -> condition("text", "\"$text\"")
+        is SearchTerm.Field -> condition(property, value)
         is SearchTerm.HasAttachment -> buildJsonObject { put("hasAttachment", true) }
-        is SearchTerm.Keyword -> buildJsonObject { put(if (present) "hasKeyword" else "notKeyword", keyword) }
-        is SearchTerm.Before -> buildJsonObject { put("before", instant.toString()) }
-        is SearchTerm.After -> buildJsonObject { put("after", instant.toString()) }
-        is SearchTerm.InMailbox -> mailboxId(role)?.let { id -> buildJsonObject { put("inMailbox", id) } }
+        is SearchTerm.Keyword -> condition(if (present) "hasKeyword" else "notKeyword", keyword)
+        is SearchTerm.Before -> condition("before", instant.toString())
+        is SearchTerm.After -> condition("after", instant.toString())
+        is SearchTerm.InMailbox -> mailboxId(role)?.let { condition("inMailbox", it) }
         is SearchTerm.Not -> term.condition(mailboxId)?.let { operator("NOT", listOf(it)) }
     }
-
-private fun operator(
-    name: String,
-    conditions: List<JsonObject>,
-) = buildJsonObject {
-    put("operator", name)
-    putJsonArray("conditions") { conditions.forEach { add(it) } }
-}
 
 /** Splits on whitespace outside double quotes; an unclosed quote runs to the end. */
 private fun tokenize(text: String): List<String> {
