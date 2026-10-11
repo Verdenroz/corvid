@@ -1,6 +1,7 @@
 package com.verdenroz.corvid.desktop
 
 import com.verdenroz.corvid.core.data.InstallResult
+import com.verdenroz.corvid.core.model.AppPlatform
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
@@ -10,6 +11,7 @@ import java.io.IOException
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class DesktopInstallTest {
@@ -88,6 +90,23 @@ class DesktopInstallTest {
         assertTrue(installation.manages(File(root, "current/corvid/bin/corvid").path))
         assertFalse(installation.manages(tmp.newFile("launcher").path))
         assertFalse(installation.manages(null))
+    }
+
+    @Test
+    fun `an app outside the managed install is offered no update`() {
+        installation.install(tarball("one"))
+
+        assertNull(DesktopAppInstaller(installation, tmp.newFile("elsewhere").path) {}.platform)
+        assertNull(DesktopAppInstaller(installation, null) {}.platform)
+    }
+
+    @Test
+    fun `the managed install is offered the Linux build`() {
+        installation.install(tarball("one"))
+
+        val installer = DesktopAppInstaller(installation, File(root, "versions/1/corvid/bin/corvid").path) {}
+
+        assertEquals(AppPlatform.Linux, installer.platform)
     }
 
     @Test

@@ -4,20 +4,25 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.toPainter
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.window.Tray
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.isTraySupported
 import androidx.compose.ui.window.rememberTrayState
 import androidx.compose.ui.window.rememberWindowState
+import com.verdenroz.corvid.app.AppPresence
 import com.verdenroz.corvid.app.BackgroundDropController
 import com.verdenroz.corvid.app.CorvidApp
 import com.verdenroz.corvid.app.EscapeBack
+import com.verdenroz.corvid.app.NewMailNotifier
 import com.verdenroz.corvid.app.NoticeNotifier
+import com.verdenroz.corvid.app.NotificationPermission
 import com.verdenroz.corvid.app.di.appModules
 import com.verdenroz.corvid.core.auth.InMemoryPreferencesFactory
 import com.verdenroz.corvid.core.auth.platformAuthModule
 import com.verdenroz.corvid.core.data.AppInstaller
+import com.verdenroz.corvid.core.data.AttachmentFiles
 import com.verdenroz.corvid.core.discovery.platformDiscoveryModule
 import com.verdenroz.corvid.core.prefs.platformPreferencesModule
 import kotlinx.coroutines.runBlocking
@@ -34,9 +39,13 @@ fun main() {
     val notices =
         module {
             single<NoticeNotifier> { notifier }
+            single<NewMailNotifier> { notifier }
+            single<NotificationPermission> { NoPermissionNeeded }
             single<AppInstaller> { DesktopAppInstaller() }
+            single<AttachmentFiles> { DesktopAttachmentFiles() }
         }
-    startKoin { modules(appModules + platformAuthModule + platformDiscoveryModule + platformPreferencesModule + notices) }
+    val koin = startKoin { modules(appModules + platformAuthModule + platformDiscoveryModule + platformPreferencesModule + notices) }.koin
+    val presence = koin.get<AppPresence>()
     application {
         val windowState = rememberWindowState()
         val icon = remember { windowIcon() }
@@ -46,7 +55,12 @@ fun main() {
             notifier.attach(tray)
             onDispose { notifier.attach(null) }
         }
-        if (isTraySupported) Tray(icon, tray, tooltip = "Corvid")
+        if (isTraySupported) {
+            Tray(icon, tray, tooltip = "Corvid", onAction = {
+                windowState.isMinimized = false
+                presence.requestInbox()
+            })
+        }
         Window(onCloseRequest = ::exitApplication, title = "Corvid", state = windowState, icon = icon, onPreviewKeyEvent = escape::onKey) {
             escape.Attach()
             // Desktop's closest equivalent to ON_STOP: minimising is the only
@@ -55,6 +69,8 @@ fun main() {
             LaunchedEffect(windowState.isMinimized) {
                 if (windowState.isMinimized) backgroundDropController.enteredBackground() else backgroundDropController.enteredForeground()
             }
+            val focused = LocalWindowInfo.current.isWindowFocused
+            LaunchedEffect(focused, windowState.isMinimized) { presence.shown(focused && !windowState.isMinimized) }
             CorvidApp()
         }
     }
@@ -62,3 +78,9 @@ fun main() {
 
 private fun windowIcon() =
     Thread.currentThread().contextClassLoader.getResourceAsStream("corvid-512.png")!!.use { ImageIO.read(it) }.toPainter()
+
+private object NoPermissionNeeded : NotificationPermission {
+    override fun askOnce() = Unit
+
+    override fun ask() = Unit
+}

@@ -9,21 +9,20 @@ import com.verdenroz.corvid.core.model.Seal
 import com.verdenroz.corvid.core.model.SenderCounts
 import com.verdenroz.corvid.core.model.SenderWindow
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
-import kotlinx.serialization.json.putJsonArray
 import kotlin.time.Instant
 
 private const val PAGE = 500
 const val SENDER_WINDOW = 200
 private const val MAX_RESTARTS = 3
 private val COUNT_PROPERTIES = listOf("id", "from", "receivedAt")
-private val SENT_PROPERTIES = listOf("id", "to", "cc", "bcc")
+private val RECIPIENT_FIELDS = listOf("to", "cc", "bcc")
+private val SENT_PROPERTIES = listOf("id") + RECIPIENT_FIELDS
 
 /**
  * A server's `from` and `to` filters match text, so "ada@x.test" also finds "lada@x.test" and
@@ -42,7 +41,7 @@ class SenderRepository(
             exactMatches(fromThem, COUNT_PROPERTIES, ascending = true, PAGE) {
                 it.addressList("from").hasAddress(address)
             } ?: return null
-        val sentId = mailboxRepository.mailboxId("sent")
+        val sentId = mailboxRepository.mailboxId(SENT)
         val sent = if (sentId == null) emptyList() else sentMatches(sentId, address) ?: return null
         return SenderCounts(
             received = received.size,
@@ -65,23 +64,10 @@ class SenderRepository(
         sentId: String,
         address: String,
     ): List<JsonObject>? {
-        val recipients =
-            buildJsonObject {
-                put("operator", "OR")
-                putJsonArray("conditions") { listOf("to", "cc", "bcc").forEach { add(condition(it, address)) } }
-            }
-        val filter =
-            buildJsonObject {
-                put("operator", "AND")
-                putJsonArray("conditions") {
-                    add(condition("inMailbox", sentId))
-                    add(recipients)
-                }
-            }
+        val recipients = operator("OR", RECIPIENT_FIELDS.map { condition(it, address) })
+        val filter = operator("AND", listOf(condition("inMailbox", sentId), recipients))
         return exactMatches(filter, SENT_PROPERTIES, ascending = true, PAGE) { email ->
-            listOf("to", "cc", "bcc").any {
-                email.addressList(it).hasAddress(address)
-            }
+            RECIPIENT_FIELDS.any { email.addressList(it).hasAddress(address) }
         }
     }
 
@@ -127,12 +113,7 @@ class SenderRepository(
         val query =
             buildJsonObject {
                 put("filter", filter)
-                putJsonArray("sort") {
-                    addJsonObject {
-                        put("property", "receivedAt")
-                        put("isAscending", ascending)
-                    }
-                }
+                put("sort", receivedAtSort(ascending))
                 put("position", position)
                 put("limit", pageSize)
                 put("calculateTotal", true)
@@ -152,11 +133,6 @@ private class StatsPage(
     val queryState: String,
     val emails: List<JsonObject>,
 )
-
-private fun condition(
-    key: String,
-    value: String,
-): JsonObject = buildJsonObject { put(key, value) }
 
 private fun List<EmailAddress>.hasAddress(address: String): Boolean = any { it.email.equals(address, ignoreCase = true) }
 

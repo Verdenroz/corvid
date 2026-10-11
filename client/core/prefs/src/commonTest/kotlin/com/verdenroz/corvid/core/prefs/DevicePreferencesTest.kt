@@ -86,6 +86,26 @@ class DevicePreferencesTest {
         }
 
     @Test
+    fun `new mail notifications start on and stay off once turned off`() =
+        runTest {
+            val prefs = preferences()
+            runCurrent()
+            assertEquals(true, prefs.settings.value.newMailNotifications)
+
+            prefs.setNewMailNotifications(false)
+            runCurrent()
+
+            assertEquals(false, prefs.settings.value.newMailNotifications)
+        }
+
+    @Test
+    fun `a file written before new mail notifications existed reads them as on`() {
+        val preferences = preferencesOf(stringPreferencesKey("theme") to "Dark", longPreferencesKey("notices_seen") to 3L)
+
+        assertEquals(DeviceSettings(ThemeChoice.Dark, noticesSeen = 3, newMailNotifications = true), decode(preferences))
+    }
+
+    @Test
     fun `a signed-in account is remembered with its email and leaves the other choices alone`() =
         runTest {
             val prefs = preferences()

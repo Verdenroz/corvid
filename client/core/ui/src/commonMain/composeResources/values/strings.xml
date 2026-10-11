@@ -32,4 +32,6 @@
     <string name="app_update_allow">Allow</string>
     <string name="app_update_needs_permission">Allow Corvid to install %1$s</string>
     <string name="app_update_failed">Update failed</string>
+    <string name="attachment_unnamed">Unnamed file</string>
+    <string name="attachment_remove">Remove %1$s</string>
 </resources>

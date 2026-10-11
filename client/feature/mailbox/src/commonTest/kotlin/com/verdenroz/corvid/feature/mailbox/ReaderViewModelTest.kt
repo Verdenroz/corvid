@@ -2,9 +2,11 @@ package com.verdenroz.corvid.feature.mailbox
 
 import com.verdenroz.corvid.core.data.Correction
 import com.verdenroz.corvid.core.data.MailboxRepository
+import com.verdenroz.corvid.core.model.HeaderField
 import com.verdenroz.corvid.core.model.Label
 import com.verdenroz.corvid.core.testing.FakeEmail
 import com.verdenroz.corvid.core.testing.FakeJmapServer
+import com.verdenroz.corvid.core.testing.FakeMailbox
 import com.verdenroz.corvid.core.testing.client
 import com.verdenroz.corvid.core.testing.runViewModelTest
 import com.verdenroz.corvid.core.text.UiText
@@ -74,6 +76,20 @@ class ReaderViewModelTest {
             val vm = track(ReaderViewModel(repository(fake), "gone"))
 
             vm.state.first { it is ReaderUiState.Gone }
+        }
+
+    @Test
+    fun `a thread is titled by the subject it started with, not the newest reply's`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.emails += FakeEmail("e1", "t1", setOf("inbox"), "Lunch", "a@example.test", "2024-01-01T00:00:00Z", body = "noon?")
+            fake.emails += FakeEmail("e2", "t1", setOf("inbox"), "RE: Re: Lunch", "b@example.test", "2024-01-02T00:00:00Z", body = "yes")
+            val vm = track(ReaderViewModel(repository(fake), "e2"))
+
+            val loaded = vm.state.first { it is ReaderUiState.Loaded } as ReaderUiState.Loaded
+
+            assertEquals("RE: Re: Lunch", loaded.newest.subject)
+            assertEquals("Lunch", loaded.subject)
         }
 
     private fun guessed() =
@@ -220,5 +236,71 @@ class ReaderViewModelTest {
 
             val after = vm.state.first { it is ReaderUiState.Loaded && "personal" in it.messages.single { m -> m.id == "m3" }.keywords }
             assertEquals(emptyMap(), (after as ReaderUiState.Loaded).teach)
+        }
+
+    @Test
+    fun `headers are fetched on first show and hidden on the second`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.emails +=
+                FakeEmail("e1", "e1", setOf("inbox"), "hello", "a@example.test", "2024-01-01T00:00:00Z", body = "hi")
+                    .copy(headers = mapOf("Received" to listOf("from relay")))
+            val vm = track(ReaderViewModel(repository(fake), "e1"))
+            vm.state.first { it is ReaderUiState.Loaded }
+
+            vm.toggleHeaders("e1")
+            val shown = vm.state.first { (it as? ReaderUiState.Loaded)?.headers?.get("e1") is HeadersState.Shown } as ReaderUiState.Loaded
+            vm.toggleHeaders("e1")
+
+            assertEquals(listOf(HeaderField("Received", "from relay")), (shown.headers.getValue("e1") as HeadersState.Shown).fields)
+            assertEquals(emptyMap(), (vm.state.value as ReaderUiState.Loaded).headers)
+        }
+
+    @Test
+    fun `a thread in the inbox reads as an inbox thread and one only in trash as trash`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox("inbox", "Inbox", "inbox")
+            fake.mailboxes += FakeMailbox("trash", "Trash", "trash")
+            fake.emails += FakeEmail("e1", "e1", setOf("inbox"), "hello", "a@example.test", "2024-01-01T00:00:00Z", body = "hi")
+            fake.emails += FakeEmail("e2", "e2", setOf("trash"), "bye", "a@example.test", "2024-01-01T00:00:00Z", body = "hi")
+            val repository = repository(fake)
+
+            val inbox = track(ReaderViewModel(repository, "e1")).state.first { it is ReaderUiState.Loaded } as ReaderUiState.Loaded
+            val trash = track(ReaderViewModel(repository, "e2")).state.first { it is ReaderUiState.Loaded } as ReaderUiState.Loaded
+
+            assertEquals(ListKind.Inbox, inbox.kind)
+            assertEquals(ListKind.Trash, trash.kind)
+        }
+
+    @Test
+    fun `a thread opened from a list takes that list's kind, not one read off its messages`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox("sent", "Sent", "sent")
+            fake.mailboxes += FakeMailbox("trash", "Trash", "trash")
+            fake.emails += FakeEmail("e1", "t", setOf("trash"), "hello", "a@example.test", "2024-01-01T00:00:00Z", body = "hi")
+            fake.emails += FakeEmail("e2", "t", setOf("sent"), "Re: hello", "me@example.test", "2024-01-02T00:00:00Z", body = "hi")
+            val repository = repository(fake)
+
+            val fromTrash = track(ReaderViewModel(repository, "e1", ListKind.Trash)).state.first { it is ReaderUiState.Loaded }
+            val fromNoList = track(ReaderViewModel(repository, "e1")).state.first { it is ReaderUiState.Loaded }
+
+            assertEquals(ListKind.Trash, (fromTrash as ReaderUiState.Loaded).kind)
+            assertEquals(ListKind.Other, (fromNoList as ReaderUiState.Loaded).kind)
+        }
+
+    @Test
+    fun `a star set elsewhere shows on the open thread`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.emails += FakeEmail("e1", "e1", setOf("inbox"), "hello", "a@example.test", "2024-01-01T00:00:00Z", body = "hi")
+            val repository = repository(fake)
+            val vm = track(ReaderViewModel(repository, "e1"))
+            vm.state.first { it is ReaderUiState.Loaded }
+
+            repository.updateKeywords("e1", mapOf("\$flagged" to true))
+
+            vm.state.first { (it as? ReaderUiState.Loaded)?.newest?.keywords?.contains("\$flagged") == true }
         }
 }

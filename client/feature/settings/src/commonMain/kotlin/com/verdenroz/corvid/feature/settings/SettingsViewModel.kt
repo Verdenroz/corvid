@@ -22,6 +22,7 @@ class SettingsViewModel(
     private val preferences: DevicePreferences,
     private val onLock: () -> Unit,
     private val onSignOut: () -> Unit,
+    private val askNotificationPermission: () -> Unit = {},
 ) : ViewModel() {
     private val confirmingSignOut = MutableStateFlow(false)
 
@@ -35,6 +36,12 @@ class SettingsViewModel(
 
     fun selectAutoLock(autoLock: AutoLock) {
         viewModelScope.launch { preferences.setAutoLock(autoLock) }
+    }
+
+    /** Turning them on asks for the platform's notification permission, the one moment the user has asked for them. */
+    fun setNewMailNotifications(on: Boolean) {
+        if (on) askNotificationPermission()
+        viewModelScope.launch { preferences.setNewMailNotifications(on) }
     }
 
     fun lockNow() = onLock()

@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -21,12 +20,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.appcommon.resources.Res
 import com.verdenroz.corvid.appcommon.resources.app_name
+import com.verdenroz.corvid.appcommon.resources.drawer_open
 import com.verdenroz.corvid.appcommon.resources.search_placeholder
 import com.verdenroz.corvid.appcommon.resources.settings_open
+import com.verdenroz.corvid.appcommon.resources.sidebar_toggle
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.CorvidMark
@@ -59,17 +63,26 @@ internal fun WideTopBar(
     identity: Identity?,
     search: SearchInput,
     onOpenSettings: () -> Unit,
+    onToggleSidebar: () -> Unit,
 ) {
     val colors = CorvidTheme.colors
     Column(Modifier.background(colors.surface)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp),
-            modifier = Modifier.fillMaxWidth().height(60.dp).padding(start = 18.dp, end = 16.dp),
+            modifier = Modifier.fillMaxWidth().height(60.dp).padding(start = 13.dp, end = 16.dp),
         ) {
-            Box(Modifier.widthIn(min = 190.dp)) { Wordmark() }
-            SearchField(search, shortcutHint = true, modifier = Modifier.weight(1f, fill = false).widthIn(max = 520.dp))
-            Spacer(Modifier.weight(0.01f))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.widthIn(min = 212.dp),
+            ) {
+                IconAction(CorvidIcons.Menu, stringResource(Res.string.sidebar_toggle), 40.dp, onToggleSidebar)
+                Wordmark()
+            }
+            Box(Modifier.weight(1f)) {
+                SearchField(search, shortcutHint = true, modifier = Modifier.widthIn(max = 720.dp))
+            }
             KeyPill(key)
             AccountAvatar(identity, onOpenSettings)
         }
@@ -77,10 +90,13 @@ internal fun WideTopBar(
     }
 }
 
+/** Narrow: the drawer's menu button, then the name of the folder on screen. */
 @Composable
 internal fun NarrowTopBar(
+    title: String,
     key: KeyState,
     identity: Identity?,
+    onMenu: () -> Unit,
     onSearch: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
@@ -88,24 +104,37 @@ internal fun NarrowTopBar(
     Column(Modifier.background(colors.surface)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 10.dp, top = 4.dp, bottom = 6.dp),
+            modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 10.dp, top = 4.dp, bottom = 6.dp),
         ) {
-            Wordmark()
-            Spacer(Modifier.weight(1f))
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier =
-                    Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .clickable(onClickLabel = stringResource(Res.string.search_placeholder), role = Role.Button, onClick = onSearch),
-            ) {
-                Icon(CorvidIcons.Search, contentDescription = null, tint = colors.inkMuted)
-            }
+            IconAction(CorvidIcons.Menu, stringResource(Res.string.drawer_open), 48.dp, onMenu)
+            Text(
+                title,
+                style = CorvidTheme.type.title,
+                color = colors.ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).padding(start = 4.dp, end = 8.dp),
+            )
+            IconAction(CorvidIcons.Search, stringResource(Res.string.search_placeholder), 40.dp, onSearch)
             KeyRingButton(key)
             AccountAvatar(identity, onOpenSettings)
         }
         KeyStatusLine(key)
+    }
+}
+
+@Composable
+private fun IconAction(
+    icon: ImageVector,
+    label: String,
+    size: Dp,
+    onClick: () -> Unit,
+) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier.size(size).clip(CircleShape).clickable(onClickLabel = label, role = Role.Button, onClick = onClick),
+    ) {
+        Icon(icon, contentDescription = null, tint = CorvidTheme.colors.inkMuted)
     }
 }
 

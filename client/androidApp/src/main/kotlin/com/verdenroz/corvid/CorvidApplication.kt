@@ -7,16 +7,20 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.net.Network
+import com.verdenroz.corvid.app.NewMailNotifier
 import com.verdenroz.corvid.app.NoticeNotifier
+import com.verdenroz.corvid.app.NotificationPermission
 import com.verdenroz.corvid.app.di.appModules
 import com.verdenroz.corvid.core.auth.platformAuthModule
 import com.verdenroz.corvid.core.data.AppInstaller
+import com.verdenroz.corvid.core.data.AttachmentFiles
 import com.verdenroz.corvid.core.discovery.platformDiscoveryModule
 import com.verdenroz.corvid.core.keyring.KeyHolder
 import com.verdenroz.corvid.core.prefs.platformPreferencesModule
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.startKoin
+import org.koin.dsl.bind
 import org.koin.dsl.module
 
 class CorvidApplication : Application() {
@@ -25,7 +29,10 @@ class CorvidApplication : Application() {
         val notices =
             module {
                 single<NoticeNotifier> { AndroidNoticeNotifier(androidContext()) }
+                single<NewMailNotifier> { AndroidNewMailNotifier(androidContext()) }
+                single { AndroidNotificationPermission(androidContext()) } bind NotificationPermission::class
                 single<AppInstaller> { AndroidAppInstaller(androidContext()) }
+                single { AndroidAttachmentFiles(androidContext()) } bind AttachmentFiles::class
             }
         val koin =
             startKoin {

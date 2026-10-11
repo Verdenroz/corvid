@@ -26,28 +26,27 @@ private fun parseAddress(text: String): EmailAddress =
     }
 
 private fun splitAddresses(text: String): List<String> {
-    val parts = mutableListOf<String>()
-    val current = StringBuilder()
+    val bounds = listOf(-1) + addressSeparators(text) + text.length
+    return bounds.zipWithNext { from, to -> text.substring(from + 1, to).trim() }.filter { it.isNotEmpty() }
+}
+
+/** The index of each comma or semicolon in [text] that separates two addresses: outside quotes and angle brackets. */
+fun addressSeparators(text: String): List<Int> {
+    val found = mutableListOf<Int>()
     var quoted = false
     var escaped = false
     var angle = false
-    for (char in text) {
+    text.forEachIndexed { index, char ->
         when {
             escaped -> escaped = false
             quoted && char == '\\' -> escaped = true
             char == '"' -> quoted = !quoted
             !quoted && char == '<' -> angle = true
             !quoted && char == '>' -> angle = false
-            !quoted && !angle && (char == ',' || char == ';') -> {
-                parts += current.toString()
-                current.clear()
-                continue
-            }
+            !quoted && !angle && (char == ',' || char == ';') -> found += index
         }
-        current.append(char)
     }
-    parts += current.toString()
-    return parts.map { it.trim() }.filter { it.isNotEmpty() }
+    return found
 }
 
 private fun unquote(name: String): String =

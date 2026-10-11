@@ -3,17 +3,19 @@ package com.verdenroz.corvid.app
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CornerSize
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -22,7 +24,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.SaveableStateHolder
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
@@ -30,8 +35,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
@@ -49,35 +52,47 @@ import androidx.navigationevent.compose.rememberNavigationEventState
 import com.verdenroz.corvid.app.shell.HomeContent
 import com.verdenroz.corvid.app.shell.KeyState
 import com.verdenroz.corvid.app.shell.NarrowTopBar
+import com.verdenroz.corvid.app.shell.NavDrawer
+import com.verdenroz.corvid.app.shell.Places
+import com.verdenroz.corvid.app.shell.SearchInput
 import com.verdenroz.corvid.app.shell.SearchTopBar
-import com.verdenroz.corvid.app.shell.TabsBar
+import com.verdenroz.corvid.app.shell.Sidebar
 import com.verdenroz.corvid.app.shell.WideTopBar
+import com.verdenroz.corvid.app.shell.sidebarPlace
+import com.verdenroz.corvid.app.shell.title
+import com.verdenroz.corvid.core.data.AttachmentFiles
 import com.verdenroz.corvid.core.data.ComposeRepository
 import com.verdenroz.corvid.core.data.FiltersRepository
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.data.NoticeRepository
 import com.verdenroz.corvid.core.data.SenderRepository
+import com.verdenroz.corvid.core.designsystem.CorvidFloating
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.jmap.JmapClient
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.prefs.DevicePreferences
-import com.verdenroz.corvid.core.ui.LocalBackGuard
+import com.verdenroz.corvid.core.ui.LocalEntryHandlers
+import com.verdenroz.corvid.core.ui.LocalTopEntryKeys
 import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.core.ui.WIDE_LAYOUT
 import com.verdenroz.corvid.feature.compose.ComposeScreen
+import com.verdenroz.corvid.feature.compose.ComposeViewModel
 import com.verdenroz.corvid.feature.filters.FiltersScreen
-import com.verdenroz.corvid.feature.mailbox.LedgerSource
-import com.verdenroz.corvid.feature.mailbox.LedgerTab
-import com.verdenroz.corvid.feature.mailbox.LedgerViewModel
-import com.verdenroz.corvid.feature.mailbox.ReaderScreen
+import com.verdenroz.corvid.feature.filters.FiltersViewModel
+import com.verdenroz.corvid.feature.mailbox.ActionNoticeBar
+import com.verdenroz.corvid.feature.mailbox.MailActions
 import com.verdenroz.corvid.feature.mailbox.SearchScreen
 import com.verdenroz.corvid.feature.mailbox.SenderCard
 import com.verdenroz.corvid.feature.mailbox.SenderCardActions
 import com.verdenroz.corvid.feature.settings.NoticesScreen
 import com.verdenroz.corvid.feature.settings.NoticesViewModel
+import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import org.koin.core.scope.Scope
+
+private val SIDEBAR_EXPANDS = 1000.dp
 
 private fun KeyEvent.isSearchShortcut() = type == KeyEventType.KeyDown && key == Key.K && (isCtrlPressed || isMetaPressed)
 
@@ -98,12 +113,6 @@ internal fun UnlockedContent(
     val updates = rememberAppUpdates(scope)
     val ledgers = remember(repository) { Ledgers(repository) }
     DisposableEffect(ledgers) { onDispose { ledgers.clear() } }
-    LaunchedEffect(scope) {
-        followMailboxChanges(scope.get<JmapClient>().stateChanges()) {
-            shell.refresh()
-            ledgers.refreshAll()
-        }
-    }
     val models = remember(scope) { EntryModels() }
     DisposableEffect(models) { onDispose { models.clear() } }
 
@@ -115,20 +124,25 @@ internal fun UnlockedContent(
 
     val backStack = rememberSaveable(saver = RouteStackSaver) { mutableStateListOf<Route>(Route.Home(HomeTab.Inbox)) }
     val saved = rememberSaveableStateHolder()
-    val navigator = remember(backStack, saved) { Navigator(backStack, saved) }
-    val route = navigator.route
+    val navigator = remember(backStack, saved, ledgers) { Navigator(backStack, saved, onLeave = ledgers::leave) }
+    val newMail = rememberNewMail(scope, navigator)
+    LaunchedEffect(scope) {
+        newMail.check()
+        followMailboxChanges(scope.get<JmapClient>().stateChanges()) {
+            shell.refresh()
+            ledgers.mailChanged()
+            newMail.check()
+        }
+    }
     val entryKeys = (0 until navigator.depth).map(navigator::entryKey).toSet()
     LaunchedEffect(entryKeys) { models.retainOnly(entryKeys) }
-    val home = route is Route.Home
+    val home = navigator.route is Route.Home
     LaunchedEffect(home) { if (home) shell.refresh() }
     NavigationBackHandler(
         state = rememberNavigationEventState(NavigationEventInfo.None),
-        isBackEnabled = shellHandlesBack(route, navigator.depth),
+        isBackEnabled = navigator.handlesBack,
         onBackCompleted = navigator::handleBack,
     )
-
-    val searchInput = rememberSearchInput(navigator)
-    val shellFocus = remember { FocusRequester() }
 
     val shellState by shell.state.collectAsState()
     val session = SettingsSession(hosts, shellState.identity, updates, onLock, onSignOut)
@@ -144,54 +158,128 @@ internal fun UnlockedContent(
         },
     ) {
         val wide = maxWidth >= WIDE_LAYOUT
-        CompositionLocalProvider(LocalWideLayout provides wide) {
-            LaunchedEffect(Unit) { shellFocus.requestFocus() }
-            Column(
-                Modifier.fillMaxSize().focusRequester(shellFocus).focusable().onPreviewKeyEvent { event ->
-                    (wide && event.isSearchShortcut()).also { if (it) searchInput.focus.requestFocus() }
-                },
-            ) {
-                NoticesBanner(notices, navigator)
-                AppUpdatesBanner(updates)
-                if (wide) {
-                    WideTopBar(
-                        key,
-                        shellState.identity,
-                        searchInput,
-                        onOpenSettings = { if (route != Route.Settings) navigator.push(Route.Settings) },
-                    )
-                }
-                if (!wide && route is Route.Search) SearchTopBar(searchInput, navigator::handleBack)
-                val top = navigator.depth - 1
-                val floats = wide && top > 0 && (route is Route.Sender || route is Route.Compose)
+        val searchInput = rememberSearchInput(navigator, wide)
+        val pages = Pages(navigator, saved, scope, models, ledgers, session, searchInput.onText)
+        val topKeys = remember(navigator) { navigator::handleKey }
+        CompositionLocalProvider(LocalWideLayout provides wide, LocalTopEntryKeys provides topKeys) {
+            Shell(pages, shellState, key, searchInput, notices, updates, roomForSidebar = maxWidth >= SIDEBAR_EXPANDS)
+        }
+    }
+}
+
+/** What every page on the stack is built from. */
+private class Pages(
+    val navigator: Navigator,
+    val saved: SaveableStateHolder,
+    val scope: Scope,
+    val models: EntryModels,
+    val ledgers: Ledgers,
+    val session: SettingsSession,
+    val onQuery: (String) -> Unit,
+)
+
+@Composable
+private fun Shell(
+    pages: Pages,
+    shellState: ShellState,
+    key: KeyState,
+    searchInput: SearchInput,
+    notices: Notices,
+    updates: AppUpdates,
+    roomForSidebar: Boolean,
+) {
+    val navigator = pages.navigator
+    val wide = LocalWideLayout.current
+    val route = navigator.route
+    val shellFocus = remember { ShellFocus() }
+    val drawer = rememberDrawerState(DrawerValue.Closed)
+    val drawerScope = rememberCoroutineScope()
+    var sidebarChoice by rememberSaveable { mutableStateOf<Boolean?>(null) }
+    val sidebarExpanded = sidebarChoice ?: roomForSidebar
+    val places =
+        Places(
+            sidebarPlace(navigator.homeTab, route),
+            shellState.inboxUnread,
+            onSelect = navigator::openTab,
+            onFilters = { navigator.open(Route.Filters) },
+            onSettings = { navigator.open(Route.Settings) },
+        )
+    val top = navigator.depth - 1
+    val floats = wide && top > 0 && (route is Route.Sender || route is Route.Compose)
+    LaunchedEffect(wide) { if (wide) drawer.snapTo(DrawerValue.Closed) }
+    shellFocus.ReclaimOn(navigator.entryKey(top))
+    NavDrawer(drawer, enabled = !wide && route is Route.Home, places) {
+        Column(
+            Modifier.fillMaxSize().then(shellFocus.modifier(navigator::handleKey)).onPreviewKeyEvent { event ->
+                (wide && event.isSearchShortcut()).also { if (it) searchInput.focus.requestFocus() }
+            },
+        ) {
+            NoticesBanner(notices, navigator)
+            AppUpdatesBanner(updates)
+            if (wide) {
+                WideTopBar(
+                    key,
+                    shellState.identity,
+                    searchInput,
+                    onOpenSettings = { navigator.open(Route.Settings) },
+                    onToggleSidebar = { sidebarChoice = !sidebarExpanded },
+                )
+            }
+            if (!wide && route is Route.Search) SearchTopBar(searchInput, navigator::handleBack)
+            Row(Modifier.weight(1f)) {
+                if (wide) Sidebar(places, sidebarExpanded, onWrite = { navigator.push(Route.Compose(ComposeIntent.New)) })
                 Box(Modifier.weight(1f)) {
                     // One keyed call site for every visible entry, so crossing the breakpoint moves a screen rather than rebuilding it.
                     (if (floats) listOf(top - 1, top) else listOf(top)).forEach { index ->
-                        val entryKey = navigator.entryKey(index)
-                        key(entryKey) {
-                            val entry = navigator[index]
-                            val floating = floats && index == top
-                            if (floating && entry is Route.Sender) Scrim(navigator::back)
-                            Box(if (floating) floating(entry, CorvidTheme.colors.line) else Modifier.fillMaxSize()) {
-                                CompositionLocalProvider(LocalBackGuard provides navigator.guard(index)) {
-                                    saved.SaveableStateProvider(entryKey) {
-                                        Page(
-                                            entry,
-                                            navigator,
-                                            scope,
-                                            models,
-                                            entryKey,
-                                            session,
-                                        ) { Home(it, key, shellState, navigator, ledgers) }
-                                    }
-                                }
-                            }
+                        Entry(index, floating = floats && index == top, pages) {
+                            Home(it, key, shellState, navigator, pages.ledgers, onMenu = { drawerScope.launch { drawer.open() } })
                         }
                     }
+                    Notice(pages.ledgers.actions, composeFloats = floats && route is Route.Compose)
                 }
             }
         }
     }
+}
+
+@Composable
+private fun BoxScope.Entry(
+    index: Int,
+    floating: Boolean,
+    pages: Pages,
+    home: @Composable (Route.Home) -> Unit,
+) {
+    val navigator = pages.navigator
+    val entryKey = navigator.entryKey(index)
+    key(entryKey) {
+        val route = navigator[index]
+        if (floating && route is Route.Sender) Scrim(navigator::back)
+        Box(if (floating) floating(route, CorvidTheme.colors.line) else Modifier.fillMaxSize()) {
+            CompositionLocalProvider(LocalEntryHandlers provides navigator.handlers(index)) {
+                pages.saved.SaveableStateProvider(entryKey) { Page(route, index, entryKey, pages, home) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.Notice(
+    actions: MailActions,
+    composeFloats: Boolean,
+) {
+    val notice = actions.notice.collectAsState().value ?: return
+    val wide = LocalWideLayout.current
+    ActionNoticeBar(
+        actions,
+        notice,
+        Modifier
+            .align(if (wide) Alignment.BottomStart else Alignment.BottomCenter)
+            .padding(
+                start = CorvidFloating.noticeStart,
+                end = CorvidFloating.noticeEnd(panelShown = composeFloats),
+                bottom = CorvidFloating.noticeBottom(wide),
+            ),
+    )
 }
 
 @Composable
@@ -209,49 +297,43 @@ private fun BoxScope.floating(
     line: Color,
 ): Modifier =
     if (route is Route.Sender) {
-        Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(540.dp).shadow(16.dp)
+        Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(CorvidFloating.panelWidth).shadow(16.dp)
     } else {
         val shape = CorvidShape.medium.copy(bottomStart = CornerSize(0), bottomEnd = CornerSize(0))
         Modifier
             .align(Alignment.BottomEnd)
-            .padding(end = 24.dp)
-            .width(540.dp)
-            .height(470.dp)
+            .padding(end = CorvidFloating.panelEnd)
+            .width(CorvidFloating.panelWidth)
+            .height(CorvidFloating.panelHeight)
             .shadow(16.dp, shape)
             .border(1.dp, line, shape)
             .clip(shape)
     }
 
 @Composable
-private fun Home(
+internal fun Home(
     route: Route.Home,
     key: KeyState,
     shellState: ShellState,
     navigator: Navigator,
     ledgers: Ledgers,
+    onMenu: () -> Unit,
 ) {
-    val wide = LocalWideLayout.current
-    LaunchedEffect(route.tab) { if (route.tab == HomeTab.Drafts) ledgers.of(LedgerTab.Drafts).refresh() }
     Column {
-        if (!wide) {
+        if (!LocalWideLayout.current) {
             NarrowTopBar(
+                stringResource(route.tab.title()),
                 key,
                 shellState.identity,
+                onMenu = onMenu,
                 onSearch = { navigator.push(Route.Search("")) },
                 onOpenSettings = { navigator.push(Route.Settings) },
             )
         }
-        TabsBar(
-            current = route.tab,
-            inboxUnread = shellState.inboxUnread,
-            wide = wide,
-            onSelect = navigator::selectTab,
-            onFilters = { navigator.push(Route.Filters) },
-        )
         HomeContent(
             tab = route.tab,
             ledgers = ledgers,
-            onOpenEmail = { navigator.push(if (route.tab == HomeTab.Drafts) Route.Compose(ComposeIntent.Draft(it)) else Route.Reader(it)) },
+            onOpenEmail = navigator::openEmail,
             onOpenSender = { navigator.push(Route.Sender(it)) },
             onWrite = { navigator.push(Route.Compose(ComposeIntent.New)) },
         )
@@ -261,41 +343,37 @@ private fun Home(
 @Composable
 private fun Page(
     route: Route,
-    navigator: Navigator,
-    scope: Scope,
-    models: EntryModels,
+    index: Int,
     entryKey: String,
-    session: SettingsSession,
+    pages: Pages,
     home: @Composable (Route.Home) -> Unit,
+    files: AttachmentFiles = koinInject(),
 ) {
+    val navigator = pages.navigator
+    val scope = pages.scope
+    val models = pages.models
     val mailbox = remember(scope) { scope.get<MailboxRepository>() }
     when (route) {
         is Route.Home -> home(route)
-        is Route.Reader ->
-            ReaderScreen(
-                mailbox,
-                route.emailId,
-                onBack = navigator::back,
-                onCompose = { navigator.push(Route.Compose(it)) },
-                onOpenSender = { navigator.push(Route.Sender(it)) },
-            )
+        is Route.Reader -> ReaderPage(route, index, entryKey, models, mailbox, files, pages.ledgers, navigator)
         is Route.Search ->
             SearchScreen(
-                viewModel =
-                    if (route.query.isBlank()) {
-                        null
-                    } else {
-                        models.of(entryKey, LedgerViewModel::class) {
-                            LedgerViewModel(mailbox, LedgerSource.Search(route.query))
-                        }
-                    },
+                viewModel = route.query.takeIf { it.isNotBlank() }?.let { pages.ledgers.search(models, entryKey, it) },
+                actions = pages.ledgers.actions,
                 query = route.query,
-                onOpenEmail = { navigator.push(Route.Reader(it)) },
+                onOpenEmail = navigator::openEmail,
                 onOpenSender = { navigator.push(Route.Sender(it)) },
+                onQuery = pages.onQuery,
             )
-        is Route.Compose -> ComposeScreen(remember(scope) { scope.get<ComposeRepository>() }, route.intent, onClose = navigator::back)
-        is Route.Filters -> FiltersScreen(remember(scope) { scope.get<FiltersRepository>() }, onBack = navigator::back)
-        is Route.Settings -> SettingsPage(scope, session, navigator, models, entryKey)
+        is Route.Compose ->
+            ComposeScreen(files, route.intent, onClose = navigator::back) { restore ->
+                models.of(entryKey, ComposeViewModel::class) { ComposeViewModel(scope.get<ComposeRepository>(), route.intent, restore) }
+            }
+        is Route.Filters ->
+            FiltersScreen(onBack = navigator::back) { draft ->
+                models.of(entryKey, FiltersViewModel::class) { FiltersViewModel(scope.get<FiltersRepository>(), draft) }
+            }
+        is Route.Settings -> SettingsPage(scope, pages.session, navigator, models, entryKey)
         is Route.ApproveDevice -> ApproveDevicePage(scope, navigator, models, entryKey)
         is Route.Notices -> {
             val viewModel = models.of(entryKey, NoticesViewModel::class) { NoticesViewModel(scope.get<NoticeRepository>()) }
@@ -309,16 +387,10 @@ private fun Page(
                 actions =
                     SenderCardActions(
                         close = navigator::back,
-                        openEmail = { navigator.push(Route.Reader(it)) },
+                        openEmail = navigator::openEmail,
                         compose = { navigator.push(Route.Compose(it)) },
                         makeFilter = { navigator.push(Route.Filters) },
                     ),
             )
     }
 }
-
-/** Whether back belongs to the shell at all; on the Inbox with nothing pushed it leaves the app. */
-internal fun shellHandlesBack(
-    route: Route,
-    depth: Int,
-): Boolean = depth > 1 || route != Route.Home(HomeTab.Inbox)

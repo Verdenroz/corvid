@@ -11,8 +11,10 @@ import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_no_mailbox
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -171,6 +173,20 @@ class LedgerViewModelTest {
             val loaded = vm.state.first { it is LedgerUiState.Loaded } as LedgerUiState.Loaded
 
             assertEquals(listOf("b", "a"), loaded.conversations.map { it.latest.id })
+            assertEquals(2, vm.total.value)
+        }
+
+    @Test
+    fun `a tab has no result count`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
+            fake.emails += FakeEmail("a", "a", setOf("inbox"), "Lunch", "a@x.test", "2024-01-01T00:00:00Z")
+            val vm = track(LedgerViewModel(repository(fake), LedgerTab.Inbox))
+
+            vm.state.first { it is LedgerUiState.Loaded }
+
+            assertNull(vm.total.value)
         }
 
     @Test
@@ -220,6 +236,27 @@ class LedgerViewModelTest {
         }
 
     @Test
+    fun `a mail change leaves a list off screen alone until it is shown again`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
+            var queries = 0
+            fake.beforeEmailQuery = { queries++ }
+            val vm = track(LedgerViewModel(repository(fake), LedgerTab.Inbox))
+            vm.state.first { it is LedgerUiState.Loaded }
+
+            fake.emails += FakeEmail("n", "n", setOf("inbox"), "new", "a@example.test", Instant.fromEpochSeconds(1).toString())
+            vm.mailChanged()
+            withContext(Dispatchers.Default) { delay(300) }
+            assertEquals(1, queries)
+            vm.shown(true)
+
+            val loaded = vm.state.first { it is LedgerUiState.Loaded && it.conversations.isNotEmpty() } as LedgerUiState.Loaded
+            assertEquals(listOf("n"), loaded.conversations.map { it.latest.id })
+            assertEquals(2, queries)
+        }
+
+    @Test
     fun `drafts of one thread are listed one by one, each opening in compose`() =
         runViewModelTest {
             val fake = FakeJmapServer()
@@ -265,5 +302,110 @@ class LedgerViewModelTest {
             repository.updateKeywords("a1", mapOf("\$seen" to true))
 
             vm.state.first { (it as? LedgerUiState.Loaded)?.conversations?.single()?.unread == false }
+        }
+
+    @Test
+    fun `select all ticks every loaded conversation and a refetch drops ticks for rows that left`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
+            listOf("a", "b").forEach { id ->
+                fake.emails += FakeEmail(id, id, setOf("inbox"), "subject", "$id@example.test", "2024-01-01T00:00:00Z")
+            }
+            val vm = track(LedgerViewModel(repository(fake), LedgerTab.Inbox))
+            vm.state.first { it is LedgerUiState.Loaded }
+
+            vm.selectAll()
+            assertEquals(setOf("a", "b"), vm.selected.value)
+            fake.emails.removeAll { it.id == "a" }
+            vm.refresh()?.join()
+
+            assertEquals(setOf("b"), vm.selected.value)
+        }
+
+    @Test
+    fun `toggling a ticked row unticks it`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
+            val vm = track(LedgerViewModel(repository(fake), LedgerTab.Inbox))
+
+            vm.toggleSelected("a")
+            vm.toggleSelected("a")
+
+            assertTrue(vm.selected.value.isEmpty())
+        }
+
+    @Test
+    fun `clearing the selection unticks every row at once`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
+            listOf("a", "b").forEach { id ->
+                fake.emails += FakeEmail(id, id, setOf("inbox"), "subject", "$id@example.test", "2024-01-01T00:00:00Z")
+            }
+            val vm = track(LedgerViewModel(repository(fake), LedgerTab.Inbox))
+            vm.state.first { it is LedgerUiState.Loaded }
+            vm.selectAll()
+
+            vm.clearSelection()
+
+            assertTrue(vm.selected.value.isEmpty())
+        }
+
+    @Test
+    fun `a row moving away is hidden while the move runs and gone after the refetch`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
+            fake.mailboxes += FakeMailbox(id = "trash", name = "Trash", role = "trash")
+            listOf("a", "b").forEach { id ->
+                fake.emails += FakeEmail(id, id, setOf("inbox"), "subject", "$id@example.test", "2024-01-01T00:00:00Z")
+            }
+            val gate = CompletableDeferred<Unit>()
+            val repository = repository(fake)
+            val vm = track(LedgerViewModel(repository, LedgerTab.Inbox))
+            vm.state.first { it is LedgerUiState.Loaded }
+
+            fake.gate = gate
+            coroutineScope {
+                launch { repository.trash(listOf("a")) }
+                val during = vm.state.first { (it as? LedgerUiState.Loaded)?.conversations?.size == 1 } as LedgerUiState.Loaded
+                assertEquals(listOf("b"), during.conversations.map { it.latest.id })
+                fake.gate = null
+                gate.complete(Unit)
+            }
+
+            assertEquals(setOf("trash"), fake.emails.single { it.id == "a" }.mailboxIds)
+            vm.state.first { (it as? LedgerUiState.Loaded)?.conversations?.map { c -> c.latest.id } == listOf("b") }
+        }
+
+    @Test
+    fun `an archive the account has not made yet lists nothing, then lists what the first archive filed`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
+            fake.emails += FakeEmail("a", "a", setOf("inbox"), "subject", "a@example.test", "2024-01-01T00:00:00Z")
+            val repository = repository(fake)
+            val vm = track(LedgerViewModel(repository, LedgerTab.Archive))
+
+            assertEquals(LedgerUiState.Loaded(emptyList(), canLoadMore = false), vm.state.first { it !is LedgerUiState.Loading })
+            repository.archive(listOf("a"))
+            vm.refresh()?.join()
+
+            assertEquals(listOf("a"), (vm.state.value as LedgerUiState.Loaded).conversations.map { it.latest.id })
+        }
+
+    @Test
+    fun `junk the account lacks is said plainly`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
+            val vm = track(LedgerViewModel(repository(fake), LedgerTab.Junk))
+
+            assertEquals(
+                LedgerUiState.Failed(uiText(Res.string.mailbox_no_mailbox, "junk")),
+                vm.state.first { it !is LedgerUiState.Loading },
+            )
         }
 }

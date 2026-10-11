@@ -42,7 +42,10 @@ fun replyDraft(
     )
 }
 
-/** [divider] is the resolved "Forwarded message" line; the header names are RFC 5322 field names, not prose. */
+/**
+ * [divider] is the resolved "Forwarded message" line; the header names are RFC 5322 field names, not prose.
+ * The original's attachments go along by blob id, so nothing is downloaded or uploaded again.
+ */
 fun forwardDraft(
     original: EmailDetail,
     divider: String,
@@ -59,6 +62,7 @@ fun forwardDraft(
     return Draft(
         subject = withPrefix("Fwd", original.subject),
         body = "\n\n$divider\n${header.joinToString("\n")}\n\n${original.body}",
+        attachments = original.attachments,
     )
 }
 

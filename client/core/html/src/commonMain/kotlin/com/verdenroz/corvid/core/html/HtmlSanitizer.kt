@@ -20,8 +20,13 @@ private fun Element.hasHidingStyle(): Boolean = HIDING_STYLE.containsMatchIn(att
 
 internal fun safeLink(raw: String): String? = raw.trim().takeIf(::isOpenableUrl)
 
-/** An image loads only from the user's own proxy path; [proxyBase] ends in `/i/`. */
+/**
+ * An image loads only from the user's own proxy path, [proxyBase] ending in `/i/`, or from a `cid:` part of the
+ * message itself, which the server already holds.
+ */
 internal fun imageUrl(
     src: String,
     proxyBase: String,
-): String? = src.trim().takeIf { it.startsWith(proxyBase, ignoreCase = true) }
+): String? = src.trim().takeIf { it.startsWith(proxyBase, ignoreCase = true) || it.startsWith(CID, ignoreCase = true) }
+
+const val CID = "cid:"

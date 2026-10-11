@@ -19,14 +19,12 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.verdenroz.corvid.core.data.FiltersRepository
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.PillButton
@@ -55,16 +53,17 @@ import com.verdenroz.corvid.feature.filters.resources.filters_title
 import com.verdenroz.corvid.feature.filters.resources.filters_up
 import org.jetbrains.compose.resources.stringResource
 
+/** [model] gives the back-stack entry's view model, made on first call from the rule being edited before the screen was recreated. */
 @Composable
 fun FiltersScreen(
-    repository: FiltersRepository,
     onBack: () -> Unit,
+    model: (savedDraft: RuleDraft?) -> FiltersViewModel,
 ) {
     var savedDraft by rememberSaveable(stateSaver = RuleDraftSaver) { mutableStateOf<RuleDraft?>(null) }
-    val viewModel = remember(repository) { FiltersViewModel(repository, savedDraft) }
+    val viewModel = model(savedDraft)
     val state by viewModel.state.collectAsState()
     (state as? FiltersUiState.Ready)?.let { ready -> if (ready.editing != savedDraft) SideEffect { savedDraft = ready.editing } }
-    GuardBack(viewModel::back)
+    GuardBack(onBack = viewModel::back)
 
     Column(modifier = Modifier.fillMaxSize().background(CorvidTheme.colors.surface)) {
         PageHeader(

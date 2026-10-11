@@ -50,4 +50,8 @@
     <string name="heading_day_month">%1$s %2$s</string>
     <string name="heading_day_month_year">%1$s %2$s %3$s</string>
     <string name="month_year">%1$s %2$s</string>
+    <string name="size_bytes">%1$s B</string>
+    <string name="size_kilobytes">%1$s KB</string>
+    <string name="size_megabytes">%1$s MB</string>
+    <string name="size_gigabytes">%1$s GB</string>
 </resources>

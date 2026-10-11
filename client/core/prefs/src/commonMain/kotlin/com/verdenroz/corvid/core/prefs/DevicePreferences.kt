@@ -2,6 +2,7 @@ package com.verdenroz.corvid.core.prefs
 
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.stateIn
 private val THEME = stringPreferencesKey("theme")
 private val AUTO_LOCK_MINUTES = intPreferencesKey("auto_lock_minutes")
 private val NOTICES_SEEN = longPreferencesKey("notices_seen")
+private val NEW_MAIL_NOTIFICATIONS = booleanPreferencesKey("new_mail_notifications")
 private val ACCOUNT_SERVER = stringPreferencesKey("account_server")
 private val ACCOUNT_ISSUER = stringPreferencesKey("account_issuer")
 private val ACCOUNT_EMAIL = stringPreferencesKey("account_email")
@@ -45,6 +47,10 @@ class DevicePreferences(
         store.edit { it[NOTICES_SEEN] = id }
     }
 
+    suspend fun setNewMailNotifications(on: Boolean) {
+        store.edit { it[NEW_MAIL_NOTIFICATIONS] = on }
+    }
+
     suspend fun rememberAccount(account: RememberedAccount) {
         store.edit {
             it[ACCOUNT_SERVER] = account.server
@@ -69,6 +75,7 @@ internal fun decode(preferences: Preferences): DeviceSettings {
         theme = ThemeChoice.entries.firstOrNull { it.name == preferences[THEME] } ?: defaults.theme,
         autoLock = AutoLock.entries.firstOrNull { it.minutes == preferences[AUTO_LOCK_MINUTES] } ?: defaults.autoLock,
         noticesSeen = preferences[NOTICES_SEEN] ?: defaults.noticesSeen,
+        newMailNotifications = preferences[NEW_MAIL_NOTIFICATIONS] ?: defaults.newMailNotifications,
         account = decodeAccount(preferences),
     )
 }

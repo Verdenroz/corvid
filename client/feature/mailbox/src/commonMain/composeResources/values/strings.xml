@@ -10,6 +10,9 @@
     <string name="mailbox_from">From: %1$s</string>
     <string name="reader_to">to %1$s</string>
     <string name="reader_cc">cc %1$s</string>
+    <string name="reader_newer">Newer</string>
+    <string name="reader_older">Older</string>
+    <string name="reader_position">%1$d of %2$d</string>
     <string name="mailbox_truncated">This message was truncated.</string>
     <string name="mailbox_no_sender">Unknown sender</string>
     <string name="mailbox_separator">-</string>
@@ -26,6 +29,24 @@
         <item quantity="other">%1$d messages in this conversation</item>
     </plurals>
     <string name="search_no_results">Nothing matches “%1$s”.</string>
+    <plurals name="search_results">
+        <item quantity="one">%1$d result</item>
+        <item quantity="other">%1$d results</item>
+    </plurals>
+    <string name="search_include_discarded">Include Trash and Junk</string>
+    <string name="search_exclude_discarded">Leave out Trash and Junk</string>
+    <string-array name="search_hint_examples">
+        <item>from:ada</item>
+        <item>subject:invoice</item>
+        <item>has:attachment</item>
+        <item>is:unread</item>
+        <item>in:sent</item>
+        <item>after:2026-01-31</item>
+        <item>older_than:1y</item>
+        <item>&quot;exact words&quot;</item>
+        <item>-word</item>
+    </string-array>
+    <string name="search_hint_scope">Trash and Junk stay out unless you add in:anywhere.</string>
     <string name="custody_sender">Sender</string>
     <string name="custody_way_in">On the way in</string>
     <string name="custody_labelled">Labelled</string>
@@ -54,7 +75,6 @@
     <string name="custody_by_rule">By your filter</string>
     <string name="custody_by_labeler">By the labeler</string>
     <string name="custody_by_you">By you</string>
-    <string name="custody_nothing">Nothing yet</string>
     <string name="teach_right">Right</string>
     <string name="teach_wrong">Wrong</string>
     <string name="teach_change">Change</string>
@@ -107,4 +127,77 @@
     <string name="card_no_trackers_last">None found in %1$d of the last %2$d messages</string>
     <string name="card_failed_claims">This sender failed authentication. Mail claiming to be %1$s didn't come from it.</string>
     <string name="card_failed">This sender failed authentication.</string>
+    <plurals name="action_archived">
+        <item quantity="one">Archived</item>
+        <item quantity="other">%1$d conversations archived</item>
+    </plurals>
+    <plurals name="action_trashed">
+        <item quantity="one">Moved to Trash</item>
+        <item quantity="other">%1$d conversations moved to Trash</item>
+    </plurals>
+    <plurals name="action_deleted">
+        <item quantity="one">Deleted for good</item>
+        <item quantity="other">%1$d conversations deleted for good</item>
+    </plurals>
+    <string name="action_restored">Put back</string>
+    <string name="action_refused">The server refused: %1$s</string>
+    <string name="action_partly_refused">%1$d not moved: %2$s</string>
+    <string name="action_undo">Undo</string>
+    <string name="action_dismiss">Dismiss</string>
+    <string name="action_archive">Archive</string>
+    <string name="action_trash">Delete</string>
+    <string name="action_destroy">Delete for good</string>
+    <string name="action_mark_read">Mark read</string>
+    <string name="action_mark_unread">Mark unread</string>
+    <string name="action_star">Star</string>
+    <string name="action_unstar">Unstar</string>
+    <string name="action_headers">Show headers</string>
+    <string name="action_hide_headers">Hide headers</string>
+    <string name="action_destroy_question">Delete for good? This cannot be undone.</string>
+    <string name="action_destroy_confirm">Delete</string>
+    <string name="action_keep">Keep</string>
+    <string name="selection_count">%1$d selected</string>
+    <string name="selection_all">Select all</string>
+    <string name="selection_clear">Clear selection</string>
+    <string name="selection_select">Select</string>
+    <string name="headers_loading">Reading headers…</string>
+    <string name="headers_gone">This message no longer exists.</string>
+    <string name="ledger_empty_trash">Trash is empty.</string>
+    <string name="ledger_empty_archive">Nothing archived yet.</string>
+    <string name="ledger_empty_junk">No junk caught.</string>
+    <string name="action_report_spam">Report spam</string>
+    <string name="action_not_spam">Not spam</string>
+    <string name="action_more">More</string>
+    <string name="action_move_to">Move to</string>
+    <string name="action_move_loading">Reading folders…</string>
+    <string name="action_partly_kept">%1$d kept: %2$s</string>
+    <string name="action_empty_trash">Empty Trash</string>
+    <string name="action_empty_junk">Empty Junk</string>
+    <string name="action_empty_question">Delete everything here for good? This cannot be undone.</string>
+    <plurals name="action_reported">
+        <item quantity="one">Reported as spam</item>
+        <item quantity="other">%1$d conversations reported as spam</item>
+    </plurals>
+    <plurals name="action_rescued">
+        <item quantity="one">Moved to Inbox</item>
+        <item quantity="other">%1$d conversations moved to Inbox</item>
+    </plurals>
+    <plurals name="action_moved">
+        <item quantity="one">Moved to %2$s</item>
+        <item quantity="other">%1$d conversations moved to %2$s</item>
+    </plurals>
+    <plurals name="action_emptied">
+        <item quantity="one">%1$d message deleted for good</item>
+        <item quantity="other">%1$d messages deleted for good</item>
+    </plurals>
+    <string name="attachment_open">Open</string>
+    <string name="attachment_fetching">Fetching…</string>
+    <string name="attachment_saved">Saved to %1$s</string>
+    <string name="attachment_no_viewer">Nothing on this device opens this kind of file.</string>
+    <string name="attachment_not_saved">Not saved: %1$s</string>
+    <string name="attachment_unverified">Sender not verified. These files may not come from who the message claims.</string>
+    <string name="attachment_open_question">Open %1$s from an unverified sender?</string>
+    <string name="attachment_open_anyway">Open anyway</string>
+    <string name="attachment_keep_closed">Cancel</string>
+    <string name="has_attachments">Has attachments</string>
 </resources>

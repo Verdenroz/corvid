@@ -22,6 +22,8 @@ kotlin {
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
             implementation(libs.compose.material3)
+            implementation(libs.jetbrains.lifecycle.viewmodel)
+            implementation(libs.kotlinx.coroutines.core)
         }
     }
 }

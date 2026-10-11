@@ -71,8 +71,19 @@ object CorvidIcons {
     val Shield: ImageVector by lazy { stroke("Shield", "M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3zM9 12l2 2 4-4") }
 
     val Unsubscribe: ImageVector by lazy { stroke("Unsubscribe", "M4 6h16v12H4zM4 7l8 6 8-6M15 15l5 5M20 15l-5 5") }
+    val Mail: ImageVector by lazy { stroke("Mail", "M4 6h16v12H4zM4 7l8 6 8-6") }
+
+    val MailOpen: ImageVector by lazy { stroke("MailOpen", "M4 10l8-6 8 6v10H4zM4 10l8 5 8-5") }
+
+    val Headers: ImageVector by lazy { stroke("Headers", "M5 6h14M5 10h14M5 14h9M5 18h6") }
+
     val Plus: ImageVector by lazy { stroke("Plus", "M12 5v14M5 12h14") }
+
+    val Paperclip: ImageVector by lazy {
+        stroke("Paperclip", "M20 11.5l-8.2 8.2a5 5 0 0 1-7.1-7.1L13 4.3a3.3 3.3 0 0 1 4.7 4.7l-8.3 8.3a1.7 1.7 0 0 1-2.4-2.4L14.5 7.4")
+    }
     val ChevronDown: ImageVector by lazy { stroke("ChevronDown", "M6 9l6 6 6-6") }
+    val ChevronUp: ImageVector by lazy { stroke("ChevronUp", "M6 15l6-6 6 6") }
 
     val Send: ImageVector by lazy { stroke("Send", "M4 12l16-8-6 16-2-6-8-2zM12 14l8-10") }
 
@@ -83,6 +94,12 @@ object CorvidIcons {
     val Box: ImageVector by lazy { stroke("Box", "M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10") }
 
     val Settings: ImageVector by lazy { stroke("Settings", "M4 7h9M17 7h3M4 17h3M11 17h9M15 5v4M9 15v4") }
+
+    val Folder: ImageVector by lazy { stroke("Folder", "M3 6h6l2 2h10v11H3zM3 10h18") }
+
+    val Spam: ImageVector by lazy { stroke("Spam", "M8.5 3h7L21 8.5v7L15.5 21h-7L3 15.5v-7L8.5 3zM12 8v5M12 16h.01") }
+
+    val Menu: ImageVector by lazy { stroke("Menu", "M4 7h16M4 12h16M4 17h16") }
 }
 
 private fun stroke(

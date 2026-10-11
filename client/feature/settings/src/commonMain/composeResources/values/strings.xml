@@ -18,6 +18,7 @@
     <string name="settings_theme_light">Light</string>
     <string name="settings_theme_dark">Dark</string>
     <string name="settings_security">Security</string>
+    <string name="settings_devices">Devices</string>
     <string name="settings_auto_lock">Lock after</string>
     <string name="settings_auto_lock_option">%1$d min</string>
     <string name="settings_auto_lock_detail">Idle time before the key drops and the app locks.</string>
@@ -26,6 +27,8 @@
     <string name="settings_filters_row">Edit your filters</string>
     <string name="settings_filters_detail">Rules the server applies as mail arrives.</string>
     <string name="settings_notices">Notices</string>
+    <string name="settings_new_mail">New mail notifications</string>
+    <string name="settings_new_mail_detail">Says only that mail arrived, never who sent it or what it says, and only while the app holds its key.</string>
     <string name="settings_notices_row">Server notices</string>
     <string name="settings_notices_detail">Sign-in alerts and failed updates the server has reported.</string>
     <string name="settings_approve_row">Approve a device</string>

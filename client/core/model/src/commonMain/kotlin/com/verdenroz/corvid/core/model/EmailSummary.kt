@@ -2,7 +2,10 @@ package com.verdenroz.corvid.core.model
 
 import kotlin.time.Instant
 
-/** [keywords] mixes the user's own with Corvid's `corvid-` ones; [CorvidKeywords] tells them apart. */
+/**
+ * [keywords] mixes the user's own with Corvid's `corvid-` ones; [CorvidKeywords] tells them apart.
+ * [hasAttachment] is the server's own verdict, which may count an inline image the reader does not list.
+ */
 data class EmailSummary(
     val id: String,
     val threadId: String,
@@ -12,4 +15,5 @@ data class EmailSummary(
     val keywords: Set<String>,
     val preview: String,
     val provenance: Provenance,
+    val hasAttachment: Boolean = false,
 )

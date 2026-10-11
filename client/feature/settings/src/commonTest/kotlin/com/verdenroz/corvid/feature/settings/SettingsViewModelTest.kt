@@ -17,11 +17,12 @@ import kotlin.test.assertTrue
 private class Calls {
     var locks = 0
     var signOuts = 0
+    var permissionAsks = 0
 }
 
 private fun ViewModelTestScope.viewModel(calls: Calls = Calls()): SettingsViewModel {
     val preferences = DevicePreferences(InMemoryPreferencesStore(), CoroutineScope(Dispatchers.Main), DeviceSettings())
-    return track(SettingsViewModel(preferences, onLock = { calls.locks++ }, onSignOut = { calls.signOuts++ }))
+    return track(SettingsViewModel(preferences, { calls.locks++ }, { calls.signOuts++ }, { calls.permissionAsks++ }))
 }
 
 class SettingsViewModelTest {
@@ -34,6 +35,32 @@ class SettingsViewModelTest {
             viewModel.selectAutoLock(AutoLock.FifteenMinutes)
 
             assertEquals(DeviceSettings(ThemeChoice.Dark, AutoLock.FifteenMinutes), viewModel.state.value.settings)
+        }
+
+    @Test
+    fun `new mail notifications start on and turning them off asks for no permission`() =
+        runViewModelTest {
+            val calls = Calls()
+            val viewModel = viewModel(calls)
+            assertTrue(viewModel.state.value.settings.newMailNotifications)
+
+            viewModel.setNewMailNotifications(false)
+
+            assertFalse(viewModel.state.value.settings.newMailNotifications)
+            assertEquals(0, calls.permissionAsks)
+        }
+
+    @Test
+    fun `turning new mail notifications back on asks for the notification permission`() =
+        runViewModelTest {
+            val calls = Calls()
+            val viewModel = viewModel(calls)
+            viewModel.setNewMailNotifications(false)
+
+            viewModel.setNewMailNotifications(true)
+
+            assertTrue(viewModel.state.value.settings.newMailNotifications)
+            assertEquals(1, calls.permissionAsks)
         }
 
     @Test

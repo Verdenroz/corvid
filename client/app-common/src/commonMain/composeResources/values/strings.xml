@@ -45,10 +45,20 @@
     <string name="tab_starred">Starred</string>
     <string name="tab_sent">Sent</string>
     <string name="tab_drafts">Drafts</string>
+    <string name="tab_archive">Archive</string>
+    <string name="tab_junk">Junk</string>
+    <string name="tab_trash">Trash</string>
+    <string name="sidebar_toggle">Show or hide folder names</string>
+    <string name="drawer_open">Open folders</string>
     <string name="tab_labels">Labels</string>
     <string name="tab_filters">Filters</string>
     <string name="write">Write</string>
     <string name="placeholder_people">People get their own list later. For now they are in Inbox, drawn as circles.</string>
     <string name="placeholder_sources">Sources get their own list later. For now they are in Inbox, drawn as rounded squares.</string>
     <string name="placeholder_labels">Labels do not have their own view yet.</string>
+    <string name="new_mail_title">New mail</string>
+    <plurals name="new_mail_count">
+        <item quantity="one">%1$d new message in Inbox</item>
+        <item quantity="other">%1$d new messages in Inbox</item>
+    </plurals>
 </resources>

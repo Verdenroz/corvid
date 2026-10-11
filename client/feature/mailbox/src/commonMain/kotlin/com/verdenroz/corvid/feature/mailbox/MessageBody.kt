@@ -34,7 +34,8 @@ private sealed interface Parsed {
 
 /**
  * A message's body: its HTML part drawn natively and sanitised, or the plain text when there is none
- * or it will not parse. Links open through [openUntrusted] and images load only from [repository]'s proxy path.
+ * or it will not parse. Links open through [openUntrusted]; images load only from [repository]'s proxy path or from the
+ * message's own `cid:` parts.
  */
 @Composable
 fun MessageBody(
@@ -43,7 +44,10 @@ fun MessageBody(
     modifier: Modifier = Modifier,
 ) {
     val html = email.html
-    val context = remember(email.provenance, repository) { BodyContext(email.provenance, repository::proxiedImage) }
+    val context =
+        remember(email.id, email.inlineImages, email.provenance, repository) {
+            BodyContext(email.provenance) { repository.messageImage(email, it) }
+        }
     val parsed = html?.let { parse(it.html, repository).value } ?: Parsed.Plain
     SelectionContainer(modifier) {
         Column {
