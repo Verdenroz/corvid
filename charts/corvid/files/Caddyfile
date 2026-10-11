@@ -14,6 +14,13 @@
 		header Content-Type application/json
 		respond `{"version":1,"server":"https://{$CORVID_WEB_HOSTNAME}:{$CORVID_WEB_PORT}","issuer":"https://{$CORVID_IDP_HOSTNAME}:{$CORVID_WEB_PORT}"}` 200
 	}
+	# The stream token and the public VAPID key need no session, so a locked phone can read them.
+	@push path /corvid/push/vapid /corvid/push/stream
+	handle @push {
+		reverse_proxy 127.0.0.1:11333 {
+			flush_interval -1
+		}
+	}
 	# Stalwart answers a credential-less /jmap/session with 200, which forward_auth would pass.
 	@corvid {
 		path /corvid/update /corvid/notices /corvid/devices/*

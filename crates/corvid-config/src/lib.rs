@@ -413,7 +413,14 @@ pub struct Sentinel {
     pub state: PathBuf,
     /// Master-approved device enrollment. Absent, the sentinel serves no `/corvid/devices` routes.
     pub devices: Option<Devices>,
+    /// New-mail previews pushed to approved devices. Needs `devices`; absent, nothing is pushed.
+    pub push: Option<Push>,
 }
+
+/// No settings yet; its presence turns pushes on.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Push {}
 
 /// Needs a `server` section, which names the Pocket-ID issuer, the admin user and the mailbox.
 #[derive(Debug, Deserialize)]
@@ -766,6 +773,19 @@ mod server_tests {
         assert_eq!(devices.idp_url, "http://127.0.0.1:1411");
         assert_eq!(devices.stalwart_url, "http://127.0.0.1:8080");
         assert!(Config::parse("sentinel:\n  state: /s\n  devices: {}\n").is_err());
+    }
+
+    #[test]
+    fn an_empty_push_section_turns_pushes_on() {
+        let text = SERVER.to_owned() + "sentinel:\n  state: /s\n  push: {}\n";
+        assert!(
+            Config::parse(&text)
+                .unwrap()
+                .sentinel
+                .unwrap()
+                .push
+                .is_some()
+        );
     }
 
     #[test]

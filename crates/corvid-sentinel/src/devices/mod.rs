@@ -4,7 +4,9 @@
 
 mod keys;
 mod master;
+mod push;
 mod state;
+mod stream;
 
 use std::io;
 use std::path::PathBuf;
@@ -14,17 +16,19 @@ use axum::Json;
 use axum::Router;
 use axum::extract::{DefaultBodyLimit, Path, State};
 use axum::http::{HeaderMap, StatusCode};
-use axum::routing::{delete, get, post};
-use ring::rand::{SecureRandom, SystemRandom};
+use axum::routing::{delete, get, post, put};
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
 
 use crate::dates;
 use crate::persisted::Persisted;
+use crate::webpush::random_bytes;
 use keys::Keys;
 use master::{Master, Refusal};
-pub use state::{Approved, Devices, Request, Stage, open};
+pub use push::{Config as PushConfig, FCM_ORIGIN};
+pub use state::{Approved, Device, Devices, Push, Request, Stage, Target, open};
 use state::{LIFETIME_SECONDS, MAX_OPEN, save};
+use stream::Streams;
 
 const REQUEST_BODY_LIMIT: usize = 256;
 const NAME_LENGTH: std::ops::RangeInclusive<usize> = 1..=32;
@@ -40,6 +44,8 @@ pub struct Config {
     pub mail_address: String,
     pub stalwart_url: String,
     pub stalwart_token: String,
+    /// Absent, devices take no pushes and the mail WebHook is acknowledged and ignored.
+    pub push: Option<PushConfig>,
 }
 
 struct DeviceState {
@@ -47,6 +53,7 @@ struct DeviceState {
     devices: Persisted<Devices>,
     master: Master,
     keys: Keys,
+    streams: Streams,
 }
 
 type Shared = Arc<DeviceState>;
@@ -73,7 +80,12 @@ pub fn routes(config: Config) -> Router {
             config.keys_address,
             config.mail_address,
         ),
+        streams: Streams::default(),
     });
+    let pushes = match config.push {
+        Some(push) => push::routes(state.clone(), push),
+        None => push::off(),
+    };
     Router::new()
         .route("/corvid/devices/requests", post(create).get(list))
         .route("/corvid/devices/requests/{id}", get(status))
@@ -82,6 +94,7 @@ pub fn routes(config: Config) -> Router {
         .route("/internal/devices/{name}", delete(revoke))
         .layer(DefaultBodyLimit::max(REQUEST_BODY_LIMIT))
         .with_state(state)
+        .merge(pushes)
 }
 
 #[derive(Serialize)]
@@ -105,7 +118,11 @@ pub fn off() -> Router {
         .route("/corvid/devices/requests/{id}", get(off))
         .route("/corvid/devices/requests/{id}/approve", post(off))
         .route("/corvid/devices/{name}", get(off))
+        .route("/corvid/devices/{name}/push", put(off).delete(off))
         .route("/internal/devices/{name}", delete(off))
+        .route("/corvid/push/vapid", get(off))
+        .route("/corvid/push/stream", get(off))
+        .route("/webhook/mail", post(|| async { StatusCode::NO_CONTENT }))
 }
 
 /// `requests` is refused because it is the path segment the request routes live under.
@@ -115,14 +132,6 @@ fn valid_name(name: &str) -> bool {
         && name
             .bytes()
             .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
-}
-
-fn random_bytes<const N: usize>() -> [u8; N] {
-    let mut bytes = [0; N];
-    SystemRandom::new()
-        .fill(&mut bytes)
-        .expect("the system has no randomness");
-    bytes
 }
 
 #[derive(Deserialize)]
@@ -325,9 +334,12 @@ async fn claim(state: Shared, id: String, code: String) -> Result<Claim, StatusC
 }
 
 async fn enroll(state: &DeviceState, request: &Request) -> Result<Approved, keys::Error> {
-    let old = state
-        .devices
-        .read(|devices| devices.approved.get(&request.name).cloned());
+    let old = state.devices.read(|devices| {
+        devices
+            .approved
+            .get(&request.name)
+            .map(|device| device.key.clone())
+    });
     if let Some(old) = old {
         state.keys.destroy(&old).await?;
     }
@@ -340,15 +352,24 @@ async fn record(
     name: String,
     approved: Approved,
 ) -> Result<(), StatusCode> {
-    commit(state, move |devices| {
+    let ended = name.clone();
+    commit(state.clone(), move |devices| {
         let mut next = devices.clone();
         if let Some(request) = next.requests.get_mut(&id) {
             request.stage = Stage::Approved;
         }
-        next.approved.insert(name, approved);
+        next.approved.insert(
+            name,
+            Device {
+                key: approved,
+                push: None,
+            },
+        );
         (Some(next), ())
     })
-    .await
+    .await?;
+    state.streams.close(&ended);
+    Ok(())
 }
 
 async fn forget(state: Shared, id: String) -> Result<(), StatusCode> {
@@ -366,7 +387,7 @@ async fn read(
 ) -> Result<Json<Approved>, StatusCode> {
     state
         .devices
-        .read(|devices| devices.approved.get(&name).cloned())
+        .read(|devices| devices.approved.get(&name).map(|device| device.key.clone()))
         .map(Json)
         .ok_or(StatusCode::NOT_FOUND)
 }
@@ -390,17 +411,19 @@ async fn revoke(
     }
     let approved = state
         .devices
-        .read(|devices| devices.approved.get(&name).cloned())
+        .read(|devices| devices.approved.get(&name).map(|device| device.key.clone()))
         .ok_or(StatusCode::NOT_FOUND)?;
     state.keys.destroy(&approved).await.map_err(|error| {
         tracing::warn!(%error, "a device key could not be destroyed");
         StatusCode::BAD_GATEWAY
     })?;
-    commit(state, move |devices| {
+    let ended = name.clone();
+    commit(state.clone(), move |devices| {
         let mut next = devices.clone();
         next.approved.remove(&name);
         (Some(next), ())
     })
     .await?;
+    state.streams.close(&ended);
     Ok(StatusCode::NO_CONTENT)
 }

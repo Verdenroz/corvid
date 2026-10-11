@@ -125,6 +125,11 @@ jobs:
       - run: bash deploy/tests/oidc.test.sh
         env:
           CORVID_SENTINEL_BIN: ${{ github.workspace }}/sentinel/corvid-sentinel
+      - name: Install python3 cryptography
+        run: python3 -I -c 'import cryptography' 2>/dev/null || { sudo apt-get update -qq && sudo apt-get install -y python3-cryptography; }
+      - run: bash deploy/tests/push.test.sh
+        env:
+          CORVID_SENTINEL_BIN: ${{ github.workspace }}/sentinel/corvid-sentinel
       - run: cat deploy/stalwart.plan.ndjson deploy/stalwart.host-zone.ndjson > combined.ndjson && ./deploy/check-plan.py combined.ndjson
       - run: ./deploy/check-plan.py
       - run: ./deploy/check-env.sh

@@ -14,6 +14,8 @@ use tokio::net::TcpListener;
 pub const TOKEN: &str = "admin-api-key";
 pub const KEYS_ACCOUNT: &str = "keys-id";
 pub const MAIL_ACCOUNT: &str = "mail-id";
+pub const INBOX: &str = "inbox-id";
+pub const ARCHIVE: &str = "archive-id";
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Node {
@@ -38,8 +40,17 @@ pub struct Stalwart {
     shared: Shared,
 }
 
+/// The mail account's messages, each tagged with the state that created it. A state the fake
+/// never issued reads as one it can no longer calculate changes from.
+#[derive(Default)]
+struct Mail {
+    emails: Vec<(u64, Value)>,
+    state: u64,
+}
+
 #[derive(Clone)]
 struct Shared {
+    mail: Arc<Mutex<Mail>>,
     files: Arc<Mutex<Files>>,
     refuse_creates: Arc<AtomicBool>,
     calls: Arc<AtomicU64>,
@@ -48,6 +59,7 @@ struct Shared {
 impl Stalwart {
     pub async fn start() -> Self {
         let shared = Shared {
+            mail: Arc::default(),
             files: Arc::default(),
             refuse_creates: Arc::default(),
             calls: Arc::default(),
@@ -60,6 +72,14 @@ impl Stalwart {
         let url = format!("http://{}", listener.local_addr().unwrap());
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         Self { url, shared }
+    }
+
+    /// Delivers a message to the mail account, as SMTP would before the WebHook fires.
+    pub fn deliver(&self, email: Value) {
+        let mut mail = self.shared.mail.lock().unwrap();
+        mail.state += 1;
+        let state = mail.state;
+        mail.emails.push((state, email));
     }
 
     pub fn refuse_creates(&self) {
@@ -169,6 +189,15 @@ async fn jmap(
             "FileNode/query" => query_nodes(&shared, &arguments),
             "FileNode/get" => get_nodes(&shared, &arguments),
             "FileNode/set" => set_nodes(&shared, &arguments),
+            "Mailbox/query" => json!({"ids": [INBOX]}),
+            "Email/get" => get_emails(&shared, &arguments),
+            "Email/changes" => match email_changes(&shared, &arguments) {
+                Some(answer) => answer,
+                None => {
+                    responses.push(json!(["error", {"type": "cannotCalculateChanges"}, id]));
+                    continue;
+                }
+            },
             other => panic!("unexpected method {other}"),
         };
         responses.push(json!([method, answer, id]));
@@ -222,6 +251,35 @@ fn get_accounts(arguments: &Value) -> Value {
         .map(|(id, _, address)| json!({"id": id, "emailAddress": address}))
         .collect();
     json!({"list": list})
+}
+
+fn get_emails(shared: &Shared, arguments: &Value) -> Value {
+    assert_eq!(arguments["accountId"], MAIL_ACCOUNT);
+    let mail = shared.mail.lock().unwrap();
+    let wanted = arguments["ids"].as_array().unwrap();
+    let list: Vec<Value> = mail
+        .emails
+        .iter()
+        .map(|(_, email)| email)
+        .filter(|email| wanted.contains(&email["id"]))
+        .cloned()
+        .collect();
+    json!({"state": mail.state.to_string(), "list": list})
+}
+
+fn email_changes(shared: &Shared, arguments: &Value) -> Option<Value> {
+    let mail = shared.mail.lock().unwrap();
+    let since: u64 = arguments["sinceState"].as_str().unwrap().parse().ok()?;
+    let created: Vec<Value> = mail
+        .emails
+        .iter()
+        .filter(|(state, _)| *state > since)
+        .map(|(_, email)| email["id"].clone())
+        .collect();
+    Some(
+        json!({"newState": mail.state.to_string(), "created": created, "updated": [],
+                "destroyed": [], "hasMoreChanges": false}),
+    )
 }
 
 fn describe(node: &Node) -> Value {

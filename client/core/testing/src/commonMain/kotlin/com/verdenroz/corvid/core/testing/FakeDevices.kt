@@ -50,6 +50,24 @@ class FakeDevices(private val blobs: MutableMap<String, ByteArray>) {
 
     var expiresAt: String = "2030-01-01T00:00:00Z"
 
+    /** Answers the push routes 503 `push_off`, as a sentinel without `sentinel.push` does. */
+    var pushOff: Boolean = false
+
+    /** Answers a push endpoint not under this prefix 422, as the sentinel does one that is not FCM's. */
+    var pushBase: String = "https://fcm.googleapis.com/"
+
+    /** What the first registration of an own connection is answered with; registering the same one again answers 204. */
+    var streamToken: String = "stream-token"
+
+    /** What `/corvid/push/vapid` publishes. */
+    var vapidKey: String = "B" + "x".repeat(86)
+
+    /** The push endpoint each device stored, as the body it sent. */
+    val pushEndpoints: MutableMap<String, JsonObject> = mutableMapOf()
+
+    /** Each push route call as method and device name, in order. */
+    val pushCalls: MutableList<Pair<HttpMethod, String>> = mutableListOf()
+
     /** Ids of blobs that live in the keys account and download from no other. */
     val keyBlobIds: MutableSet<String> = mutableSetOf()
 
@@ -120,9 +138,17 @@ class FakeDevices(private val blobs: MutableMap<String, ByteArray>) {
             segments.size == 3 && segments[0] == "requests" && segments[2] == "approve" && request.method == HttpMethod.Post ->
                 approve(scope, request, segments[1])
             segments.size == 1 && request.method == HttpMethod.Get -> record(scope, segments[0])
+            segments.size == 2 && segments[1] == "push" -> push(scope, request, segments[0])
             else -> scope.respond("not found", HttpStatusCode.NotFound)
         }
     }
+
+    internal fun vapid(scope: MockRequestHandleScope): HttpResponseData =
+        if (pushOff) {
+            json(scope, HttpStatusCode.ServiceUnavailable, buildJsonObject { put("error", "push_off") })
+        } else {
+            json(scope, HttpStatusCode.OK, buildJsonObject { put("publicKey", vapidKey) })
+        }
 
     private fun open(
         scope: MockRequestHandleScope,
@@ -193,6 +219,39 @@ class FakeDevices(private val blobs: MutableMap<String, ByteArray>) {
         scope: MockRequestHandleScope,
         name: String,
     ): HttpResponseData = records[name]?.let { json(scope, HttpStatusCode.OK, it) } ?: scope.respond("not found", HttpStatusCode.NotFound)
+
+    private fun push(
+        scope: MockRequestHandleScope,
+        request: HttpRequestData,
+        name: String,
+    ): HttpResponseData {
+        pushCalls += request.method to name
+        if (pushOff) return json(scope, HttpStatusCode.ServiceUnavailable, buildJsonObject { put("error", "push_off") })
+        if (name !in records) return scope.respond("", HttpStatusCode.NotFound)
+        return when (request.method) {
+            HttpMethod.Put -> {
+                val sent = body(request)
+                val endpoint = sent.getValue("endpoint").jsonPrimitive.content
+                when {
+                    endpoint == "corvid-stream" && pushEndpoints[name] == sent -> scope.respond("", HttpStatusCode.NoContent)
+                    endpoint == "corvid-stream" -> {
+                        pushEndpoints[name] = sent
+                        json(scope, HttpStatusCode.OK, buildJsonObject { put("token", streamToken) })
+                    }
+                    !endpoint.startsWith(pushBase) -> scope.respond("", HttpStatusCode.UnprocessableEntity)
+                    else -> {
+                        pushEndpoints[name] = sent
+                        scope.respond("", HttpStatusCode.NoContent)
+                    }
+                }
+            }
+            HttpMethod.Delete -> {
+                pushEndpoints.remove(name)
+                scope.respond("", HttpStatusCode.NoContent)
+            }
+            else -> scope.respond("not found", HttpStatusCode.NotFound)
+        }
+    }
 
     private fun body(request: HttpRequestData): JsonObject =
         JmapJson.parseToJsonElement((request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()) as JsonObject

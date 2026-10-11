@@ -1,6 +1,7 @@
 #[path = "../common/mod.rs"]
 mod common;
 mod idp;
+mod push;
 mod stalwart;
 
 use std::path::PathBuf;
@@ -12,6 +13,7 @@ use stalwart::{KEYS_ACCOUNT, MAIL_ACCOUNT, Stalwart, TOKEN};
 
 const ADMIN: &str = "mailuser-admin";
 const SECRET: &[u8] = b"secret";
+const CONTACT: &str = "operator@elsewhere.test";
 
 struct Rig {
     url: String,
@@ -26,6 +28,10 @@ async fn rig() -> Rig {
 }
 
 async fn rig_with(devices: Devices) -> Rig {
+    rig_full(devices, None).await
+}
+
+async fn rig_full(devices: Devices, fcm_origin: Option<&str>) -> Rig {
     let dir = tempfile::tempdir().unwrap();
     let state = dir.path().join("devices.json");
     let idp = Idp::start(ADMIN).await;
@@ -45,6 +51,7 @@ async fn rig_with(devices: Devices) -> Rig {
         mail_address: "mailuser@rig.test".to_owned(),
         stalwart_url: stalwart.url.clone(),
         stalwart_token: TOKEN.to_owned(),
+        push: fcm_origin.map(|origin| devices::PushConfig::open(&state, CONTACT, origin).unwrap()),
     });
     Rig {
         url: common::serve(config).await,
@@ -100,8 +107,14 @@ impl Rig {
     }
 
     async fn revoke(&self, name: &str) -> reqwest::Response {
-        self.revoke_signed(name, Some(sign_revoke(SECRET, name)))
-            .await
+        self.revoke_signed(
+            name,
+            Some(webhook_signature(
+                SECRET,
+                format!("revoke {name}").as_bytes(),
+            )),
+        )
+        .await
     }
 
     async fn revoke_signed(&self, name: &str, signature: Option<String>) -> reqwest::Response {
@@ -596,8 +609,8 @@ async fn revoking_removes_the_key_file_and_the_record() {
 async fn revoking_without_the_webhook_secret_is_refused_and_removes_nothing() {
     let rig = rig().await;
     rig.approved("phone").await;
-    let wrong = sign_revoke(b"another secret", "phone");
-    let for_another_device = sign_revoke(SECRET, "tablet");
+    let wrong = webhook_signature(b"another secret", b"revoke phone");
+    let for_another_device = webhook_signature(SECRET, b"revoke tablet");
 
     for signature in [None, Some(wrong), Some(for_another_device)] {
         assert_eq!(rig.revoke_signed("phone", signature).await.status(), 401);
@@ -607,13 +620,14 @@ async fn revoking_without_the_webhook_secret_is_refused_and_removes_nothing() {
     assert_eq!(rig.record("phone").await.status(), 200);
 }
 
-fn sign_revoke(secret: &[u8], name: &str) -> String {
+/// The `X-Signature` Stalwart's WebHooks, and the host's revoke call, carry for `body`.
+fn webhook_signature(secret: &[u8], body: &[u8]) -> String {
     use base64::Engine;
     use hmac::{Hmac, KeyInit, Mac};
     use sha2::Sha256;
 
     let mut mac = <Hmac<Sha256>>::new_from_slice(secret).unwrap();
-    mac.update(format!("revoke {name}").as_bytes());
+    mac.update(body);
     base64::engine::general_purpose::STANDARD.encode(mac.finalize().into_bytes())
 }
 

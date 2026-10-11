@@ -11,12 +11,22 @@ import com.verdenroz.corvid.app.NewMailNotifier
 import com.verdenroz.corvid.app.NoticeNotifier
 import com.verdenroz.corvid.app.NotificationPermission
 import com.verdenroz.corvid.app.di.appModules
+import com.verdenroz.corvid.app.endPushOnSignOut
+import com.verdenroz.corvid.core.auth.AuthState
+import com.verdenroz.corvid.core.auth.TokenSource
 import com.verdenroz.corvid.core.auth.platformAuthModule
+import com.verdenroz.corvid.core.common.di.applicationScopeQualifier
 import com.verdenroz.corvid.core.data.AppInstaller
 import com.verdenroz.corvid.core.data.AttachmentFiles
 import com.verdenroz.corvid.core.discovery.platformDiscoveryModule
 import com.verdenroz.corvid.core.keyring.KeyHolder
+import com.verdenroz.corvid.core.prefs.DevicePreferences
 import com.verdenroz.corvid.core.prefs.platformPreferencesModule
+import com.verdenroz.corvid.feature.settings.BackgroundPush
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.startKoin
@@ -32,6 +42,7 @@ class CorvidApplication : Application() {
                 single<NewMailNotifier> { AndroidNewMailNotifier(androidContext()) }
                 single { AndroidNotificationPermission(androidContext()) } bind NotificationPermission::class
                 single<AppInstaller> { AndroidAppInstaller(androidContext()) }
+                single { AndroidBackgroundPush(androidContext()) } bind BackgroundPush::class
                 single { AndroidAttachmentFiles(androidContext()) } bind AttachmentFiles::class
             }
         val koin =
@@ -43,6 +54,23 @@ class CorvidApplication : Application() {
         val keyHolder = koin.get<KeyHolder>()
         registerNetworkLossTrigger(keyHolder)
         registerScreenOffTrigger(keyHolder)
+        val preferences = koin.get<DevicePreferences>()
+        val scope = koin.get<CoroutineScope>(applicationScopeQualifier)
+        keepStreamRunning(preferences, scope)
+        val signedIn = koin.get<TokenSource>().state.map { it is AuthState.SignedIn }
+        scope.launch { endPushOnSignOut(signedIn, koin.get(), preferences) }
+    }
+
+    // The own connection runs exactly while the server has issued a token for it.
+    private fun keepStreamRunning(
+        preferences: DevicePreferences,
+        scope: CoroutineScope,
+    ) {
+        scope.launch {
+            preferences.settings.map { it.push.streamToken != null }.distinctUntilChanged().collect { wanted ->
+                if (wanted) CorvidStreamService.start(this@CorvidApplication) else CorvidStreamService.stop(this@CorvidApplication)
+            }
+        }
     }
 
     // A lost network drops the key immediately, with no grace timer.

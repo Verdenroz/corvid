@@ -27,12 +27,16 @@ ktlintGradle = "12.1.2"
 dnsjava = "3.6.3"
 zxing = "3.5.4"
 camerax = "1.6.1"
+unifiedpush = "3.3.5"
+unifiedpushFcm = "3.1.0"
 
 [libraries]
 zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
 androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
 androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
 androidx-camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
+unifiedpush-embedded-fcm = { group = "org.unifiedpush.android", name = "embedded-fcm-distributor", version.ref = "unifiedpushFcm" }
+unifiedpush-connector = { group = "org.unifiedpush.android", name = "connector", version.ref = "unifiedpush" }
 dnsjava = { group = "dnsjava", name = "dnsjava", version.ref = "dnsjava" }
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-coroutines-swing = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-swing", version.ref = "coroutines" }

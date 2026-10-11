@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs the real Caddyfile in the pinned Caddy image against stub upstreams on the loopback ports
 # it names. Confirms it parses, and that /corvid/* reaches the sentinel only with a credential
-# Stalwart accepts, and serves the
+# Stalwart accepts, serves /corvid/push/* with no session and unbuffered, and serves the
 # discovery document without one. The stub answers a credential-less /jmap/session with 200, as v0.16.21 does.
 set -uo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
@@ -13,7 +13,7 @@ name="corvid-caddy-test-$$"
 trap '"$engine" rm -f "$name" >/dev/null 2>&1; kill "$stubs" 2>/dev/null; rm -rf "$work"' EXIT
 
 python3 -c '
-import http.server, socketserver, threading
+import http.server, socketserver, threading, time
 class Stalwart(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         auth = self.headers.get("Authorization")
@@ -25,6 +25,9 @@ class Stalwart(http.server.BaseHTTPRequestHandler):
     def log_message(self, *a): pass
 class Sentinel(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.headers.get("X-Stub") == "slow":
+            self.send_response(200); self.send_header("Content-Type", "text/event-stream"); self.end_headers()
+            self.wfile.write(b"first\n"); self.wfile.flush(); time.sleep(4); self.wfile.write(b"second\n"); return
         self.send_response(200); self.end_headers(); self.wfile.write(b"sentinel")
     do_POST = do_GET
     def log_message(self, *a): pass
@@ -33,9 +36,9 @@ class Idp(http.server.BaseHTTPRequestHandler):
         self.send_response(200); self.end_headers(); self.wfile.write(b"idp")
     do_POST = do_GET
     def log_message(self, *a): pass
-socketserver.TCPServer.allow_reuse_address = True
+socketserver.ThreadingTCPServer.allow_reuse_address = True
 for port, handler in ((8080, Stalwart), (11333, Sentinel), (1411, Idp)):
-    threading.Thread(target=socketserver.TCPServer(("127.0.0.1", port), handler).serve_forever).start()
+    threading.Thread(target=socketserver.ThreadingTCPServer(("127.0.0.1", port), handler).serve_forever).start()
 ' &
 stubs=$!
 
@@ -72,6 +75,14 @@ for path in /corvid/devices/requests /corvid/devices/requests/abc /corvid/device
   check "$path with a refused credential gets Stalwart's 401" "$(fetch -X POST -d '{}' -u bad:bad "$url$path")" "401 stalwart"
   check "$path with an accepted credential reaches the sentinel" "$(fetch -X POST -d '{}' -u good:good "$url$path")" "200 sentinel"
 done
+check "the public VAPID key reaches the sentinel without a credential" "$(fetch "$url/corvid/push/vapid")" "200 sentinel"
+check "the push stream reaches the sentinel on a bearer token Stalwart never sees" \
+  "$(fetch -H 'Authorization: Bearer stream-token' "$url/corvid/push/stream")" "200 sentinel"
+check "the push stream reaches the sentinel with no credential at all" "$(fetch "$url/corvid/push/stream")" "200 sentinel"
+check "a stream event arrives while the upstream is still open" \
+  "$(curl -sk -N --max-time 2 -H "X-Stub: slow" --resolve "localhost:$port:127.0.0.1" "$url/corvid/push/stream" 2>/dev/null)" "first"
+check "another path under /corvid/push stays with Stalwart" "$(fetch "$url/corvid/push/other")" "404 stalwart"
+check "and does not reach the sentinel with a credential either" "$(fetch -u good:good "$url/corvid/push/other")" "404 stalwart"
 check "the host-only revoke route is never routed to the sentinel" \
   "$(fetch -X POST -d '{}' -u good:good "$url/internal/devices/phone")" "404 stalwart"
 check "an app file without a credential stays with Stalwart" "$(fetch "$url/corvid/app/manifest.json")" "404 stalwart"

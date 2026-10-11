@@ -23,6 +23,7 @@ import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.prefs.AutoLock
+import com.verdenroz.corvid.core.prefs.PushStatus
 import com.verdenroz.corvid.core.prefs.ThemeChoice
 import com.verdenroz.corvid.core.ui.DiscardQuestion
 import com.verdenroz.corvid.core.ui.LocalWideLayout
@@ -50,6 +51,19 @@ import com.verdenroz.corvid.feature.settings.resources.settings_new_mail
 import com.verdenroz.corvid.feature.settings.resources.settings_new_mail_detail
 import com.verdenroz.corvid.feature.settings.resources.settings_notices_detail
 import com.verdenroz.corvid.feature.settings.resources.settings_notices_row
+import com.verdenroz.corvid.feature.settings.resources.settings_push
+import com.verdenroz.corvid.feature.settings.resources.settings_push_failed
+import com.verdenroz.corvid.feature.settings.resources.settings_push_google_unavailable
+import com.verdenroz.corvid.feature.settings.resources.settings_push_not_approved
+import com.verdenroz.corvid.feature.settings.resources.settings_push_off
+import com.verdenroz.corvid.feature.settings.resources.settings_push_off_own_connection
+import com.verdenroz.corvid.feature.settings.resources.settings_push_refused
+import com.verdenroz.corvid.feature.settings.resources.settings_push_registering
+import com.verdenroz.corvid.feature.settings.resources.settings_push_removing
+import com.verdenroz.corvid.feature.settings.resources.settings_push_sent
+import com.verdenroz.corvid.feature.settings.resources.settings_push_sent_own_connection
+import com.verdenroz.corvid.feature.settings.resources.settings_push_server_off
+import com.verdenroz.corvid.feature.settings.resources.settings_push_waiting
 import com.verdenroz.corvid.feature.settings.resources.settings_server
 import com.verdenroz.corvid.feature.settings.resources.settings_sign_out
 import com.verdenroz.corvid.feature.settings.resources.settings_sign_out_question
@@ -142,6 +156,16 @@ fun SettingsScreen(
                         label = { on -> stringResource(if (on) Res.string.settings_about_on else Res.string.settings_about_off) },
                         onSelect = viewModel::setNewMailNotifications,
                     )
+                    state.backgroundPush?.let { row ->
+                        ChoiceRow(
+                            title = stringResource(Res.string.settings_push),
+                            detail = stringResource(row.text()),
+                            options = listOf(true, false),
+                            selected = row.on,
+                            label = { on -> stringResource(if (on) Res.string.settings_about_on else Res.string.settings_about_off) },
+                            onSelect = viewModel::setBackgroundPush,
+                        )
+                    }
                     LinkRow(
                         title = stringResource(Res.string.settings_notices_row),
                         detail = stringResource(Res.string.settings_notices_detail),
@@ -207,4 +231,18 @@ private fun ThemeChoice.label() =
         ThemeChoice.System -> Res.string.settings_theme_system
         ThemeChoice.Light -> Res.string.settings_theme_light
         ThemeChoice.Dark -> Res.string.settings_theme_dark
+    }
+
+private fun BackgroundPushState.text() =
+    when (status) {
+        PushStatus.Off -> if (ownConnection) Res.string.settings_push_off_own_connection else Res.string.settings_push_off
+        PushStatus.Registering -> Res.string.settings_push_registering
+        PushStatus.Unsent -> Res.string.settings_push_waiting
+        PushStatus.Sent -> if (ownConnection) Res.string.settings_push_sent_own_connection else Res.string.settings_push_sent
+        PushStatus.OffOnServer -> Res.string.settings_push_server_off
+        PushStatus.NotApproved -> Res.string.settings_push_not_approved
+        PushStatus.Refused -> Res.string.settings_push_refused
+        PushStatus.Removing -> Res.string.settings_push_removing
+        PushStatus.Failed -> Res.string.settings_push_failed
+        PushStatus.GoogleUnavailable -> Res.string.settings_push_google_unavailable
     }

@@ -30,17 +30,19 @@ data class StateChange(val changed: Map<String, Map<String, String>>) {
     fun touches(vararg types: String): Boolean = changed.values.any { states -> types.any { it in states } }
 }
 
-internal data class ServerEvent(val name: String, val data: String)
+data class ServerEvent(val name: String, val data: String, val id: String? = null)
 
 /** The `text/event-stream` line grammar: a blank line ends an event, `:` starts a comment, repeated `data` lines join with a newline. */
-internal class EventParser {
+class EventParser {
     private var name = "message"
+    private var id: String? = null
     private val data = mutableListOf<String>()
 
     fun line(line: String): ServerEvent? {
         if (line.isEmpty()) {
-            val event = if (data.isEmpty()) null else ServerEvent(name, data.joinToString("\n"))
+            val event = if (data.isEmpty()) null else ServerEvent(name, data.joinToString("\n"), id)
             name = "message"
+            id = null
             data.clear()
             return event
         }
@@ -48,6 +50,7 @@ internal class EventParser {
         val value = line.substringAfter(':', "").removePrefix(" ")
         when (line.substringBefore(':')) {
             "event" -> name = value
+            "id" -> id = value
             "data" -> data += value
         }
         return null

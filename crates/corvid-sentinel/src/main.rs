@@ -37,9 +37,15 @@ async fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let devices = settings
-        .devices
-        .map(|devices| device_config(config.server, devices, hmac_secret.as_bytes().to_vec()));
+    let push = settings.push.is_some();
+    let devices = settings.devices.map(|devices| {
+        device_config(
+            config.server,
+            devices,
+            push,
+            hmac_secret.as_bytes().to_vec(),
+        )
+    });
     let bind = settings.bind.clone();
     let (app, watcher) = build(Config {
         secret: hmac_secret.into_bytes(),
@@ -63,6 +69,7 @@ async fn main() -> ExitCode {
 fn device_config(
     server: Option<corvid_config::Server>,
     settings: corvid_config::Devices,
+    push: bool,
     webhook_secret: Vec<u8>,
 ) -> devices::Config {
     let server = or_exit(section(server, "server"));
@@ -70,6 +77,17 @@ fn device_config(
     let state = devices::open(&settings.state).unwrap_or_else(|error| {
         tracing::error!(%error, state = %settings.state.display(), "refusing to start");
         std::process::exit(1);
+    });
+    let push = push.then(|| {
+        devices::PushConfig::open(
+            &settings.state,
+            server.acme_contact.as_str(),
+            devices::FCM_ORIGIN,
+        )
+        .unwrap_or_else(|error| {
+            tracing::error!(%error, "refusing to start without a readable VAPID key");
+            std::process::exit(1);
+        })
     });
     devices::Config {
         secret: webhook_secret,
@@ -82,6 +100,7 @@ fn device_config(
         mail_address: format!("{}@{}", server.mail_user(), server.domain.as_str()),
         stalwart_url: settings.stalwart_url,
         stalwart_token,
+        push,
     }
 }
 
