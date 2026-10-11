@@ -52,4 +52,9 @@
     <string name="placeholder_people">People get their own list later. For now they are in Inbox, drawn as circles.</string>
     <string name="placeholder_sources">Sources get their own list later. For now they are in Inbox, drawn as rounded squares.</string>
     <string name="placeholder_labels">Labels do not have their own view yet.</string>
+    <string name="new_mail_title">New mail</string>
+    <plurals name="new_mail_count">
+        <item quantity="one">%1$d new message in Inbox</item>
+        <item quantity="other">%1$d new messages in Inbox</item>
+    </plurals>
 </resources>

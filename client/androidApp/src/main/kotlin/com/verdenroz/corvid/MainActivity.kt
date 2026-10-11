@@ -1,14 +1,14 @@
 package com.verdenroz.corvid
 
-import android.Manifest
+import android.content.Intent
 import android.content.pm.ApplicationInfo
-import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import com.verdenroz.corvid.app.AppPresence
 import com.verdenroz.corvid.app.BackgroundDropController
 import com.verdenroz.corvid.app.CorvidApp
 import com.verdenroz.corvid.core.auth.privateAndroidFlowQualifier
@@ -19,6 +19,8 @@ class MainActivity : ComponentActivity() {
     private val authFlowFactory: AndroidCodeAuthFlowFactory by inject()
     private val privateAuthFlowFactory: AndroidCodeAuthFlowFactory by inject(privateAndroidFlowQualifier)
     private val backgroundDropController: BackgroundDropController by inject()
+    private val presence: AppPresence by inject()
+    private val notificationPermission: AndroidNotificationPermission by inject()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -29,10 +31,23 @@ class MainActivity : ComponentActivity() {
         authFlowFactory.registerActivity(this)
         privateAuthFlowFactory.registerActivity(this)
         enableEdgeToEdge()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerForActivityResult(ActivityResultContracts.RequestPermission()) {}.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
+        notificationPermission.attach(registerForActivityResult(ActivityResultContracts.RequestPermission()) {})
+        openInboxIfAsked(intent)
         setContent { CorvidApp() }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        openInboxIfAsked(intent)
+    }
+
+    override fun onDestroy() {
+        notificationPermission.attach(null)
+        super.onDestroy()
+    }
+
+    private fun openInboxIfAsked(intent: Intent) {
+        if (intent.getBooleanExtra(EXTRA_OPEN_INBOX, false)) presence.requestInbox()
     }
 
     // Single-activity app, so this activity's own stop/start is the app's
@@ -40,10 +55,12 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         backgroundDropController.enteredBackground()
+        presence.shown(false)
     }
 
     override fun onStart() {
         super.onStart()
         backgroundDropController.enteredForeground()
+        presence.shown(true)
     }
 }

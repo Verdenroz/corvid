@@ -19,7 +19,7 @@ private val BURST: Duration = 500.milliseconds
 internal suspend fun followMailboxChanges(
     changes: Flow<StateChange>,
     burst: Duration = BURST,
-    onChange: () -> Unit,
+    onChange: suspend () -> Unit,
 ) {
     try {
         changes.filter { it.touches("Email", "Mailbox", "Thread") }.debounce(burst).collect { onChange() }
