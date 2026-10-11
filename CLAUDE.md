@@ -514,6 +514,33 @@ Caddyfile built from the same env vars as everything else. `core/discovery` hold
   visible only in a WebHook capture. The rest of the documented shape holds: `{"type":"authCode",
   "accountName","accountSecret","clientId","redirectUri"}`, then the same body plus `"mfaToken":
   "<6-digit code>"` once the first call answers `{"type":"mfaRequired"}`.
+- **A master passkey must be device-bound, and the sentinel enforces it.** The master role refuses a
+  credential whose backup-eligible flag (BE) is set, since a synced passkey would put the key that
+  approves devices in a cloud account. The daily role accepts both. `auth.test.sh` enrolls the
+  daily passkey backup-eligible on purpose, so a rig that only enrols device-bound ones proves
+  nothing about the synced path.
+- **A refresh token redeemed twice inside 60 seconds is a retry, not a theft.** A phone that lost
+  the reply to a rotation presents the old token again; the sentinel answers with the token it
+  already issued for 60 seconds, and revokes the family (and writes a notice) after that.
+  Removing a passkey revokes every family it signed in.
+- **`fido_assert_authdata_raw_*` needs libfido2 1.14, and JNA resolves an interface-mapped function
+  only when it is first called.** From libfido2's NEWS: the assertion `_raw` pair arrived in 1.14.0, the credential
+  pair in 1.6.0. So an absent function loads and enumerates fine and throws `UnsatisfiedLinkError` at the first
+  sign-in, after the touch. The desktop app reads the
+  CBOR-wrapped `fido_assert_authdata_ptr` and strips the header, and maps a missing symbol to
+  `Unsupported`. `Fido2LiveTest` is the only check against a real key; it needs
+  `CORVID_FIDO2_LIVE=1`, a PIN and two touches.
+- **A debug build of the Android app is `com.verdenroz.corvid.debug` and does not trust the
+  rig's CA.** Credential Manager only accepts a passkey for a domain whose `assetlinks.json`
+  lists the exact package and signing certificate, so a rig needs its own `android_apps`
+  entry for the debug key, and a user CA in `cacerts-added` is ignored without a debug-only
+  network security config naming `user` anchors. Measured on a `google_apis` emulator with no
+  Google account: the create sheet reads "Create passkey on another device?" and Continue
+  fails with a DOM `SecurityError`, which the app shows as the not-associated message.
+- **An Android emulator with a screen lock answers `Activity class ... does not exist` after a
+  reboot until it is unlocked.** The package is installed and `dumpsys package` lists the
+  activity, but the user's storage is locked and the launcher intent resolves to nothing.
+  Unlock it (or clear the lock) before concluding the APK is broken.
 
 ## Working method
 
