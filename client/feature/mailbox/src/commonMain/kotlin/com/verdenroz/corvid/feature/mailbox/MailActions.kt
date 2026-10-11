@@ -69,13 +69,14 @@ class MailActions(
         repository.moveTo(it, folder.id)
     }
 
-    /** Reads the last mailbox list fetched, and asks the server only when there is none. */
+    /** Shows the last mailbox list at once, then the server's current one, so a folder made elsewhere still appears. */
     fun loadFolders() {
         viewModelScope.launch {
             try {
                 _folders.value = moveFolders(repository.knownMailboxes())
+                _folders.value = moveFolders(repository.mailboxes())
             } catch (e: JmapException) {
-                _notice.value = ActionNotice(e.userMessage())
+                if (_folders.value == null) _notice.value = ActionNotice(e.userMessage())
             }
         }
     }

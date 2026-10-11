@@ -120,20 +120,21 @@ class MailActionsTest {
         }
 
     @Test
-    fun `move to lists the mailboxes already fetched without asking the server again`() =
+    fun `move to shows the folders already known, then picks up one made elsewhere`() =
         runViewModelTest {
             val fake = server()
             fake.mailboxes += FakeMailbox("receipts", "Receipts")
             val repository = MailboxRepository(fake.client())
             val actions = track(MailActions(repository))
             repository.mailboxes()
-            val before = fake.requestCount
+            fake.mailboxes += FakeMailbox("travel", "Travel")
 
             actions.loadFolders()
-            val folders = actions.folders.first { it != null }!!
+            val first = actions.folders.first { it != null }!!
+            val fresh = actions.folders.first { folders -> folders?.any { it.label == "Travel" } == true }!!
 
-            assertTrue(folders.any { it.label == "Receipts" })
-            assertEquals(before, fake.requestCount)
+            assertTrue(first.any { it.label == "Receipts" })
+            assertTrue(fresh.any { it.label == "Receipts" })
         }
 
     @Test
