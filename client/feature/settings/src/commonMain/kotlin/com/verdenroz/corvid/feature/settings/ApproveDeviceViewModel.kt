@@ -2,6 +2,7 @@ package com.verdenroz.corvid.feature.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.verdenroz.corvid.core.data.catchingSignIn
 import com.verdenroz.corvid.core.data.userMessage
 import com.verdenroz.corvid.core.domain.MasterSignIn
 import com.verdenroz.corvid.core.jmap.JmapException
@@ -16,13 +17,11 @@ import com.verdenroz.corvid.feature.settings.resources.Res
 import com.verdenroz.corvid.feature.settings.resources.approve_failed_gone
 import com.verdenroz.corvid.feature.settings.resources.approve_failed_not_accepted
 import com.verdenroz.corvid.feature.settings.resources.approve_failed_refused
-import com.verdenroz.corvid.feature.settings.resources.approve_failed_signin
 import com.verdenroz.corvid.feature.settings.resources.approve_failed_upstream
 import com.verdenroz.corvid.feature.settings.resources.approve_not_a_link
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import org.publicvalue.multiplatform.oidc.OpenIdConnectException
 
 private const val CODE_LENGTH = 6
 private val CODE = Regex("[0-9]{$CODE_LENGTH}")
@@ -125,7 +124,7 @@ class ApproveDeviceViewModel(
         id: String,
         code: String,
     ): ApproveStep {
-        return try {
+        return catchingSignIn(ApproveStep::Failed) {
             masterSignIn.withAdminToken { token ->
                 _state.value = _state.value.copy(step = ApproveStep.Sending)
                 when (repository.approve(id, code, token)) {
@@ -136,10 +135,6 @@ class ApproveDeviceViewModel(
                     ApproveOutcome.UpstreamFailed -> ApproveStep.Failed(uiText(Res.string.approve_failed_upstream))
                 }
             }
-        } catch (e: OpenIdConnectException) {
-            ApproveStep.Failed(uiText(Res.string.approve_failed_signin))
-        } catch (e: JmapException) {
-            ApproveStep.Failed(e.userMessage())
         }
     }
 

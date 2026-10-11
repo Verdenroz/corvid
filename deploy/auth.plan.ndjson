@@ -1,0 +1,3 @@
+{"@type":"upsert","object":"Directory","matchOn":["issuerUrl"],"value":{"sentinel":{"@type":"Oidc","description":"Corvid sentinel","issuerUrl":"${ISSUER_URL}","claimUsername":"preferred_username","usernameDomain":"${MAIL_DOMAIN}","requireAudience":"corvid","requireScopes":{"openid":true,"profile":true}}}}
+{"@type":"update","object":"Authentication","value":{"directoryId":"#sentinel"}}
+{"@type":"reconcile","object":"Directory","matchOn":["issuerUrl"],"value":{"sentinel":{"@type":"Oidc","description":"Corvid sentinel","issuerUrl":"${ISSUER_URL}","claimUsername":"preferred_username","usernameDomain":"${MAIL_DOMAIN}","requireAudience":"corvid","requireScopes":{"openid":true,"profile":true}}}}

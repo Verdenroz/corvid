@@ -26,13 +26,15 @@ import com.verdenroz.corvid.feature.signin.resources.signin_advanced
 import com.verdenroz.corvid.feature.signin.resources.signin_another
 import com.verdenroz.corvid.feature.signin.resources.signin_as
 import com.verdenroz.corvid.feature.signin.resources.signin_change
+import com.verdenroz.corvid.feature.signin.resources.signin_code
 import com.verdenroz.corvid.feature.signin.resources.signin_confirm
 import com.verdenroz.corvid.feature.signin.resources.signin_continue
 import com.verdenroz.corvid.feature.signin.resources.signin_detail
 import com.verdenroz.corvid.feature.signin.resources.signin_discovering
 import com.verdenroz.corvid.feature.signin.resources.signin_email
+import com.verdenroz.corvid.feature.signin.resources.signin_have_code
 import com.verdenroz.corvid.feature.signin.resources.signin_in_progress
-import com.verdenroz.corvid.feature.signin.resources.signin_issuer
+import com.verdenroz.corvid.feature.signin.resources.signin_master_enrolled
 import com.verdenroz.corvid.feature.signin.resources.signin_remembered
 import com.verdenroz.corvid.feature.signin.resources.signin_remembered_detail
 import com.verdenroz.corvid.feature.signin.resources.signin_server
@@ -86,17 +88,15 @@ private fun AccountEntry(
 ) {
     var email by rememberSaveable { mutableStateOf("") }
     var server by rememberSaveable { mutableStateOf("") }
-    var issuer by rememberSaveable { mutableStateOf("") }
+    var code by rememberSaveable { mutableStateOf("") }
+    var haveCode by rememberSaveable { mutableStateOf(false) }
     var advanced by rememberSaveable { mutableStateOf(false) }
     val state by viewModel.state.collectAsState()
     val signingIn = state is SignInUiState.SigningIn
 
     LaunchedEffect(state) {
         when (val current = state) {
-            is SignInUiState.Discovered -> {
-                server = current.discovery.server.baseUrl
-                issuer = current.discovery.issuer
-            }
+            is SignInUiState.Discovered -> server = current.discovery.server.baseUrl
             is SignInUiState.DiscoveryFailed -> advanced = true
             else -> Unit
         }
@@ -108,7 +108,6 @@ private fun AccountEntry(
             advanced -> {
                 val url = KeyboardOptions(keyboardType = KeyboardType.Uri)
                 CorvidTextField(server, { server = it }, stringResource(Res.string.signin_server), Modifier.fillMaxWidth(), url)
-                CorvidTextField(issuer, { issuer = it }, stringResource(Res.string.signin_issuer), Modifier.fillMaxWidth(), url)
             }
             discovery != null -> Confirmation(discovery)
             else -> {
@@ -116,12 +115,25 @@ private fun AccountEntry(
                 CorvidTextField(email, { email = it }, stringResource(Res.string.signin_email), Modifier.fillMaxWidth(), keyboard)
             }
         }
+        if (advanced || discovery != null) {
+            if (haveCode) {
+                CorvidTextField(code, { code = it }, stringResource(Res.string.signin_code), Modifier.fillMaxWidth())
+            } else {
+                PillButton(stringResource(Res.string.signin_have_code), icon = null, onClick = { haveCode = true })
+            }
+        }
         (state as? SignInUiState.DiscoveryFailed)?.let { Problem(it.message.asString()) }
         (state as? SignInUiState.Failed)?.let { Problem(it.message.asString()) }
+        if (state is SignInUiState.MasterEnrolled) {
+            Text(stringResource(Res.string.signin_master_enrolled), style = CorvidTheme.type.meta, color = CorvidTheme.colors.ink)
+        }
         if (advanced || discovery != null) {
             PrimaryButton(
                 stringResource(if (signingIn) Res.string.signin_in_progress else Res.string.signin_submit),
-                onClick = { if (advanced || discovery == null) viewModel.signIn(server, issuer) else viewModel.confirm(discovery) },
+                onClick = {
+                    val entered = if (haveCode) code else ""
+                    if (advanced || discovery == null) viewModel.signIn(server, entered) else viewModel.confirm(discovery, entered)
+                },
                 enabled = !signingIn,
             )
         } else {
@@ -150,7 +162,7 @@ private val RememberedAccount.label: String get() = email ?: hostOf(server)
 @Composable
 private fun Confirmation(discovery: Discovery) {
     Text(
-        stringResource(Res.string.signin_confirm, discovery.serverHost, discovery.issuerHost),
+        stringResource(Res.string.signin_confirm, discovery.serverHost),
         style = CorvidTheme.type.name,
         color = CorvidTheme.colors.ink,
     )

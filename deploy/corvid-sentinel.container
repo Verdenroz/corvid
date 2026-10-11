@@ -1,6 +1,6 @@
 [Unit]
 Description=Corvid sign-in sentinel
-After=network-online.target corvid-mail.service
+After=network-online.target
 Wants=network-online.target
 
 [Container]

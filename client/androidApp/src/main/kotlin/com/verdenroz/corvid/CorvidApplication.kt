@@ -13,8 +13,8 @@ import com.verdenroz.corvid.app.NotificationPermission
 import com.verdenroz.corvid.app.di.appModules
 import com.verdenroz.corvid.app.endPushOnSignOut
 import com.verdenroz.corvid.core.auth.AuthState
+import com.verdenroz.corvid.core.auth.Authenticator
 import com.verdenroz.corvid.core.auth.TokenSource
-import com.verdenroz.corvid.core.auth.platformAuthModule
 import com.verdenroz.corvid.core.common.di.applicationScopeQualifier
 import com.verdenroz.corvid.core.data.AppInstaller
 import com.verdenroz.corvid.core.data.AttachmentFiles
@@ -41,6 +41,7 @@ class CorvidApplication : Application() {
                 single<NoticeNotifier> { AndroidNoticeNotifier(androidContext()) }
                 single<NewMailNotifier> { AndroidNewMailNotifier(androidContext()) }
                 single { AndroidNotificationPermission(androidContext()) } bind NotificationPermission::class
+                single { AndroidAuthenticator() } bind Authenticator::class
                 single<AppInstaller> { AndroidAppInstaller(androidContext()) }
                 single { AndroidBackgroundPush(androidContext()) } bind BackgroundPush::class
                 single { AndroidAttachmentFiles(androidContext()) } bind AttachmentFiles::class
@@ -49,7 +50,7 @@ class CorvidApplication : Application() {
             startKoin {
                 androidLogger()
                 androidContext(this@CorvidApplication)
-                modules(appModules + platformAuthModule + platformDiscoveryModule + platformPreferencesModule + notices)
+                modules(appModules + platformDiscoveryModule + platformPreferencesModule + notices)
             }.koin
         val keyHolder = koin.get<KeyHolder>()
         registerNetworkLossTrigger(keyHolder)

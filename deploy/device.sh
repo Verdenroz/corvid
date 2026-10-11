@@ -168,15 +168,8 @@ if found:
 # or 404 when it recorded none. The route is not served through Caddy, so it runs inside the pod,
 # and it takes an HMAC of the request under the sentinel's webhook secret.
 sentinel_revoke() {
-  local status signature
-  signature="$(python3 -c '
-import base64, hashlib, hmac, sys
-secret = next(l.split("=", 1)[1].strip() for l in open(sys.argv[1]) if l.startswith("CORVID_SENTINEL_SECRET="))
-print(base64.b64encode(hmac.new(secret.encode(), f"revoke {sys.argv[2]}".encode(), hashlib.sha256).digest()).decode())' \
-    "$CORVID_DIR/sentinel-webhook.env" "$1")"
-  in_pod corvid-sentinel true
-  status="$(in_pod corvid-sentinel curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "X-Signature: $signature" \
-    "$SENTINEL_URL/internal/devices/$1" || true)"
+  local status
+  status="$(sentinel_signed DELETE "/internal/devices/$1" "revoke $1" | head -1)"
   [[ "$status" == 204 || "$status" == 404 ]] || { echo "the sentinel answered $status revoking $1's approved key" >&2; exit 1; }
   echo "$status"
 }

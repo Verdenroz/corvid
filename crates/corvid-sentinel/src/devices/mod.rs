@@ -20,6 +20,7 @@ use axum::routing::{delete, get, post, put};
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
 
+use crate::auth::Issuer;
 use crate::dates;
 use crate::persisted::Persisted;
 use crate::webpush::random_bytes;
@@ -46,6 +47,8 @@ pub struct Config {
     pub stalwart_token: String,
     /// Absent, devices take no pushes and the mail WebHook is acknowledged and ignored.
     pub push: Option<PushConfig>,
+    /// Absent, only Pocket-ID master tokens are accepted.
+    pub local: Option<Arc<Issuer>>,
 }
 
 struct DeviceState {
@@ -73,7 +76,12 @@ pub fn routes(config: Config) -> Router {
     let state = Arc::new(DeviceState {
         secret: config.secret,
         devices: Persisted::new(config.state_path, config.devices, save),
-        master: Master::new(config.issuer, config.idp_url, config.admin_user),
+        master: Master::new(
+            config.issuer,
+            config.idp_url,
+            config.admin_user,
+            config.local,
+        ),
         keys: Keys::new(
             config.stalwart_url,
             config.stalwart_token,

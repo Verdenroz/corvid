@@ -101,6 +101,9 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
     /** `/corvid/devices`, the sentinel's device approval, and the keys account it fills. */
     val devices = FakeDevices(blobs)
 
+    /** `/corvid/auth` behind the session gate: the passkey list, removals and enrollment codes. */
+    val passkeys = FakePasskeys()
+
     /** Bodies served under `/i/`, as the image proxy serves them, keyed by the path after it. */
     val proxiedImages: MutableMap<String, ByteArray> = mutableMapOf()
 
@@ -169,6 +172,7 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
             path.startsWith("/jmap/upload/") -> state.withLock { uploadResponse(request) }
             path.startsWith("/jmap/download/") -> downloadResponse(path)
             path.startsWith("/corvid/devices") -> devices.handle(this, request)
+            path.startsWith("/corvid/auth/") -> passkeys.handle(this, request)
             path == "/corvid/push/vapid" -> devices.vapid(this)
             path.startsWith("/corvid/app/") -> app.handle(this, request)
             path.startsWith("/i/") -> imageResponse(request, path)

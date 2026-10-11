@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::persisted::Persisted;
 use crate::state::{Notice, NoticeKind, Seen, save};
-use crate::{dates, devices, handle, notice, parse, update, verify, watch};
+use crate::{auth, dates, devices, handle, notice, parse, update, verify, watch};
 
 pub struct Config {
     pub secret: Vec<u8>,
@@ -22,6 +22,7 @@ pub struct Config {
     pub update_dir: PathBuf,
     pub update_poll: Duration,
     pub devices: Option<devices::Config>,
+    pub auth: Option<auth::Config>,
 }
 
 pub(crate) struct AppState {
@@ -46,11 +47,15 @@ pub fn build(config: Config) -> (Router, impl Future<Output = ()> + Send + 'stat
     let router = Router::new()
         .route("/webhook", post(webhook))
         .route("/corvid/notices", get(notices))
-        .with_state(state)
+        .with_state(state.clone())
         .merge(update::routes(config.update_dir));
     let router = router.merge(match config.devices {
         Some(devices) => devices::routes(devices),
         None => devices::off(),
+    });
+    let router = router.merge(match config.auth {
+        Some(auth) => auth::routes(auth, state),
+        None => auth::off(),
     });
     (router, watcher)
 }
@@ -160,6 +165,7 @@ mod tests {
             update_dir: std::env::temp_dir().join("sentinel-test-no-update-dir"),
             update_poll: Duration::from_secs(60),
             devices: None,
+            auth: None,
         });
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         format!("http://{addr}/webhook")

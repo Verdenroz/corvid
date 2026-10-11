@@ -11,6 +11,7 @@ kotlin {
             api(projects.core.model)
             api(libs.kotlinx.datetime)
             api(projects.core.text)
+            implementation(projects.core.auth)
             implementation(projects.core.common)
             implementation(projects.core.html)
             implementation(projects.core.jmap)

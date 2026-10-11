@@ -23,6 +23,8 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/deploy/mta-sts-lib.sh"
+. "$HERE/deploy/assetlinks-lib.sh"
+. "$HERE/deploy/server-config-lib.sh"
 . "$HERE/deploy/idp-dns-lib.sh"
 . "$HERE/deploy/srv-dns-lib.sh"
 VERSION="$(sed -nE 's/^version = "([^"]+)"/\1/p' "$HERE/Cargo.toml" | head -1)"
@@ -375,6 +377,8 @@ done
 # mta-sts at this server, so a pair pointing anywhere else is someone's own policy, left alone.
 stale_mta_sts=()
 mta_sts_preflight "$token" "$domain" "$hostname" "$domain_zone_id" "$web_port"
+# Credential Manager needs the mail domain to serve app links, which the Android app signs in with.
+assetlinks_preflight "$token" "$domain" "$domain_zone_id" "$account_id" "$server_ip" "$web_port"
 
 enable_dnssec=0
 off_zones="$(printf '%s and ' "${dnssec_off[@]}")"
@@ -414,6 +418,7 @@ cat <<EOF
   Cloudflare token       $([[ -n "$token" ]] && echo "new" || echo "unchanged")
   DNSSEC                 $(if (( ${#dnssec_off[@]} == 0 )); then echo "on"; elif (( enable_dnssec )); then echo "will be turned on for $off_zones"; else echo "stays off for $off_zones"; fi)
   MTA-STS                $(if [[ "$web_port" == 443 ]]; then echo "published, served on 443"; else echo "published via a Cloudflare Worker on mta-sts.$domain"; fi)$( (( ${#stale_mta_sts[@]} )) && echo "; the records published earlier will be removed")$( [[ "$web_port" == 443 ]] && (( worker_owned )) && echo "; the Worker created earlier will be removed")
+  Android app links      $(case "$assetlinks_choice" in worker-domain) echo "published via a Cloudflare Worker on $domain" ;; worker-route) echo "published via a Cloudflare Worker route on $domain" ;; caddy) echo "served by the web tier on $domain" ;; *) echo "not served: $domain is not free to take over, so you serve the file" ;; esac)
   Corvid image           $IMAGE
 EOF
 if interactive; then
@@ -481,18 +486,8 @@ fi
 on_host "printf '%s\n' '$IMAGE' > /opt/corvid/image.ref"
 others="$(awk '/^# Written by install.sh/ {next} /^server:/ {s = 1; next} /^[^ ]/ {s = 0} !s' <<<"$existing_config" | sed '/./,$!d')"
 {
-  cat <<EOF
-# Written by install.sh, which rewrites server: on every run. No secrets here; see deploy/config.yaml.
-server:
-  domain: $domain
-  hostname: $hostname
-  mail_user: $mail_user
-  acme_contact: $acme_contact
-  web_port: $web_port
-  client_access: $client_access${host_zone:+
-  host_zone: $host_zone}
-
-EOF
+  server_block "$domain" "$hostname" "$mail_user" "$acme_contact" "$web_port" "$client_access" "$host_zone" \
+    "$([[ "$assetlinks_choice" == caddy ]] && echo yes)" "$(kept_android_apps "$existing_config")"
   if [[ -n "$others" ]]; then printf '%s\n' "$others"
   else printf 'milter:\n  bind: 127.0.0.1:11332\n\nimgproxy:\n  bind: 127.0.0.1:8081\n'; fi
 } | on_host 'cat > /opt/corvid/config.yaml && chmod 644 /opt/corvid/config.yaml'
@@ -545,8 +540,8 @@ if (( ${#stale_mta_sts[@]} )); then
   ok "mta-sts.$domain and _mta-sts.$domain removed"
 fi
 
+cfg_cmd="podman run --rm --network=none -v /opt/corvid/config.yaml:/etc/corvid/config.yaml:ro '$IMAGE' corvid-config"
 if [[ "$web_port" != 443 ]]; then
-  cfg_cmd="podman run --rm --network=none -v /opt/corvid/config.yaml:/etc/corvid/config.yaml:ro '$IMAGE' corvid-config"
   policy="$(on_host "$cfg_cmd mta-sts-policy")" || die "could not render the MTA-STS policy: $policy"
   policy_id="$(on_host "$cfg_cmd shell" | awk -F= '$1=="MTA_STS_ID"{print $2}')"
   [[ -n "$policy_id" ]] || die "corvid-config did not report MTA_STS_ID; rebuild the image"
@@ -554,6 +549,19 @@ if [[ "$web_port" != 443 ]]; then
 else
   mta_sts_check_published "$token" "$domain" "$domain_zone_id"
 fi
+
+case "$assetlinks_choice" in
+  worker-*)
+    assetlinks_document="$(on_host "$cfg_cmd assetlinks")" || die "could not render the app links: $assetlinks_document"
+    assetlinks_publish "$token" "$domain" "$domain_zone_id" "$account_id" "$assetlinks_worker" "$assetlinks_choice" "$assetlinks_document"
+    ;;
+  manual)
+    step "Android app links"
+    warn "$domain is not free for Corvid to serve its app links, so passkeys in the Android app will not work yet"
+    explain "Serve this at https://$domain$ASSETLINKS_PATH on port 443 as application/json, with no redirect:"
+    on_host "$cfg_cmd assetlinks"
+    ;;
+esac
 
 # Stalwart names its keys v1-TYPE-DATE and never deletes one it has replaced, so every reinstall
 # leaves a pair behind. Only records in that form that Stalwart no longer holds are removed.

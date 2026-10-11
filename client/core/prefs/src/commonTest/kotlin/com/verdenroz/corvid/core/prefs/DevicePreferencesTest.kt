@@ -111,13 +111,13 @@ class DevicePreferencesTest {
             val prefs = preferences()
             prefs.setTheme(ThemeChoice.Dark)
 
-            prefs.rememberAccount(RememberedAccount("https://mail.example.com:4443", "https://idp.example.com:4443", "you@example.com"))
+            prefs.rememberAccount(RememberedAccount("https://mail.example.com:4443", "you@example.com"))
             runCurrent()
 
             assertEquals(
                 DeviceSettings(
                     ThemeChoice.Dark,
-                    account = RememberedAccount("https://mail.example.com:4443", "https://idp.example.com:4443", "you@example.com"),
+                    account = RememberedAccount("https://mail.example.com:4443", "you@example.com"),
                 ),
                 prefs.settings.value,
             )
@@ -127,17 +127,29 @@ class DevicePreferencesTest {
     fun `an account remembered without an email replaces the last one and drops its email`() =
         runTest {
             val prefs = preferences()
-            prefs.rememberAccount(RememberedAccount("https://mail.example.com", "https://idp.example.com", "you@example.com"))
+            prefs.rememberAccount(RememberedAccount("https://mail.example.com", "you@example.com"))
 
-            prefs.rememberAccount(RememberedAccount("https://other.example.org", "https://idp.example.org"))
+            prefs.rememberAccount(RememberedAccount("https://other.example.org"))
             runCurrent()
 
-            assertEquals(RememberedAccount("https://other.example.org", "https://idp.example.org"), prefs.settings.value.account)
+            assertEquals(RememberedAccount("https://other.example.org"), prefs.settings.value.account)
         }
 
     @Test
-    fun `a server stored without an issuer is no account to offer`() {
-        assertNull(decode(preferencesOf(stringPreferencesKey("account_server") to "https://mail.example.com")).account)
+    fun `an account stored by a build that kept an identity provider still opens without it`() {
+        val stored =
+            preferencesOf(
+                stringPreferencesKey("account_server") to "https://mail.example.com",
+                stringPreferencesKey("account_issuer") to "https://idp.example.com",
+                stringPreferencesKey("account_email") to "you@example.com",
+            )
+
+        assertEquals(RememberedAccount("https://mail.example.com", "you@example.com"), decode(stored).account)
+    }
+
+    @Test
+    fun `no server stored is no account to offer`() {
+        assertNull(decode(preferencesOf(stringPreferencesKey("account_email") to "you@example.com")).account)
     }
 
     @Test

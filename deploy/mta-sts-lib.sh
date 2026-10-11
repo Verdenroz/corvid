@@ -6,11 +6,8 @@
 # "v=STSv1" copy, which looks identical otherwise.
 MTA_STS_TXT_COMMENT="corvid-mta-sts-worker"
 
-# A Cloudflare Workers script name derived from DOMAIN: letters, digits and hyphens only.
-mta_sts_worker_name() {
-  local domain="$1"
-  echo "corvid-mta-sts-${domain//./-}"
-}
+# shellcheck source=worker-lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/worker-lib.sh"
 
 # Whether an existing mta-sts.<domain> CNAME (as "ID CONTENT", or empty) can be replaced:
 # clear (nothing there), stale (Stalwart's own, pointing at HOSTNAME), owned (this run's Worker
@@ -28,23 +25,6 @@ mta_sts_record_status() {
   fi
 }
 
-# The Worker script: a policy rendered by corvid-config, served verbatim as text/plain, and
-# nothing else, so the host does not look like a live policy at other paths.
-mta_sts_worker_script() {
-  local policy="$1"
-  cat <<JS
-const POLICY = \`$policy\`;
-export default {
-  fetch(request) {
-    if (new URL(request.url).pathname !== "/.well-known/mta-sts.txt") {
-      return new Response("not found", { status: 404 });
-    }
-    return new Response(POLICY, { headers: { "content-type": "text/plain" } });
-  },
-};
-JS
-}
-
 # Detects Corvid's own MTA-STS Worker (by its custom domain's service name, never by DNS content,
 # since Stalwart's own "_mta-sts" TXT looks identical) and whether mta-sts.<domain> already holds
 # a record: Stalwart's own (staged in stale_mta_sts, an array the caller declares), this run's
@@ -54,7 +34,7 @@ mta_sts_preflight() {
   local token="$1" domain="$2" hostname="$3" domain_zone_id="$4" web_port="$5"
   local cname kind record owner
 
-  worker_name="$(mta_sts_worker_name "$domain")"
+  worker_name="$(worker_name corvid-mta-sts "$domain")"
   account_id="$(cloudflare "$token" account "$domain_zone_id")" ||
     die "could not read the account that owns $domain: $account_id"
   owner="$(cloudflare "$token" worker-owner "$account_id" "mta-sts.$domain")" ||
@@ -117,7 +97,7 @@ mta_sts_publish() {
 
   step "publishing the MTA-STS policy"
   # shellcheck disable=SC2034  # read by cloudflare(), defined in install.sh
-  CLOUDFLARE_STDIN="$(mta_sts_worker_script "$policy")"
+  CLOUDFLARE_STDIN="$(static_worker_script /.well-known/mta-sts.txt text/plain "$policy")"
   out="$(cloudflare "$token" deploy-worker "$account_id" "$domain_zone_id" "$worker_name" "mta-sts.$domain" 2>&1)" ||
     die "Cloudflare did not deploy the Worker: $out"
   unset CLOUDFLARE_STDIN

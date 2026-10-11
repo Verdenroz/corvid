@@ -24,6 +24,12 @@ server:
   # Where Pocket-ID answers, on web_port. Defaults to idp.<domain>; Pocket-ID refuses an APP_URL
   # with a path, so it needs a hostname of its own.
   # idp_hostname: idp.example.com
+  # The Android apps that may sign in with a passkey, by package and the SHA-256 of the
+  # certificate that signs them. The default is the published app; a list of your own replaces it,
+  # so keep the published entry too if you want both. Served as /.well-known/assetlinks.json on the mail domain.
+  # android_apps:
+  #   - package: com.example.corvid
+  #     sha256: 00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF
   # Who may reach the ports mail apps use (465, 587, 993 and web_port): anywhere; host, meaning
   # only programs on this server such as a VPN it runs; or a list like [192.0.2.0/24].
   # Ports 25 and 80 stay open to everyone, since other mail servers and Let's Encrypt need them.
@@ -88,6 +94,10 @@ sentinel:
   # Approving a new device with the Pocket-ID admin's passkey. Needs CORVID_STALWART_TOKEN.
   devices:
     state: /var/lib/corvid/devices.json
+  # Passkey sign-in: the sentinel issues the tokens Stalwart trusts. Enroll with
+  # deploy/passkey.sh code daily|master; deploy.sh switches Stalwart over once both roles have one.
+  auth:
+    state: /var/lib/corvid/auth.json
   # New-mail previews (sender, subject, a snippet) encrypted to each approved device, sent
   # through Google's push service or the device's own connection to this server. Needs devices.
   # Delete it to push nothing.

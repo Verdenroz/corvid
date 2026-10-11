@@ -10,6 +10,8 @@
     cloudflare.py update-srv ZONE ID PORT TARGET   repoints an SRV record, priority 0 weight 5
     cloudflare.py update-record ZONE ID CONTENT  replaces a record's content
     cloudflare.py records ZONE NAME TYPE one line per record: ID CONTENT
+    cloudflare.py address-records ZONE NAME   one line per A, AAAA or CNAME record at NAME:
+                                          ID TYPE CONTENT proxied|dns-only
     cloudflare.py delete ZONE ID         removes one record
     cloudflare.py dkim ZONE DOMAIN       one line per DKIM key record: ID SELECTOR
     cloudflare.py dnssec ZONE            the zone's DNSSEC status, then its DS record if any
@@ -22,6 +24,10 @@
     cloudflare.py deploy-worker ACCOUNT ZONE NAME HOSTNAME   uploads the module on stdin
                                           (after the token line) and binds it to HOSTNAME. Fails
                                           naming the permission it lacks, not a bare 403.
+    cloudflare.py worker-route ZONE PATTERN   the script that runs on route PATTERN, or empty
+    cloudflare.py deploy-route ACCOUNT ZONE NAME PATTERN   uploads the module on stdin (after the
+                                          token line) and runs it on route PATTERN of the zone,
+                                          failing if another script already holds the route
     cloudflare.py remove-worker ACCOUNT NAME HOSTNAME   removes the custom domain and script,
                                           doing nothing if neither exists
 
@@ -55,6 +61,28 @@ def multipart(fields):
         body += content + b"\r\n"
     body += f"--{boundary}--\r\n".encode()
     return f"multipart/form-data; boundary={boundary}", bytes(body)
+
+
+def upload_worker(token, account, name):
+    """Uploads the module on stdin as script NAME."""
+    module = f"{name}.mjs"
+    metadata = json.dumps({
+        "main_module": module,
+        "compatibility_date": WORKER_COMPATIBILITY_DATE,
+    }).encode()
+    content_type, body = multipart([
+        ("metadata", None, "application/json", metadata),
+        (module, module, "application/javascript+module", sys.stdin.read().encode()),
+    ])
+    call(token, f"accounts/{account}/workers/scripts/{name}", body, method="PUT",
+         content_type=content_type, missing_permission="Workers Scripts:Edit")
+
+
+def route_script(token, zone, pattern, missing_permission=None):
+    for route in call(token, f"zones/{zone}/workers/routes", missing_permission=missing_permission):
+        if route["pattern"] == pattern:
+            return route.get("script") or ""
+    return None
 
 
 def srv_data(port, target):
@@ -105,6 +133,12 @@ def main():
         query = urllib.parse.urlencode({"type": kind, "name": name})
         for record in call(token, f"zones/{zone}/dns_records?{query}"):
             print(record["id"], record["content"])
+    elif command == "address-records":
+        zone, name = args
+        for kind in ("A", "AAAA", "CNAME"):
+            query = urllib.parse.urlencode({"type": kind, "name": name})
+            for record in call(token, f"zones/{zone}/dns_records?{query}"):
+                print(record["id"], kind, record["content"], "proxied" if record.get("proxied") else "dns-only")
     elif command == "srv-records":
         zone, name = args
         query = urllib.parse.urlencode({"type": "SRV", "name": name})
@@ -160,19 +194,21 @@ def main():
             if record.get("comment") == comment:
                 print(record["id"], record["content"])
                 break
+    elif command == "worker-route":
+        zone, pattern = args
+        print(route_script(token, zone, pattern) or "")
+    elif command == "deploy-route":
+        account, zone, name, pattern = args
+        upload_worker(token, account, name)
+        holder = route_script(token, zone, pattern, "Workers Routes:Edit")
+        if holder is None:
+            call(token, f"zones/{zone}/workers/routes", {"pattern": pattern, "script": name},
+                 missing_permission="Workers Routes:Edit")
+        elif holder != name:
+            sys.exit(f"route {pattern} already runs {holder or 'no script'}, not {name}")
     elif command == "deploy-worker":
         account, zone, name, hostname = args
-        module = f"{name}.mjs"
-        metadata = json.dumps({
-            "main_module": module,
-            "compatibility_date": WORKER_COMPATIBILITY_DATE,
-        }).encode()
-        content_type, body = multipart([
-            ("metadata", None, "application/json", metadata),
-            (module, module, "application/javascript+module", sys.stdin.read().encode()),
-        ])
-        call(token, f"accounts/{account}/workers/scripts/{name}", body, method="PUT",
-             content_type=content_type, missing_permission="Workers Scripts:Edit")
+        upload_worker(token, account, name)
         call(token, f"accounts/{account}/workers/domains",
              {"environment": "production", "hostname": hostname, "service": name, "zone_id": zone},
              method="PUT", missing_permission="Workers Routes:Edit")

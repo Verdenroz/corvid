@@ -1,9 +1,7 @@
 //! The server's VAPID identity (RFC 8292): one P-256 key that signs the `Authorization` header
 //! a push service checks before it accepts a push for an endpoint registered under that key.
 
-use std::fs::{self, OpenOptions};
-use std::io::{self, ErrorKind, Write};
-use std::os::unix::fs::OpenOptionsExt;
+use std::io;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -13,7 +11,7 @@ use p256::ecdsa::SigningKey;
 use p256::ecdsa::signature::Signer;
 use serde_json::json;
 
-use crate::webpush::random_secret;
+use crate::key_file;
 
 const LIFETIME_SECONDS: u64 = 12 * 3600;
 
@@ -22,36 +20,8 @@ pub struct Vapid {
 }
 
 impl Vapid {
-    /// Reads the key at `path`, creating it read-only on first use. It is never replaced: every
-    /// registration made under the old key would stop being accepted.
     pub fn open(path: &Path) -> io::Result<Self> {
-        if !path.exists() {
-            Self::create(path)?;
-        }
-        SigningKey::from_slice(&fs::read(path)?)
-            .map(|key| Self { key })
-            .map_err(|error| io::Error::new(ErrorKind::InvalidData, error))
-    }
-
-    fn create(path: &Path) -> io::Result<()> {
-        let pending = path.with_extension("key.tmp");
-        match fs::remove_file(&pending) {
-            Err(error) if error.kind() != ErrorKind::NotFound => return Err(error),
-            _ => {}
-        }
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o400)
-            .open(&pending)?;
-        file.write_all(&SigningKey::from(random_secret()).to_bytes())?;
-        file.sync_all()?;
-        // A hard link fails when the key exists, and a reader never sees it half written.
-        match fs::hard_link(&pending, path) {
-            Err(error) if error.kind() != ErrorKind::AlreadyExists => return Err(error),
-            _ => {}
-        }
-        fs::remove_file(&pending)
+        key_file::open(path).map(|key| Self { key })
     }
 
     /// The uncompressed point, base64url, as a browser or app registers it.
@@ -83,7 +53,6 @@ impl Vapid {
 
 #[cfg(test)]
 mod tests {
-    use std::os::unix::fs::PermissionsExt;
     use std::time::Duration;
 
     use p256::ecdsa::signature::Verifier;
@@ -126,44 +95,6 @@ mod tests {
             serde_json::from_slice::<serde_json::Value>(&decode(claims)).unwrap(),
             json!({"aud": "https://fcm.googleapis.com", "exp": 1_800_043_200u64,
                    "sub": "mailto:me@elsewhere.example"})
-        );
-    }
-
-    #[test]
-    fn the_key_is_made_once_read_only_and_reopens_to_the_same_identity() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("vapid.key");
-
-        let first = Vapid::open(&path).unwrap().public_key();
-
-        assert_eq!(Vapid::open(&path).unwrap().public_key(), first);
-        assert_eq!(
-            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
-            0o400
-        );
-    }
-
-    #[test]
-    fn a_leftover_temporary_file_does_not_block_the_next_open() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("vapid.key");
-        fs::write(dir.path().join("vapid.key.tmp"), b"half").unwrap();
-
-        let vapid = Vapid::open(&path).unwrap();
-
-        assert_eq!(Vapid::open(&path).unwrap().public_key(), vapid.public_key());
-        assert!(!dir.path().join("vapid.key.tmp").exists());
-    }
-
-    #[test]
-    fn a_key_file_that_is_not_a_key_is_refused() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("vapid.key");
-        fs::write(&path, b"short").unwrap();
-
-        assert_eq!(
-            Vapid::open(&path).err().unwrap().kind(),
-            ErrorKind::InvalidData
         );
     }
 }

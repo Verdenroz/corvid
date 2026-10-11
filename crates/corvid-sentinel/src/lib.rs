@@ -1,7 +1,9 @@
+pub mod auth;
 mod dates;
 mod decide;
 pub mod devices;
 mod http;
+mod key_file;
 mod notice;
 mod persisted;
 mod service;

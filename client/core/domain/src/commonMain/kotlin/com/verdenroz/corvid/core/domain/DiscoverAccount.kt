@@ -6,9 +6,8 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 
-data class Discovery(val server: ServerAddress, val issuer: String, val email: String) {
+data class Discovery(val server: ServerAddress, val email: String) {
     val serverHost: String get() = hostOf(server.baseUrl)
-    val issuerHost: String get() = hostOf(issuer)
 }
 
 sealed class DiscoveryFailure : Exception() {
@@ -24,12 +23,14 @@ sealed class DiscoveryFailure : Exception() {
 }
 
 @Serializable
-private class DiscoveryDocument(val version: Int, val server: String, val issuer: String)
+private class DiscoveryDocument(val version: Int, val server: String)
 
 private val json = Json { ignoreUnknownKeys = true }
+private val SUPPORTED_VERSIONS = 1..2
 
 /**
- * Finds a mailbox's server and identity provider from its address. The SRV record
+ * Finds a mailbox's server from its address. Version 1 documents also name an identity provider,
+ * which passkey sign-in has no use for, so it is not read. The SRV record
  * `_corvid._tcp.<domain>` names the web tier's host and port; without one the document
  * is fetched from the domain itself on 443. A record that exists but leads nowhere is an
  * error rather than a reason to try 443, since the domain said where to look.
@@ -49,8 +50,8 @@ class DiscoverAccount(
             } catch (_: SerializationException) {
                 throw DiscoveryFailure.Malformed
             }
-        if (document.version != 1) throw DiscoveryFailure.UnsupportedVersion
-        if (!document.server.startsWith("https://") || !document.issuer.startsWith("https://")) throw DiscoveryFailure.NotHttps
-        return Discovery(ServerAddress(document.server.trimEnd('/')), document.issuer.trimEnd('/'), email.trim())
+        if (document.version !in SUPPORTED_VERSIONS) throw DiscoveryFailure.UnsupportedVersion
+        if (!document.server.startsWith("https://")) throw DiscoveryFailure.NotHttps
+        return Discovery(ServerAddress(document.server.trimEnd('/')), email.trim())
     }
 }

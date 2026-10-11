@@ -18,33 +18,33 @@ import com.verdenroz.corvid.app.EscapeBack
 import com.verdenroz.corvid.app.NewMailNotifier
 import com.verdenroz.corvid.app.NoticeNotifier
 import com.verdenroz.corvid.app.NotificationPermission
+import com.verdenroz.corvid.app.SecurityKeyDialog
 import com.verdenroz.corvid.app.di.appModules
-import com.verdenroz.corvid.core.auth.InMemoryPreferencesFactory
-import com.verdenroz.corvid.core.auth.platformAuthModule
+import com.verdenroz.corvid.core.auth.Authenticator
+import com.verdenroz.corvid.core.auth.DesktopAuthenticator
+import com.verdenroz.corvid.core.auth.SecurityKeyPrompt
 import com.verdenroz.corvid.core.data.AppInstaller
 import com.verdenroz.corvid.core.data.AttachmentFiles
 import com.verdenroz.corvid.core.discovery.platformDiscoveryModule
 import com.verdenroz.corvid.core.prefs.platformPreferencesModule
-import kotlinx.coroutines.runBlocking
 import org.koin.compose.koinInject
 import org.koin.core.context.startKoin
 import org.koin.dsl.module
 import javax.imageio.ImageIO
 
 fun main() {
-    // Must win the race against oidc-appsupport's own PreferencesFactory
-    // before any sign-in starts, or its flow state lands in a file in $HOME.
-    runBlocking { InMemoryPreferencesFactory.seed() }
     val notifier = TrayNoticeNotifier()
+    val keyPrompt = SecurityKeyPrompt()
     val notices =
         module {
             single<NoticeNotifier> { notifier }
             single<NewMailNotifier> { notifier }
             single<NotificationPermission> { NoPermissionNeeded }
+            single<Authenticator> { DesktopAuthenticator(keyPrompt) }
             single<AppInstaller> { DesktopAppInstaller() }
             single<AttachmentFiles> { DesktopAttachmentFiles() }
         }
-    val koin = startKoin { modules(appModules + platformAuthModule + platformDiscoveryModule + platformPreferencesModule + notices) }.koin
+    val koin = startKoin { modules(appModules + platformDiscoveryModule + platformPreferencesModule + notices) }.koin
     val presence = koin.get<AppPresence>()
     application {
         val windowState = rememberWindowState()
@@ -72,6 +72,7 @@ fun main() {
             val focused = LocalWindowInfo.current.isWindowFocused
             LaunchedEffect(focused, windowState.isMinimized) { presence.shown(focused && !windowState.isMinimized) }
             CorvidApp()
+            SecurityKeyDialog(keyPrompt)
         }
     }
 }

@@ -79,5 +79,39 @@ check "update-srv repoints the same record" '[[ "$(cf srv-records z1 _corvid._tc
 check "update-srv keeps priority 0 weight 5" \
   '[[ "$(curl -s "${CORVID_CLOUDFLARE_API}zones/z1/dns_records?type=SRV" | python3 -c "import json, sys; d = json.load(sys.stdin)[\"result\"][0][\"data\"]; print(d[\"priority\"], d[\"weight\"])")" == "0 5" ]]'
 
+echo "== a Worker route"
+kill "$server" 2>/dev/null
+start_fake
+route() { printf 'token\nexport default { fetch() {} };' | python3 "$here/cloudflare.py" deploy-route "$@"; }
+pattern=example.com/.well-known/assetlinks.json
+check "an unrouted pattern reads as empty" '[[ -z "$(cf worker-route z1 "$pattern")" ]]'
+route "$account" z1 corvid-assetlinks-example "$pattern"
+check "the route runs the script" '[[ "$(cf worker-route z1 "$pattern")" == corvid-assetlinks-example ]]'
+route "$account" z1 corvid-assetlinks-example "$pattern"
+check "a rerun leaves exactly one route" \
+  '[[ "$(curl -s "${CORVID_CLOUDFLARE_API}zones/z1/workers/routes" | python3 -c "import json, sys; print(len(json.load(sys.stdin)[\"result\"]))")" == 1 ]]'
+out="$(route "$account" z1 corvid-other "$pattern" 2>&1)"
+# shellcheck disable=SC2034  # read inside the eval'd check
+status=$?
+check "a route held by another script is not taken" '[[ $status -ne 0 && "$out" == *"already runs corvid-assetlinks-example"* ]]'
+
+echo "== a missing Workers Routes permission on a route fails naming it"
+kill "$server" 2>/dev/null
+start_fake --deny-domains
+out="$(route "$account" z1 corvid-assetlinks-example "$pattern" 2>&1)"
+# shellcheck disable=SC2034  # read inside the eval'd check
+status=$?
+check "it fails naming the permission" '[[ $status -ne 0 && "$out" == *"Workers Routes:Edit"* ]]'
+
+echo "== address records"
+kill "$server" 2>/dev/null
+start_fake
+check "a name with no records reads as empty" '[[ -z "$(cf address-records z1 example.com)" ]]'
+cf create-a z1 example.com 203.0.113.9
+curl -s -o /dev/null -H 'content-type: application/json' \
+  -d '{"type":"AAAA","name":"example.com","content":"2001:db8::1","proxied":true}' "${CORVID_CLOUDFLARE_API}zones/z1/dns_records"
+check "each address record reads back with its type, content and proxy state" \
+  '[[ "$(cf address-records z1 example.com | cut -d" " -f2- | tr "\n" ";")" == "A 203.0.113.9 dns-only;AAAA 2001:db8::1 proxied;" ]]'
+
 [[ $fail -eq 0 ]] || echo "--- last output: $out"
 exit "$fail"

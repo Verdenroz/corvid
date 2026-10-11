@@ -26,6 +26,79 @@ in_pod() {
   "$@"
 }
 
+# The status the sentinel's issuer answers on the pod's loopback for DOCUMENT, the discovery
+# document by default; empty when the sentinel is not running.
+issuer_status() {
+  (in_pod corvid-sentinel curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+    "$ISSUER_URL/${1:-.well-known/openid-configuration}") 2>/dev/null
+}
+
+# Calls a sentinel route that Caddy does not serve, from inside the pod. The route takes an HMAC
+# of MESSAGE under the webhook secret. Prints the status, then the body, and fails only when the
+# sentinel cannot be reached.
+sentinel_signed() {
+  local method="$1" path="$2" message="$3" signature reply
+  signature="$(python3 -c '
+import base64, hashlib, hmac, sys
+secret = next(l.split("=", 1)[1].strip() for l in open(sys.argv[1]) if l.startswith("CORVID_SENTINEL_SECRET="))
+print(base64.b64encode(hmac.new(secret.encode(), sys.argv[2].encode(), hashlib.sha256).digest()).decode())' \
+    "$CORVID_DIR/sentinel-webhook.env" "$message")"
+  in_pod corvid-sentinel true
+  reply="$(in_pod corvid-sentinel curl -s -w '\n%{http_code}' -X "$method" -H "X-Signature: $signature" \
+    "$SENTINEL_URL$path" || true)"
+  printf '%s\n%s\n' "${reply##*$'\n'}" "${reply%$'\n'*}"
+}
+
+# What deploy.sh should do about sign-in, from the sentinel's own count of passkeys. Prints
+# "SIGN_IN DAILY MASTER ROLE...": SIGN_IN is `passkeys` when both roles have a passkey and
+# `pocket-id` when they do not, `off` when sentinel.auth is off, and ROLE... are the codes still
+# waiting.
+# Fails, printing nothing, when the sentinel never answers: no answer is not "nobody enrolled",
+# and acting on it would move a host that already switched back to the old directory.
+auth_decision() {
+  local reply
+  for _ in $(seq 1 "${AUTH_STATUS_TRIES:-45}"); do
+    reply="$(sentinel_signed GET /internal/auth/status status 2>/dev/null)"
+    case "${reply%%$'\n'*}" in
+      200)
+        python3 -c '
+import json, sys
+s = json.load(sys.stdin)
+ready = s["daily"] > 0 and s["master"] > 0
+print("passkeys" if ready else "pocket-id", s["daily"], s["master"], *s["codes"])' <<<"${reply#*$'\n'}"
+        return
+        ;;
+      503) echo "off 0 0"; return ;;
+    esac
+    sleep "${AUTH_STATUS_WAIT:-2}"
+  done
+  return 1
+}
+
+# Whether URL serves the app links document EXPECTED, as Credential Manager would read it: on its
+# own, with no redirect, as application/json. Prints "ok", "warn" or "bad", then why. Not served
+# is a warning, since mail does not wait on the Android app; a different document, a redirect or
+# the wrong type is bad, since it is worse than none.
+assetlinks_verdict() {
+  local url="$1" expected="$2" body reply served
+  body="$(mktemp)"
+  reply="$(curl -s --max-time 10 -o "$body" -w '%{http_code} %{content_type}' "$url" || true)"
+  served="$(cat "$body")"
+  rm -f "$body"
+  case "$reply" in
+    "200 application/json"*)
+      if [[ "$served" == "$expected" ]]; then
+        echo "ok $url serves the app links"
+      else
+        echo "bad $url serves a different document than corvid-config assetlinks prints"
+      fi
+      ;;
+    200*) echo "bad $url is served as ${reply#200 }, not application/json" ;;
+    3??*) echo "bad $url answers a redirect (${reply%% *}); Credential Manager refuses redirects" ;;
+    *) echo "warn $url answers ${reply%% *}, so passkeys in the Android app will not work until it is served" ;;
+  esac
+}
+
 # stalwart-cli refuses a token alongside a user, so a token replaces the password pair in the
 # environment. load_env calls it after every source of corvid.env.
 prefer_token() {
@@ -183,22 +256,28 @@ dkim_public_key() {
 
 unit_masked() { [[ "$(systemctl is-enabled "$1" 2>/dev/null)" == masked ]]; }
 
-# Sets and exports MAIL_DOMAIN, MAIL_HOSTNAME, MAIL_USER, ACME_CONTACT, WEB_PORT, HOST_ZONE,
-# IDP_HOSTNAME, IDP_URL, SENTINEL_URL, ADMIN_USER, PUBLISH_MTA_STS, PUBLISH_TLSA, MTA_STS_MODE,
-# CLIENT_SOURCES and UPDATE_AUTO from config.yaml. Tests set CORVID_CONFIG_CMD to run it without
+# Runs corvid-config SUBCOMMAND against config.yaml. Tests set CORVID_CONFIG_CMD to run it without
 # the container.
+corvid_config() {
+  if [[ -n "${CORVID_CONFIG_CMD:-}" ]]; then
+    $CORVID_CONFIG_CMD "$@"
+  else
+    podman run --rm --network=none \
+      -v "$CORVID_DIR/config.yaml:/etc/corvid/config.yaml:ro" \
+      "$CORVID_IMAGE" corvid-config "$@"
+  fi
+}
+
+# Sets and exports MAIL_DOMAIN, MAIL_HOSTNAME, MAIL_USER, ACME_CONTACT, WEB_PORT, HOST_ZONE,
+# IDP_HOSTNAME, IDP_URL, SENTINEL_URL, ISSUER_URL, ADMIN_USER, PUBLISH_MTA_STS, PUBLISH_TLSA,
+# PUBLISH_ASSETLINKS, ASSETLINKS, MTA_STS_MODE, CLIENT_SOURCES and UPDATE_AUTO from config.yaml.
+# Tests set CORVID_CONFIG_CMD to run it without the container.
 load_server() {
   local out key value
-  if [[ -n "${CORVID_CONFIG_CMD:-}" ]]; then
-    out="$($CORVID_CONFIG_CMD shell)" || exit 78
-  else
-    out="$(podman run --rm --network=none \
-      -v "$CORVID_DIR/config.yaml:/etc/corvid/config.yaml:ro" \
-      "$CORVID_IMAGE" corvid-config shell)" || exit 78
-  fi
+  out="$(corvid_config shell)" || exit 78
   while IFS='=' read -r key value; do
     case "$key" in
-      MAIL_DOMAIN|MAIL_HOSTNAME|MAIL_USER|ACME_CONTACT|WEB_PORT|HOST_ZONE|IDP_HOSTNAME|IDP_URL|SENTINEL_URL|ADMIN_USER|PUBLISH_MTA_STS|PUBLISH_TLSA|MTA_STS_MODE|CLIENT_SOURCES|UPDATE_AUTO)
+      MAIL_DOMAIN|MAIL_HOSTNAME|MAIL_USER|ACME_CONTACT|WEB_PORT|HOST_ZONE|IDP_HOSTNAME|IDP_URL|SENTINEL_URL|ISSUER_URL|ADMIN_USER|PUBLISH_MTA_STS|PUBLISH_TLSA|PUBLISH_ASSETLINKS|ASSETLINKS|MTA_STS_MODE|CLIENT_SOURCES|UPDATE_AUTO)
         printf -v "$key" '%s' "$value"
         export "${key?}"
         ;;
@@ -222,7 +301,11 @@ CORVID_WEB_PORT=$WEB_PORT
 CORVID_MAIL_DOMAIN=$MAIL_DOMAIN
 CORVID_IDP_HOSTNAME=$IDP_HOSTNAME
 CORVID_MTA_STS_SITE=$([[ "$PUBLISH_MTA_STS" == true ]] && echo "mta-sts.$MAIL_DOMAIN:443")
+CORVID_ASSETLINKS_SITE=$([[ "$PUBLISH_ASSETLINKS" == true && "$MAIL_HOSTNAME" != "$MAIL_DOMAIN" ]] && echo "$MAIL_DOMAIN:443")
+CORVID_ASSETLINKS_HOST=$([[ "$PUBLISH_ASSETLINKS" == true ]] && echo "$MAIL_DOMAIN")
+CORVID_ASSETLINKS=$([[ "$PUBLISH_ASSETLINKS" == true ]] && echo "$ASSETLINKS")
 APP_URL=https://$IDP_HOSTNAME:$WEB_PORT
+CORVID_ISSUER_URL=$ISSUER_URL
 EOF
   chmod 644 "$CORVID_DIR/server.env"
 }

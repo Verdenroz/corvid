@@ -15,7 +15,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.AppUpdateState
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
@@ -42,15 +41,14 @@ import com.verdenroz.corvid.feature.settings.resources.settings_back
 import com.verdenroz.corvid.feature.settings.resources.settings_cancel
 import com.verdenroz.corvid.feature.settings.resources.settings_filters_detail
 import com.verdenroz.corvid.feature.settings.resources.settings_filters_row
-import com.verdenroz.corvid.feature.settings.resources.settings_identity_provider
 import com.verdenroz.corvid.feature.settings.resources.settings_lock_now
-import com.verdenroz.corvid.feature.settings.resources.settings_manage_sign_in
-import com.verdenroz.corvid.feature.settings.resources.settings_manage_sign_in_detail
 import com.verdenroz.corvid.feature.settings.resources.settings_name
 import com.verdenroz.corvid.feature.settings.resources.settings_new_mail
 import com.verdenroz.corvid.feature.settings.resources.settings_new_mail_detail
 import com.verdenroz.corvid.feature.settings.resources.settings_notices_detail
 import com.verdenroz.corvid.feature.settings.resources.settings_notices_row
+import com.verdenroz.corvid.feature.settings.resources.settings_passkeys_detail
+import com.verdenroz.corvid.feature.settings.resources.settings_passkeys_row
 import com.verdenroz.corvid.feature.settings.resources.settings_push
 import com.verdenroz.corvid.feature.settings.resources.settings_push_failed
 import com.verdenroz.corvid.feature.settings.resources.settings_push_google_unavailable
@@ -80,8 +78,6 @@ data class AccountFacts(
     val name: String?,
     val address: String?,
     val server: String,
-    val identityProvider: String?,
-    val manageSignInUrl: String?,
 )
 
 @Composable
@@ -96,6 +92,7 @@ fun SettingsScreen(
     onOpenFilters: () -> Unit,
     onOpenNotices: () -> Unit,
     onOpenApproveDevice: () -> Unit,
+    onOpenPasskeys: () -> Unit,
 ) {
     val state by viewModel.state.collectAsState()
     val aboutState by about.state.collectAsState()
@@ -105,7 +102,7 @@ fun SettingsScreen(
 
     val topic: @Composable (SettingsTopic) -> Unit = {
         when (it) {
-            SettingsTopic.Account -> AccountSection(account, state.confirmingSignOut, viewModel)
+            SettingsTopic.Account -> AccountSection(account, state.confirmingSignOut, viewModel, onOpenPasskeys)
             SettingsTopic.Appearance ->
                 SettingsSection(stringResource(it.title)) {
                     ChoiceRow(
@@ -196,20 +193,17 @@ private fun AccountSection(
     account: AccountFacts,
     confirmingSignOut: Boolean,
     viewModel: SettingsViewModel,
+    onOpenPasskeys: () -> Unit,
 ) {
     SettingsSection(stringResource(Res.string.settings_account)) {
         account.name?.let { FactRow(stringResource(Res.string.settings_name), it) }
         account.address?.let { FactRow(stringResource(Res.string.settings_address), it) }
         FactRow(stringResource(Res.string.settings_server), account.server)
-        account.identityProvider?.let { FactRow(stringResource(Res.string.settings_identity_provider), it) }
-        account.manageSignInUrl?.let {
-            val uriHandler = LocalUriHandler.current
-            LinkRow(
-                title = stringResource(Res.string.settings_manage_sign_in),
-                detail = stringResource(Res.string.settings_manage_sign_in_detail),
-                onClick = { uriHandler.openUri(it) },
-            )
-        }
+        LinkRow(
+            title = stringResource(Res.string.settings_passkeys_row),
+            detail = stringResource(Res.string.settings_passkeys_detail),
+            onClick = onOpenPasskeys,
+        )
         if (confirmingSignOut) {
             DiscardQuestion(
                 stringResource(Res.string.settings_sign_out_question),

@@ -1,67 +1,85 @@
 package com.verdenroz.corvid.core.domain
 
+import com.verdenroz.corvid.core.auth.AuthFailure
 import com.verdenroz.corvid.core.auth.AuthState
-import com.verdenroz.corvid.core.auth.RedirectUriProvider
+import com.verdenroz.corvid.core.auth.PasskeyException
 import com.verdenroz.corvid.core.auth.TokenSource
 import com.verdenroz.corvid.core.jmap.AuthLatch
 import com.verdenroz.corvid.core.model.ServerAddress
+import com.verdenroz.corvid.core.testing.FakeAuthApi
+import com.verdenroz.corvid.core.testing.FakeAuthenticator
+import com.verdenroz.corvid.core.testing.authTokens
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
-import org.publicvalue.multiplatform.oidc.types.remote.AccessTokenResponse
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import kotlin.time.Clock
 
-internal val fakeRedirectUriProvider =
-    object : RedirectUriProvider {
-        override fun redirectUri() = "http://127.0.0.1:0/callback"
-    }
-
-private fun freshToken() =
-    AccessTokenResponse(
-        access_token = "at1",
-        token_type = "Bearer",
-        expires_in = 3600,
-        refresh_token = "rt1",
-        refresh_token_expires_in = null,
-        refresh_expires_in = null,
-        id_token = null,
-        scope = null,
-        received_at = Clock.System.now().epochSeconds,
-    )
+private val SERVER = ServerAddress("https://mail.example.test")
 
 class SignInUseCaseTest {
+    private val latch = AuthLatch()
+    private val api = FakeAuthApi(authTokens("daily-at"))
+    private val authenticator = FakeAuthenticator()
+
+    private fun TestScope.signIn(tokenSource: TokenSource) = SignInUseCase(api, authenticator, tokenSource, latch)
+
     @Test
-    fun `a successful sign-in clears a latch tripped by an earlier 401`() =
+    fun `the server's options go to the prompt and its assertion goes back for tokens`() =
         runTest {
-            val latch = AuthLatch()
-            latch.trip()
-            val tokenSource = TokenSource(latch, backgroundScope)
-            val useCase =
-                SignInUseCase(
-                    authFlowFactory = FakeCodeAuthFlowFactory(FakeCodeAuthFlow { freshToken() }),
-                    redirectUriProvider = fakeRedirectUriProvider,
-                    tokenSource = tokenSource,
-                    authLatch = latch,
-                )
+            val tokenSource = TokenSource(latch, backgroundScope, api)
 
-            useCase(ServerAddress("https://mail.example.test"), "https://idp.example.test")
+            signIn(tokenSource)(SERVER)
 
-            assertFalse(latch.tripped.value)
-            assertEquals(AuthState.SignedIn("at1", ServerAddress("https://mail.example.test")), tokenSource.state.value)
+            assertEquals(listOf("get request-options:daily"), authenticator.calls)
+            assertEquals(listOf("loginOptions daily", "loginFinish asserted:request-options:daily"), api.calls)
+            assertEquals(AuthState.SignedIn("daily-at", SERVER), tokenSource.state.value)
+            assertEquals(listOf(SERVER), authenticator.servers)
         }
 
     @Test
-    fun `a trailing slash on the issuer is trimmed before appending the discovery path`() {
-        assertEquals(
-            "https://idp.example.test/.well-known/openid-configuration",
-            discoveryUri("https://idp.example.test/"),
-        )
-    }
+    fun `a successful sign-in clears a latch tripped by an earlier 401`() =
+        runTest {
+            latch.trip()
+            val tokenSource = TokenSource(latch, backgroundScope, api)
+
+            signIn(tokenSource)(SERVER)
+
+            assertFalse(latch.tripped.value)
+        }
 
     @Test
-    fun `an http issuer is refused`() {
-        assertFailsWith<IllegalArgumentException> { discoveryUri("http://idp.example.test") }
-    }
+    fun `a dismissed prompt signs nobody in and trips nothing`() =
+        runTest {
+            authenticator.failure = PasskeyException.Cancelled
+            val tokenSource = TokenSource(latch, backgroundScope, api)
+
+            assertFailsWith<PasskeyException.Cancelled> { signIn(tokenSource)(SERVER) }
+
+            assertEquals(AuthState.SignedOut, tokenSource.state.value)
+            assertEquals(listOf("loginOptions daily"), api.calls)
+        }
+
+    @Test
+    fun `a server with no daily passkey enrolled stops before the prompt`() =
+        runTest {
+            api.optionsFailure = AuthFailure.NotEnrolled
+            val tokenSource = TokenSource(latch, backgroundScope, api)
+
+            assertFailsWith<AuthFailure.NotEnrolled> { signIn(tokenSource)(SERVER) }
+
+            assertEquals(emptyList(), authenticator.calls)
+        }
+
+    @Test
+    fun `an assertion the server refuses leaves the session signed out`() =
+        runTest {
+            api.finishFailure = AuthFailure.Refused
+            val tokenSource = TokenSource(latch, backgroundScope, api)
+
+            assertFailsWith<AuthFailure.Refused> { signIn(tokenSource)(SERVER) }
+
+            assertEquals(AuthState.SignedOut, tokenSource.state.value)
+        }
 }

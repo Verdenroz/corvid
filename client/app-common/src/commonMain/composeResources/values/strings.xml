@@ -22,10 +22,16 @@
     <string name="enroll_ask_again">Ask again</string>
     <string name="enroll_self_approve">Approve with the admin passkey</string>
     <string name="enroll_self_approving">Waiting for the admin sign-in.</string>
-    <string name="enroll_self_failed_signin">The admin sign-in did not finish.</string>
     <string name="enroll_self_failed_not_accepted">The admin sign-in was not accepted.</string>
     <string name="enroll_self_failed_refused">That sign-in is not the admin's. Use the admin passkey.</string>
     <string name="enroll_self_failed_upstream">The server could not make the key; try again.</string>
+    <string name="key_pin_title">Security key PIN</string>
+    <string name="key_pin_label">PIN</string>
+    <string name="key_pin_wrong">That PIN was wrong. Try again.</string>
+    <string name="key_pin_continue">Continue</string>
+    <string name="key_touch_title">Touch your security key</string>
+    <string name="key_touch_detail">Touch the key when it blinks. Corvid waits here until you do.</string>
+    <string name="key_cancel">Cancel</string>
     <string name="app_name">Corvid</string>
     <string name="search_placeholder">Search mail</string>
     <string name="search_shortcut">Ctrl K</string>

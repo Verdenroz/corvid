@@ -83,7 +83,7 @@ wait_healthy() {
 # restarts only what changed, and a run that died before its restart is caught by the next.
 POD_MARKER="$CORVID_DIR/.live-pod"
 CONFIG_MARKER="$CORVID_DIR/.live-config"
-mapfile -t PLAN_OBJECTS < <(grep -oh '"object":"[A-Za-z]*"' "$HERE"/stalwart*.ndjson "$HERE/oidc.plan.ndjson" | cut -d'"' -f4 | sort -u)
+mapfile -t PLAN_OBJECTS < <(grep -oh '"object":"[A-Za-z]*"' "$HERE"/stalwart*.ndjson "$HERE/oidc.plan.ndjson" "$HERE/auth.plan.ndjson" | cut -d'"' -f4 | sort -u)
 pod_inputs() {
   { cat /etc/containers/systemd/corvid* "$CORVID_DIR"/{server.env,idp.env,Caddyfile,unbound.conf}
     podman image inspect -f '{{.Id}}' "$CORVID_IMAGE"; } | sha256sum
@@ -147,16 +147,35 @@ if ! grep -q '^CORVID_STALWART_TOKEN=.' "$CORVID_DIR/sentinel-devices.env" 2>/de
   systemctl restart corvid-sentinel.service
 fi
 
+# Asked before any plan is applied: a sentinel that is down says nothing about who is enrolled.
+step "checking passkey enrollment"
+if unit_masked corvid-sentinel.service; then
+  summary="off 0 0"
+else
+  summary="$(auth_decision)" || {
+    echo "the sentinel did not answer /internal/auth/status; sign-in is left as it is, check: journalctl -u corvid-sentinel" >&2
+    exit 1
+  }
+fi
+read -r sign_in passkeys_daily passkeys_master waiting_codes <<<"$summary"
+enrollment=
+
 step "applying configuration"
 CORVID_SKIP_RELOAD=1 "$HERE/apply-plan.sh"
 
-# Account passwords stop working once the OIDC plan applies, so the users must exist first; the
-# deploy scripts use the API key.
-step "configuring Pocket-ID"
-systemctl start corvid-idp.service
-enrollment="$("$HERE/idp.sh" provision)"
-step "switching sign-in to Pocket-ID"
-CORVID_SKIP_RELOAD=1 PLAN="$HERE/oidc.plan.ndjson" "$HERE/apply-plan.sh"
+# Account passwords stop working once an external directory is applied, so someone must be enrolled
+# in it first, and the deploy scripts use the API key. Passkeys replace Pocket-ID once each role
+# has one; until then Pocket-ID keeps signing people in.
+if [[ "$sign_in" == passkeys ]]; then
+  step "switching sign-in to passkeys"
+  CORVID_SKIP_RELOAD=1 PLAN="$HERE/auth.plan.ndjson" "$HERE/apply-plan.sh"
+else
+  step "configuring Pocket-ID"
+  systemctl start corvid-idp.service
+  enrollment="$("$HERE/idp.sh" provision)"
+  step "switching sign-in to Pocket-ID"
+  CORVID_SKIP_RELOAD=1 PLAN="$HERE/oidc.plan.ndjson" "$HERE/apply-plan.sh"
+fi
 
 config="$(config_state)" || config="unknown"
 if [[ "$config" == "$(cat "$CONFIG_MARKER" 2>/dev/null)" ]]; then
@@ -164,12 +183,29 @@ if [[ "$config" == "$(cat "$CONFIG_MARKER" 2>/dev/null)" ]]; then
 else
   step "waiting for queued tasks"
   wait_for_due_tasks
-  step "waiting for Pocket-ID behind Caddy"
-  "$HERE/wait-issuer.sh" 300 || { echo "Stalwart is not restarted; check: journalctl -u corvid-caddy -u corvid-idp, then rerun" >&2; exit 1; }
+  step "waiting for the issuer"
+  "$HERE/wait-issuer.sh" 300 || { echo "Stalwart is not restarted; check: journalctl -u corvid-caddy -u corvid-idp -u corvid-sentinel, then rerun" >&2; exit 1; }
   step "restart to make the configuration live"
   systemctl restart corvid-mail.service
   wait_healthy
   [[ "$config" == unknown ]] || printf '%s\n' "$config" > "$CONFIG_MARKER"
+fi
+
+# A role with no passkey and no code waiting gets one, so a fresh install ends with both to redeem.
+if [[ "$sign_in" == pocket-id ]]; then
+  minted=
+  for role in daily master; do
+    enrolled="$passkeys_daily"
+    [[ "$role" == daily ]] || enrolled="$passkeys_master"
+    [[ "$enrolled" == 0 && " $waiting_codes " != *" $role "* ]] || continue
+    code="$(sentinel_signed POST "/internal/auth/codes/$role" "code $role" | sed -n 's/.*"code":"\([^"]*\)".*/\1/p')"
+    [[ -n "$code" ]] && minted+="$role $code"$'\n'
+  done
+  if [[ -n "$minted" ]]; then
+    step "passkey enrollment codes"
+    echo "Enter each in the app within 24 hours; deploy/passkey.sh code daily|master mints another."
+    printf '%s' "$minted"
+  fi
 fi
 
 if [[ -n "$enrollment" ]]; then

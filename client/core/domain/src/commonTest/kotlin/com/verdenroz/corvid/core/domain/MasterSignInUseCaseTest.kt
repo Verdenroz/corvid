@@ -1,171 +1,81 @@
 package com.verdenroz.corvid.core.domain
 
 import com.verdenroz.corvid.core.auth.AuthState
-import com.verdenroz.corvid.core.auth.PrivateCodeAuthFlowFactory
+import com.verdenroz.corvid.core.auth.PasskeyException
 import com.verdenroz.corvid.core.auth.TokenSource
-import com.verdenroz.corvid.core.auth.createOidcClient
 import com.verdenroz.corvid.core.jmap.AuthLatch
 import com.verdenroz.corvid.core.model.ServerAddress
+import com.verdenroz.corvid.core.testing.FakeAuthApi
+import com.verdenroz.corvid.core.testing.FakeAuthenticator
+import com.verdenroz.corvid.core.testing.authTokens
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
-import org.publicvalue.multiplatform.oidc.OpenIdConnectClient
-import org.publicvalue.multiplatform.oidc.OpenIdConnectException
-import org.publicvalue.multiplatform.oidc.flows.CodeAuthFlow
-import org.publicvalue.multiplatform.oidc.flows.CodeAuthFlowFactory
-import org.publicvalue.multiplatform.oidc.flows.EndSessionFlow
-import org.publicvalue.multiplatform.oidc.types.remote.AccessTokenResponse
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import kotlin.time.Clock
 
-private val server = ServerAddress("https://mail.example.test")
-
-private fun token(
-    access: String,
-    idToken: String? = null,
-) = AccessTokenResponse(
-    access_token = access,
-    token_type = "Bearer",
-    expires_in = 300,
-    refresh_token = null,
-    refresh_token_expires_in = null,
-    refresh_expires_in = null,
-    id_token = idToken,
-    scope = null,
-    received_at = Clock.System.now().epochSeconds,
-)
-
-private class RecordingFactory(
-    private val flow: CodeAuthFlow,
-) : CodeAuthFlowFactory {
-    val events = mutableListOf<String>()
-    var client: OpenIdConnectClient? = null
-
-    override fun createAuthFlow(client: OpenIdConnectClient): CodeAuthFlow {
-        this.client = client
-        events += "authorize ${client.config.clientId}"
-        return flow
-    }
-
-    override fun createEndSessionFlow(client: OpenIdConnectClient): EndSessionFlow {
-        events += "end-session ${client.config.clientId}"
-        throw OpenIdConnectException.AuthenticationCancelled("no session is ever ended")
-    }
-}
+private val SERVER = ServerAddress("https://mail.example.test")
 
 class MasterSignInUseCaseTest {
     private val latch = AuthLatch()
+    private val api = FakeAuthApi(authTokens("admin-at", refreshToken = null))
+    private val authenticator = FakeAuthenticator()
+
+    private fun TestScope.signedIn(): TokenSource =
+        TokenSource(latch, backgroundScope, api).also { it.adopt(authTokens("daily-at"), SERVER) }
+
+    private fun master(tokenSource: TokenSource) = MasterSignInUseCase(api, authenticator, tokenSource)
 
     @Test
     fun `the admin token comes back and the daily session is left as it was`() =
         runTest {
             val tokenSource = signedIn()
-            val useCase =
-                MasterSignInUseCase(
-                    PrivateCodeAuthFlowFactory(
-                        RecordingFactory(
-                            FakeCodeAuthFlow {
-                                token("admin-at")
-                            },
-                        ),
-                    ),
-                    fakeRedirectUriProvider,
-                    tokenSource,
-                )
 
-            val admin = useCase.withAdminToken { it }
+            val admin = master(tokenSource).withAdminToken { it }
 
             assertEquals("admin-at", admin)
-            assertEquals(AuthState.SignedIn("daily-at", server), tokenSource.state.value)
+            assertEquals(AuthState.SignedIn("daily-at", SERVER), tokenSource.state.value)
             assertEquals("daily-at", tokenSource.currentBearerToken())
         }
 
     @Test
-    fun `only the admin authorization runs and no session is ended`() =
+    fun `only the master ceremony runs`() =
         runTest {
-            val factory = RecordingFactory(FakeCodeAuthFlow { token("admin-at", idToken = "admin-id") })
+            master(signedIn()).withAdminToken { }
 
-            MasterSignInUseCase(
-                PrivateCodeAuthFlowFactory(factory),
-                fakeRedirectUriProvider,
-                signedIn(),
-            ).withAdminToken { factory.events += "use $it" }
-
-            assertEquals(listOf("authorize corvid-admin", "use admin-at"), factory.events)
+            assertEquals(listOf("loginOptions master", "loginFinish asserted:request-options:master"), api.calls)
+            assertEquals(listOf("get request-options:master"), authenticator.calls)
+            assertEquals(listOf(SERVER), authenticator.servers)
         }
 
     @Test
     fun `the block's exception surfaces`() =
         runTest {
-            val factory = RecordingFactory(FakeCodeAuthFlow { token("admin-at") })
-
-            val failure =
-                assertFailsWith<IllegalStateException> {
-                    MasterSignInUseCase(
-                        PrivateCodeAuthFlowFactory(factory),
-                        fakeRedirectUriProvider,
-                        signedIn(),
-                    ).withAdminToken<Unit> { error("refused") }
-                }
+            val failure = assertFailsWith<IllegalStateException> { master(signedIn()).withAdminToken<Unit> { error("refused") } }
 
             assertEquals("refused", failure.message)
         }
 
     @Test
-    fun `the flow runs as the admin client at the issuer the session signed in through`() =
+    fun `a dismissed prompt gives the block nothing and trips nothing`() =
         runTest {
-            val factory = RecordingFactory(FakeCodeAuthFlow { token("admin-at") })
-
-            MasterSignInUseCase(PrivateCodeAuthFlowFactory(factory), fakeRedirectUriProvider, signedIn()).withAdminToken { }
-
-            val config = factory.client!!.config
-            assertEquals("corvid-admin", config.clientId)
-            assertEquals("https://idp.example.test/.well-known/openid-configuration", config.discoveryUri)
-            assertEquals(fakeRedirectUriProvider.redirectUri(), config.redirectUri)
-        }
-
-    @Test
-    fun `a failed passkey sign-in trips nothing`() =
-        runTest {
+            authenticator.failure = PasskeyException.Cancelled
             val tokenSource = signedIn()
-            val useCase =
-                MasterSignInUseCase(
-                    PrivateCodeAuthFlowFactory(
-                        RecordingFactory(
-                            FakeCodeAuthFlow {
-                                error("cancelled")
-                            },
-                        ),
-                    ),
-                    fakeRedirectUriProvider,
-                    tokenSource,
-                )
+            var ran = false
 
-            assertFailsWith<IllegalStateException> { useCase.withAdminToken { } }
+            assertFailsWith<PasskeyException.Cancelled> { master(tokenSource).withAdminToken { ran = true } }
 
+            assertFalse(ran)
             assertFalse(latch.tripped.value)
-            assertEquals(AuthState.SignedIn("daily-at", server), tokenSource.state.value)
+            assertEquals(AuthState.SignedIn("daily-at", SERVER), tokenSource.state.value)
         }
 
     @Test
-    fun `signing in as the admin needs a signed-in session to name the issuer`() =
+    fun `signing in as the master needs a signed-in session to name the server`() =
         runTest {
-            val useCase =
-                MasterSignInUseCase(
-                    PrivateCodeAuthFlowFactory(RecordingFactory(FakeCodeAuthFlow { token("admin-at") })),
-                    fakeRedirectUriProvider,
-                    TokenSource(latch, backgroundScope),
-                )
+            val useCase = master(TokenSource(latch, backgroundScope, api))
 
             assertFailsWith<IllegalStateException> { useCase.withAdminToken { } }
-        }
-
-    private fun TestScope.signedIn(): TokenSource =
-        TokenSource(latch, backgroundScope).also {
-            val client =
-                createOidcClient("https://idp.example.test/.well-known/openid-configuration", fakeRedirectUriProvider.redirectUri())
-            it.adopt(client, token("daily-at", idToken = "daily-id"), server)
         }
 }

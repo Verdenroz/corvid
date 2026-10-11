@@ -103,6 +103,45 @@ else
   esac
 fi
 
+echo "== passkeys =="
+# The issuer's documents are for Stalwart on loopback; Caddy must not route them, and a request it
+# does not route falls through to Stalwart's 404.
+if unit_masked corvid-sentinel.service; then
+  warn "corvid-sentinel is masked, so the passkey issuer is not checked"
+else
+  for document in .well-known/openid-configuration jwks; do
+    code="$(issuer_status "$document")"
+    case "$code" in
+      200) ok "the passkey issuer serves $document on loopback" ;;
+      503) warn "passkey sign-in is off: add sentinel.auth (state: /var/lib/corvid/auth.json) to config.yaml and restart corvid-sentinel" ;;
+      *) bad "the passkey issuer answers ${code:-no status} for $document on loopback, not 200; check: journalctl -u corvid-sentinel" ;;
+    esac
+  done
+  for path in /internal/issuer/jwks /corvid/auth/jwks /internal/auth/status; do
+    code="$(web_status "$MAIL_HOSTNAME" "$path")"
+    [[ "$code" == 404 ]] \
+      && ok "Caddy does not route $path" \
+      || bad "$path answers $code through Caddy, not 404; only Stalwart on loopback may read the issuer"
+  done
+fi
+
+echo "== app links =="
+# Credential Manager reads this on 443 with no redirect, so it is fetched the way a phone would,
+# through real DNS. Not served is a warning, since mail does not wait on the Android app; a
+# document that differs, a redirect or the wrong type is a failure, since it is worse than none.
+links_url="https://$MAIL_DOMAIN/.well-known/assetlinks.json"
+expected="${ASSETLINKS:-}"
+if [[ -z "$expected" ]]; then
+  warn "corvid-config could not render the app links, so $links_url is not checked"
+else
+  verdict="$(assetlinks_verdict "$links_url" "$expected")"
+  case "${verdict%% *}" in
+    ok) ok "${verdict#* }" ;;
+    warn) warn "${verdict#* }" ;;
+    *) bad "${verdict#* }" ;;
+  esac
+fi
+
 echo "== app release =="
 if [[ ! -e "$CORVID_DIR/apps/current/manifest.json" ]]; then
   warn "no app release in this image"

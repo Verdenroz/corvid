@@ -1,5 +1,7 @@
 package com.verdenroz.corvid.feature.settings
 
+import com.verdenroz.corvid.core.auth.PasskeyException
+import com.verdenroz.corvid.core.data.userMessage
 import com.verdenroz.corvid.core.domain.MasterSignIn
 import com.verdenroz.corvid.core.keyring.DeviceApprovalRepository
 import com.verdenroz.corvid.core.keyring.DeviceKeyLookup
@@ -16,11 +18,9 @@ import com.verdenroz.corvid.feature.settings.resources.Res
 import com.verdenroz.corvid.feature.settings.resources.approve_failed_gone
 import com.verdenroz.corvid.feature.settings.resources.approve_failed_not_accepted
 import com.verdenroz.corvid.feature.settings.resources.approve_failed_refused
-import com.verdenroz.corvid.feature.settings.resources.approve_failed_signin
 import com.verdenroz.corvid.feature.settings.resources.approve_failed_upstream
 import com.verdenroz.corvid.feature.settings.resources.approve_not_a_link
 import kotlinx.coroutines.flow.first
-import org.publicvalue.multiplatform.oidc.OpenIdConnectException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -134,12 +134,12 @@ class ApproveDeviceViewModelTest {
     @Test
     fun `a cancelled passkey sign-in sends nothing to the server`() =
         runViewModelTest {
-            val s = setup(signIn = { throw OpenIdConnectException.AuthenticationCancelled("cancelled") })
+            val s = setup(signIn = { throw PasskeyException.Cancelled })
             s.viewModel.fill(s.request)
 
             s.viewModel.approve()
 
-            assertEquals(ApproveStep.Failed(uiText(Res.string.approve_failed_signin)), s.viewModel.settled().step)
+            assertEquals(ApproveStep.Failed(PasskeyException.Cancelled.userMessage()), s.viewModel.settled().step)
             assertEquals(emptyList(), s.fake.devices.approvals)
         }
 
