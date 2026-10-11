@@ -6,9 +6,13 @@ import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.FakeMailbox
 import com.verdenroz.corvid.core.testing.client
 import com.verdenroz.corvid.core.testing.runViewModelTest
+import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.uiPlural
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.action_archived
+import com.verdenroz.corvid.feature.mailbox.resources.action_emptied
+import com.verdenroz.corvid.feature.mailbox.resources.action_moved
+import com.verdenroz.corvid.feature.mailbox.resources.action_reported
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
@@ -74,6 +78,58 @@ class MailActionsTest {
 
             assertTrue("\$seen" !in fake.emails.single().keywords)
             assertNull(actions.notice.value)
+        }
+
+    @Test
+    fun `reported spam lands in junk and undo puts it back in the inbox`() =
+        runViewModelTest {
+            val fake = server()
+            fake.mailboxes += FakeMailbox("junk", "Junk", "junk")
+            val actions = track(MailActions(MailboxRepository(fake.client())))
+
+            actions.reportSpam(setOf("m1"), conversations = 1)
+            val notice = actions.notice.first { it != null }
+
+            assertEquals(uiPlural(Res.plurals.action_reported, 1), notice?.text)
+            assertEquals(setOf("junk"), fake.boxesOf("m1"))
+            actions.undo()
+            actions.notice.first { it?.undo == null && it != null }
+            assertEquals(setOf("inbox"), fake.boxesOf("m1"))
+        }
+
+    @Test
+    fun `moving to a folder names it in the notice and undo puts the conversation back`() =
+        runViewModelTest {
+            val fake = server()
+            fake.mailboxes += FakeMailbox("receipts", "Receipts")
+            val actions = track(MailActions(MailboxRepository(fake.client())))
+
+            actions.loadFolders()
+            val receipts = actions.folders.first { it != null }!!.single { it.label == "Receipts" }
+            actions.moveTo(setOf("m1"), conversations = 1, receipts)
+            val notice = actions.notice.first { it != null }
+
+            assertEquals(UiText.Plural(Res.plurals.action_moved, 1, listOf(1, UiText.FromServer("Receipts"))), notice?.text)
+            assertEquals(setOf("receipts"), fake.boxesOf("m1"))
+            actions.undo()
+            actions.notice.first { it?.undo == null && it != null }
+            assertEquals(setOf("inbox"), fake.boxesOf("m1"))
+        }
+
+    @Test
+    fun `emptying trash deletes everything in it and says how many`() =
+        runViewModelTest {
+            val fake = server()
+            fake.emails.replaceAll { it.copy(mailboxIds = setOf("trash")) }
+            fake.emails += FakeEmail("m2", "m2", setOf("trash"), "subject", "b@example.test", "2024-01-02T00:00:00Z")
+            val actions = track(MailActions(MailboxRepository(fake.client())))
+
+            actions.empty("trash")
+            val notice = actions.notice.first { it != null }
+
+            assertEquals(uiPlural(Res.plurals.action_emptied, 2), notice?.text)
+            assertNull(notice?.undo)
+            assertTrue(fake.emails.isEmpty())
         }
 
     @Test

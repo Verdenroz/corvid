@@ -1,6 +1,8 @@
 package com.verdenroz.corvid.feature.mailbox
 
+import com.verdenroz.corvid.core.data.ARCHIVE
 import com.verdenroz.corvid.core.data.INBOX
+import com.verdenroz.corvid.core.data.JUNK
 import com.verdenroz.corvid.core.data.TRASH
 import com.verdenroz.corvid.core.model.Conversation
 import com.verdenroz.corvid.core.text.UiText
@@ -11,11 +13,13 @@ enum class LedgerTab(val role: String?) {
     Starred(null),
     Sent("sent"),
     Drafts("drafts"),
+    Archive(ARCHIVE),
+    Junk(JUNK),
     Trash(TRASH),
 }
 
-/** Which moves a list offers: the Inbox archives, Trash deletes for good, every other list moves to Trash. */
-enum class ListKind { Inbox, Trash, Other }
+/** Which moves a list offers: the Inbox archives, Trash deletes for good, Junk deletes or rescues, every other list moves to Trash. */
+enum class ListKind { Inbox, Trash, Junk, Other }
 
 /** What a ledger lists: a home tab, or the messages matching a search. */
 sealed interface LedgerSource {
@@ -29,6 +33,7 @@ val LedgerSource.kind: ListKind
         when ((this as? LedgerSource.Tab)?.tab) {
             LedgerTab.Inbox -> ListKind.Inbox
             LedgerTab.Trash -> ListKind.Trash
+            LedgerTab.Junk -> ListKind.Junk
             else -> ListKind.Other
         }
 

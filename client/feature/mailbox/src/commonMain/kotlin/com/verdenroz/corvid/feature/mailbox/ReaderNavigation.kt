@@ -35,7 +35,7 @@ fun exitAfter(
     neighbours: Neighbours?,
 ): ReaderExit {
     if (!action.leavesList) return ReaderExit.Stay
-    val advances = action == ConversationAction.Archive || action == ConversationAction.Trash || action == ConversationAction.Destroy
+    val advances = action.moves
     val older = neighbours?.older
     return if (advances && older != null) ReaderExit.Open(older) else ReaderExit.Back
 }

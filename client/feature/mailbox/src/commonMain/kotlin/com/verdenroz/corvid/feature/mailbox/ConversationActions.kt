@@ -9,6 +9,8 @@ import com.verdenroz.corvid.feature.mailbox.resources.action_archive
 import com.verdenroz.corvid.feature.mailbox.resources.action_destroy
 import com.verdenroz.corvid.feature.mailbox.resources.action_mark_read
 import com.verdenroz.corvid.feature.mailbox.resources.action_mark_unread
+import com.verdenroz.corvid.feature.mailbox.resources.action_not_spam
+import com.verdenroz.corvid.feature.mailbox.resources.action_report_spam
 import com.verdenroz.corvid.feature.mailbox.resources.action_star
 import com.verdenroz.corvid.feature.mailbox.resources.action_trash
 import com.verdenroz.corvid.feature.mailbox.resources.action_unstar
@@ -18,6 +20,8 @@ enum class ConversationAction(val label: StringResource, val icon: ImageVector) 
     Archive(Res.string.action_archive, CorvidIcons.Archive),
     Trash(Res.string.action_trash, CorvidIcons.Trash),
     Destroy(Res.string.action_destroy, CorvidIcons.Trash),
+    ReportSpam(Res.string.action_report_spam, CorvidIcons.Spam),
+    NotSpam(Res.string.action_not_spam, CorvidIcons.Inbox),
     MarkRead(Res.string.action_mark_read, CorvidIcons.MailOpen),
     MarkUnread(Res.string.action_mark_unread, CorvidIcons.Mail),
     Star(Res.string.action_star, CorvidIcons.Star),
@@ -66,14 +70,27 @@ fun actionsFor(
 ): List<ConversationAction> {
     val moves =
         when (kind) {
-            ListKind.Inbox -> listOf(ConversationAction.Archive, ConversationAction.Trash)
+            ListKind.Inbox -> listOf(ConversationAction.Archive, ConversationAction.Trash, ConversationAction.ReportSpam)
             ListKind.Trash -> listOf(ConversationAction.Destroy)
-            ListKind.Other -> listOf(ConversationAction.Trash)
+            ListKind.Junk -> listOf(ConversationAction.NotSpam, ConversationAction.Destroy)
+            ListKind.Other -> listOf(ConversationAction.Trash, ConversationAction.ReportSpam)
         }
     val read = if (target.unread.isNotEmpty()) ConversationAction.MarkRead else ConversationAction.MarkUnread
     val star = if (target.starred) ConversationAction.Unstar else ConversationAction.Star
-    return moves + read + listOfNotNull(star.takeIf { kind != ListKind.Trash })
+    return moves + read + listOfNotNull(star.takeIf { kind == ListKind.Inbox || kind == ListKind.Other })
 }
+
+/** Whether [this] files the conversation somewhere else, so Move to sits beside it. */
+internal val ConversationAction.moves: Boolean
+    get() =
+        this in
+            setOf(
+                ConversationAction.Archive,
+                ConversationAction.Trash,
+                ConversationAction.Destroy,
+                ConversationAction.ReportSpam,
+                ConversationAction.NotSpam,
+            )
 
 fun MailActions.perform(
     action: ConversationAction,
@@ -83,6 +100,8 @@ fun MailActions.perform(
         ConversationAction.Archive -> archive(target.all, target.conversations)
         ConversationAction.Trash -> trash(target.all, target.conversations)
         ConversationAction.Destroy -> destroy(target.all, target.conversations)
+        ConversationAction.ReportSpam -> reportSpam(target.all, target.conversations)
+        ConversationAction.NotSpam -> notSpam(target.all, target.conversations)
         ConversationAction.MarkRead -> setRead(target.unread, read = true)
         ConversationAction.MarkUnread -> setRead(target.latest, read = false)
         ConversationAction.Star -> setStarred(target.latest, starred = true)

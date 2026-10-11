@@ -341,4 +341,33 @@ class LedgerViewModelTest {
             assertEquals(setOf("trash"), fake.emails.single { it.id == "a" }.mailboxIds)
             vm.state.first { (it as? LedgerUiState.Loaded)?.conversations?.map { c -> c.latest.id } == listOf("b") }
         }
+
+    @Test
+    fun `an archive the account has not made yet lists nothing, then lists what the first archive filed`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
+            fake.emails += FakeEmail("a", "a", setOf("inbox"), "subject", "a@example.test", "2024-01-01T00:00:00Z")
+            val repository = repository(fake)
+            val vm = track(LedgerViewModel(repository, LedgerTab.Archive))
+
+            assertEquals(LedgerUiState.Loaded(emptyList(), canLoadMore = false), vm.state.first { it !is LedgerUiState.Loading })
+            repository.archive(listOf("a"))
+            vm.refresh()?.join()
+
+            assertEquals(listOf("a"), (vm.state.value as LedgerUiState.Loaded).conversations.map { it.latest.id })
+        }
+
+    @Test
+    fun `junk the account lacks is said plainly`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
+            val vm = track(LedgerViewModel(repository(fake), LedgerTab.Junk))
+
+            assertEquals(
+                LedgerUiState.Failed(uiText(Res.string.mailbox_no_mailbox, "junk")),
+                vm.state.first { it !is LedgerUiState.Loading },
+            )
+        }
 }

@@ -24,3 +24,6 @@ internal fun mailboxPatch(
 
 /** [ids] leaving the mailboxes they were in: [done] is false as the move starts and true once it has ended. */
 data class MoveEvent(val ids: Set<String>, val done: Boolean)
+
+/** What emptying a mailbox did: how many messages went for good, and the server's reason for each it kept. */
+data class Emptied(val destroyed: Int, val refused: Map<String, String>)

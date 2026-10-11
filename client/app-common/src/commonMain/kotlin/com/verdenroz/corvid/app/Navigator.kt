@@ -74,6 +74,28 @@ internal class Navigator(
         selectTab(HomeTab.Inbox)
     }
 
+    val homeTab: HomeTab get() = (stack[0] as Route.Home).tab
+
+    /** Shows [tab] from anywhere, as the sidebar does: pushed screens close first, and one with unsaved work can stop it. */
+    fun openTab(tab: HomeTab) {
+        if (popTo(0)) selectTab(tab)
+    }
+
+    /** Returns to [route] if it is already on the stack rather than opening a second copy. */
+    fun open(route: Route) {
+        val at = (0 until stack.size).lastOrNull { stack[it] == route }
+        if (at == null) push(route) else popTo(at)
+    }
+
+    /** Pops down to [index]; false when a screen's guard took the press and stopped it. */
+    private fun popTo(index: Int): Boolean {
+        while (stack.lastIndex > index) {
+            if (guards[entryKey(stack.lastIndex)]?.handle() == true) return false
+            back()
+        }
+        return true
+    }
+
     /** Pops a pushed screen; from a home tab other than Inbox, returns to Inbox. */
     fun back() {
         if (stack.size > 1) {

@@ -87,6 +87,13 @@ fun ReaderScreen(
         }
     }
     val onAction = { action: ConversationAction -> if (action == ConversationAction.Destroy) confirming = true else perform(action) }
+    val onMove = { folder: MoveFolder ->
+        if (thread != null) {
+            val exit = exitAfter(ConversationAction.Trash, neighbours)
+            actions.moveTo(thread.target().all, 1, folder)
+            if (exit is ReaderExit.Open) onOpen(exit.emailId) else onBack()
+        }
+    }
 
     HandleKeys { event ->
         val command =
@@ -98,7 +105,7 @@ fun ReaderScreen(
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            ActionBar(wide, offered, neighbours, onAction, onOpen, onBack)
+            ActionBar(wide, offered, neighbours, rememberMoveMenu(actions), onMove, onAction, onOpen, onBack)
             if (confirming) {
                 DestroyQuestion(onConfirm = { perform(ConversationAction.Destroy) }, onCancel = { confirming = false })
             }
@@ -152,6 +159,8 @@ private fun ActionBar(
     wide: Boolean,
     offered: List<ConversationAction>,
     neighbours: Neighbours?,
+    menu: MoveMenu,
+    onMove: (MoveFolder) -> Unit,
     onAction: (ConversationAction) -> Unit,
     onOpen: (String) -> Unit,
     onBack: () -> Unit,
@@ -163,7 +172,7 @@ private fun ActionBar(
     ) {
         ActionIcon(stringResource(Res.string.mailbox_back), CorvidIcons.Back, onBack, size = 48.dp)
         Spacer(Modifier.weight(1f))
-        ConversationActionRow(offered, target, onAction)
+        ConversationActionRow(offered, menu, onMove, target, onAction = onAction)
         neighbours?.let {
             if (wide && offered.isNotEmpty()) {
                 VerticalDivider(Modifier.padding(horizontal = 8.dp).height(20.dp), color = CorvidTheme.colors.line)

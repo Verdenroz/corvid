@@ -45,7 +45,10 @@
     <string name="tab_starred">Starred</string>
     <string name="tab_sent">Sent</string>
     <string name="tab_drafts">Drafts</string>
+    <string name="tab_archive">Archive</string>
+    <string name="tab_junk">Junk</string>
     <string name="tab_trash">Trash</string>
+    <string name="sidebar_toggle">Show or hide folder names</string>
     <string name="tab_labels">Labels</string>
     <string name="tab_filters">Filters</string>
     <string name="write">Write</string>
