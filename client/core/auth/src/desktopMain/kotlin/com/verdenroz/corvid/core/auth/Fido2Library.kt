@@ -160,12 +160,12 @@ internal interface Fido2Library : Library {
         index: NativeLong,
     ): NativeLong
 
-    fun assertAuthdataRawPtr(
+    fun assertAuthdataPtr(
         assertion: Pointer,
         index: NativeLong,
     ): Pointer?
 
-    fun assertAuthdataRawLen(
+    fun assertAuthdataLen(
         assertion: Pointer,
         index: NativeLong,
     ): NativeLong

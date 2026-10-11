@@ -93,7 +93,7 @@ internal class Fido2SecurityKey private constructor(
             if (lib.assertCount(assertion).toLong() == 0L) throw SecurityKeyException(SecurityKeyError.NoCredentials)
             return Asserted(
                 bytes(lib.assertIdPtr(assertion, first), lib.assertIdLen(assertion, first)),
-                bytes(lib.assertAuthdataRawPtr(assertion, first), lib.assertAuthdataRawLen(assertion, first)),
+                unwrapByteString(bytes(lib.assertAuthdataPtr(assertion, first), lib.assertAuthdataLen(assertion, first))),
                 bytes(lib.assertSigPtr(assertion, first), lib.assertSigLen(assertion, first)),
                 bytes(lib.assertUserIdPtr(assertion, first), lib.assertUserIdLen(assertion, first)).takeIf { it.isNotEmpty() },
             )

@@ -229,6 +229,17 @@ class DesktopAuthenticatorTest {
         }
 
     @Test
+    fun `a libfido2 too old to have a function is unsupported`() =
+        runTest {
+            typing(prompt, "1234")
+            key.onAssert = { throw UnsatisfiedLinkError("fido_assert_authdata_ptr") }
+
+            assertFailsWith<PasskeyException.Unsupported> { authenticator().get(SERVER, REQUEST) }
+
+            assertTrue(key.closed)
+        }
+
+    @Test
     fun `cancelling while the key waits for a touch ends the wait through the key`() =
         runTest {
             val waiting = CountDownLatch(1)

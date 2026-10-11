@@ -8,7 +8,7 @@ import kotlin.test.Test
  */
 class Fido2SmokeTest {
     @Test
-    fun `the system libfido2 loads and enumerates keys without error`() {
+    fun `the system libfido2 loads and enumerates when installed`() {
         val lib = Fido2Library.load()
         if (lib == null) {
             println("skipped: libfido2 is not installed here")

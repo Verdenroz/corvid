@@ -29,8 +29,8 @@ internal fun encodeBase64Url(bytes: ByteArray): String = base64Url.encode(bytes)
 internal fun decodeBase64Url(text: String): ByteArray = base64Url.decode(text)
 
 /**
- * The origin a browser would report for the web tier: the dialled address with its port written
- * out, which is how the sentinel lists it.
+ * The origin of the web tier as the sentinel lists it: the dialled address with its port written
+ * out, even 443.
  */
 internal fun originOf(server: ServerAddress): String {
     val base = server.baseUrl.trimEnd('/')
@@ -64,12 +64,23 @@ internal fun attestationObject(authenticatorData: ByteArray): ByteArray =
         byteStringHeader(authenticatorData.size) + authenticatorData
 
 /** The CBOR header of a byte string of [length] bytes, for the lengths a key's authenticator data takes. */
-private fun byteStringHeader(length: Int): ByteArray =
+internal fun byteStringHeader(length: Int): ByteArray =
     when {
         length < 24 -> byteArrayOf((0x40 + length).toByte())
         length < 0x100 -> byteArrayOf(0x58, length.toByte())
         else -> byteArrayOf(0x59, (length shr 8).toByte(), length.toByte())
     }
+
+/** The bytes inside a CBOR byte string, which is how libfido2 older than 1.14 hands out an assertion's authenticator data. */
+internal fun unwrapByteString(cbor: ByteArray): ByteArray {
+    val header =
+        when (cbor[0].toInt() and 0xff) {
+            0x58 -> 2
+            0x59 -> 3
+            else -> 1
+        }
+    return cbor.copyOfRange(header, cbor.size)
+}
 
 /** What a creation ceremony asks of the key, from `PublicKeyCredentialCreationOptionsJSON`. */
 internal class CreationOptions(

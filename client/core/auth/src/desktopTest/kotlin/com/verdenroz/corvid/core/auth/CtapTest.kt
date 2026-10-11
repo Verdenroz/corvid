@@ -157,4 +157,13 @@ class CtapTest {
             )
         expected.forEach { (code, error) -> assertEquals(error, securityKeyError(code), "0x${code.toString(16)}") }
     }
+
+    @Test
+    fun `a wrapped byte string is unwrapped at every header size`() {
+        for (size in listOf(0, 5, 23, 24, 37, 255, 256, 300)) {
+            val payload = ByteArray(size) { (it + 1).toByte() }
+
+            assertContentEquals(payload, unwrapByteString(byteStringHeader(size) + payload))
+        }
+    }
 }

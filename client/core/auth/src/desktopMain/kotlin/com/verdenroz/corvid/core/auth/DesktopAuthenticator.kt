@@ -72,6 +72,8 @@ class DesktopAuthenticator internal constructor(
             } catch (e: SecurityKeyException) {
                 if (e.error != SecurityKeyError.PinInvalid) throw failure(e)
                 pin = prompt.askPin(wrong = true) ?: throw PasskeyException.Cancelled
+            } catch (e: UnsatisfiedLinkError) {
+                throw PasskeyException.Unsupported
             }
         }
     }
