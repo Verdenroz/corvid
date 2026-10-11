@@ -3,10 +3,10 @@ package com.verdenroz.corvid.feature.mailbox
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -27,9 +27,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
+import com.verdenroz.corvid.core.designsystem.component.PillButton
+import com.verdenroz.corvid.core.model.Conversation
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.core.ui.QuietPane
@@ -38,6 +42,10 @@ import com.verdenroz.corvid.feature.mailbox.resources.ledger_empty_drafts
 import com.verdenroz.corvid.feature.mailbox.resources.ledger_empty_inbox
 import com.verdenroz.corvid.feature.mailbox.resources.ledger_empty_sent
 import com.verdenroz.corvid.feature.mailbox.resources.ledger_empty_starred
+import com.verdenroz.corvid.feature.mailbox.resources.ledger_empty_trash
+import com.verdenroz.corvid.feature.mailbox.resources.selection_all
+import com.verdenroz.corvid.feature.mailbox.resources.selection_clear
+import com.verdenroz.corvid.feature.mailbox.resources.selection_count
 import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
@@ -49,22 +57,13 @@ private const val LOAD_AHEAD = 8
 @Composable
 fun LedgerScreen(
     viewModel: LedgerViewModel,
+    actions: MailActions,
     tab: LedgerTab,
     onOpenEmail: (String) -> Unit,
     onOpenSender: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val state by viewModel.state.collectAsState()
-
-    LedgerContent(
-        state,
-        stringResource(tab.emptyText()),
-        onOpenEmail,
-        onOpenSender,
-        viewModel::loadMore,
-        viewModel::refreshAndWait,
-        modifier,
-    )
+    LedgerContent(viewModel, actions, stringResource(tab.emptyText()), onOpenEmail, onOpenSender, modifier)
 }
 
 internal suspend fun LedgerViewModel.refreshAndWait() {
@@ -73,40 +72,115 @@ internal suspend fun LedgerViewModel.refreshAndWait() {
 
 @Composable
 internal fun LedgerContent(
-    state: LedgerUiState,
+    viewModel: LedgerViewModel,
+    actions: MailActions,
     emptyText: String,
     onOpenEmail: (String) -> Unit,
     onOpenSender: (String) -> Unit,
-    onLoadMore: () -> Unit,
-    onRefresh: suspend () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val state by viewModel.state.collectAsState()
+    val selected by viewModel.selected.collectAsState()
     val scope = rememberCoroutineScope()
     var refreshing by remember { mutableStateOf(false) }
-    PullToRefreshBox(
-        isRefreshing = refreshing,
-        onRefresh = {
-            scope.launch {
-                refreshing = true
-                try {
-                    onRefresh()
-                } finally {
-                    refreshing = false
-                }
-            }
-        },
-        modifier = modifier.fillMaxSize(),
-    ) {
-        when (state) {
-            is LedgerUiState.Loading -> Unit
-            is LedgerUiState.Failed -> QuietPane(state.message.asString())
-            is LedgerUiState.Loaded ->
-                if (state.conversations.isEmpty()) {
-                    LazyColumn(Modifier.fillMaxSize()) { item { QuietPane(emptyText, Modifier.fillParentMaxSize()) } }
-                } else {
-                    Ledger(state, onOpenEmail, onOpenSender, onLoadMore)
-                }
+    var doomed by remember { mutableStateOf<ActionTarget?>(null) }
+    val kind = viewModel.source.kind
+    val onAction: (ConversationAction, ActionTarget) -> Unit = { action, target ->
+        if (action == ConversationAction.Destroy) {
+            doomed = target
+        } else {
+            actions.perform(action, target)
+            if (action.leavesList) viewModel.clearSelection()
         }
+    }
+    Column(modifier.fillMaxSize()) {
+        doomed?.let { target ->
+            DestroyQuestion(
+                onConfirm = {
+                    actions.perform(ConversationAction.Destroy, target)
+                    viewModel.clearSelection()
+                    doomed = null
+                },
+                onCancel = { doomed = null },
+            )
+        }
+        val conversations = (state as? LedgerUiState.Loaded)?.conversations.orEmpty()
+        if (selected.isNotEmpty()) {
+            val ticked = remember(conversations, selected) { conversations.filter { it.latest.id in selected } }
+            SelectionBar(
+                actionsFor(kind, ticked.target()),
+                ticked.size,
+                allSelected = ticked.size == conversations.size,
+                onSelectAll = viewModel::selectAll,
+                onClear = viewModel::clearSelection,
+                onAction = { onAction(it, ticked.target()) },
+            )
+        }
+        PullToRefreshBox(
+            isRefreshing = refreshing,
+            onRefresh = {
+                scope.launch {
+                    refreshing = true
+                    try {
+                        viewModel.refreshAndWait()
+                    } finally {
+                        refreshing = false
+                    }
+                }
+            },
+            modifier = Modifier.weight(1f),
+        ) {
+            when (val current = state) {
+                is LedgerUiState.Loading -> Unit
+                is LedgerUiState.Failed -> QuietPane(current.message.asString())
+                is LedgerUiState.Loaded ->
+                    if (current.conversations.isEmpty()) {
+                        LazyColumn(Modifier.fillMaxSize()) { item { QuietPane(emptyText, Modifier.fillParentMaxSize()) } }
+                    } else {
+                        Ledger(
+                            current,
+                            kind,
+                            selected,
+                            viewModel::toggleSelected,
+                            onOpenEmail,
+                            onOpenSender,
+                            onAction,
+                            viewModel::loadMore,
+                        )
+                    }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SelectionBar(
+    actions: List<ConversationAction>,
+    count: Int,
+    allSelected: Boolean,
+    onSelectAll: () -> Unit,
+    onClear: () -> Unit,
+    onAction: (ConversationAction) -> Unit,
+) {
+    val colors = CorvidTheme.colors
+    Column(Modifier.fillMaxWidth().background(colors.rail)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+        ) {
+            ActionIcon(stringResource(Res.string.selection_clear), CorvidIcons.Close, onClear)
+            Text(
+                stringResource(Res.string.selection_count, count),
+                style = CorvidTheme.type.name,
+                fontWeight = FontWeight.Bold,
+                color = colors.ink,
+            )
+            if (!allSelected) PillButton(stringResource(Res.string.selection_all), null, onSelectAll, height = 30.dp)
+            Spacer(Modifier.weight(1f))
+            ConversationActionRow(actions, onAction = onAction)
+        }
+        HorizontalDivider(color = colors.line)
     }
 }
 
@@ -114,26 +188,42 @@ internal fun LedgerContent(
 @Composable
 private fun Ledger(
     state: LedgerUiState.Loaded,
+    kind: ListKind,
+    selected: Set<String>,
+    onToggle: (String) -> Unit,
     onOpenEmail: (String) -> Unit,
     onOpenSender: (String) -> Unit,
+    onAction: (ConversationAction, ActionTarget) -> Unit,
     onLoadMore: () -> Unit,
 ) {
+    val conversations = state.conversations
     val zone = remember { TimeZone.currentSystemDefault() }
     val today = Clock.System.now().toLocalDateTime(zone).date
-    val days = remember(state.conversations, today) { ledgerDays(state.conversations, zone, today) }
+    val days = remember(conversations, today) { ledgerDays(conversations, zone, today) }
     val listState = rememberLazyListState()
     val nearEnd by remember { derivedStateOf { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 } }
-    LaunchedEffect(nearEnd, state.conversations.size) {
+    LaunchedEffect(nearEnd, conversations.size) {
         if (state.canLoadMore && nearEnd >= listState.layoutInfo.totalItemsCount - LOAD_AHEAD) onLoadMore()
     }
     val wide = LocalWideLayout.current
-    Box {
-        LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 96.dp), modifier = Modifier.fillMaxSize()) {
-            days.forEach { day ->
-                stickyHeader(key = day.date.toString()) { DayHeader(day, wide) }
-                items(day.conversations, key = { it.latest.id }) { conversation ->
-                    LedgerRow(conversation, zone, wide, onClick = { onOpenEmail(conversation.latest.id) }, onOpenSender = onOpenSender)
-                }
+    val selecting = selected.isNotEmpty()
+    val onRowAction = remember(onAction) { { action: ConversationAction, row: Conversation -> onAction(action, listOf(row).target()) } }
+    LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 96.dp), modifier = Modifier.fillMaxSize()) {
+        days.forEach { day ->
+            stickyHeader(key = day.date.toString()) { DayHeader(day, wide) }
+            items(day.conversations, key = { it.latest.id }) { conversation ->
+                LedgerRow(
+                    conversation,
+                    zone,
+                    wide,
+                    remember(conversation, kind) { actionsFor(kind, listOf(conversation).target()) },
+                    selected = conversation.latest.id in selected,
+                    selecting = selecting,
+                    onToggle = onToggle,
+                    onOpen = onOpenEmail,
+                    onAction = onRowAction,
+                    onOpenSender = onOpenSender,
+                )
             }
         }
     }
@@ -169,4 +259,5 @@ private fun LedgerTab.emptyText() =
         LedgerTab.Starred -> Res.string.ledger_empty_starred
         LedgerTab.Sent -> Res.string.ledger_empty_sent
         LedgerTab.Drafts -> Res.string.ledger_empty_drafts
+        LedgerTab.Trash -> Res.string.ledger_empty_trash
     }

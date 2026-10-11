@@ -67,6 +67,7 @@ import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.core.ui.WIDE_LAYOUT
 import com.verdenroz.corvid.feature.compose.ComposeScreen
 import com.verdenroz.corvid.feature.filters.FiltersScreen
+import com.verdenroz.corvid.feature.mailbox.ActionNoticeBar
 import com.verdenroz.corvid.feature.mailbox.LedgerSource
 import com.verdenroz.corvid.feature.mailbox.LedgerTab
 import com.verdenroz.corvid.feature.mailbox.LedgerViewModel
@@ -127,7 +128,6 @@ internal fun UnlockedContent(
         onBackCompleted = navigator::handleBack,
     )
 
-    val searchInput = rememberSearchInput(navigator)
     val shellFocus = remember { FocusRequester() }
 
     val shellState by shell.state.collectAsState()
@@ -144,6 +144,7 @@ internal fun UnlockedContent(
         },
     ) {
         val wide = maxWidth >= WIDE_LAYOUT
+        val searchInput = rememberSearchInput(navigator, wide)
         CompositionLocalProvider(LocalWideLayout provides wide) {
             LaunchedEffect(Unit) { shellFocus.requestFocus() }
             Column(
@@ -180,6 +181,7 @@ internal fun UnlockedContent(
                                             navigator,
                                             scope,
                                             models,
+                                            ledgers,
                                             entryKey,
                                             session,
                                         ) { Home(it, key, shellState, navigator, ledgers) }
@@ -187,6 +189,15 @@ internal fun UnlockedContent(
                                 }
                             }
                         }
+                    }
+                    ledgers.actions.notice.collectAsState().value?.let { notice ->
+                        ActionNoticeBar(
+                            ledgers.actions,
+                            notice,
+                            Modifier
+                                .align(if (wide) Alignment.BottomStart else Alignment.BottomCenter)
+                                .padding(start = 16.dp, end = 16.dp, bottom = if (wide) 22.dp else 80.dp),
+                        )
                     }
                 }
             }
@@ -264,6 +275,7 @@ private fun Page(
     navigator: Navigator,
     scope: Scope,
     models: EntryModels,
+    ledgers: Ledgers,
     entryKey: String,
     session: SettingsSession,
     home: @Composable (Route.Home) -> Unit,
@@ -274,25 +286,25 @@ private fun Page(
         is Route.Reader ->
             ReaderScreen(
                 mailbox,
+                ledgers.actions,
                 route.emailId,
                 onBack = navigator::back,
                 onCompose = { navigator.push(Route.Compose(it)) },
                 onOpenSender = { navigator.push(Route.Sender(it)) },
             )
-        is Route.Search ->
+        is Route.Search -> {
+            val search =
+                route.query.takeIf { it.isNotBlank() }?.let { query ->
+                    models.of(entryKey, LedgerViewModel::class) { LedgerViewModel(mailbox, LedgerSource.Search(query)) }
+                }
             SearchScreen(
-                viewModel =
-                    if (route.query.isBlank()) {
-                        null
-                    } else {
-                        models.of(entryKey, LedgerViewModel::class) {
-                            LedgerViewModel(mailbox, LedgerSource.Search(route.query))
-                        }
-                    },
+                viewModel = search,
+                actions = ledgers.actions,
                 query = route.query,
                 onOpenEmail = { navigator.push(Route.Reader(it)) },
                 onOpenSender = { navigator.push(Route.Sender(it)) },
             )
+        }
         is Route.Compose -> ComposeScreen(remember(scope) { scope.get<ComposeRepository>() }, route.intent, onClose = navigator::back)
         is Route.Filters -> FiltersScreen(remember(scope) { scope.get<FiltersRepository>() }, onBack = navigator::back)
         is Route.Settings -> SettingsPage(scope, session, navigator, models, entryKey)

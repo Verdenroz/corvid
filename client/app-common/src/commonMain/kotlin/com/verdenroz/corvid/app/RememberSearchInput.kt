@@ -16,14 +16,17 @@ private val SEARCH_DEBOUNCE = 350.milliseconds
 
 /** The typed text, searched a moment after the last keystroke and cleared once no search is open. */
 @Composable
-internal fun rememberSearchInput(navigator: Navigator): SearchInput {
+internal fun rememberSearchInput(
+    navigator: Navigator,
+    wide: Boolean,
+): SearchInput {
     val searching = navigator.searching
     var typed by rememberSaveable { mutableStateOf("") }
     LaunchedEffect(searching) { if (!searching) typed = "" }
     LaunchedEffect(typed) {
         delay(SEARCH_DEBOUNCE)
-        navigator.search(typed)
+        navigator.search(typed, keepBlank = !wide)
     }
     val focus = remember { FocusRequester() }
-    return SearchInput(typed, { typed = it }, { navigator.search(typed) }, focus)
+    return SearchInput(typed, { typed = it }, { navigator.search(typed, keepBlank = !wide) }, focus)
 }

@@ -10,5 +10,6 @@ enum class HomeTab(val ledger: LedgerTab?) {
     Starred(LedgerTab.Starred),
     Sent(LedgerTab.Sent),
     Drafts(LedgerTab.Drafts),
+    Trash(LedgerTab.Trash),
     Labels(null),
 }

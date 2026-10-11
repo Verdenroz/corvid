@@ -11,8 +11,10 @@ import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_no_mailbox
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -265,5 +267,64 @@ class LedgerViewModelTest {
             repository.updateKeywords("a1", mapOf("\$seen" to true))
 
             vm.state.first { (it as? LedgerUiState.Loaded)?.conversations?.single()?.unread == false }
+        }
+
+    @Test
+    fun `select all ticks every loaded conversation and a refetch drops ticks for rows that left`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
+            listOf("a", "b").forEach { id ->
+                fake.emails += FakeEmail(id, id, setOf("inbox"), "subject", "$id@example.test", "2024-01-01T00:00:00Z")
+            }
+            val vm = track(LedgerViewModel(repository(fake), LedgerTab.Inbox))
+            vm.state.first { it is LedgerUiState.Loaded }
+
+            vm.selectAll()
+            assertEquals(setOf("a", "b"), vm.selected.value)
+            fake.emails.removeAll { it.id == "a" }
+            vm.refresh()?.join()
+
+            assertEquals(setOf("b"), vm.selected.value)
+        }
+
+    @Test
+    fun `toggling a ticked row unticks it`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
+            val vm = track(LedgerViewModel(repository(fake), LedgerTab.Inbox))
+
+            vm.toggleSelected("a")
+            vm.toggleSelected("a")
+
+            assertTrue(vm.selected.value.isEmpty())
+        }
+
+    @Test
+    fun `a row moving away is hidden while the move runs and gone after the refetch`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
+            fake.mailboxes += FakeMailbox(id = "trash", name = "Trash", role = "trash")
+            listOf("a", "b").forEach { id ->
+                fake.emails += FakeEmail(id, id, setOf("inbox"), "subject", "$id@example.test", "2024-01-01T00:00:00Z")
+            }
+            val gate = CompletableDeferred<Unit>()
+            val repository = repository(fake)
+            val vm = track(LedgerViewModel(repository, LedgerTab.Inbox))
+            vm.state.first { it is LedgerUiState.Loaded }
+
+            fake.gate = gate
+            coroutineScope {
+                launch { repository.trash(listOf("a")) }
+                val during = vm.state.first { (it as? LedgerUiState.Loaded)?.conversations?.size == 1 } as LedgerUiState.Loaded
+                assertEquals(listOf("b"), during.conversations.map { it.latest.id })
+                fake.gate = null
+                gate.complete(Unit)
+            }
+
+            assertEquals(setOf("trash"), fake.emails.single { it.id == "a" }.mailboxIds)
+            vm.state.first { (it as? LedgerUiState.Loaded)?.conversations?.map { c -> c.latest.id } == listOf("b") }
         }
 }

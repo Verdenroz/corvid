@@ -87,4 +87,22 @@ class NavigatorTest {
         assertEquals(Route.Search("invoice"), nav.route)
         assertEquals(2, nav.depth)
     }
+
+    @Test
+    fun `clearing a search goes back to the list it was opened from`() {
+        val nav = navigator(RecordingHolder(), Route.Search("invoice"))
+
+        nav.search("")
+
+        assertEquals(Route.Home(HomeTab.Inbox), nav.route)
+    }
+
+    @Test
+    fun `clearing a search that holds its own field keeps it open and empty`() {
+        val nav = navigator(RecordingHolder(), Route.Search("invoice"))
+
+        nav.search("", keepBlank = true)
+
+        assertEquals(Route.Search(""), nav.route)
+    }
 }

@@ -290,6 +290,7 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
         return when (name) {
             "Core/echo" -> listOf(name to arguments)
             "Mailbox/get" -> listOf(name to getResponse("s1", mailboxes, arguments, FakeMailbox::id) { it.toJson() })
+            "Mailbox/set" -> listOf(name to mailboxSet(arguments))
             "Email/query" -> listOf(emailQuery(arguments))
             "Email/get" -> listOf(name to getResponse("s1", emails, arguments, FakeEmail::id) { it.toJson(arguments.requestedHeaders()) })
             "Thread/get" -> listOf(name to threadGet(arguments))
@@ -353,6 +354,17 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
             if (notUpdated.isNotEmpty()) putJsonObject("notUpdated") { notUpdated.forEach { (k, v) -> put(k, v) } }
             if (notDestroyed.isNotEmpty()) putJsonObject("notDestroyed") { notDestroyed.forEach { (k, v) -> put(k, v) } }
         }
+
+    private fun mailboxSet(arguments: JsonObject): JsonObject {
+        val created =
+            arguments["create"]?.jsonObject.orEmpty().mapValues { (_, spec) ->
+                val id = "mb${mailboxes.size + 1}"
+                val fields = spec.jsonObject
+                mailboxes += FakeMailbox(id, fields.getValue("name").jsonPrimitive.content, fields["role"]?.jsonPrimitive?.contentOrNull)
+                buildJsonObject { put("id", id) }
+            }
+        return setResponse("m0", "m1", created = created)
+    }
 
     private fun emailQuery(arguments: JsonObject): Pair<String, JsonObject> {
         beforeEmailQuery()
@@ -720,6 +732,17 @@ private fun FakeEmail.toJson(headerProperties: List<String>): JsonObject =
         putIdList("inReplyTo", inReplyTo)
         putIdList("references", references)
         put("receivedAt", receivedAt)
+        putJsonObject("mailboxIds") { for (mailbox in mailboxIds) put(mailbox, true) }
+        putJsonArray("headers") {
+            headers.forEach { (field, values) ->
+                values.forEach { value ->
+                    addJsonObject {
+                        put("name", field)
+                        put("value", " $value")
+                    }
+                }
+            }
+        }
         putJsonObject("keywords") { for (keyword in keywords) put(keyword, true) }
         preview?.let { put("preview", it) }
         if (body == null) {

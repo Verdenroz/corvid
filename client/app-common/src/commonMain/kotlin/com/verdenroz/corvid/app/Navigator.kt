@@ -38,11 +38,18 @@ internal class Navigator(
         stack[stack.lastIndex] = route
     }
 
-    /** Searching from a search updates it in place; from anywhere else a non-blank query opens one. */
-    fun search(query: String) {
+    /**
+     * Searching from a search updates it in place; from anywhere else a non-blank query opens one.
+     * Clearing the query leaves the search unless [keepBlank], where the search screen holds the field itself.
+     */
+    fun search(
+        query: String,
+        keepBlank: Boolean = false,
+    ) {
         val text = query.trim()
         val top = route
         when {
+            top is Route.Search && text.isEmpty() && !keepBlank -> back()
             top is Route.Search -> if (top.query != text) replace(Route.Search(text))
             text.isNotEmpty() -> push(Route.Search(text))
         }

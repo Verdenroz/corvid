@@ -37,6 +37,8 @@ import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.provenance.SenderAvatar
 import com.verdenroz.corvid.core.ui.provenance.sealDescription
 import com.verdenroz.corvid.feature.mailbox.resources.Res
+import com.verdenroz.corvid.feature.mailbox.resources.action_headers
+import com.verdenroz.corvid.feature.mailbox.resources.action_hide_headers
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_forward
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_reply
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_reply_all
@@ -57,20 +59,36 @@ internal fun ThreadMessage(
     threaded: Boolean,
     wide: Boolean,
     teach: TeachState,
+    headers: HeadersState?,
     onToggle: (String) -> Unit,
     onAnswer: (String, Correction) -> Unit,
+    onHeaders: (String) -> Unit,
     onCompose: (ComposeIntent) -> Unit,
     onOpenSender: (String) -> Unit,
 ) {
     val colors = CorvidTheme.colors
     val toggle = remember(email.id, onToggle) { { onToggle(email.id) } }
+    val showHeaders = remember(email.id, onHeaders) { { onHeaders(email.id) } }
     val answer = remember(email.id, onAnswer) { { correction: Correction -> onAnswer(email.id, correction) } }
     val tint = if (email.provenance.suspect) Modifier.background(colors.dangerTint) else Modifier
     val gutter = CorvidSpacing.readingGutter(wide)
     Column(Modifier.fillMaxWidth().then(tint)) {
         Column(Modifier.padding(horizontal = gutter).widthIn(max = 860.dp)) {
             if (expanded) {
-                ExpandedMessage(email, repository, newest, threaded, wide, teach, toggle, answer, onCompose, onOpenSender)
+                ExpandedMessage(
+                    email,
+                    repository,
+                    newest = newest,
+                    threaded = threaded,
+                    wide = wide,
+                    teach = teach,
+                    headers = headers,
+                    onToggle = toggle,
+                    onAnswer = answer,
+                    onHeaders = showHeaders,
+                    onCompose = onCompose,
+                    onOpenSender = onOpenSender,
+                )
             } else {
                 CollapsedMessage(email, toggle)
             }
@@ -87,13 +105,16 @@ private fun ExpandedMessage(
     threaded: Boolean,
     wide: Boolean,
     teach: TeachState,
+    headers: HeadersState?,
     onToggle: () -> Unit,
     onAnswer: (Correction) -> Unit,
+    onHeaders: () -> Unit,
     onCompose: (ComposeIntent) -> Unit,
     onOpenSender: (String) -> Unit,
 ) {
     Column(Modifier.padding(vertical = 16.dp)) {
-        SenderLine(email, onOpenSender, if (threaded) Modifier.clickable(onClick = onToggle) else Modifier)
+        SenderLine(email, headers != null, onHeaders, onOpenSender, if (threaded) Modifier.clickable(onClick = onToggle) else Modifier)
+        headers?.let { HeadersPanel(it, Modifier.padding(bottom = 16.dp)) }
         Custody(email, wide) { guess -> TeachControls(guess, teach.answering, teach.error, onAnswer) }
         MessageBody(email, repository, Modifier.padding(top = 18.dp).widthIn(max = 640.dp))
         if (newest) Replies(email, onCompose) else QuietReplies(email, onCompose)
@@ -174,6 +195,8 @@ private fun CollapsedMessage(
 @Composable
 private fun SenderLine(
     email: EmailDetail,
+    headersShown: Boolean,
+    onHeaders: () -> Unit,
     onOpenSender: (String) -> Unit,
     modifier: Modifier,
 ) {
@@ -216,6 +239,13 @@ private fun SenderLine(
             RecipientLine(Res.string.reader_cc, email.cc)
         }
         Text(stamp(email.receivedAt, zone, Clock.System.now()).asString(), style = CorvidTheme.type.meta, color = colors.inkMuted)
+        ActionIcon(
+            stringResource(if (headersShown) Res.string.action_hide_headers else Res.string.action_headers),
+            CorvidIcons.Headers,
+            onHeaders,
+            tint = if (headersShown) colors.accent else colors.inkMuted,
+            size = 36.dp,
+        )
     }
 }
 

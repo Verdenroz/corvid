@@ -1,12 +1,18 @@
 package com.verdenroz.corvid.feature.mailbox
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -14,6 +20,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
@@ -27,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.clockTime
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.model.Conversation
+import com.verdenroz.corvid.core.model.CorvidKeywords
 import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.core.model.Rewrite
 import com.verdenroz.corvid.core.model.labels
@@ -38,24 +47,71 @@ import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.ledger_thread_messages
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_no_subject
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_separator
+import com.verdenroz.corvid.feature.mailbox.resources.selection_select
 import kotlinx.datetime.TimeZone
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun LedgerRow(
     conversation: Conversation,
     zone: TimeZone,
     wide: Boolean,
-    onClick: () -> Unit,
+    actions: List<ConversationAction>,
+    selected: Boolean,
+    selecting: Boolean,
+    onToggle: (String) -> Unit,
+    onOpen: (String) -> Unit,
+    onAction: (ConversationAction, Conversation) -> Unit,
     onOpenSender: (String) -> Unit,
 ) {
     val colors = CorvidTheme.colors
     val email = conversation.latest
     val openSender = email.from?.email?.let { { onOpenSender(it) } }
-    val suspect = email.provenance.suspect
-    Column(Modifier.fillMaxWidth().background(if (suspect) colors.dangerTint else colors.surface).clickable(onClick = onClick)) {
-        if (wide) WideRow(conversation, zone, openSender) else NarrowRow(conversation, zone, openSender)
+    val toggle = { onToggle(email.id) }
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    val background =
+        when {
+            selected -> colors.accentSoft
+            email.provenance.suspect -> colors.dangerTint
+            hovered -> colors.hover
+            else -> colors.surface
+        }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(background)
+            .hoverable(interaction)
+            .combinedClickable(
+                onClick = if (selecting) toggle else ({ onOpen(email.id) }),
+                onLongClick = toggle,
+                onLongClickLabel = stringResource(Res.string.selection_select),
+            ),
+    ) {
+        val leading: @Composable () -> Unit = {
+            if (selecting || (wide && hovered)) {
+                SelectMark(selected, toggle)
+            } else {
+                Avatar(email, openSender)
+            }
+        }
+        if (wide) {
+            val trailing: @Composable () -> Unit = {
+                if (hovered && !selecting) {
+                    ConversationActionRow(actions, size = 34.dp) { onAction(it, conversation) }
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (CorvidKeywords.FLAGGED in email.keywords) StarMark()
+                        (email.provenance.rewrite as? Rewrite.Stripped)?.takeIf { it.stripped > 0 }?.let { TrackerCount(it.stripped) }
+                    }
+                }
+            }
+            WideRow(conversation, zone, openSender, leading, trailing)
+        } else {
+            NarrowRow(conversation, zone, openSender, leading)
+        }
         HorizontalDivider(color = colors.line)
     }
 }
@@ -65,18 +121,19 @@ private fun WideRow(
     conversation: Conversation,
     zone: TimeZone,
     openSender: (() -> Unit)?,
+    leading: @Composable () -> Unit,
+    trailing: @Composable () -> Unit,
 ) {
-    val email = conversation.latest
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
-        modifier = Modifier.padding(start = 16.dp, end = 24.dp, top = 12.dp, bottom = 12.dp),
+        modifier = Modifier.heightIn(min = 64.dp).padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
     ) {
         Time(conversation, zone, Modifier.width(58.dp))
-        Avatar(email, openSender)
+        leading()
         SenderName(conversation, Modifier.width(200.dp), openSender)
         Summary(conversation, Modifier.weight(1f))
-        (email.provenance.rewrite as? Rewrite.Stripped)?.takeIf { it.stripped > 0 }?.let { TrackerCount(it.stripped) }
+        trailing()
     }
 }
 
@@ -85,12 +142,14 @@ private fun NarrowRow(
     conversation: Conversation,
     zone: TimeZone,
     openSender: (() -> Unit)?,
+    leading: @Composable () -> Unit,
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(horizontal = 16.dp, vertical = 11.dp)) {
-        Avatar(conversation.latest, openSender)
+        leading()
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(verticalAlignment = Alignment.Top) {
                 SenderName(conversation, Modifier.weight(1f), openSender)
+                if (CorvidKeywords.FLAGGED in conversation.latest.keywords) StarMark(Modifier.padding(start = 6.dp, top = 3.dp))
                 Time(conversation, zone, Modifier.padding(start = 8.dp, top = 2.dp))
             }
             Summary(conversation, Modifier.fillMaxWidth())

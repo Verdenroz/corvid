@@ -12,6 +12,7 @@ import com.verdenroz.corvid.core.model.CorvidKeywords
 import com.verdenroz.corvid.core.model.EmailAddress
 import com.verdenroz.corvid.core.model.EmailDetail
 import com.verdenroz.corvid.core.model.EmailSummary
+import com.verdenroz.corvid.core.model.HeaderField
 import com.verdenroz.corvid.core.model.HtmlBody
 import com.verdenroz.corvid.core.model.Identity
 import com.verdenroz.corvid.core.model.Mailbox
@@ -37,12 +38,16 @@ import kotlinx.serialization.json.putJsonObject
 import kotlin.time.Instant
 
 private const val PAGE_SIZE = 50
+const val INBOX = "inbox"
+const val TRASH = "trash"
+const val ARCHIVE = "archive"
+const val JUNK = "junk"
 private const val MAX_BODY_VALUE_BYTES = 262_144
 internal val EMAIL_PROPERTIES = listOf("id", "threadId", "subject", "from", "receivedAt", "keywords", "preview") + PROVENANCE_PROPERTIES
 private val EMAIL_DETAIL_PROPERTIES =
     listOf(
         "id", "subject", "from", "to", "cc", "replyTo", "messageId", "references", "receivedAt", "keywords", "preview",
-        "textBody", "htmlBody", "bodyValues",
+        "textBody", "htmlBody", "bodyValues", "mailboxIds",
     ) + PROVENANCE_PROPERTIES
 
 /** What a list shows: one mailbox, every starred message wherever it is filed, or every message matching a text search. */
@@ -107,6 +112,7 @@ sealed interface ThreadLookup {
  * is stateless across pages.
  */
 class MailboxRepository(private val jmapClient: JmapClient) {
+    private val vocabulary = SearchVocabulary(jmapClient)
     private val identityLock = Mutex()
     private val rolesLock = Mutex()
     private var identity: KnownIdentity? = null
@@ -115,6 +121,11 @@ class MailboxRepository(private val jmapClient: JmapClient) {
 
     /** Every patch [updateKeywords] got through, so a list already on screen can apply it without refetching. */
     val keywordPatches: SharedFlow<KeywordPatch> = _keywordPatches
+
+    private val _moves = MutableSharedFlow<MoveEvent>(extraBufferCapacity = 16)
+
+    /** Every archive, trash, undo and delete, as it starts and as it ends, so each list can hide and then refetch its own rows. */
+    val moves: SharedFlow<MoveEvent> = _moves
 
     /** The one path images in delivered mail may load from: the milter rewrites each remote image to it. */
     val imageProxyBase: String get() = "${jmapClient.webBase}/i/"
@@ -143,13 +154,7 @@ class MailboxRepository(private val jmapClient: JmapClient) {
         val grouped = filter.threaded
         val queryArguments =
             buildJsonObject {
-                putJsonObject("filter") {
-                    when (filter) {
-                        is MailFilter.InMailbox -> put("inMailbox", filter.mailboxId)
-                        is MailFilter.Starred -> put("hasKeyword", CorvidKeywords.FLAGGED)
-                        is MailFilter.Search -> put("text", filter.text)
-                    }
-                }
+                put("filter", serverFilter(filter))
                 putJsonArray("sort") {
                     addJsonObject {
                         put("property", "receivedAt")
@@ -164,6 +169,26 @@ class MailboxRepository(private val jmapClient: JmapClient) {
                 }
             }
         return if (grouped) conversationPage(queryArguments) else messagePage(queryArguments)
+    }
+
+    /** Starred and search leave out Trash and Junk, as mail deleted or marked spam is no longer the user's to find there. */
+    private suspend fun serverFilter(filter: MailFilter): JsonObject =
+        when (filter) {
+            is MailFilter.InMailbox -> buildJsonObject { put("inMailbox", filter.mailboxId) }
+            is MailFilter.Starred -> outsideDiscarded(buildJsonObject { put("hasKeyword", CorvidKeywords.FLAGGED) })
+            is MailFilter.Search -> outsideDiscarded(vocabulary.searchFilter(filter.text))
+        }
+
+    private suspend fun outsideDiscarded(condition: JsonObject): JsonObject {
+        val discarded = listOfNotNull(mailboxId(TRASH), mailboxId(JUNK))
+        if (discarded.isEmpty()) return condition
+        return buildJsonObject {
+            put("operator", "AND")
+            putJsonArray("conditions") {
+                add(condition)
+                addJsonObject { putJsonArray("inMailboxOtherThan") { discarded.forEach { add(JsonPrimitive(it)) } } }
+            }
+        }
     }
 
     private suspend fun messagePage(queryArguments: JsonObject): EmailPage {
@@ -229,15 +254,7 @@ class MailboxRepository(private val jmapClient: JmapClient) {
     }
 
     /** One message's keywords alone; null when it is gone. */
-    suspend fun keywords(id: String): Set<String>? {
-        val arguments =
-            buildJsonObject {
-                putJsonArray("ids") { add(JsonPrimitive(id)) }
-                putJsonArray("properties") { add(JsonPrimitive("keywords")) }
-            }
-        val found = jmapClient.callOne("Email/get", arguments).getValue("list").jsonArray.firstOrNull() ?: return null
-        return found.jsonObject.getValue("keywords").jsonObject.keys
-    }
+    suspend fun keywords(id: String): Set<String>? = keySets(listOf(id), "keywords")[id]
 
     /**
      * Patches only the named keywords, so anything else on the message, including the labeler's,
@@ -253,23 +270,132 @@ class MailboxRepository(private val jmapClient: JmapClient) {
         ids: List<String>,
         patch: Map<String, Boolean>,
     ): Map<String, String> {
+        val refused = patchEmails(ids.associateWith { patch.pointers("keywords") })
+        ids.filter { it !in refused }.forEach { _keywordPatches.emit(KeywordPatch(it, patch)) }
+        return refused
+    }
+
+    /** Takes the messages out of the Inbox; one filed nowhere else goes to the Archive mailbox, made on first use. */
+    suspend fun archive(ids: Collection<String>): MailMove =
+        moving(ids) {
+            val inbox = mailboxId(INBOX) ?: return@moving MailMove.NONE
+            val before = mailboxIdsOf(ids).filterValues { inbox in it }
+            val archive = if (before.values.any { it == setOf(inbox) }) archiveMailboxId() else null
+            val after = before.mapValues { (_, boxes) -> (boxes - inbox).ifEmpty { setOfNotNull(archive) } }
+            val stranded = after.filterValues { it.isEmpty() }.keys
+            val done = move(before - stranded, after - stranded)
+            done.copy(refused = done.refused + stranded.associateWith { "no Archive mailbox" })
+        }
+
+    /** Files the messages in Trash alone; with no Trash mailbox every one is refused. */
+    suspend fun trash(ids: Collection<String>): MailMove =
+        moving(ids) {
+            val trash = mailboxId(TRASH) ?: return@moving MailMove(emptyMap(), emptyMap(), ids.associateWith { "no Trash mailbox" })
+            val before = mailboxIdsOf(ids).filterValues { it != setOf(trash) }
+            move(before, before.mapValues { setOf(trash) })
+        }
+
+    /** Puts every message [done] moved back where it was. */
+    suspend fun undo(done: MailMove): MailMove =
+        moving(done.moved) { move(done.after.filterKeys { it in done.moved }, done.before.filterKeys { it in done.moved }) }
+
+    /**
+     * Deletes for good, with no undo, only those of [ids] filed in Trash alone: a thread in Trash can
+     * still hold a message filed elsewhere. Returns the server's reason for each id it kept.
+     */
+    suspend fun destroy(ids: Collection<String>): Map<String, String> =
+        moving(ids) {
+            val trash = mailboxId(TRASH) ?: return@moving emptyMap()
+            val doomed = mailboxIdsOf(ids).filterValues { it == setOf(trash) }.keys
+            if (doomed.isEmpty()) return@moving emptyMap()
+            val arguments = buildJsonObject { putJsonArray("destroy") { doomed.forEach { add(JsonPrimitive(it)) } } }
+            val result = jmapClient.callOne("Email/set", arguments)
+            doomed.mapNotNull { id -> result.setErrorReason("notDestroyed", id)?.let { id to it } }.toMap()
+        }
+
+    /** Every header field of one message, unfolded and in order; null when it is gone. */
+    suspend fun headers(id: String): List<HeaderField>? {
+        val arguments =
+            buildJsonObject {
+                putJsonArray("ids") { add(JsonPrimitive(id)) }
+                putJsonArray("properties") { add(JsonPrimitive("headers")) }
+            }
+        val found = jmapClient.callOne("Email/get", arguments).getValue("list").jsonArray.firstOrNull() ?: return null
+        return found.jsonObject.getValue("headers").jsonArray.map {
+            HeaderField(it.jsonObject.getValue("name").jsonPrimitive.content, unfold(it.jsonObject.getValue("value").jsonPrimitive.content))
+        }
+    }
+
+    /** Announces [ids] leaving their mailboxes before [block] runs and again once it has finished, however it ended. */
+    private suspend fun <T> moving(
+        ids: Collection<String>,
+        block: suspend () -> T,
+    ): T {
+        val moving = ids.toSet()
+        _moves.emit(MoveEvent(moving, done = false))
+        try {
+            return block()
+        } finally {
+            _moves.emit(MoveEvent(moving, done = true))
+        }
+    }
+
+    private suspend fun mailboxIdsOf(ids: Collection<String>): Map<String, Set<String>> = keySets(ids, "mailboxIds")
+
+    /** The keys of one object-valued [property] of each message in [ids] that still exists. */
+    private suspend fun keySets(
+        ids: Collection<String>,
+        property: String,
+    ): Map<String, Set<String>> {
+        val arguments =
+            buildJsonObject {
+                putJsonArray("ids") { ids.forEach { add(JsonPrimitive(it)) } }
+                putJsonArray("properties") { add(JsonPrimitive(property)) }
+            }
+        return jmapClient.callOne("Email/get", arguments).getValue("list").jsonArray.associate {
+            it.jsonObject.getValue("id").jsonPrimitive.content to it.jsonObject.getValue(property).jsonObject.keys
+        }
+    }
+
+    private suspend fun move(
+        before: Map<String, Set<String>>,
+        after: Map<String, Set<String>>,
+    ): MailMove {
+        if (before.isEmpty()) return MailMove.NONE
+        val refused = patchEmails(before.mapValues { (id, boxes) -> mailboxPatch(boxes, after.getValue(id)).pointers("mailboxIds") })
+        return MailMove(before, after, refused)
+    }
+
+    /** One Email/set of JSON-pointer patches by message; returns the server's reason for each id it refused. */
+    private suspend fun patchEmails(patches: Map<String, Map<String, Boolean>>): Map<String, String> {
         val arguments =
             buildJsonObject {
                 putJsonObject("update") {
-                    ids.forEach { id ->
-                        putJsonObject(id) {
-                            patch.forEach { (keyword, set) ->
-                                put("keywords/${keyword.pointerEscaped()}", if (set) JsonPrimitive(true) else JsonNull)
-                            }
-                        }
+                    patches.forEach { (id, patch) ->
+                        putJsonObject(id) { patch.forEach { (path, set) -> put(path, if (set) JsonPrimitive(true) else JsonNull) } }
                     }
                 }
             }
         val result = jmapClient.callOne("Email/set", arguments)
-        val refused = ids.mapNotNull { id -> result.setErrorReason("notUpdated", id)?.let { id to it } }.toMap()
-        ids.filter { it !in refused }.forEach { _keywordPatches.emit(KeywordPatch(it, patch)) }
-        return refused
+        return patches.keys.mapNotNull { id -> result.setErrorReason("notUpdated", id)?.let { id to it } }.toMap()
     }
+
+    /** Null when the server will not make one. */
+    private suspend fun archiveMailboxId(): String? =
+        mailboxId(ARCHIVE) ?: rolesLock.withLock {
+            roleIds?.get(ARCHIVE)?.let { return@withLock it }
+            val arguments =
+                buildJsonObject {
+                    putJsonObject("create") {
+                        putJsonObject(ARCHIVE) {
+                            put("name", "Archive")
+                            put("role", ARCHIVE)
+                        }
+                    }
+                }
+            val created = jmapClient.callOne("Mailbox/set", arguments)["created"]?.jsonObject?.get(ARCHIVE)?.jsonObject
+            created?.getValue("id")?.jsonPrimitive?.content?.also { roleIds = roleIds.orEmpty() + (ARCHIVE to it) }
+        }
 
     /** The account's first identity, fetched once: who the account avatar is, and which senders are its own server. */
     suspend fun identity(): Identity? =
@@ -360,6 +486,7 @@ private fun JsonObject.toEmailDetail(ownDomain: String?): EmailDetail {
         preview = get("preview")?.jsonPrimitive?.contentOrNull.orEmpty(),
         keywords = getValue("keywords").jsonObject.keys,
         provenance = provenance(from, ownDomain),
+        mailboxIds = (get("mailboxIds") as? JsonObject)?.keys.orEmpty(),
     )
 }
 
@@ -376,6 +503,13 @@ private fun JsonObject.htmlBody(bodyValues: JsonObject): HtmlBody? {
         truncated = values.any { it.getValue("isTruncated").jsonPrimitive.boolean },
     )
 }
+
+/** Each key of a set-or-clear patch as a JSON pointer under [property]. */
+private fun Map<String, Boolean>.pointers(property: String): Map<String, Boolean> =
+    mapKeys { (key, _) -> "$property/${key.pointerEscaped()}" }
+
+/** RFC 5322 unfolding: a line break followed by whitespace continues the field. */
+internal fun unfold(value: String): String = value.replace(Regex("\r?\n(?=[ \t])"), "").trim()
 
 /** RFC 6901: a keyword holding `~` or `/` must not split the patch path. */
 private fun String.pointerEscaped(): String = replace("~", "~0").replace("/", "~1")

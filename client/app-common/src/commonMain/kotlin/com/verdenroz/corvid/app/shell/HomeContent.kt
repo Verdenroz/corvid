@@ -41,7 +41,7 @@ internal fun HomeContent(
         if (ledger == null) {
             NotBuilt(tab)
         } else {
-            LedgerScreen(ledgers.of(ledger), ledger, onOpenEmail, onOpenSender)
+            LedgerScreen(ledgers.of(ledger), ledgers.actions, ledger, onOpenEmail, onOpenSender)
         }
         WriteButton(onWrite, Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 22.dp))
     }

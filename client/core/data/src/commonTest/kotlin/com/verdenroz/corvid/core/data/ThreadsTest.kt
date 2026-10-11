@@ -2,6 +2,7 @@ package com.verdenroz.corvid.core.data
 
 import com.verdenroz.corvid.core.testing.FakeEmail
 import com.verdenroz.corvid.core.testing.FakeJmapServer
+import com.verdenroz.corvid.core.testing.FakeMailbox
 import com.verdenroz.corvid.core.testing.client
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
@@ -134,6 +135,35 @@ class ThreadsTest {
 
             assertEquals("a1", page.conversations.single().latest.id)
             assertEquals(2, page.conversations.single().messageCount)
+        }
+
+    @Test
+    fun `starred leaves out a starred message in trash or junk`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox("trash", "Trash", "trash")
+            fake.mailboxes += FakeMailbox("junk", "Junk", "junk")
+            val starred = setOf("\$seen", "\$flagged")
+            fake.emails += message("a1", "a", "2024-01-01T00:00:00Z", keywords = starred)
+            fake.emails += message("b1", "b", "2024-01-02T00:00:00Z", mailbox = "trash", keywords = starred)
+            fake.emails += message("c1", "c", "2024-01-03T00:00:00Z", mailbox = "junk", keywords = starred)
+
+            val page = assertIs<EmailPage.Found>(repository(fake).page(MailFilter.Starred, null))
+
+            assertEquals(listOf("a1"), page.conversations.map { it.latest.id })
+        }
+
+    @Test
+    fun `a search leaves out trash`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox("trash", "Trash", "trash")
+            fake.emails += message("a1", "a", "2024-01-01T00:00:00Z")
+            fake.emails += message("b1", "b", "2024-01-02T00:00:00Z", mailbox = "trash")
+
+            val page = assertIs<EmailPage.Found>(repository(fake).page(MailFilter.Search("subject"), null))
+
+            assertEquals(listOf("a1"), page.conversations.map { it.latest.id })
         }
 
     @Test

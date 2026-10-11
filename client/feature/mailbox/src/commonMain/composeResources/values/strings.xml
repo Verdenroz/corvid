@@ -107,4 +107,40 @@
     <string name="card_no_trackers_last">None found in %1$d of the last %2$d messages</string>
     <string name="card_failed_claims">This sender failed authentication. Mail claiming to be %1$s didn't come from it.</string>
     <string name="card_failed">This sender failed authentication.</string>
+    <plurals name="action_archived">
+        <item quantity="one">Archived</item>
+        <item quantity="other">%1$d conversations archived</item>
+    </plurals>
+    <plurals name="action_trashed">
+        <item quantity="one">Moved to Trash</item>
+        <item quantity="other">%1$d conversations moved to Trash</item>
+    </plurals>
+    <plurals name="action_deleted">
+        <item quantity="one">Deleted for good</item>
+        <item quantity="other">%1$d conversations deleted for good</item>
+    </plurals>
+    <string name="action_restored">Put back</string>
+    <string name="action_refused">The server refused: %1$s</string>
+    <string name="action_partly_refused">%1$d not moved: %2$s</string>
+    <string name="action_undo">Undo</string>
+    <string name="action_dismiss">Dismiss</string>
+    <string name="action_archive">Archive</string>
+    <string name="action_trash">Delete</string>
+    <string name="action_destroy">Delete for good</string>
+    <string name="action_mark_read">Mark read</string>
+    <string name="action_mark_unread">Mark unread</string>
+    <string name="action_star">Star</string>
+    <string name="action_unstar">Unstar</string>
+    <string name="action_headers">Show headers</string>
+    <string name="action_hide_headers">Hide headers</string>
+    <string name="action_destroy_question">Delete for good? This cannot be undone.</string>
+    <string name="action_destroy_confirm">Delete</string>
+    <string name="action_keep">Keep</string>
+    <string name="selection_count">%1$d selected</string>
+    <string name="selection_all">Select all</string>
+    <string name="selection_clear">Clear selection</string>
+    <string name="selection_select">Select</string>
+    <string name="headers_loading">Reading headers…</string>
+    <string name="headers_gone">This message no longer exists.</string>
+    <string name="ledger_empty_trash">Trash is empty.</string>
 </resources>

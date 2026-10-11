@@ -42,6 +42,7 @@ import com.verdenroz.corvid.appcommon.resources.tab_people
 import com.verdenroz.corvid.appcommon.resources.tab_sent
 import com.verdenroz.corvid.appcommon.resources.tab_sources
 import com.verdenroz.corvid.appcommon.resources.tab_starred
+import com.verdenroz.corvid.appcommon.resources.tab_trash
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
@@ -136,6 +137,7 @@ private fun HomeTab.title(): StringResource =
         HomeTab.Starred -> Res.string.tab_starred
         HomeTab.Sent -> Res.string.tab_sent
         HomeTab.Drafts -> Res.string.tab_drafts
+        HomeTab.Trash -> Res.string.tab_trash
         HomeTab.Labels -> Res.string.tab_labels
     }
 
@@ -147,5 +149,6 @@ private fun HomeTab.icon(): ImageVector =
         HomeTab.Starred -> CorvidIcons.Star
         HomeTab.Sent -> CorvidIcons.Send
         HomeTab.Drafts -> CorvidIcons.Draft
+        HomeTab.Trash -> CorvidIcons.Trash
         HomeTab.Labels -> CorvidIcons.Tag
     }

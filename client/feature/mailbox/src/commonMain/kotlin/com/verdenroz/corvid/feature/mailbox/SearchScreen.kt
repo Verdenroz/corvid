@@ -3,8 +3,6 @@ package com.verdenroz.corvid.feature.mailbox
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.search_no_results
@@ -14,6 +12,7 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 fun SearchScreen(
     viewModel: LedgerViewModel?,
+    actions: MailActions,
     query: String,
     onOpenEmail: (String) -> Unit,
     onOpenSender: (String) -> Unit,
@@ -23,14 +22,5 @@ fun SearchScreen(
         Box(modifier.fillMaxSize())
         return
     }
-    val state by viewModel.state.collectAsState()
-    LedgerContent(
-        state,
-        stringResource(Res.string.search_no_results, query),
-        onOpenEmail,
-        onOpenSender,
-        viewModel::loadMore,
-        viewModel::refreshAndWait,
-        modifier,
-    )
+    LedgerContent(viewModel, actions, stringResource(Res.string.search_no_results, query), onOpenEmail, onOpenSender, modifier)
 }
