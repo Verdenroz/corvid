@@ -5,4 +5,5 @@
     <string name="notice_generic">A server notice</string>
     <string name="new_mail_channel">New mail</string>
     <string name="new_mail_no_subject">(no subject)</string>
+    <string name="new_mail_no_sender">Unknown sender</string>
 </resources>

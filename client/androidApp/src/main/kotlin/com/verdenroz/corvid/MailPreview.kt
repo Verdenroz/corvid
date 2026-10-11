@@ -10,14 +10,14 @@ private class PushedSender(val name: String? = null, val email: String)
 private class PushedMail(
     val v: Int,
     val id: String,
-    val from: PushedSender,
+    val from: PushedSender? = null,
     val subject: String = "",
     val preview: String = "",
 )
 
 private val pushJson = Json { ignoreUnknownKeys = true }
 
-/** One new message as the server pushes it; [title] is the sender's name, or the address where there is none. */
+/** One new message as the server pushes it; [title] is the sender's name, or the address where there is none, or blank. */
 data class MailPreview(
     val id: String,
     val title: String,
@@ -53,5 +53,6 @@ fun pushNotice(
             return PushNotice.Generic
         }
     if (mail.v != 1) return PushNotice.Generic
-    return PushNotice.Mail(MailPreview(mail.id, mail.from.name?.takeIf { it.isNotBlank() } ?: mail.from.email, mail.subject, mail.preview))
+    val sender = mail.from?.let { it.name?.takeIf(String::isNotBlank) ?: it.email }.orEmpty()
+    return PushNotice.Mail(MailPreview(mail.id, sender, mail.subject, mail.preview))
 }

@@ -19,11 +19,12 @@ class AndroidMailPreviews(private val context: Context) {
     fun post(preview: MailPreview?) {
         val open = context.openApp(PREVIEW_ID, PendingIntent.FLAG_UPDATE_CURRENT) { putExtra(EXTRA_OPEN_INBOX, true) }
         val noSubject = context.getString(R.string.new_mail_no_subject)
+        val noSender = context.getString(R.string.new_mail_no_sender)
         val shown =
             if (preview == null) {
                 generic()
             } else {
-                context.notification(NEW_MAIL_CHANNEL, preview.title, preview.text(noSubject))
+                context.notification(NEW_MAIL_CHANNEL, preview.title.ifBlank { noSender }, preview.text(noSubject))
                     .setStyle(Notification.BigTextStyle().bigText(preview.bigText(noSubject)))
             }
         val notification =

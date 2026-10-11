@@ -37,6 +37,13 @@ class MailPreviewTest {
     }
 
     @Test
+    fun `a message with no sender is pushed with a blank title`() {
+        val preview = mailPreview(push("""{"v":1,"id":"e1","from":null,"subject":"Engines","preview":"p"}"""), true)
+
+        assertEquals(MailPreview("e1", "", "Engines", "p"), preview)
+    }
+
+    @Test
     fun `fields the app does not know are ignored`() {
         val preview =
             mailPreview(
