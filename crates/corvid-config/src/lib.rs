@@ -11,6 +11,8 @@ use std::fmt;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 
+use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
@@ -57,6 +59,10 @@ pub struct Server {
     /// Where Pocket-ID answers, on the same `web_port`. Defaults to `idp.<domain>`; Pocket-ID
     /// refuses an `APP_URL` with a path, so it needs a hostname of its own.
     pub idp_hostname: Option<Name>,
+    /// The Android apps that may sign in with a passkey, which `/.well-known/assetlinks.json`
+    /// lists and the sentinel accepts as WebAuthn origins. Defaults to the official release.
+    #[serde(default = "official_apps")]
+    pub android_apps: Vec<AndroidApp>,
     /// Who may reach the ports mail apps use: 465, 587, 993 and `web_port`.
     #[serde(default)]
     pub client_access: ClientAccess,
@@ -64,6 +70,64 @@ pub struct Server {
     /// policy is served by Stalwart on 443 or by a Cloudflare Worker elsewhere.
     #[serde(default)]
     pub mta_sts_mode: MtaStsMode,
+}
+
+/// An Android app by package and the SHA-256 of the certificate that signs it.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AndroidApp {
+    pub package: Name,
+    pub sha256: Fingerprint,
+}
+
+/// A SHA-256 digest written as 64 hex digits, with or without colons.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(try_from = "String")]
+pub struct Fingerprint([u8; 32]);
+
+impl Fingerprint {
+    /// The form `assetlinks.json` lists: upper case pairs joined by colons.
+    pub fn colon_hex(&self) -> String {
+        self.0
+            .iter()
+            .map(|byte| format!("{byte:02X}"))
+            .collect::<Vec<_>>()
+            .join(":")
+    }
+}
+
+impl TryFrom<String> for Fingerprint {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        let digits: String = value.chars().filter(|c| *c != ':').collect();
+        hex::decode(&digits)
+            .ok()
+            .and_then(|bytes| <[u8; 32]>::try_from(bytes).ok())
+            .map(Self)
+            .ok_or_else(|| format!("{value:?} is not a SHA-256 digest of 64 hex digits"))
+    }
+}
+
+impl AndroidApp {
+    /// The WebAuthn origin Credential Manager reports for this app.
+    pub fn origin(&self) -> String {
+        format!(
+            "android:apk-key-hash:{}",
+            URL_SAFE_NO_PAD.encode(self.sha256.0)
+        )
+    }
+}
+
+/// The release key of the published app, as the release build's `apksigner` reports it.
+fn official_apps() -> Vec<AndroidApp> {
+    vec![AndroidApp {
+        package: Name("com.verdenroz.corvid".to_owned()),
+        sha256: Fingerprint::try_from(
+            "8f10b092622baa87b2b0236af429ed515d4ea0d0437d76b0322a9f5568f8a1af".to_owned(),
+        )
+        .expect("the official fingerprint is valid"),
+    }]
 }
 
 /// Whether the MTA-STS policy tells senders to test or enforce TLS (RFC 8461).
@@ -264,6 +328,36 @@ impl Server {
         format!("corvid-keys@keys.{}", self.domain.as_str())
     }
 
+    /// The origins a passkey ceremony may come from: each Android app, and the web tier for the
+    /// desktop client.
+    pub fn webauthn_origins(&self) -> Vec<String> {
+        self.android_apps
+            .iter()
+            .map(AndroidApp::origin)
+            .chain([self.web_url()])
+            .collect()
+    }
+
+    /// `/.well-known/assetlinks.json`: each app may use credentials of the relying party, which
+    /// is the mail domain.
+    pub fn assetlinks(&self) -> String {
+        let statements: Vec<Value> = self
+            .android_apps
+            .iter()
+            .map(|app| {
+                serde_json::json!({
+                    "relation": ["delegate_permission/common.get_login_creds"],
+                    "target": {
+                        "namespace": "android_app",
+                        "package_name": app.package.as_str(),
+                        "sha256_cert_fingerprints": [app.sha256.colon_hex()],
+                    },
+                })
+            })
+            .collect();
+        serde_json::to_string(&statements).expect("assetlinks serializes") + "\n"
+    }
+
     pub fn mail_user(&self) -> &str {
         &self.mail_user.0
     }
@@ -415,6 +509,20 @@ pub struct Sentinel {
     pub devices: Option<Devices>,
     /// New-mail previews pushed to approved devices. Needs `devices`; absent, nothing is pushed.
     pub push: Option<Push>,
+    /// Passkey sign-in, with the sentinel as the issuer Stalwart trusts. Needs `server`.
+    pub auth: Option<Auth>,
+}
+
+/// The issuer identifier Stalwart is configured with: the sentinel on loopback, never routed.
+pub fn issuer_url(bind: &str) -> String {
+    format!("http://{bind}/corvid/auth")
+}
+
+/// Where the sentinel keeps passkeys, codes and refresh tokens; its signing key sits beside it.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Auth {
+    pub state: PathBuf,
 }
 
 /// No settings yet; its presence turns pushes on.
@@ -533,7 +641,7 @@ impl Config {
         let sentinel_addr = sentinel.map_or_else(sentinel_bind, |sentinel| sentinel.bind.clone());
         Ok(format!(
             "MAIL_DOMAIN={}\nMAIL_HOSTNAME={}\nMAIL_USER={}\nACME_CONTACT={}\nWEB_PORT={}\nHOST_ZONE={}\n\
-             IDP_HOSTNAME={}\nADMIN_USER={}\nIDP_URL={}\nSENTINEL_URL=http://{}\nPUBLISH_MTA_STS={}\n\
+             IDP_HOSTNAME={}\nADMIN_USER={}\nIDP_URL={}\nSENTINEL_URL=http://{}\nISSUER_URL={}\nPUBLISH_MTA_STS={}\n\
              PUBLISH_TLSA={}\nMTA_STS_MODE={}\nMTA_STS_ID={}\nCLIENT_SOURCES={}\nUPDATE_AUTO={}\n",
             server.domain.0,
             server.hostname.0,
@@ -545,6 +653,7 @@ impl Config {
             server.admin_user(),
             idp_loopback,
             sentinel_addr,
+            issuer_url(&sentinel_addr),
             server.web_port.0 == 443,
             server.host_zone.is_none(),
             server.mta_sts_mode.as_str(),
@@ -552,6 +661,11 @@ impl Config {
             server.client_access.sources(),
             self.update.auto
         ))
+    }
+
+    /// The assetlinks document for `corvid-config assetlinks`.
+    pub fn assetlinks(&self) -> Result<String, Error> {
+        section(self.server.as_ref(), "server").map(Server::assetlinks)
     }
 
     /// The MTA-STS policy file the Cloudflare Worker serves, for `corvid-config mta-sts-policy`.
@@ -734,8 +848,122 @@ mod server_tests {
                  ACME_CONTACT=you@elsewhere.example\nWEB_PORT=4443\nHOST_ZONE=\n\
                  IDP_HOSTNAME=idp.example.com\nADMIN_USER=alice-admin\n\
                  IDP_URL=http://127.0.0.1:1411\nSENTINEL_URL=http://127.0.0.1:11333\n\
-                 PUBLISH_MTA_STS=false\nPUBLISH_TLSA=true\nMTA_STS_MODE=testing\nMTA_STS_ID={id}\nCLIENT_SOURCES=any\nUPDATE_AUTO=true\n"
+                 ISSUER_URL=http://127.0.0.1:11333/corvid/auth\nPUBLISH_MTA_STS=false\nPUBLISH_TLSA=true\nMTA_STS_MODE=testing\nMTA_STS_ID={id}\nCLIENT_SOURCES=any\nUPDATE_AUTO=true\n"
             )
+        );
+    }
+
+    #[test]
+    fn android_apps_default_to_the_official_release_key() {
+        let server = Config::parse(SERVER).unwrap().server.unwrap();
+
+        assert_eq!(server.android_apps.len(), 1);
+        assert_eq!(
+            server.android_apps[0].package.as_str(),
+            "com.verdenroz.corvid"
+        );
+        assert_eq!(
+            server.android_apps[0].sha256.colon_hex(),
+            "8F:10:B0:92:62:2B:AA:87:B2:B0:23:6A:F4:29:ED:51:5D:4E:A0:D0:43:7D:76:B0:32:2A:9F:55:68:F8:A1:AF"
+        );
+    }
+
+    #[test]
+    fn stated_android_apps_replace_the_default_and_accept_colons_or_none() {
+        let digits = "ab".repeat(32);
+        let colons = vec!["AB"; 32].join(":");
+        let text = format!(
+            "{SERVER}  android_apps:\n    - {{package: org.example.mail, sha256: {digits}}}\n    - {{package: org.example.fork, sha256: \"{colons}\"}}\n"
+        );
+
+        let apps = Config::parse(&text).unwrap().server.unwrap().android_apps;
+
+        assert_eq!(apps.len(), 2);
+        assert_eq!(apps[0].sha256, apps[1].sha256);
+    }
+
+    #[test]
+    fn a_fingerprint_that_is_not_a_sha256_digest_is_refused() {
+        for bad in ["abcd", &"zz".repeat(32), &"ab".repeat(31)] {
+            let text = format!(
+                "{SERVER}  android_apps:\n    - {{package: org.example.mail, sha256: \"{bad}\"}}\n"
+            );
+            assert!(Config::parse(&text).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn an_android_origin_is_the_base64url_of_the_certificate_digest() {
+        let app = AndroidApp {
+            package: Name("org.example.mail".to_owned()),
+            sha256: Fingerprint([0xfb; 32]),
+        };
+
+        assert_eq!(
+            app.origin(),
+            "android:apk-key-hash:-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_s"
+        );
+    }
+
+    #[test]
+    fn the_webauthn_origins_are_each_app_and_the_web_tier() {
+        let server = Config::parse(SERVER).unwrap().server.unwrap();
+
+        let origins = server.webauthn_origins();
+
+        assert_eq!(origins.len(), 2);
+        assert!(origins[0].starts_with("android:apk-key-hash:"));
+        assert_eq!(origins[1], "https://mail.example.com:4443");
+    }
+
+    #[test]
+    fn assetlinks_grants_get_login_creds_to_each_app() {
+        let digits = "ab".repeat(32);
+        let text = format!(
+            "{SERVER}  android_apps:\n    - {{package: org.example.mail, sha256: {digits}}}\n"
+        );
+
+        let document = Config::parse(&text).unwrap().assetlinks().unwrap();
+
+        let value: Value = serde_json::from_str(&document).unwrap();
+        assert_eq!(
+            value,
+            serde_json::json!([{
+                "relation": ["delegate_permission/common.get_login_creds"],
+                "target": {
+                    "namespace": "android_app",
+                    "package_name": "org.example.mail",
+                    "sha256_cert_fingerprints": [vec!["AB"; 32].join(":")],
+                },
+            }])
+        );
+        assert!(document.ends_with('\n'));
+    }
+
+    #[test]
+    fn the_issuer_url_follows_the_sentinel_bind() {
+        let text = SERVER.to_owned() + "sentinel:\n  bind: 127.0.0.1:2000\n  state: /s\n";
+
+        let shell = Config::parse(&text).unwrap().shell().unwrap();
+
+        assert!(
+            shell
+                .lines()
+                .any(|l| l == "ISSUER_URL=http://127.0.0.1:2000/corvid/auth")
+        );
+    }
+
+    #[test]
+    fn an_auth_section_needs_its_own_state_file() {
+        let with = Config::parse("sentinel:\n  state: /s\n  auth:\n    state: /a\n").unwrap();
+        assert_eq!(
+            with.sentinel.unwrap().auth.unwrap().state,
+            PathBuf::from("/a")
+        );
+
+        assert!(Config::parse("sentinel:\n  state: /s\n  auth: {}\n").is_err());
+        assert!(
+            Config::parse("sentinel:\n  state: /s\n  auth:\n    state: /a\n    key: /k\n").is_err()
         );
     }
 
@@ -1137,6 +1365,7 @@ mod server_tests {
         let plans = [
             include_str!("../../../deploy/stalwart.plan.ndjson"),
             include_str!("../../../deploy/oidc.plan.ndjson"),
+            include_str!("../../../deploy/auth.plan.ndjson"),
             include_str!("../../../deploy/stalwart.host-zone.ndjson"),
         ];
 

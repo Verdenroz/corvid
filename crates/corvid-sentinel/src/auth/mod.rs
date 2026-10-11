@@ -13,7 +13,7 @@ mod token;
 mod webauthn;
 
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use axum::Json;
@@ -25,6 +25,7 @@ use serde::Serialize;
 
 use crate::dates;
 use crate::http::AppState;
+use crate::key_file;
 use crate::persisted::Persisted;
 use crate::state::NoticeKind;
 use limits::{Challenges, Failures};
@@ -35,6 +36,11 @@ pub use token::{Audience, Claims, Invalid, Issuer};
 pub use webauthn::{
     AssertionResponse, Policy, Refusal, Registration, RegistrationResponse, RelyingParty,
 };
+
+/// The issuer for `url`, signing with the key at `key_path`, which is made on first use.
+pub fn issuer(key_path: &Path, url: String) -> io::Result<Issuer> {
+    key_file::open(key_path).map(|key| Issuer::new(key, url))
+}
 
 const REQUEST_BODY_LIMIT: usize = 32 * 1024;
 

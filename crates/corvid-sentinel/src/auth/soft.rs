@@ -54,6 +54,26 @@ impl Soft {
         }
     }
 
+    /// The authenticator a previous run saved, from its `secret()`.
+    pub fn restore(
+        rp_id: &str,
+        origin: &str,
+        secret: &[u8],
+        credential_id: Vec<u8>,
+        sign_count: u32,
+    ) -> Self {
+        Self {
+            key: SigningKey::from_slice(secret).expect("a saved key is a P-256 scalar"),
+            credential_id,
+            sign_count,
+            ..Self::new(rp_id, origin)
+        }
+    }
+
+    pub fn secret(&self) -> Vec<u8> {
+        self.key.to_bytes().to_vec()
+    }
+
     pub fn public_key(&self) -> VerifyingKey {
         *self.key.verifying_key()
     }

@@ -2,8 +2,10 @@ use std::io;
 use std::process::ExitCode;
 use std::time::Duration;
 
-use corvid_config::{or_exit, secret, section};
-use corvid_sentinel::{Config, build, devices, open};
+use std::sync::Arc;
+
+use corvid_config::{issuer_url, or_exit, secret, section};
+use corvid_sentinel::{Config, auth, build, devices, open};
 use tokio::net::TcpListener;
 use tokio::signal;
 
@@ -38,15 +40,20 @@ async fn main() -> ExitCode {
         }
     };
     let push = settings.push.is_some();
+    let bind = settings.bind.clone();
+    let auth = settings
+        .auth
+        .map(|auth| auth_config(config.server.as_ref(), auth, &bind, hmac_secret.as_bytes()));
+    let local = auth.as_ref().map(|auth| auth.issuer.clone());
     let devices = settings.devices.map(|devices| {
         device_config(
-            config.server,
+            config.server.as_ref(),
             devices,
             push,
             hmac_secret.as_bytes().to_vec(),
+            local,
         )
     });
-    let bind = settings.bind.clone();
     let (app, watcher) = build(Config {
         secret: hmac_secret.into_bytes(),
         state_path: settings.state,
@@ -54,7 +61,7 @@ async fn main() -> ExitCode {
         update_dir: UPDATE_DIR.into(),
         update_poll: UPDATE_POLL,
         devices,
-        auth: None,
+        auth,
     });
 
     tokio::spawn(watcher);
@@ -67,11 +74,40 @@ async fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
+fn auth_config(
+    server: Option<&corvid_config::Server>,
+    settings: corvid_config::Auth,
+    bind: &str,
+    webhook_secret: &[u8],
+) -> auth::Config {
+    let server = or_exit(section(server, "server"));
+    let key = settings.state.with_file_name("auth.key");
+    let issuer = auth::issuer(&key, issuer_url(bind)).unwrap_or_else(|error| {
+        tracing::error!(%error, key = %key.display(), "refusing to start without a readable auth key");
+        std::process::exit(1);
+    });
+    let state = auth::open(&settings.state).unwrap_or_else(|error| {
+        tracing::error!(%error, state = %settings.state.display(), "refusing to start");
+        std::process::exit(1);
+    });
+    auth::Config {
+        secret: webhook_secret.to_vec(),
+        state_path: settings.state,
+        auth: state,
+        issuer: Arc::new(issuer),
+        rp_id: server.domain.as_str().to_owned(),
+        origins: server.webauthn_origins(),
+        daily_user: server.mail_user().to_owned(),
+        master_user: server.admin_user(),
+    }
+}
+
 fn device_config(
-    server: Option<corvid_config::Server>,
+    server: Option<&corvid_config::Server>,
     settings: corvid_config::Devices,
     push: bool,
     webhook_secret: Vec<u8>,
+    local: Option<Arc<auth::Issuer>>,
 ) -> devices::Config {
     let server = or_exit(section(server, "server"));
     let stalwart_token = or_exit(secret("CORVID_STALWART_TOKEN"));
@@ -102,7 +138,7 @@ fn device_config(
         stalwart_url: settings.stalwart_url,
         stalwart_token,
         push,
-        local: None,
+        local,
     }
 }
 

@@ -36,6 +36,7 @@ fn shell_prints_the_server_section_of_the_template() {
             "ADMIN_USER",
             "IDP_URL",
             "SENTINEL_URL",
+            "ISSUER_URL",
             "PUBLISH_MTA_STS",
             "PUBLISH_TLSA",
             "MTA_STS_MODE",
@@ -70,6 +71,22 @@ fn a_config_that_does_not_parse_exits_78() {
             Some(78)
         );
     }
+}
+
+#[test]
+fn assetlinks_prints_the_official_app_for_the_template() {
+    let out = run(&template(), &["assetlinks"]);
+
+    assert_eq!(out.status.code(), Some(0));
+    let text = String::from_utf8(out.stdout).unwrap();
+    assert!(
+        text.contains(r#""package_name":"com.verdenroz.corvid""#),
+        "{text}"
+    );
+    assert!(
+        text.contains("delegate_permission/common.get_login_creds"),
+        "{text}"
+    );
 }
 
 #[test]
