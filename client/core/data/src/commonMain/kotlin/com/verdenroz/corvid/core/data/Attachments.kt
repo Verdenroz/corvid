@@ -17,7 +17,8 @@ import kotlinx.serialization.json.longOrNull
 import kotlin.math.pow
 import kotlin.math.round
 
-private const val UNKNOWN_TYPE = "application/octet-stream"
+const val UNKNOWN_FILE_TYPE = "application/octet-stream"
+const val UNNAMED_FILE = "attachment"
 private const val UNIT = 1024.0
 private const val MAX_BADGE = 4
 
@@ -64,11 +65,11 @@ sealed interface UploadResult {
 }
 
 /** The name to save a file under when the sender gave none. */
-fun Attachment.fileName(): String = name?.takeIf { it.isNotBlank() } ?: "attachment"
+fun Attachment.fileName(): String = name?.takeIf { it.isNotBlank() } ?: UNNAMED_FILE
 
 /** [name] cut down to a bare file name, so a sender's `../` or leading dot cannot steer where it is written. */
 fun safeFileName(name: String): String =
-    name.substringAfterLast('/').substringAfterLast('\\').filterNot(Char::isISOControl).trim().trimStart('.').ifBlank { "attachment" }
+    name.substringAfterLast('/').substringAfterLast('\\').filterNot(Char::isISOControl).trim().trimStart('.').ifBlank { UNNAMED_FILE }
 
 /** [name], or the first of `name (1).ext`, `name (2).ext` and on that [taken] does not claim. */
 fun uniqueFileName(
@@ -88,10 +89,12 @@ fun fileBadge(
     name: String?,
     type: String,
 ): String? {
-    val extension = name?.substringAfterLast('.', "")?.takeIf { it.length in 1..MAX_BADGE && it.all(Char::isLetterOrDigit) }
-    val subtype = type.substringAfter('/', "").substringBefore(';').takeIf { it.length in 1..MAX_BADGE && it.all(Char::isLetterOrDigit) }
+    val extension = name?.substringAfterLast('.', "")?.takeIf { it.isBadge() }
+    val subtype = type.substringAfter('/', "").substringBefore(';').takeIf { it.isBadge() }
     return (extension ?: subtype)?.uppercase()
 }
+
+private fun String.isBadge() = length in 1..MAX_BADGE && all(Char::isLetterOrDigit)
 
 /** Bytes in the largest unit that keeps the number under 1024, one decimal below ten. */
 fun fileSize(bytes: Long): UiText {
@@ -124,7 +127,7 @@ private fun JsonObject.toAttachment(): Attachment? {
     return Attachment(
         blobId = blobId,
         name = text("name"),
-        type = text("type") ?: UNKNOWN_TYPE,
+        type = text("type") ?: UNKNOWN_FILE_TYPE,
         size = get("size")?.jsonPrimitive?.longOrNull ?: 0,
     )
 }

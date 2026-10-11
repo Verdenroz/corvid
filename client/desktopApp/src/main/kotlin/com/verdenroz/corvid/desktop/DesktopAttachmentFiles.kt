@@ -3,6 +3,7 @@ package com.verdenroz.corvid.desktop
 import com.verdenroz.corvid.core.data.AttachmentFiles
 import com.verdenroz.corvid.core.data.Handoff
 import com.verdenroz.corvid.core.data.PickedFile
+import com.verdenroz.corvid.core.data.UNKNOWN_FILE_TYPE
 import com.verdenroz.corvid.core.data.safeFileName
 import com.verdenroz.corvid.core.data.uniqueFileName
 import kotlinx.coroutines.Dispatchers
@@ -13,8 +14,6 @@ import java.awt.Frame
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
-
-private const val UNKNOWN_TYPE = "application/octet-stream"
 
 /** Kinds a desktop may run rather than show; these are saved and left for the user to open. */
 private val RUNNABLE =
@@ -32,7 +31,7 @@ class DesktopAttachmentFiles(
         val dialog = FileDialog(null as Frame?).apply { isMultipleMode = true }
         dialog.isVisible = true
         return dialog.files.map { file ->
-            val type = Files.probeContentType(file.toPath()) ?: UNKNOWN_TYPE
+            val type = Files.probeContentType(file.toPath()) ?: UNKNOWN_FILE_TYPE
             PickedFile(file.name, type, file.length()) { withContext(Dispatchers.IO) { file.readBytes() } }
         }
     }

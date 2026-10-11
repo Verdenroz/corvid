@@ -12,6 +12,8 @@ import androidx.core.content.FileProvider
 import com.verdenroz.corvid.core.data.AttachmentFiles
 import com.verdenroz.corvid.core.data.Handoff
 import com.verdenroz.corvid.core.data.PickedFile
+import com.verdenroz.corvid.core.data.UNKNOWN_FILE_TYPE
+import com.verdenroz.corvid.core.data.UNNAMED_FILE
 import com.verdenroz.corvid.core.data.safeFileName
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -19,7 +21,6 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 
-private const val UNKNOWN_TYPE = "application/octet-stream"
 private const val FOLDER = "attachments"
 
 /**
@@ -49,8 +50,8 @@ class AndroidAttachmentFiles(private val context: Context) : AttachmentFiles {
             resolver.query(uri, columns, null, null, null)?.use { cursor ->
                 if (cursor.moveToFirst()) cursor.getString(0) to cursor.getLong(1) else null
             } ?: (null to 0L)
-        val shown = name ?: uri.lastPathSegment ?: "attachment"
-        return PickedFile(shown, resolver.getType(uri) ?: UNKNOWN_TYPE, size) {
+        val shown = name ?: uri.lastPathSegment ?: UNNAMED_FILE
+        return PickedFile(shown, resolver.getType(uri) ?: UNKNOWN_FILE_TYPE, size) {
             withContext(Dispatchers.IO) {
                 resolver.openInputStream(uri)?.use { it.readBytes() } ?: throw IOException("$shown could not be read")
             }
