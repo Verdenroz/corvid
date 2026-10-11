@@ -6,7 +6,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 
-data class Discovery(val server: ServerAddress, val issuer: String) {
+data class Discovery(val server: ServerAddress, val issuer: String, val email: String) {
     val serverHost: String get() = hostOf(server.baseUrl)
     val issuerHost: String get() = hostOf(issuer)
 }
@@ -51,6 +51,6 @@ class DiscoverAccount(
             }
         if (document.version != 1) throw DiscoveryFailure.UnsupportedVersion
         if (!document.server.startsWith("https://") || !document.issuer.startsWith("https://")) throw DiscoveryFailure.NotHttps
-        return Discovery(ServerAddress(document.server.trimEnd('/')), document.issuer.trimEnd('/'))
+        return Discovery(ServerAddress(document.server.trimEnd('/')), document.issuer.trimEnd('/'), email.trim())
     }
 }

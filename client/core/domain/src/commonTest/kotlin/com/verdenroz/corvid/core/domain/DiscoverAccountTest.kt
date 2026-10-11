@@ -40,7 +40,10 @@ class DiscoverAccountTest {
 
             val found = rig.discover("mailuser@example.com")
 
-            assertEquals(Discovery(ServerAddress("https://mail.example.com:4443"), "https://idp.example.com:4443"), found)
+            assertEquals(
+                Discovery(ServerAddress("https://mail.example.com:4443"), "https://idp.example.com:4443", "mailuser@example.com"),
+                found,
+            )
             assertEquals("mail.example.com", found.serverHost)
             assertEquals("idp.example.com", found.issuerHost)
         }

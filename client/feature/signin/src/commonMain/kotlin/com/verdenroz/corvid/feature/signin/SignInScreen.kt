@@ -47,17 +47,11 @@ fun SignInScreen(viewModel: SignInViewModel = koinViewModel()) {
     var another by rememberSaveable { mutableStateOf(false) }
     val remembered by viewModel.remembered.collectAsState()
     val account = remembered.takeUnless { another }
-    if (account != null) {
-        RememberedSignIn(viewModel, account) {
-            another = true
-            viewModel.reset()
-        }
-    } else {
-        AccountEntry(viewModel, remembered) {
-            another = false
-            viewModel.reset()
-        }
+    val toggle = {
+        another = !another
+        viewModel.reset()
     }
+    if (account != null) RememberedSignIn(viewModel, account, toggle) else AccountEntry(viewModel, remembered, toggle)
 }
 
 @Composable
@@ -127,7 +121,7 @@ private fun AccountEntry(
         if (advanced || discovery != null) {
             PrimaryButton(
                 stringResource(if (signingIn) Res.string.signin_in_progress else Res.string.signin_submit),
-                onClick = { viewModel.signIn(server, issuer) },
+                onClick = { if (advanced || discovery == null) viewModel.signIn(server, issuer) else viewModel.confirm(discovery) },
                 enabled = !signingIn,
             )
         } else {

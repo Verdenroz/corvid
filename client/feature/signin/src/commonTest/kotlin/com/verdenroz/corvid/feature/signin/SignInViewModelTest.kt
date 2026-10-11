@@ -26,7 +26,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 
 private const val DOCUMENT = """{"version":1,"server":"https://mail.example.com:4443","issuer":"https://idp.example.com:4443"}"""
-private val DISCOVERY = Discovery(ServerAddress("https://mail.example.com:4443"), "https://idp.example.com:4443")
+private val DISCOVERY = Discovery(ServerAddress("https://mail.example.com:4443"), "https://idp.example.com:4443", "mailuser@example.com")
 
 private val REMEMBERED = RememberedAccount("https://mail.example.com:4443", "https://idp.example.com:4443", "mailuser@example.com")
 
@@ -89,7 +89,7 @@ class SignInViewModelTest {
                 )
             viewModel.discover("mailuser@example.com")
 
-            viewModel.signIn("https://mail.example.com:4443/", "https://idp.example.com:4443")
+            viewModel.confirm(DISCOVERY)
 
             assertEquals(SignInUiState.SigningIn(DISCOVERY), viewModel.state.value)
             gate.complete(Unit)
@@ -137,7 +137,7 @@ class SignInViewModelTest {
             val viewModel = track(SignInViewModel(discoverAccount(), SignIn { _, _ -> }, preferences))
             viewModel.discover(" mailuser@example.com ")
 
-            viewModel.signIn("https://mail.example.com:4443/", "https://idp.example.com:4443/")
+            viewModel.confirm((viewModel.state.value as SignInUiState.Discovered).discovery)
 
             assertEquals(REMEMBERED, preferences.settings.value.account)
             assertEquals(REMEMBERED, viewModel.remembered.value)
@@ -152,21 +152,6 @@ class SignInViewModelTest {
             viewModel.signIn("https://mail.example.org/", "https://idp.example.org")
 
             assertEquals(RememberedAccount("https://mail.example.org", "https://idp.example.org"), preferences.settings.value.account)
-        }
-
-    @Test
-    fun `a discovered server changed under Advanced is remembered without the address`() =
-        runViewModelTest {
-            val preferences = preferences()
-            val viewModel = track(SignInViewModel(discoverAccount(), SignIn { _, _ -> }, preferences))
-            viewModel.discover("mailuser@example.com")
-
-            viewModel.signIn("https://other.example.com:4443", "https://idp.example.com:4443")
-
-            assertEquals(
-                RememberedAccount("https://other.example.com:4443", "https://idp.example.com:4443"),
-                preferences.settings.value.account,
-            )
         }
 
     @Test

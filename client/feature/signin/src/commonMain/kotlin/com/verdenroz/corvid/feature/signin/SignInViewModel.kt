@@ -60,14 +60,12 @@ class SignInViewModel(
     val remembered: StateFlow<RememberedAccount?> =
         preferences.settings.map { it.account }.stateIn(viewModelScope, SharingStarted.Eagerly, preferences.settings.value.account)
 
-    private var discoveredEmail: String? = null
-
     fun discover(email: String) {
         viewModelScope.launch {
             _state.value = SignInUiState.Discovering
             _state.value =
                 try {
-                    SignInUiState.Discovered(discoverAccount(email)).also { discoveredEmail = email.trim() }
+                    SignInUiState.Discovered(discoverAccount(email))
                 } catch (e: DiscoveryFailure) {
                     SignInUiState.DiscoveryFailed(e.message())
                 }
@@ -83,9 +81,11 @@ class SignInViewModel(
         issuer: String,
     ) {
         val discovery = (_state.value as? SignInUiState.Discovered)?.discovery
-        val account = RememberedAccount(server.trimEnd('/'), issuer.trimEnd('/'))
-        val confirmed = discovery == Discovery(ServerAddress(account.server), account.issuer)
-        signIn(if (confirmed) account.copy(email = discoveredEmail) else account, discovery)
+        signIn(RememberedAccount(server.trimEnd('/'), issuer.trimEnd('/')), discovery)
+    }
+
+    fun confirm(discovery: Discovery) {
+        signIn(RememberedAccount(discovery.server.baseUrl, discovery.issuer, discovery.email), discovery)
     }
 
     fun signInAs(account: RememberedAccount) {
