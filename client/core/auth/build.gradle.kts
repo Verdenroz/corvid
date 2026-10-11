@@ -24,3 +24,8 @@ kotlin {
         }
     }
 }
+
+// Fido2LiveTest reads this; a run with a key attached must not be served to a run without one.
+tasks.withType<Test>().configureEach {
+    inputs.property("fido2Live", providers.environmentVariable("CORVID_FIDO2_LIVE").orElse(""))
+}
