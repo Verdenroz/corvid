@@ -36,7 +36,6 @@ import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.provenance.LabelChip
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.custody_labelled
-import com.verdenroz.corvid.feature.mailbox.resources.custody_nothing
 import com.verdenroz.corvid.feature.mailbox.resources.custody_sender
 import com.verdenroz.corvid.feature.mailbox.resources.custody_way_in
 import org.jetbrains.compose.resources.stringResource
@@ -100,12 +99,8 @@ private fun LabelledCell(
     val colors = CorvidTheme.colors
     Column(modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Key(CorvidIcons.Tag, stringResource(Res.string.custody_labelled), colors.inkFaint)
-        if (cell.labels.isEmpty()) {
-            Value(stringResource(Res.string.custody_nothing), colors.ink)
-        } else {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                cell.labels.forEach { LabelChip(it) }
-            }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            cell.labels.forEach { LabelChip(it) }
         }
         cell.attribution?.let { Text(it.asString(), style = CorvidTheme.type.meta, color = colors.inkMuted) }
         cell.guess?.let { teach(it) }

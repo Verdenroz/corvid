@@ -113,7 +113,14 @@ private fun ExpandedMessage(
     onOpenSender: (String) -> Unit,
 ) {
     Column(Modifier.padding(vertical = 16.dp)) {
-        SenderLine(email, headers != null, onHeaders, onOpenSender, if (threaded) Modifier.clickable(onClick = onToggle) else Modifier)
+        SenderLine(
+            email,
+            wide,
+            headers != null,
+            onHeaders,
+            onOpenSender,
+            if (threaded) Modifier.clickable(onClick = onToggle) else Modifier,
+        )
         headers?.let { HeadersPanel(it, Modifier.padding(bottom = 16.dp)) }
         Custody(email, wide) { guess -> TeachControls(guess, teach.answering, teach.error, onAnswer) }
         MessageBody(email, repository, Modifier.padding(top = 18.dp).widthIn(max = 640.dp))
@@ -195,6 +202,7 @@ private fun CollapsedMessage(
 @Composable
 private fun SenderLine(
     email: EmailDetail,
+    wide: Boolean,
     headersShown: Boolean,
     onHeaders: () -> Unit,
     onOpenSender: (String) -> Unit,
@@ -244,7 +252,7 @@ private fun SenderLine(
             CorvidIcons.Headers,
             onHeaders,
             tint = if (headersShown) colors.accent else colors.inkMuted,
-            size = 36.dp,
+            size = if (wide) 36.dp else 48.dp,
         )
     }
 }

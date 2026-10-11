@@ -78,6 +78,20 @@ class ReaderViewModelTest {
             vm.state.first { it is ReaderUiState.Gone }
         }
 
+    @Test
+    fun `a thread is titled by the subject it started with, not the newest reply's`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.emails += FakeEmail("e1", "t1", setOf("inbox"), "Lunch", "a@example.test", "2024-01-01T00:00:00Z", body = "noon?")
+            fake.emails += FakeEmail("e2", "t1", setOf("inbox"), "RE: Re: Lunch", "b@example.test", "2024-01-02T00:00:00Z", body = "yes")
+            val vm = track(ReaderViewModel(repository(fake), "e2"))
+
+            val loaded = vm.state.first { it is ReaderUiState.Loaded } as ReaderUiState.Loaded
+
+            assertEquals("RE: Re: Lunch", loaded.newest.subject)
+            assertEquals("Lunch", loaded.subject)
+        }
+
     private fun guessed() =
         FakeEmail(
             "g1",

@@ -31,6 +31,9 @@ sealed interface ReaderUiState {
         val kind: ListKind = ListKind.Other,
     ) : ReaderUiState {
         val newest: EmailDetail get() = messages.last()
+
+        /** The subject the thread started with, not the newest reply's. */
+        val subject: String get() = originalSubject(messages.first().subject)
     }
 
     /** Deleted or moved out from under the reader between the inbox list and opening it. */
@@ -38,3 +41,8 @@ sealed interface ReaderUiState {
 
     data class Failed(val message: UiText) : ReaderUiState
 }
+
+private val REPLY_PREFIXES = Regex("""^(\s*(re|fwd?)\s*(\[\d+])?\s*:)+\s*""", RegexOption.IGNORE_CASE)
+
+/** Strips any run of Re:, Fwd: and Fw: prefixes, in any case and however repeated. */
+fun originalSubject(subject: String): String = subject.replace(REPLY_PREFIXES, "").trim()
