@@ -90,23 +90,24 @@ class ReaderNavigationTest {
 
     @Test
     fun `the reader answers gmail's letters`() {
-        assertEquals(ReaderKey.Archive, readerKey(Key.E, shift = false))
-        assertEquals(ReaderKey.Reply, readerKey(Key.R, shift = false))
-        assertEquals(ReaderKey.ReplyAll, readerKey(Key.A, shift = false))
-        assertEquals(ReaderKey.Forward, readerKey(Key.F, shift = false))
-        assertEquals(ReaderKey.Star, readerKey(Key.S, shift = false))
-        assertEquals(ReaderKey.Older, readerKey(Key.J, shift = false))
-        assertEquals(ReaderKey.Newer, readerKey(Key.K, shift = false))
-        assertEquals(ReaderKey.Back, readerKey(Key.U, shift = false))
-        assertEquals(ReaderKey.Unread, readerKey(Key.U, shift = true))
-        assertEquals(ReaderKey.Delete, readerKey(Key.Three, shift = true))
+        assertEquals(ReaderKey.Reply, Press(Key.R).readerKey())
+        assertEquals(ReaderKey.ReplyAll, Press(Key.A).readerKey())
+        assertEquals(ReaderKey.Forward, Press(Key.F).readerKey())
+        assertEquals(ReaderKey.Older, Press(Key.J).readerKey())
+        assertEquals(ReaderKey.Newer, Press(Key.K).readerKey())
+        assertEquals(ReaderKey.Back, Press(Key.U).readerKey())
+        assertEquals(MailShortcut.Archive, Press(Key.E).mailShortcut())
+        assertEquals(MailShortcut.Star, Press(Key.S).mailShortcut())
+        assertEquals(MailShortcut.MarkUnread, Press(Key.U, shift = true).mailShortcut())
+        assertEquals(MailShortcut.Delete, Press(Key.Three, shift = true).mailShortcut())
     }
 
     @Test
-    fun `a letter held with ctrl, alt or meta is left for the system`() {
-        assertNull(readerKey(Key.R, shift = false, modified = true))
-        assertNull(readerKey(Key.Three, shift = false))
-        assertNull(readerKey(Key.E, shift = true))
+    fun `hash deletes by the character typed, and a shifted letter is not its plain one`() {
+        assertEquals(MailShortcut.Delete, Press(Key.Pound, char = '#'.code).mailShortcut())
+        assertNull(Press(Key.Three).mailShortcut())
+        assertNull(Press(Key.E, shift = true).mailShortcut())
+        assertNull(Press(Key.U, shift = true).readerKey())
     }
 
     @Test
@@ -114,12 +115,12 @@ class ReaderNavigationTest {
         val inbox = listOf(ConversationAction.Archive, ConversationAction.Trash, ConversationAction.MarkUnread, ConversationAction.Star)
         val trash = listOf(ConversationAction.Destroy, ConversationAction.MarkUnread)
 
-        assertEquals(ConversationAction.Archive, ReaderKey.Archive.action(inbox))
-        assertNull(ReaderKey.Archive.action(trash))
-        assertEquals(ConversationAction.Trash, ReaderKey.Delete.action(inbox))
-        assertEquals(ConversationAction.Destroy, ReaderKey.Delete.action(trash))
-        assertEquals(ConversationAction.Unstar, ReaderKey.Star.action(listOf(ConversationAction.Unstar)))
-        assertNull(ReaderKey.Star.action(trash))
+        assertEquals(ConversationAction.Archive, MailShortcut.Archive.action(inbox))
+        assertNull(MailShortcut.Archive.action(trash))
+        assertEquals(ConversationAction.Trash, MailShortcut.Delete.action(inbox))
+        assertEquals(ConversationAction.Destroy, MailShortcut.Delete.action(trash))
+        assertEquals(ConversationAction.Unstar, MailShortcut.Star.action(listOf(ConversationAction.Unstar)))
+        assertNull(MailShortcut.Star.action(trash))
     }
 
     @Test

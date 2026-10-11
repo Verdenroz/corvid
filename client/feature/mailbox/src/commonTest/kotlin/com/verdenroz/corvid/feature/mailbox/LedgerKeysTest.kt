@@ -1,5 +1,6 @@
 package com.verdenroz.corvid.feature.mailbox
 
+import androidx.compose.ui.input.key.Key
 import com.verdenroz.corvid.core.model.Conversation
 import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.core.model.Provenance
@@ -50,40 +51,43 @@ class LedgerKeysTest {
     @Test
     fun `e archives only in the inbox`() {
         val target = listOf(row("a")).target()
-        assertEquals(ConversationAction.Archive, ListKey.Archive.action(ListKind.Inbox, target))
-        assertNull(ListKey.Archive.action(ListKind.Other, target))
-        assertNull(ListKey.Archive.action(ListKind.Trash, target))
+        assertEquals(ConversationAction.Archive, MailShortcut.Archive.action(actionsFor(ListKind.Inbox, target)))
+        assertNull(MailShortcut.Archive.action(actionsFor(ListKind.Other, target)))
+        assertNull(MailShortcut.Archive.action(actionsFor(ListKind.Trash, target)))
     }
 
     @Test
     fun `hash moves to trash, and in trash deletes for good`() {
         val target = listOf(row("a")).target()
-        assertEquals(ConversationAction.Trash, ListKey.Delete.action(ListKind.Inbox, target))
-        assertEquals(ConversationAction.Trash, ListKey.Delete.action(ListKind.Other, target))
-        assertEquals(ConversationAction.Destroy, ListKey.Delete.action(ListKind.Trash, target))
+        assertEquals(ConversationAction.Trash, MailShortcut.Delete.action(actionsFor(ListKind.Inbox, target)))
+        assertEquals(ConversationAction.Trash, MailShortcut.Delete.action(actionsFor(ListKind.Other, target)))
+        assertEquals(ConversationAction.Destroy, MailShortcut.Delete.action(actionsFor(ListKind.Trash, target)))
     }
 
     @Test
     fun `s stars an unstarred row and unstars a starred one, and does nothing in trash`() {
-        assertEquals(ConversationAction.Star, ListKey.Star.action(ListKind.Inbox, listOf(row("a")).target()))
-        assertEquals(ConversationAction.Unstar, ListKey.Star.action(ListKind.Inbox, listOf(row("c", starred = true)).target()))
-        assertNull(ListKey.Star.action(ListKind.Trash, listOf(row("a")).target()))
+        assertEquals(ConversationAction.Star, MailShortcut.Star.action(actionsFor(ListKind.Inbox, listOf(row("a")).target())))
+        assertEquals(
+            ConversationAction.Unstar,
+            MailShortcut.Star.action(actionsFor(ListKind.Inbox, listOf(row("c", starred = true)).target())),
+        )
+        assertNull(MailShortcut.Star.action(actionsFor(ListKind.Trash, listOf(row("a")).target())))
     }
 
     @Test
     fun `mark read and mark unread only fire where the button would show`() {
         val unread = listOf(row("b", unread = true)).target()
         val read = listOf(row("a")).target()
-        assertEquals(ConversationAction.MarkRead, ListKey.MarkRead.action(ListKind.Inbox, unread))
-        assertNull(ListKey.MarkRead.action(ListKind.Inbox, read))
-        assertEquals(ConversationAction.MarkUnread, ListKey.MarkUnread.action(ListKind.Inbox, read))
-        assertNull(ListKey.MarkUnread.action(ListKind.Inbox, unread))
+        assertEquals(ConversationAction.MarkRead, MailShortcut.MarkRead.action(actionsFor(ListKind.Inbox, unread)))
+        assertNull(MailShortcut.MarkRead.action(actionsFor(ListKind.Inbox, read)))
+        assertEquals(ConversationAction.MarkUnread, MailShortcut.MarkUnread.action(actionsFor(ListKind.Inbox, read)))
+        assertNull(MailShortcut.MarkUnread.action(actionsFor(ListKind.Inbox, unread)))
     }
 
     @Test
-    fun `movement keys name no action`() {
-        val target = listOf(row("a")).target()
-        listOf(ListKey.Next, ListKey.Previous, ListKey.Open, ListKey.Toggle).forEach { assertNull(it.action(ListKind.Inbox, target)) }
+    fun `a list's own keys never shadow a shared shortcut`() {
+        listOf(Key.J, Key.K, Key.O, Key.X, Key.Enter).forEach { assertNull(Press(it).mailShortcut()) }
+        listOf(Key.E, Key.S).forEach { assertNull(Press(it).listKey()) }
     }
 
     @Test

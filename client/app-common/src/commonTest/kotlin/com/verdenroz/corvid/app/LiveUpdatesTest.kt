@@ -68,6 +68,7 @@ class LiveUpdatesTest {
             val ledgers = Ledgers(MailboxRepository(fake.client()))
             val inbox = track(ledgers.of(LedgerTab.Inbox))
             inbox.state.first { it is LedgerUiState.Loaded }
+            inbox.shown(true)
             fake.emails +=
                 FakeEmail(
                     id = "new",
@@ -80,7 +81,7 @@ class LiveUpdatesTest {
             fake.queryState = "qs2"
             val changes = MutableSharedFlow<StateChange>()
             coroutineScope {
-                val job = launch { followMailboxChanges(changes, 0.milliseconds) { ledgers.refreshAll() } }
+                val job = launch { followMailboxChanges(changes, 0.milliseconds) { ledgers.mailChanged() } }
 
                 changes.subscriptionCount.first { it > 0 }
                 changes.emit(change("Email"))

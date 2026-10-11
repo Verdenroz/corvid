@@ -37,7 +37,6 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.AttachmentFiles
-import com.verdenroz.corvid.core.data.ComposeRepository
 import com.verdenroz.corvid.core.data.fileSize
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
@@ -70,15 +69,16 @@ import com.verdenroz.corvid.feature.compose.resources.compose_uploading
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
+/** [model] gives the back-stack entry's view model, made on first call from the form saved before the screen was recreated. */
 @Composable
 fun ComposeScreen(
-    composeRepository: ComposeRepository,
     files: AttachmentFiles,
     intent: ComposeIntent,
     onClose: () -> Unit,
+    model: (restore: ComposeRestore?) -> ComposeViewModel,
 ) {
     var restore by rememberSaveable(stateSaver = ComposeRestoreSaver) { mutableStateOf<ComposeRestore?>(null) }
-    val viewModel = remember(composeRepository, intent) { ComposeViewModel(composeRepository, intent, restore) }
+    val viewModel = model(restore)
     DisposableEffect(viewModel) { onDispose(viewModel::release) }
     val state by viewModel.state.collectAsState()
     (state as? ComposeUiState.Editing)?.let { editing ->

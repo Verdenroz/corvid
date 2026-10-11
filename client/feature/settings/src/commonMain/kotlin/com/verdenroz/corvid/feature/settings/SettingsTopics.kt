@@ -13,9 +13,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -23,6 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.component.drawIndicator
 import com.verdenroz.corvid.feature.settings.resources.Res
 import com.verdenroz.corvid.feature.settings.resources.settings_about
 import com.verdenroz.corvid.feature.settings.resources.settings_account
@@ -74,16 +72,8 @@ private fun TopicItem(
                 .clip(CorvidShape.small)
                 .clickable(role = Role.Tab, onClick = onClick)
                 .semantics { this.selected = selected }
-                .drawBehind {
-                    if (selected) {
-                        drawRoundRect(
-                            colors.accent,
-                            Offset(12.dp.toPx(), size.height - 2.dp.toPx()),
-                            Size(20.dp.toPx(), 2.dp.toPx()),
-                            CornerRadius(1.dp.toPx()),
-                        )
-                    }
-                }.padding(horizontal = 12.dp)
+                .drawBehind { if (selected) drawIndicator(colors.accent, centerX = 22.dp.toPx()) }
+                .padding(horizontal = 12.dp)
                 .wrapContentHeight(),
     )
 }

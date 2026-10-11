@@ -23,13 +23,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isAltPressed
-import androidx.compose.ui.input.key.isCtrlPressed
-import androidx.compose.ui.input.key.isMetaPressed
-import androidx.compose.ui.input.key.isShiftPressed
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.AttachmentFiles
@@ -59,17 +52,16 @@ import org.jetbrains.compose.resources.stringResource
  */
 @Composable
 fun ReaderScreen(
+    viewModel: ReaderViewModel,
     repository: MailboxRepository,
     files: AttachmentFiles,
     actions: MailActions,
-    emailId: String,
     neighbours: Neighbours?,
     onOpen: (String) -> Unit,
     onBack: () -> Unit,
     onCompose: (ComposeIntent) -> Unit,
     onOpenSender: (String) -> Unit,
 ) {
-    val viewModel = remember(repository, emailId) { ReaderViewModel(repository, emailId) }
     val state by viewModel.state.collectAsState()
     val onToggle = remember(viewModel) { viewModel::toggle }
     val onAnswer = remember(viewModel) { viewModel::answer }
@@ -104,11 +96,12 @@ fun ReaderScreen(
     }
 
     HandleKeys { event ->
-        val command =
-            readerKey(event.key, event.isShiftPressed, event.isCtrlPressed || event.isAltPressed || event.isMetaPressed)
-                ?.takeIf { event.type == KeyEventType.KeyDown }
-        command?.let { ReaderCommands(thread, offered, neighbours, onAction, onOpen, onBack, onCompose).run(it) }
-        command != null
+        val press = event.press()
+        val shortcut = press?.mailShortcut()
+        val command = press?.readerKey()
+        shortcut?.action(offered)?.let(onAction)
+        command?.let { ReaderCommands(thread, neighbours, onOpen, onBack, onCompose).run(it) }
+        shortcut != null || command != null
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -142,9 +135,7 @@ fun ReaderScreen(
 
 private class ReaderCommands(
     private val thread: ReaderUiState.Loaded?,
-    private val offered: List<ConversationAction>,
     private val neighbours: Neighbours?,
-    private val onAction: (ConversationAction) -> Unit,
     private val onOpen: (String) -> Unit,
     private val onBack: () -> Unit,
     private val onCompose: (ComposeIntent) -> Unit,
@@ -158,7 +149,6 @@ private class ReaderCommands(
             ReaderKey.Older -> neighbours?.older?.let(onOpen)
             ReaderKey.Newer -> neighbours?.newer?.let(onOpen)
             ReaderKey.Back -> onBack()
-            else -> command.action(offered)?.let(onAction)
         }
     }
 }

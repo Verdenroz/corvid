@@ -16,6 +16,7 @@ import com.verdenroz.corvid.core.model.CorvidKeywords
 import com.verdenroz.corvid.core.model.EmailDetail
 import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.uiText
+import com.verdenroz.corvid.core.ui.launchToEnd
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.headers_gone
 import com.verdenroz.corvid.feature.mailbox.resources.teach_refused
@@ -24,10 +25,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** Reads the thread holding [emailId]; its unread messages are marked read once it is on screen. */
+/**
+ * Reads the thread holding [emailId]; its unread messages are marked read once it is on screen. [listKind] is the kind
+ * of the list it was opened from, so the reader offers what that list's row did; with none it is read off the thread.
+ */
 class ReaderViewModel(
     private val repository: MailboxRepository,
     private val emailId: String,
+    private val listKind: ListKind? = null,
 ) : ViewModel() {
     private val _state = MutableStateFlow<ReaderUiState>(ReaderUiState.Loading)
     val state: StateFlow<ReaderUiState> = _state
@@ -94,7 +99,7 @@ class ReaderViewModel(
         val current = _state.value as? ReaderUiState.Loaded ?: return
         if (current.teach[id]?.answering == true) return
         setTeach(id, TeachState(answering = true))
-        viewModelScope.launch {
+        launchToEnd {
             try {
                 val refused = repository.updateKeywords(id, correction.keywordPatch())
                 if (refused == null) {
@@ -116,8 +121,8 @@ class ReaderViewModel(
             is ThreadLookup.Found -> {
                 val unread = lookup.messages.filter { CorvidKeywords.SEEN !in it.keywords }.map { it.id }
                 val expanded = unread.toSet() + emailId + lookup.messages.last().id
-                _state.value = ReaderUiState.Loaded(lookup.messages, expanded, kind = kindOf(lookup.messages))
-                if (unread.isNotEmpty()) viewModelScope.launch { markRead(unread) }
+                _state.value = ReaderUiState.Loaded(lookup.messages, expanded, kind = listKind ?: kindOf(lookup.messages))
+                if (unread.isNotEmpty()) launchToEnd { markRead(unread) }
             }
         }
     }

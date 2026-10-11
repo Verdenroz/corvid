@@ -10,6 +10,7 @@ import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.model.FilterRule
 import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.uiText
+import com.verdenroz.corvid.core.ui.launchToEnd
 import com.verdenroz.corvid.feature.filters.resources.Res
 import com.verdenroz.corvid.feature.filters.resources.filters_another_active
 import com.verdenroz.corvid.feature.filters.resources.filters_newer
@@ -103,7 +104,7 @@ class FiltersViewModel(
         replaceForeign: Boolean,
     ) {
         update { it.copy(rules = rules, save = SaveStatus.Saving) }
-        viewModelScope.launch {
+        launchToEnd {
             try {
                 when (val result = repository.save(rules, replaceForeign)) {
                     is SaveResult.Saved -> update { it.copy(foreignScript = null, save = SaveStatus.Idle) }

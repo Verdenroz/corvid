@@ -22,6 +22,7 @@ import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 import com.verdenroz.corvid.app.shell.KeyState
 import com.verdenroz.corvid.app.shell.NavDrawer
+import com.verdenroz.corvid.app.shell.Places
 import com.verdenroz.corvid.app.shell.sidebarPlace
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
@@ -78,11 +79,7 @@ class NavDrawerTest {
                         NavDrawer(
                             state = drawer,
                             enabled = navigator.route is Route.Home,
-                            place = sidebarPlace(navigator.homeTab, navigator.route),
-                            inboxUnread = 1,
-                            onSelect = navigator::openTab,
-                            onFilters = {},
-                            onSettings = {},
+                            places = Places(sidebarPlace(navigator.homeTab, navigator.route), 1, navigator::openTab, {}, {}),
                         ) {
                             Home(Route.Home(navigator.homeTab), key, ShellState(), navigator, ledgers) { scope.launch { drawer.open() } }
                         }

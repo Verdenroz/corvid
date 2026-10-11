@@ -45,6 +45,9 @@ import com.verdenroz.corvid.core.testing.FakeEmail
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.FakeMailbox
 import com.verdenroz.corvid.core.testing.client
+import com.verdenroz.corvid.core.ui.EntryHandlers
+import com.verdenroz.corvid.core.ui.LocalEntryHandlers
+import com.verdenroz.corvid.core.ui.LocalTopEntryKeys
 import com.verdenroz.corvid.core.ui.LocalWideLayout
 import kotlinx.coroutines.runBlocking
 import kotlin.test.AfterTest
@@ -72,6 +75,7 @@ class LedgerInteractionTest {
     private val opened = mutableListOf<String>()
     private val senders = mutableListOf<String>()
     private var shellBacks = 0
+    private val handlers = EntryHandlers()
 
     private fun <T : ViewModel> ViewModelStore.model(
         key: String,
@@ -81,7 +85,7 @@ class LedgerInteractionTest {
     @AfterTest
     fun clear() = store.clear()
 
-    /** Escape feeds the back dispatcher, as the desktop window does, and the shell's own back handler sits under the list's. */
+    /** Escape feeds the back dispatcher, as the desktop window does, and back and keys reach the list through its entry, as in the shell. */
     private fun ComposeUiTest.showLedger(
         wide: Boolean,
         above: @Composable () -> Unit = {},
@@ -96,17 +100,21 @@ class LedgerInteractionTest {
             NavigationBackHandler(
                 rememberNavigationEventState(NavigationEventInfo.None),
                 isBackEnabled = true,
-                onBackCompleted = { shellBacks++ },
+                onBackCompleted = { if (!handlers.handleBack()) shellBacks++ },
             )
             CorvidTheme(darkTheme = false) {
-                CompositionLocalProvider(LocalWideLayout provides wide) {
+                CompositionLocalProvider(
+                    LocalWideLayout provides wide,
+                    LocalEntryHandlers provides handlers,
+                    LocalTopEntryKeys provides handlers::handleKey,
+                ) {
                     Column(
                         Modifier.onPreviewKeyEvent { event ->
                             (event.key == Key.Escape && event.type == KeyEventType.KeyDown).also { if (it) escape.backCompleted() }
                         },
                     ) {
                         above()
-                        LedgerContent(ledger, actions, "empty", { opened += it }, { senders += it }, takeFocus = true)
+                        LedgerContent(ledger, actions, "empty", { opened += it.id }, { senders += it }, takeFocus = true)
                     }
                 }
             }

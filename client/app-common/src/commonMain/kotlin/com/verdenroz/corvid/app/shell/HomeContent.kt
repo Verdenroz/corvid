@@ -24,6 +24,7 @@ import com.verdenroz.corvid.appcommon.resources.write
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
+import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.core.ui.QuietPane
 import com.verdenroz.corvid.feature.mailbox.LedgerScreen
@@ -34,7 +35,7 @@ import org.jetbrains.compose.resources.stringResource
 internal fun HomeContent(
     tab: HomeTab,
     ledgers: Ledgers,
-    onOpenEmail: (String) -> Unit,
+    onOpenEmail: (EmailSummary) -> Unit,
     onOpenSender: (String) -> Unit,
     onWrite: () -> Unit,
 ) {

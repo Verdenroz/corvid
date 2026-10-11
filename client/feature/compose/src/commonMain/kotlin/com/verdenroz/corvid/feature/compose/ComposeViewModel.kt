@@ -21,6 +21,7 @@ import com.verdenroz.corvid.core.model.Draft
 import com.verdenroz.corvid.core.model.parseAddresses
 import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.uiText
+import com.verdenroz.corvid.core.ui.launchToEnd
 import com.verdenroz.corvid.feature.compose.resources.Res
 import com.verdenroz.corvid.feature.compose.resources.compose_add_recipient
 import com.verdenroz.corvid.feature.compose.resources.compose_draft_gone
@@ -215,7 +216,7 @@ class ComposeViewModel(
     /** Saves what the form holds now, for a screen that is going away. */
     fun release() {
         pendingSave?.cancel()
-        save()
+        launchToEnd { persist() }
     }
 
     fun retrySave() = save()
@@ -223,7 +224,7 @@ class ComposeViewModel(
     fun discard() {
         discarded = true
         pendingSave?.cancel()
-        viewModelScope.launch {
+        launchToEnd {
             saves.withLock {
                 val draftId = (_state.value as? ComposeUiState.Editing)?.draftId ?: return@withLock
                 try {
@@ -245,9 +246,9 @@ class ComposeViewModel(
         }
         pendingSave?.cancel()
         _state.value = current.copy(sending = true, error = null)
-        viewModelScope.launch {
+        launchToEnd {
             try {
-                persist(sending = true)?.let { return@launch fail(it) }
+                persist(sending = true)?.let { return@launchToEnd fail(it) }
                 val draftId = checkNotNull((_state.value as ComposeUiState.Editing).draftId)
                 when (val result = composeRepository.send(draftId)) {
                     is SendResult.Sent -> _state.value = ComposeUiState.Sent
