@@ -3,7 +3,6 @@ package com.verdenroz.corvid.app
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -30,8 +29,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
@@ -63,15 +60,13 @@ import com.verdenroz.corvid.core.jmap.JmapClient
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.prefs.DevicePreferences
 import com.verdenroz.corvid.core.ui.LocalBackGuard
+import com.verdenroz.corvid.core.ui.LocalPageKeys
 import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.core.ui.WIDE_LAYOUT
 import com.verdenroz.corvid.feature.compose.ComposeScreen
 import com.verdenroz.corvid.feature.filters.FiltersScreen
 import com.verdenroz.corvid.feature.mailbox.ActionNoticeBar
-import com.verdenroz.corvid.feature.mailbox.LedgerSource
 import com.verdenroz.corvid.feature.mailbox.LedgerTab
-import com.verdenroz.corvid.feature.mailbox.LedgerViewModel
-import com.verdenroz.corvid.feature.mailbox.ReaderScreen
 import com.verdenroz.corvid.feature.mailbox.SearchScreen
 import com.verdenroz.corvid.feature.mailbox.SenderCard
 import com.verdenroz.corvid.feature.mailbox.SenderCardActions
@@ -131,7 +126,7 @@ internal fun UnlockedContent(
         onBackCompleted = navigator::handleBack,
     )
 
-    val shellFocus = remember { FocusRequester() }
+    val shellFocus = remember { ShellFocus() }
 
     val shellState by shell.state.collectAsState()
     val session = SettingsSession(hosts, shellState.identity, updates, onLock, onSignOut)
@@ -149,9 +144,9 @@ internal fun UnlockedContent(
         val wide = maxWidth >= WIDE_LAYOUT
         val searchInput = rememberSearchInput(navigator, wide)
         CompositionLocalProvider(LocalWideLayout provides wide) {
-            LaunchedEffect(Unit) { shellFocus.requestFocus() }
+            shellFocus.ReclaimOn(navigator.entryKey(navigator.depth - 1))
             Column(
-                Modifier.fillMaxSize().focusRequester(shellFocus).focusable().onPreviewKeyEvent { event ->
+                Modifier.fillMaxSize().then(shellFocus.modifier(navigator::handleKey)).onPreviewKeyEvent { event ->
                     (wide && event.isSearchShortcut()).also { if (it) searchInput.focus.requestFocus() }
                 },
             ) {
@@ -177,10 +172,14 @@ internal fun UnlockedContent(
                             val floating = floats && index == top
                             if (floating && entry is Route.Sender) Scrim(navigator::back)
                             Box(if (floating) floating(entry, CorvidTheme.colors.line) else Modifier.fillMaxSize()) {
-                                CompositionLocalProvider(LocalBackGuard provides navigator.guard(index)) {
+                                CompositionLocalProvider(
+                                    LocalBackGuard provides navigator.guard(index),
+                                    LocalPageKeys provides navigator.keys(index),
+                                ) {
                                     saved.SaveableStateProvider(entryKey) {
                                         Page(
                                             entry,
+                                            index,
                                             navigator,
                                             scope,
                                             models,
@@ -276,6 +275,7 @@ private fun Home(
 @Composable
 private fun Page(
     route: Route,
+    index: Int,
     navigator: Navigator,
     scope: Scope,
     models: EntryModels,
@@ -289,19 +289,17 @@ private fun Page(
     when (route) {
         is Route.Home -> home(route)
         is Route.Reader ->
-            ReaderScreen(
+            ReaderPage(
+                route,
+                listUnder(index, navigator, models, ledgers, mailbox),
                 mailbox,
                 ledgers.actions,
-                route.emailId,
-                onBack = navigator::back,
+                navigator,
                 onCompose = { navigator.push(Route.Compose(it)) },
                 onOpenSender = { navigator.push(Route.Sender(it)) },
             )
         is Route.Search -> {
-            val search =
-                route.query.takeIf { it.isNotBlank() }?.let { query ->
-                    models.of(entryKey, LedgerViewModel::class) { LedgerViewModel(mailbox, LedgerSource.Search(query)) }
-                }
+            val search = route.query.takeIf { it.isNotBlank() }?.let { searchLedger(models, entryKey, mailbox, it) }
             SearchScreen(
                 viewModel = search,
                 actions = ledgers.actions,

@@ -2,7 +2,9 @@ package com.verdenroz.corvid.app
 
 import androidx.compose.runtime.saveable.SaveableStateHolder
 import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.ui.input.key.KeyEvent
 import com.verdenroz.corvid.core.ui.BackGuard
+import com.verdenroz.corvid.core.ui.PageKeys
 
 /** The unlocked back stack; each entry's saved UI state is keyed by its place in it and dropped when it is popped. */
 internal class Navigator(
@@ -10,6 +12,7 @@ internal class Navigator(
     private val saved: SaveableStateHolder,
 ) {
     private val guards = mutableMapOf<String, BackGuard>()
+    private val keys = mutableMapOf<String, PageKeys>()
 
     val route: Route get() = stack.last()
 
@@ -22,6 +25,11 @@ internal class Navigator(
     fun entryKey(index: Int): String = "$index ${stack[index].encode()}"
 
     fun guard(index: Int): BackGuard = guards.getOrPut(entryKey(index)) { BackGuard() }
+
+    fun keys(index: Int): PageKeys = keys.getOrPut(entryKey(index)) { PageKeys() }
+
+    /** The keys nothing focused took go to the top screen alone, never one under a sheet or panel. */
+    fun handleKey(event: KeyEvent): Boolean = keys[entryKey(stack.lastIndex)]?.handle(event) == true
 
     /** Back as the user pressed it: the top screen's guard answers first. */
     fun handleBack() {
@@ -79,5 +87,6 @@ internal class Navigator(
     private fun forget(key: String) {
         saved.removeState(key)
         guards -= key
+        keys -= key
     }
 }

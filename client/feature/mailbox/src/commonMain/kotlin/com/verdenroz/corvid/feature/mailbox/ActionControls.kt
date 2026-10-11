@@ -62,13 +62,16 @@ internal fun ActionIcon(
     onClick: () -> Unit,
     tint: Color = CorvidTheme.colors.inkMuted,
     size: Dp = 40.dp,
+    enabled: Boolean = true,
 ) {
     TooltipBox(
         positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Below),
         tooltip = { PlainTooltip { Text(label) } },
         state = rememberTooltipState(),
     ) {
-        IconButton(onClick, Modifier.size(size)) { Icon(icon, label, tint = tint, modifier = Modifier.size(20.dp)) }
+        IconButton(onClick, Modifier.size(size), enabled = enabled) {
+            Icon(icon, label, tint = if (enabled) tint else CorvidTheme.colors.inkFaint, modifier = Modifier.size(20.dp))
+        }
     }
 }
 

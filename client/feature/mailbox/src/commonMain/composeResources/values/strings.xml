@@ -10,6 +10,9 @@
     <string name="mailbox_from">From: %1$s</string>
     <string name="reader_to">to %1$s</string>
     <string name="reader_cc">cc %1$s</string>
+    <string name="reader_newer">Newer</string>
+    <string name="reader_older">Older</string>
+    <string name="reader_position">%1$d of %2$d</string>
     <string name="mailbox_truncated">This message was truncated.</string>
     <string name="mailbox_no_sender">Unknown sender</string>
     <string name="mailbox_separator">-</string>
@@ -72,7 +75,6 @@
     <string name="custody_by_rule">By your filter</string>
     <string name="custody_by_labeler">By the labeler</string>
     <string name="custody_by_you">By you</string>
-    <string name="custody_nothing">Nothing yet</string>
     <string name="teach_right">Right</string>
     <string name="teach_wrong">Wrong</string>
     <string name="teach_change">Change</string>

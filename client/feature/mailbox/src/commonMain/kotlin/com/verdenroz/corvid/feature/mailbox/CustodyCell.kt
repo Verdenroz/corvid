@@ -36,7 +36,10 @@ internal sealed interface CustodyCell {
     data class Labelled(val labels: List<Label>, val attribution: UiText?, val guess: Label.Guess?) : CustodyCell
 }
 
-/** A message the milter never saw has no way-in cell: a missing header is not a clean message. */
+/**
+ * A message the milter never saw has no way-in cell: a missing header is not a clean message.
+ * One with no label and no guess has no labelled cell, so the others take its width.
+ */
 internal fun custodyCells(
     provenance: Provenance,
     labels: List<Label>,
@@ -44,7 +47,7 @@ internal fun custodyCells(
     listOfNotNull(
         senderCell(provenance.seal),
         provenance.rewrite?.let { wayInCell(it, provenance.suspect) },
-        labelledCell(labels),
+        labels.takeIf { it.isNotEmpty() }?.let(::labelledCell),
     )
 
 private fun senderCell(seal: Seal): CustodyCell.Sender =
@@ -101,7 +104,6 @@ private fun labelledCell(labels: List<Label>): CustodyCell.Labelled {
     val attribution =
         when {
             guess != null -> uiText(Res.string.custody_guess)
-            labels.isEmpty() -> null
             labels.all { it is Label.Rule } -> uiText(Res.string.custody_by_rule)
             labels.all { it is Label.Labeler } -> uiText(Res.string.custody_by_labeler)
             labels.all { it is Label.Yours } -> uiText(Res.string.custody_by_you)

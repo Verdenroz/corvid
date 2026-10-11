@@ -111,8 +111,15 @@ class CustodyCellTest {
     fun `a message the milter never saw has no way-in cell rather than a clean one`() {
         val shown = cells(rewrite = null)
 
-        assertEquals(2, shown.size)
+        assertEquals(1, shown.size)
         assertEquals(true, shown.none { it is CustodyCell.WayIn })
+    }
+
+    @Test
+    fun `a message with no label and no guess has no labelled cell, so the sender spans the strip`() {
+        assertEquals(listOf(CustodyCell.Sender::class), cells(rewrite = null).map { it::class })
+        assertEquals(listOf(CustodyCell.Sender::class, CustodyCell.WayIn::class), cells().map { it::class })
+        assertEquals(true, cells(labels = listOf(Label.Guess("bills"))).last() is CustodyCell.Labelled)
     }
 
     @Test
@@ -126,7 +133,6 @@ class CustodyCellTest {
         assertEquals(uiText(Res.string.custody_by_rule), labelled(Label.Rule("ops")).attribution)
         assertEquals(uiText(Res.string.custody_by_you), labelled(Label.Yours("tax")).attribution)
         assertNull(labelled(Label.Yours("tax"), Label.Rule("ops")).attribution)
-        assertNull(labelled().attribution)
         assertNull(labelled(Label.Labeler("bills")).guess)
     }
 }

@@ -13,6 +13,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -21,27 +22,45 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.Correction
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.text.asString
+import com.verdenroz.corvid.core.ui.HandleKeys
 import com.verdenroz.corvid.core.ui.LocalWideLayout
-import com.verdenroz.corvid.core.ui.PageHeader
 import com.verdenroz.corvid.core.ui.QuietPane
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_back
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_gone
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_no_subject
+import com.verdenroz.corvid.feature.mailbox.resources.reader_newer
+import com.verdenroz.corvid.feature.mailbox.resources.reader_older
+import com.verdenroz.corvid.feature.mailbox.resources.reader_position
 import org.jetbrains.compose.resources.stringResource
 
+/**
+ * [neighbours] places the thread in the list it was opened from, null when it came from anywhere else; [onOpen] swaps
+ * the reader for another conversation of that list.
+ */
 @Composable
 fun ReaderScreen(
     repository: MailboxRepository,
     actions: MailActions,
     emailId: String,
+    neighbours: Neighbours?,
+    onOpen: (String) -> Unit,
     onBack: () -> Unit,
     onCompose: (ComposeIntent) -> Unit,
     onOpenSender: (String) -> Unit,
@@ -53,9 +72,37 @@ fun ReaderScreen(
     val onHeaders = remember(viewModel) { viewModel::toggleHeaders }
 
     val wide = LocalWideLayout.current
+    val thread = state as? ReaderUiState.Loaded
+    val offered = thread?.let { actionsFor(it.kind, it.target()) }.orEmpty()
+    var confirming by remember(thread?.newest?.id) { mutableStateOf(false) }
+    val perform = { action: ConversationAction ->
+        if (thread != null) {
+            val exit = exitAfter(action, neighbours)
+            actions.perform(action, thread.target())
+            when (exit) {
+                ReaderExit.Stay -> Unit
+                ReaderExit.Back -> onBack()
+                is ReaderExit.Open -> onOpen(exit.emailId)
+            }
+        }
+    }
+    val onAction = { action: ConversationAction -> if (action == ConversationAction.Destroy) confirming = true else perform(action) }
+
+    HandleKeys { event ->
+        val command =
+            readerKey(event.key, event.isShiftPressed, event.isCtrlPressed || event.isAltPressed || event.isMetaPressed)
+                ?.takeIf { event.type == KeyEventType.KeyDown }
+        command?.let { ReaderCommands(thread, offered, neighbours, onAction, onOpen, onBack, onCompose).run(it) }
+        command != null
+    }
+
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            ActionBar(wide, state as? ReaderUiState.Loaded, actions, onBack)
+            ActionBar(wide, offered, neighbours, onAction, onOpen, onBack)
+            if (confirming) {
+                DestroyQuestion(onConfirm = { perform(ConversationAction.Destroy) }, onCancel = { confirming = false })
+            }
+            if (wide) HorizontalDivider(color = CorvidTheme.colors.line)
             when (val current = state) {
                 is ReaderUiState.Loading -> Unit
                 is ReaderUiState.Failed -> QuietPane(current.message.asString())
@@ -76,40 +123,83 @@ fun ReaderScreen(
     }
 }
 
+private class ReaderCommands(
+    private val thread: ReaderUiState.Loaded?,
+    private val offered: List<ConversationAction>,
+    private val neighbours: Neighbours?,
+    private val onAction: (ConversationAction) -> Unit,
+    private val onOpen: (String) -> Unit,
+    private val onBack: () -> Unit,
+    private val onCompose: (ComposeIntent) -> Unit,
+) {
+    fun run(command: ReaderKey) {
+        val newest = thread?.newest?.id
+        when (command) {
+            ReaderKey.Reply -> newest?.let { onCompose(ComposeIntent.Reply(it, all = false)) }
+            ReaderKey.ReplyAll -> newest?.let { onCompose(ComposeIntent.Reply(it, all = true)) }
+            ReaderKey.Forward -> newest?.let { onCompose(ComposeIntent.Forward(it)) }
+            ReaderKey.Older -> neighbours?.older?.let(onOpen)
+            ReaderKey.Newer -> neighbours?.newer?.let(onOpen)
+            ReaderKey.Back -> onBack()
+            else -> command.action(offered)?.let(onAction)
+        }
+    }
+}
+
+/** Touch targets stay 48dp when narrow; wide, the pointer gets the denser 40dp. */
 @Composable
 private fun ActionBar(
     wide: Boolean,
-    thread: ReaderUiState.Loaded?,
-    actions: MailActions,
+    offered: List<ConversationAction>,
+    neighbours: Neighbours?,
+    onAction: (ConversationAction) -> Unit,
+    onOpen: (String) -> Unit,
     onBack: () -> Unit,
 ) {
-    var confirming by remember(thread?.newest?.id) { mutableStateOf(false) }
-    Column {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(end = 8.dp)) {
-            PageHeader(null, stringResource(Res.string.mailbox_back), onBack)
-            Spacer(Modifier.weight(1f))
-            thread?.let { loaded ->
-                ConversationActionRow(actionsFor(loaded.kind, loaded.target())) { action ->
-                    if (action == ConversationAction.Destroy) {
-                        confirming = true
-                    } else {
-                        actions.perform(action, loaded.target())
-                        if (action.leavesList) onBack()
-                    }
-                }
+    val target = if (wide) 40.dp else 48.dp
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(start = 4.dp, top = 4.dp, end = 8.dp),
+    ) {
+        ActionIcon(stringResource(Res.string.mailbox_back), CorvidIcons.Back, onBack, size = 48.dp)
+        Spacer(Modifier.weight(1f))
+        ConversationActionRow(offered, target, onAction)
+        neighbours?.let {
+            if (wide && offered.isNotEmpty()) {
+                VerticalDivider(Modifier.padding(horizontal = 8.dp).height(20.dp), color = CorvidTheme.colors.line)
             }
+            NeighbourControls(it, wide, target, onOpen)
         }
-        if (confirming && thread != null) {
-            DestroyQuestion(
-                onConfirm = {
-                    actions.perform(ConversationAction.Destroy, thread.target())
-                    onBack()
-                },
-                onCancel = { confirming = false },
-            )
-        }
-        if (wide) HorizontalDivider(color = CorvidTheme.colors.line)
     }
+}
+
+/** Newer is up and older down, the way the list runs; the count shows only once the whole list is loaded. */
+@Composable
+private fun NeighbourControls(
+    neighbours: Neighbours,
+    wide: Boolean,
+    size: Dp,
+    onOpen: (String) -> Unit,
+) {
+    val total = neighbours.total
+    if (wide && total != null) {
+        Text(
+            stringResource(Res.string.reader_position, neighbours.position, total),
+            style = CorvidTheme.type.meta,
+            color = CorvidTheme.colors.inkMuted,
+            modifier = Modifier.padding(end = 4.dp),
+        )
+    }
+    val newer = neighbours.newer
+    val older = neighbours.older
+    ActionIcon(stringResource(Res.string.reader_newer), CorvidIcons.ChevronUp, { newer?.let(onOpen) }, size = size, enabled = newer != null)
+    ActionIcon(
+        stringResource(Res.string.reader_older),
+        CorvidIcons.ChevronDown,
+        { older?.let(onOpen) },
+        size = size,
+        enabled = older != null,
+    )
 }
 
 @Composable
@@ -127,7 +217,7 @@ private fun ThreadColumn(
     val threaded = state.messages.size > 1
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         Text(
-            state.newest.subject.ifEmpty { stringResource(Res.string.mailbox_no_subject) },
+            state.subject.ifEmpty { stringResource(Res.string.mailbox_no_subject) },
             style = if (wide) CorvidTheme.type.headline else CorvidTheme.type.title,
             color = CorvidTheme.colors.ink,
             modifier =
