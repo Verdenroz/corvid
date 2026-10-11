@@ -67,7 +67,9 @@ class TokenSource(
      * Never returns a token expiring within [REFRESH_MARGIN]: it refreshes
      * first, once, or gives up. Callers racing a refresh share one request:
      * a refresh token is good once, so a second request would be a reuse and
-     * end the sign-in.
+     * end the sign-in. Null means signed out. A refresh that cannot reach the
+     * server throws the [JmapException] and keeps the session, so the caller
+     * backs off instead of sending a request with no token for the server to refuse.
      */
     suspend fun currentBearerToken(): String? {
         val current = tokens ?: return null
@@ -84,19 +86,13 @@ class TokenSource(
     private suspend fun refresh(current: AuthTokens): String? {
         val activeServer = server ?: return signOutAndReturnNull()
         val refreshToken = current.refreshToken ?: return signOutAndReturnNull()
-        return try {
-            when (val refreshed = api.refresh(activeServer, refreshToken)) {
-                is Refreshed.Tokens -> {
-                    tokens = refreshed.tokens
-                    _state.value = AuthState.SignedIn(refreshed.tokens.accessToken, activeServer)
-                    refreshed.tokens.accessToken
-                }
-                Refreshed.InvalidGrant -> signOutAndReturnNull()
+        return when (val refreshed = api.refresh(activeServer, refreshToken)) {
+            is Refreshed.Tokens -> {
+                tokens = refreshed.tokens
+                _state.value = AuthState.SignedIn(refreshed.tokens.accessToken, activeServer)
+                refreshed.tokens.accessToken
             }
-        } catch (e: JmapException) {
-            null
-        } catch (e: AuthFailure) {
-            null
+            Refreshed.InvalidGrant -> signOutAndReturnNull()
         }
     }
 

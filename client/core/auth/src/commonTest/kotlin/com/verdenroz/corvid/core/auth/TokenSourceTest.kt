@@ -15,6 +15,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.time.Duration.Companion.seconds
 
@@ -106,7 +107,7 @@ class TokenSourceTest {
         }
 
     @Test
-    fun `a network failure on refresh gives up without signing out, and the next call tries again`() =
+    fun `a network failure on refresh surfaces without signing out, and the next call tries again`() =
         runTest {
             var attempts = 0
             api.refresh = {
@@ -117,7 +118,7 @@ class TokenSourceTest {
             val source = source()
             source.adopt(authTokens(expiresIn = 0.seconds, clock = clock), TEST_SERVER)
 
-            assertNull(source.currentBearerToken())
+            assertFailsWith<JmapException> { source.currentBearerToken() }
             assertEquals(AuthState.SignedIn("at1", TEST_SERVER), source.state.value)
             assertEquals("at2", source.currentBearerToken())
             assertEquals(2, attempts)

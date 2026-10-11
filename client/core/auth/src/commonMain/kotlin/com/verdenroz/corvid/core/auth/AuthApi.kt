@@ -135,6 +135,7 @@ class HttpAuthApi(
         refreshToken: String,
     ): Refreshed {
         val reply = post(server, "token", buildJsonObject { put("refresh_token", refreshToken) }.toString())
+        if (reply.status == HttpStatusCode.ServiceUnavailable) throw JmapException(JmapError.Server(reply.status.value))
         if (reply.status == HttpStatusCode.BadRequest && reply.error() == "invalid_grant") return Refreshed.InvalidGrant
         return Refreshed.Tokens(tokens(reply.ok()))
     }

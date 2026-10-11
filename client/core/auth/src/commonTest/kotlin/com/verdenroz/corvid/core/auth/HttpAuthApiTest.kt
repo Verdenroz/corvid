@@ -172,13 +172,20 @@ class HttpAuthApiTest {
         }
 
     @Test
-    fun `a server with passkeys switched off is off, on every route`() =
+    fun `a server with passkeys switched off is off on the ceremony routes`() =
         runTest {
             val api = api { respond("""{"error":"auth_off"}""", HttpStatusCode.ServiceUnavailable, JSON) }
 
             assertIs<AuthFailure.Off>(assertFailsWith<AuthFailure> { api.registerOptions(SERVER, "x") })
             assertIs<AuthFailure.Off>(assertFailsWith<AuthFailure> { api.loginOptions(SERVER, PasskeyRole.Daily) })
-            assertIs<AuthFailure.Off>(assertFailsWith<AuthFailure> { api.refresh(SERVER, "rt") })
+        }
+
+    @Test
+    fun `a refresh the server cannot serve is a server error, not a spent token`() =
+        runTest {
+            val api = api { respond("""{"error":"auth_off"}""", HttpStatusCode.ServiceUnavailable, JSON) }
+
+            assertEquals(JmapError.Server(503), assertFailsWith<JmapException> { api.refresh(SERVER, "rt") }.error)
         }
 
     @Test
