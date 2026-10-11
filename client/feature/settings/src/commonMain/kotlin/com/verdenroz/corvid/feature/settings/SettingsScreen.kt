@@ -53,6 +53,7 @@ import com.verdenroz.corvid.feature.settings.resources.settings_notices_detail
 import com.verdenroz.corvid.feature.settings.resources.settings_notices_row
 import com.verdenroz.corvid.feature.settings.resources.settings_push
 import com.verdenroz.corvid.feature.settings.resources.settings_push_failed
+import com.verdenroz.corvid.feature.settings.resources.settings_push_google_unavailable
 import com.verdenroz.corvid.feature.settings.resources.settings_push_not_approved
 import com.verdenroz.corvid.feature.settings.resources.settings_push_off
 import com.verdenroz.corvid.feature.settings.resources.settings_push_off_own_connection
@@ -243,4 +244,5 @@ private fun BackgroundPushState.text() =
         PushStatus.Refused -> Res.string.settings_push_refused
         PushStatus.Removing -> Res.string.settings_push_removing
         PushStatus.Failed -> Res.string.settings_push_failed
+        PushStatus.GoogleUnavailable -> Res.string.settings_push_google_unavailable
     }

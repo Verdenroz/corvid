@@ -27,7 +27,7 @@ class CorvidPushService : PushService() {
         val keys = endpoint.pubKeySet
         appScope.launch {
             if (keys == null) {
-                preferences.setPushFailed()
+                preferences.setPushGoogleUnavailable()
             } else {
                 preferences.setPushSubscription(PushSubscription(endpoint.url, keys.pubKey, keys.auth))
             }
@@ -45,7 +45,7 @@ class CorvidPushService : PushService() {
         reason: FailedReason,
         instance: String,
     ) {
-        appScope.launch { preferences.setPushFailed() }
+        appScope.launch { preferences.setPushGoogleUnavailable() }
     }
 
     override fun onUnregistered(instance: String) {

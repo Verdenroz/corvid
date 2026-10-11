@@ -199,6 +199,23 @@ class SettingsViewModelTest {
         }
 
     @Test
+    fun `after Google could not register, turning it on again keeps an own connection`() =
+        runViewModelTest {
+            val preferences = DevicePreferences(InMemoryPreferencesStore(), CoroutineScope(Dispatchers.Main), DeviceSettings())
+            val push = FakeBackgroundPush()
+            val viewModel = viewModel(push = push, preferences = preferences)
+            viewModel.setBackgroundPush(true)
+            preferences.setPushGoogleUnavailable()
+            assertFalse(viewModel.state.value.backgroundPush!!.on)
+
+            viewModel.setBackgroundPush(true)
+
+            assertEquals(1, push.registrations)
+            assertEquals(1, push.ownRegistrations)
+            assertEquals(BackgroundPushState(PushStatus.Unsent, true), viewModel.state.value.backgroundPush)
+        }
+
+    @Test
     fun `an own connection the server took reads as a connection, not as Google`() =
         runViewModelTest {
             val preferences = DevicePreferences(InMemoryPreferencesStore(), CoroutineScope(Dispatchers.Main), DeviceSettings())

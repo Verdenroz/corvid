@@ -31,5 +31,5 @@ data class BackgroundPushState(
     val status: PushStatus,
     val ownConnection: Boolean,
 ) {
-    val on: Boolean get() = status != PushStatus.Off && status != PushStatus.Removing && status != PushStatus.Failed
+    val on: Boolean get() = status !in setOf(PushStatus.Off, PushStatus.Removing, PushStatus.Failed, PushStatus.GoogleUnavailable)
 }

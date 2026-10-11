@@ -84,6 +84,10 @@ class DevicePreferences(
         store.edit { it.writePush(PushSettings(PushStatus.OffOnServer)) }
     }
 
+    suspend fun setPushGoogleUnavailable() {
+        store.edit { it.writePush(PushSettings(PushStatus.GoogleUnavailable)) }
+    }
+
     suspend fun setPushFailed() {
         store.edit { it.writePush(PushSettings(PushStatus.Failed)) }
     }

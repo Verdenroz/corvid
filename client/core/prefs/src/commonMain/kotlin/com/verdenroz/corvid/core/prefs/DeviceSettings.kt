@@ -60,8 +60,11 @@ enum class PushStatus {
     /** Turned off here; the server may hold the endpoint until a removal reaches it. */
     Removing,
 
-    /** The platform could not register this app. */
+    /** The server could not be reached to start, or refused the connection's token. */
     Failed,
+
+    /** Google's push service could not register this app, so turning it on again keeps its own connection. */
+    GoogleUnavailable,
 }
 
 /**

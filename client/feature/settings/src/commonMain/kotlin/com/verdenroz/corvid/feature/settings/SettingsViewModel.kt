@@ -6,6 +6,7 @@ import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.prefs.AutoLock
 import com.verdenroz.corvid.core.prefs.DevicePreferences
 import com.verdenroz.corvid.core.prefs.DeviceSettings
+import com.verdenroz.corvid.core.prefs.PushStatus
 import com.verdenroz.corvid.core.prefs.ThemeChoice
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -71,9 +72,10 @@ class SettingsViewModel(
             return
         }
         askNotificationPermission()
+        val ownConnection = transport == PushTransport.OwnConnection || state.value.backgroundPush?.status == PushStatus.GoogleUnavailable
         viewModelScope.launch {
             preferences.setPushRegistering()
-            if (transport == PushTransport.OwnConnection) {
+            if (ownConnection) {
                 preferences.setPushSubscription(push.registerOwnConnection())
             } else {
                 registerWithGoogle(push)

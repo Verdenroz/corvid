@@ -308,9 +308,21 @@ Caddyfile built from the same env vars as everything else. `core/discovery` hold
   CA; reqwest's rustls honours both on Linux. A change to the endpoint policy that allows another host needs
   the rig's `CONNECT` assertion widened with it.
 - **UnifiedPush's embedded FCM distributor is listed only where `com.google.android.gms` exists.** Read from
-  the connector 3.3.5 and distributor 3.1.0 sources, not run on a device: `getDistributors` drops the
+  the connector 3.3.5 and distributor 3.1.0 sources: `getDistributors` drops the
   app's own package without Play Services or microG, and a default pick prefers an installed external
   distributor over the embedded one, so the app saves its own package as the distributor explicitly.
+- **A PRIVATE notification with a public version still shows its content on a stock lock screen.** Android
+  shows PRIVATE content whenever "sensitive notifications" is on, which is the default; measured on an
+  emulator with a PIN set, the lock screen read the sender and subject. Previews are SECRET instead. With
+  every child SECRET, SystemUI hides the whole group on the lock screen, summary included.
+- **The connector's key manager cannot make keys for an instance it never registered.** Its key rows
+  reference its registration rows, so `DefaultKeyManager.generate("stream")` throws a foreign key
+  `SQLiteConstraintException` and crashes the app. The own connection keeps its own P-256 pair and auth secret,
+  the private key sealed by an Android keystore key, and decrypts with Tink's `WebPushHybridDecrypt`.
+- **A disabled Play Services still counts as installed to the connector.** `getDistributors` checks only that
+  `com.google.android.gms` has a package, so a phone that disabled it was sent down the Google path and
+  registration failed. The app also requires the package to be enabled, and a failed Google registration lets the
+  row keep an own connection instead.
 - **A config key a host's running image does not know exits every service 78.** `sentinel.push: {}` is
   safe in `deploy/config.yaml` and unsafe in a host's `/opt/corvid/config.yaml` until that host runs an
   image that parses it.

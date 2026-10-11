@@ -28,7 +28,7 @@
     <string name="settings_filters_detail">Rules the server applies as mail arrives.</string>
     <string name="settings_notices">Notices</string>
     <string name="settings_new_mail">New mail notifications</string>
-    <string name="settings_new_mail_detail">Says only that mail arrived, never who sent it or what it says, and only while the app holds its key.</string>
+    <string name="settings_new_mail_detail">Says only that mail arrived, while Corvid still holds its key. Background notifications, below, can name the sender once the app has locked.</string>
     <string name="settings_push">Background notifications</string>
     <string name="settings_push_off">Sender, subject and a line of each new message while Corvid is closed. Encrypted for this phone and hidden on the lock screen.</string>
     <string name="settings_push_off_own_connection">This phone has no Google Play services or microG. Corvid can keep its own connection to your server open instead, with a quiet notification you can swipe away. Hidden on the lock screen.</string>
@@ -40,7 +40,8 @@
     <string name="settings_push_not_approved">The server does not know this device, so it has nowhere to push.</string>
     <string name="settings_push_refused">The server refused the address Google gave this phone.</string>
     <string name="settings_push_removing">Off here. The server forgets this device the next time it can be reached.</string>
-    <string name="settings_push_failed">Google could not register Corvid. Try again.</string>
+    <string name="settings_push_failed">Corvid could not start background notifications. Try again.</string>
+    <string name="settings_push_google_unavailable">Google could not register Corvid. Turn this on again to keep a connection to your server instead.</string>
     <string name="settings_notices_row">Server notices</string>
     <string name="settings_notices_detail">Sign-in alerts and failed updates the server has reported.</string>
     <string name="settings_approve_row">Approve a device</string>
