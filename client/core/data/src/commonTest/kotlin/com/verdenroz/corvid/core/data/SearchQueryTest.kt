@@ -143,8 +143,8 @@ class SearchQueryTest {
     @Test
     fun `unknown operators and values are searched as words`() {
         assertEquals(
-            listOf(SearchTerm.Word("label:work"), SearchTerm.Word("is:important"), SearchTerm.Word("has:drive")),
-            parse("label:work is:important has:drive").terms,
+            listOf(SearchTerm.Word("category:work"), SearchTerm.Word("is:important"), SearchTerm.Word("has:drive")),
+            parse("category:work is:important has:drive").terms,
         )
     }
 

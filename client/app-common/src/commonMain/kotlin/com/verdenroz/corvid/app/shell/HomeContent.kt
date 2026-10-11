@@ -17,9 +17,6 @@ import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.app.HomeTab
 import com.verdenroz.corvid.app.Ledgers
 import com.verdenroz.corvid.appcommon.resources.Res
-import com.verdenroz.corvid.appcommon.resources.placeholder_labels
-import com.verdenroz.corvid.appcommon.resources.placeholder_people
-import com.verdenroz.corvid.appcommon.resources.placeholder_sources
 import com.verdenroz.corvid.appcommon.resources.write
 import com.verdenroz.corvid.core.designsystem.CorvidFloating
 import com.verdenroz.corvid.core.designsystem.CorvidShape
@@ -27,8 +24,10 @@ import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.core.ui.LocalWideLayout
-import com.verdenroz.corvid.core.ui.QuietPane
+import com.verdenroz.corvid.feature.mailbox.LabelsScreen
 import com.verdenroz.corvid.feature.mailbox.LedgerScreen
+import com.verdenroz.corvid.feature.mailbox.PeopleScreen
+import com.verdenroz.corvid.feature.mailbox.SourcesScreen
 import org.jetbrains.compose.resources.stringResource
 
 /** Narrow, Write floats over the list; wide, it heads the sidebar. */
@@ -38,14 +37,16 @@ internal fun HomeContent(
     ledgers: Ledgers,
     onOpenEmail: (EmailSummary) -> Unit,
     onOpenSender: (String) -> Unit,
+    onSearch: (String) -> Unit,
     onWrite: () -> Unit,
 ) {
     Box(Modifier.fillMaxSize()) {
         val ledger = tab.ledger
-        if (ledger == null) {
-            NotBuilt(tab)
-        } else {
-            LedgerScreen(ledgers.of(ledger), ledgers.actions, ledger, onOpenEmail, onOpenSender)
+        when {
+            ledger != null -> LedgerScreen(ledgers.of(ledger), ledgers.actions, ledger, onOpenEmail, onOpenSender)
+            tab == HomeTab.People -> PeopleScreen(ledgers.directory, onOpenSender)
+            tab == HomeTab.Sources -> SourcesScreen(ledgers.directory, onOpenSender)
+            else -> LabelsScreen(ledgers.directory, onSearch)
         }
         if (!LocalWideLayout.current) {
             WriteButton(
@@ -54,17 +55,6 @@ internal fun HomeContent(
             )
         }
     }
-}
-
-@Composable
-private fun NotBuilt(tab: HomeTab) {
-    val text =
-        when (tab) {
-            HomeTab.People -> Res.string.placeholder_people
-            HomeTab.Sources -> Res.string.placeholder_sources
-            else -> Res.string.placeholder_labels
-        }
-    QuietPane(stringResource(text))
 }
 
 @Composable

@@ -31,8 +31,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.SenderRepository
-import com.verdenroz.corvid.core.data.clockTime
-import com.verdenroz.corvid.core.data.dayHeading
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
@@ -53,7 +51,6 @@ import com.verdenroz.corvid.feature.mailbox.resources.card_unsubscribe
 import com.verdenroz.corvid.feature.mailbox.resources.card_write
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_no_subject
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_separator
-import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
@@ -219,7 +216,7 @@ private fun History(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text(
-                    whenArrived(email, zone, today),
+                    whenArrived(email.receivedAt, zone, today),
                     style = CorvidTheme.type.metaNumeric,
                     color = colors.inkFaint,
                     modifier = Modifier.width(74.dp),
@@ -235,15 +232,4 @@ private fun History(
             HorizontalDivider(color = colors.line)
         }
     }
-}
-
-/** The time for today's mail, otherwise the same day label the ledger's header would give it. */
-@Composable
-private fun whenArrived(
-    email: EmailSummary,
-    zone: TimeZone,
-    today: LocalDate,
-): String {
-    val at = email.receivedAt.toLocalDateTime(zone)
-    return if (at.date == today) clockTime(at.hour, at.minute).asString() else dayHeading(at.date, today).title.asString()
 }
