@@ -199,7 +199,7 @@ internal interface Fido2Library : Library {
                 null
             }
 
-        private val OPTIONS =
+        internal val OPTIONS =
             mapOf(
                 Library.OPTION_FUNCTION_MAPPER to
                     FunctionMapper { _, method -> "fido_" + method.name.replace(Regex("[A-Z]")) { "_" + it.value.lowercase() } },

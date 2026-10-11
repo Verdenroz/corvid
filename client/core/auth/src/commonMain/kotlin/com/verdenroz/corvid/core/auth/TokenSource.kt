@@ -65,11 +65,9 @@ class TokenSource(
 
     /**
      * Never returns a token expiring within [REFRESH_MARGIN]: it refreshes
-     * first, once, or gives up. Callers racing a refresh share one request:
-     * a refresh token is good once, so a second request would be a reuse and
-     * end the sign-in. Null means signed out. A refresh that cannot reach the
-     * server throws the [JmapException] and keeps the session, so the caller
-     * backs off instead of sending a request with no token for the server to refuse.
+     * first, once, or gives up. Callers racing a refresh share one request,
+     * since a refresh token is good once. Null means signed out. A refresh that
+     * cannot reach the server throws the [JmapException] and keeps the session.
      */
     suspend fun currentBearerToken(): String? {
         val current = tokens ?: return null
