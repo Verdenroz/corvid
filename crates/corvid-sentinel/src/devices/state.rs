@@ -5,7 +5,8 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 /// Bump whenever `Devices`' shape changes, and keep a migration from the version it leaves.
-const SCHEMA: u32 = 1;
+const SCHEMA: u32 = 2;
+const PREVIOUS: u32 = 1;
 
 pub const LIFETIME_SECONDS: i64 = 600;
 pub const MAX_ATTEMPTS: u8 = 5;
@@ -37,10 +38,28 @@ pub struct Approved {
     pub blob_id: String,
 }
 
+/// Where to push an approved device's new-mail previews, and the keys they are encrypted to,
+/// base64url as the device sent them. Kept beside the device, so revoking or re-enrolling it ends
+/// its pushes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Push {
+    pub endpoint: String,
+    pub p256dh: String,
+    pub auth: String,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Devices {
     pub requests: BTreeMap<String, Request>,
     pub approved: BTreeMap<String, Approved>,
+    pub pushes: BTreeMap<String, Push>,
+}
+
+/// Schema 1, from before devices could take pushes.
+#[derive(Deserialize)]
+struct DevicesV1 {
+    requests: BTreeMap<String, Request>,
+    approved: BTreeMap<String, Approved>,
 }
 
 impl Request {
@@ -76,12 +95,48 @@ corvid_store::pin_shape!(Approved {
     node_id,
     blob_id
 });
-corvid_store::pin_shape!(Devices { requests, approved });
+corvid_store::pin_shape!(Push {
+    endpoint,
+    p256dh,
+    auth
+});
+corvid_store::pin_shape!(Devices {
+    requests,
+    approved,
+    pushes
+});
 
 pub fn open(path: &Path) -> io::Result<Devices> {
-    corvid_store::open(path, SCHEMA)
+    corvid_store::open_migrating(path, SCHEMA, PREVIOUS, |old: DevicesV1| Devices {
+        requests: old.requests,
+        approved: old.approved,
+        pushes: BTreeMap::new(),
+    })
 }
 
 pub fn save(path: &Path, devices: &Devices) -> io::Result<()> {
     corvid_store::save(path, SCHEMA, devices)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_file_from_before_pushes_opens_with_its_devices_and_no_endpoints() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("devices.json");
+        let approved = Approved {
+            account_id: "c".to_owned(),
+            node_id: "n1".to_owned(),
+            blob_id: "b1".to_owned(),
+        };
+        let old = serde_json::json!({"requests": {}, "approved": {"phone": approved}});
+        corvid_store::save(&path, PREVIOUS, &old).unwrap();
+
+        let devices = open(&path).unwrap();
+
+        assert_eq!(devices.approved["phone"], approved);
+        assert!(devices.pushes.is_empty());
+    }
 }

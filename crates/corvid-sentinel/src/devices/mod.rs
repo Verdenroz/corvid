@@ -4,6 +4,7 @@
 
 mod keys;
 mod master;
+mod push;
 mod state;
 
 use std::io;
@@ -14,7 +15,7 @@ use axum::Json;
 use axum::Router;
 use axum::extract::{DefaultBodyLimit, Path, State};
 use axum::http::{HeaderMap, StatusCode};
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, post, put};
 use ring::rand::{SecureRandom, SystemRandom};
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
@@ -23,10 +24,13 @@ use crate::dates;
 use crate::persisted::Persisted;
 use keys::Keys;
 use master::{Master, Refusal};
-pub use state::{Approved, Devices, Request, Stage, open};
+pub use push::Config as PushConfig;
+pub use state::{Approved, Devices, Push, Request, Stage, open};
 use state::{LIFETIME_SECONDS, MAX_OPEN, save};
 
 const REQUEST_BODY_LIMIT: usize = 256;
+const PUSH_BODY_LIMIT: usize = 2048;
+const WEBHOOK_BODY_LIMIT: usize = 1 << 20;
 const NAME_LENGTH: std::ops::RangeInclusive<usize> = 1..=32;
 
 pub struct Config {
@@ -40,6 +44,8 @@ pub struct Config {
     pub mail_address: String,
     pub stalwart_url: String,
     pub stalwart_token: String,
+    /// Absent, devices take no pushes and the mail WebHook is acknowledged and ignored.
+    pub push: Option<PushConfig>,
 }
 
 struct DeviceState {
@@ -47,6 +53,7 @@ struct DeviceState {
     devices: Persisted<Devices>,
     master: Master,
     keys: Keys,
+    push: Option<push::Pusher>,
 }
 
 type Shared = Arc<DeviceState>;
@@ -73,7 +80,23 @@ pub fn routes(config: Config) -> Router {
             config.keys_address,
             config.mail_address,
         ),
+        push: config.push.map(push::Pusher::new),
     });
+    tokio::spawn(push::watch(state.clone()));
+    let pushes = Router::new()
+        .route(
+            "/corvid/devices/{name}/push",
+            put(push::register).delete(push::unregister),
+        )
+        .layer(DefaultBodyLimit::max(PUSH_BODY_LIMIT))
+        .with_state(state.clone());
+    let vapid = Router::new()
+        .route("/corvid/push/vapid", get(push::vapid_key))
+        .with_state(state.clone());
+    let webhook = Router::new()
+        .route("/webhook/mail", post(push::arrived))
+        .layer(DefaultBodyLimit::max(WEBHOOK_BODY_LIMIT))
+        .with_state(state.clone());
     Router::new()
         .route("/corvid/devices/requests", post(create).get(list))
         .route("/corvid/devices/requests/{id}", get(status))
@@ -82,6 +105,9 @@ pub fn routes(config: Config) -> Router {
         .route("/internal/devices/{name}", delete(revoke))
         .layer(DefaultBodyLimit::max(REQUEST_BODY_LIMIT))
         .with_state(state)
+        .merge(pushes)
+        .merge(vapid)
+        .merge(webhook)
 }
 
 #[derive(Serialize)]
@@ -105,7 +131,10 @@ pub fn off() -> Router {
         .route("/corvid/devices/requests/{id}", get(off))
         .route("/corvid/devices/requests/{id}/approve", post(off))
         .route("/corvid/devices/{name}", get(off))
+        .route("/corvid/devices/{name}/push", put(off).delete(off))
         .route("/internal/devices/{name}", delete(off))
+        .route("/corvid/push/vapid", get(off))
+        .route("/webhook/mail", post(|| async { StatusCode::NO_CONTENT }))
 }
 
 /// `requests` is refused because it is the path segment the request routes live under.
@@ -345,6 +374,7 @@ async fn record(
         if let Some(request) = next.requests.get_mut(&id) {
             request.stage = Stage::Approved;
         }
+        next.pushes.remove(&name);
         next.approved.insert(name, approved);
         (Some(next), ())
     })
@@ -399,6 +429,7 @@ async fn revoke(
     commit(state, move |devices| {
         let mut next = devices.clone();
         next.approved.remove(&name);
+        next.pushes.remove(&name);
         (Some(next), ())
     })
     .await?;

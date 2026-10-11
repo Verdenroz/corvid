@@ -1,6 +1,7 @@
 #[path = "../common/mod.rs"]
 mod common;
 mod idp;
+mod push;
 mod stalwart;
 
 use std::path::PathBuf;
@@ -12,6 +13,7 @@ use stalwart::{KEYS_ACCOUNT, MAIL_ACCOUNT, Stalwart, TOKEN};
 
 const ADMIN: &str = "mailuser-admin";
 const SECRET: &[u8] = b"secret";
+const CONTACT: &str = "operator@elsewhere.test";
 
 struct Rig {
     url: String,
@@ -26,6 +28,10 @@ async fn rig() -> Rig {
 }
 
 async fn rig_with(devices: Devices) -> Rig {
+    rig_full(devices, None).await
+}
+
+async fn rig_full(devices: Devices, fcm_origin: Option<&str>) -> Rig {
     let dir = tempfile::tempdir().unwrap();
     let state = dir.path().join("devices.json");
     let idp = Idp::start(ADMIN).await;
@@ -45,6 +51,7 @@ async fn rig_with(devices: Devices) -> Rig {
         mail_address: "mailuser@rig.test".to_owned(),
         stalwart_url: stalwart.url.clone(),
         stalwart_token: TOKEN.to_owned(),
+        push: fcm_origin.map(|origin| devices::PushConfig::open(&state, CONTACT, origin).unwrap()),
     });
     Rig {
         url: common::serve(config).await,

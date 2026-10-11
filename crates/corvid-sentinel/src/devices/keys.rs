@@ -9,9 +9,10 @@ use super::state::Approved;
 const FOLDER: &str = "corvid-devices";
 const KEY_VERSION: u8 = 1;
 const KEY_LENGTH: usize = 32;
-const USING: [&str; 3] = [
+const USING: [&str; 4] = [
     "urn:ietf:params:jmap:core",
     "urn:ietf:params:jmap:filenode",
+    "urn:ietf:params:jmap:mail",
     "urn:stalwart:jmap",
 ];
 
@@ -21,6 +22,12 @@ pub struct Error(String);
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
+    }
+}
+
+impl Error {
+    pub fn new(reason: &str) -> Self {
+        Self(reason.to_owned())
     }
 }
 
@@ -58,6 +65,10 @@ impl Keys {
             mail_address,
             target: Mutex::default(),
         }
+    }
+
+    pub fn mail_address(&self) -> &str {
+        &self.mail_address
     }
 
     /// Creates the key file for a device with fresh random content and returns where it is. A
@@ -148,7 +159,7 @@ impl Keys {
 
     /// Looks accounts up by address, since a Pocket-ID user of the same name in the mail domain
     /// gets an account of its own with the same local part.
-    async fn account(&self, address: &str) -> Result<String, Error> {
+    pub(super) async fn account(&self, address: &str) -> Result<String, Error> {
         let local = address.split('@').next().unwrap_or_default();
         let answers = self
             .batch(&[
@@ -254,7 +265,7 @@ impl Keys {
 
     /// Method calls in one request, named `c0`, `c1`, and so on. The answers come back as sent,
     /// errors included, so a refusal is read before the answer to the call that depended on it.
-    async fn batch(&self, calls: &[(&str, Value)]) -> Result<Vec<Value>, Error> {
+    pub(super) async fn batch(&self, calls: &[(&str, Value)]) -> Result<Vec<Value>, Error> {
         let calls: Vec<Value> = calls
             .iter()
             .enumerate()
@@ -279,11 +290,11 @@ impl Keys {
 
 /// A reference to `path` in the answer of call `call` of the same batch. Stalwart resolves
 /// these into query results only, not into the `created` of a set.
-fn back(call: &str, method: &str, path: &str) -> Value {
+pub(super) fn back(call: &str, method: &str, path: &str) -> Value {
     json!({"resultOf": call, "name": method, "path": path})
 }
 
-fn checked<'a>(method: &str, answer: &'a Value) -> Result<&'a Value, Error> {
+pub(super) fn checked<'a>(method: &str, answer: &'a Value) -> Result<&'a Value, Error> {
     if answer[0] == "error" {
         return Err(Error(format!("{method} failed: {}", answer[1])));
     }
