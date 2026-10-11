@@ -26,6 +26,24 @@
         <item quantity="other">%1$d messages in this conversation</item>
     </plurals>
     <string name="search_no_results">Nothing matches “%1$s”.</string>
+    <plurals name="search_results">
+        <item quantity="one">%1$d result</item>
+        <item quantity="other">%1$d results</item>
+    </plurals>
+    <string name="search_include_discarded">Include Trash and Junk</string>
+    <string name="search_exclude_discarded">Leave out Trash and Junk</string>
+    <string-array name="search_hint_examples">
+        <item>from:ada</item>
+        <item>subject:invoice</item>
+        <item>has:attachment</item>
+        <item>is:unread</item>
+        <item>in:sent</item>
+        <item>after:2026-01-31</item>
+        <item>older_than:1y</item>
+        <item>&quot;exact words&quot;</item>
+        <item>-word</item>
+    </string-array>
+    <string name="search_hint_scope">Trash and Junk stay out unless you add in:anywhere.</string>
     <string name="custody_sender">Sender</string>
     <string name="custody_way_in">On the way in</string>
     <string name="custody_labelled">Labelled</string>

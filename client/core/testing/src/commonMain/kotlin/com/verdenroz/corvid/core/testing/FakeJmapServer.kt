@@ -396,7 +396,7 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
                 put("queryState", queryState)
                 put("canCalculateChanges", false)
                 put("position", start)
-                put("total", matching.size)
+                if (arguments["calculateTotal"]?.jsonPrimitive?.booleanOrNull == true) put("total", matching.size)
                 put("ids", JsonArray(page.map { JsonPrimitive(it.id) }))
             }
     }
