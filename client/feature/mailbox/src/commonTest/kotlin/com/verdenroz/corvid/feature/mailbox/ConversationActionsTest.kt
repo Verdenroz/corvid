@@ -31,11 +31,32 @@ private fun conversation(
 
 class ConversationActionsTest {
     @Test
-    fun `the inbox offers archive before delete`() {
+    fun `the inbox offers archive before delete and report spam`() {
         assertEquals(
-            listOf(ConversationAction.Archive, ConversationAction.Trash, ConversationAction.MarkUnread, ConversationAction.Star),
+            listOf(
+                ConversationAction.Archive,
+                ConversationAction.Trash,
+                ConversationAction.ReportSpam,
+                ConversationAction.MarkUnread,
+                ConversationAction.Star,
+            ),
             actionsFor(ListKind.Inbox, listOf(conversation("a")).target()),
         )
+    }
+
+    @Test
+    fun `junk offers not spam and deleting for good, never report spam or star`() {
+        assertEquals(
+            listOf(ConversationAction.NotSpam, ConversationAction.Destroy, ConversationAction.MarkUnread),
+            actionsFor(ListKind.Junk, listOf(conversation("a")).target()),
+        )
+    }
+
+    @Test
+    fun `any other list offers delete and report spam`() {
+        val actions = actionsFor(ListKind.Other, listOf(conversation("a")).target())
+
+        assertEquals(listOf(ConversationAction.Trash, ConversationAction.ReportSpam), actions.filter { it.moves })
     }
 
     @Test
@@ -59,6 +80,6 @@ class ConversationActionsTest {
     fun `a selection with any unread conversation offers mark read`() {
         val actions = actionsFor(ListKind.Other, listOf(conversation("a"), conversation("b", unread = true)).target())
 
-        assertEquals(ConversationAction.MarkRead, actions[1])
+        assertEquals(ConversationAction.MarkRead, actions[2])
     }
 }

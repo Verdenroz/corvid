@@ -149,6 +149,109 @@ class MailMoveTest {
         }
 
     @Test
+    fun `destroying deletes a message filed in junk alone`() =
+        runTest {
+            val fake = server("junk")
+            fake.emails += message("m1", "junk")
+
+            MailboxRepository(fake.client()).destroy(listOf("m1"))
+
+            assertTrue(fake.emails.isEmpty())
+        }
+
+    @Test
+    fun `reporting spam files the message in junk alone and undo puts it back`() =
+        runTest {
+            val fake = server("junk")
+            fake.mailboxes += FakeMailbox("work", "Work")
+            fake.emails += message("m1", "inbox", "work")
+            val repository = MailboxRepository(fake.client())
+
+            val move = repository.reportSpam(listOf("m1"))
+            assertEquals(setOf("junk"), fake.boxesOf("m1"))
+            repository.undo(move)
+
+            assertEquals(setOf("inbox", "work"), fake.boxesOf("m1"))
+        }
+
+    @Test
+    fun `reporting spam with no junk mailbox refuses every message and moves none`() =
+        runTest {
+            val fake = server()
+            fake.emails += message("m1", "inbox")
+
+            val move = MailboxRepository(fake.client()).reportSpam(listOf("m1"))
+
+            assertEquals(setOf("inbox"), fake.boxesOf("m1"))
+            assertEquals(setOf("m1"), move.refused.keys)
+        }
+
+    @Test
+    fun `not spam files the message in the inbox alone`() =
+        runTest {
+            val fake = server("junk")
+            fake.emails += message("m1", "junk")
+
+            MailboxRepository(fake.client()).notSpam(listOf("m1"))
+
+            assertEquals(setOf("inbox"), fake.boxesOf("m1"))
+        }
+
+    @Test
+    fun `moving to a user folder files the message there alone and undo puts it back`() =
+        runTest {
+            val fake = server("archive")
+            fake.mailboxes += FakeMailbox("receipts", "Receipts")
+            fake.emails += message("m1", "inbox", "archive")
+            val repository = MailboxRepository(fake.client())
+
+            val move = repository.moveTo(listOf("m1"), "receipts")
+            assertEquals(setOf("receipts"), fake.boxesOf("m1"))
+            repository.undo(move)
+
+            assertEquals(setOf("inbox", "archive"), fake.boxesOf("m1"))
+        }
+
+    @Test
+    fun `emptying trash deletes every message past the first page`() =
+        runTest {
+            val fake = server("trash")
+            repeat(300) { fake.emails += message("t$it", "trash") }
+            fake.emails += message("kept", "inbox")
+
+            val emptied = MailboxRepository(fake.client()).empty("trash")
+
+            assertEquals(300, emptied.destroyed)
+            assertEquals(listOf("kept"), fake.emails.map { it.id })
+        }
+
+    @Test
+    fun `emptying junk takes a message also filed elsewhere out of junk without deleting it`() =
+        runTest {
+            val fake = server("junk")
+            fake.mailboxes += FakeMailbox("work", "Work")
+            fake.emails += message("m1", "junk")
+            fake.emails += message("m2", "junk", "work")
+
+            val emptied = MailboxRepository(fake.client()).empty("junk")
+
+            assertEquals(1, emptied.destroyed)
+            assertEquals(setOf("work"), fake.boxesOf("m2"))
+        }
+
+    @Test
+    fun `emptying a mailbox the account lacks deletes nothing`() =
+        runTest {
+            val fake = server()
+            fake.emails += message("m1", "inbox")
+
+            val emptied = MailboxRepository(fake.client()).empty("junk")
+
+            assertEquals(0, emptied.destroyed)
+            assertEquals(1, fake.emails.size)
+        }
+
+    @Test
     fun `headers come back unfolded and in order`() =
         runTest {
             val fake = server()

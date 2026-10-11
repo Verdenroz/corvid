@@ -21,7 +21,9 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
@@ -64,6 +66,8 @@ internal fun LedgerRow(
     onToggle: (String) -> Unit,
     onOpen: (String) -> Unit,
     onAction: (ConversationAction, Conversation) -> Unit,
+    menu: MoveMenu,
+    onMove: (MoveFolder, Conversation) -> Unit,
     onOpenSender: (String) -> Unit,
 ) {
     val colors = CorvidTheme.colors
@@ -72,6 +76,7 @@ internal fun LedgerRow(
     val toggle = { onToggle(email.id) }
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
+    var menuShown by remember { mutableStateOf(false) }
     val background =
         when {
             selected -> colors.accentSoft
@@ -99,8 +104,14 @@ internal fun LedgerRow(
         }
         if (wide) {
             val trailing: @Composable () -> Unit = {
-                if (hovered && !selecting) {
-                    ConversationActionRow(actions, size = 34.dp) { onAction(it, conversation) }
+                if ((hovered || menuShown) && !selecting) {
+                    ConversationActionRow(
+                        actions,
+                        menu,
+                        { onMove(it, conversation) },
+                        size = 34.dp,
+                        onMenuShown = { menuShown = it },
+                    ) { onAction(it, conversation) }
                 } else {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (CorvidKeywords.FLAGGED in email.keywords) StarMark()

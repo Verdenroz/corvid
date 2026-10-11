@@ -27,6 +27,7 @@ import com.verdenroz.corvid.appcommon.resources.Res
 import com.verdenroz.corvid.appcommon.resources.app_name
 import com.verdenroz.corvid.appcommon.resources.search_placeholder
 import com.verdenroz.corvid.appcommon.resources.settings_open
+import com.verdenroz.corvid.appcommon.resources.sidebar_toggle
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.CorvidMark
@@ -59,15 +60,36 @@ internal fun WideTopBar(
     identity: Identity?,
     search: SearchInput,
     onOpenSettings: () -> Unit,
+    onToggleSidebar: () -> Unit,
 ) {
     val colors = CorvidTheme.colors
     Column(Modifier.background(colors.surface)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp),
-            modifier = Modifier.fillMaxWidth().height(60.dp).padding(start = 18.dp, end = 16.dp),
+            modifier = Modifier.fillMaxWidth().height(60.dp).padding(start = 13.dp, end = 16.dp),
         ) {
-            Box(Modifier.widthIn(min = 190.dp)) { Wordmark() }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.widthIn(min = 212.dp),
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier =
+                        Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .clickable(
+                                onClickLabel = stringResource(Res.string.sidebar_toggle),
+                                role = Role.Button,
+                                onClick = onToggleSidebar,
+                            ),
+                ) {
+                    Icon(CorvidIcons.Menu, contentDescription = null, tint = colors.inkMuted)
+                }
+                Wordmark()
+            }
             SearchField(search, shortcutHint = true, modifier = Modifier.weight(1f, fill = false).widthIn(max = 520.dp))
             Spacer(Modifier.weight(0.01f))
             KeyPill(key)

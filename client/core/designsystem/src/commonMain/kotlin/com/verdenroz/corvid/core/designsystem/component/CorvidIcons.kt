@@ -89,6 +89,12 @@ object CorvidIcons {
     val Box: ImageVector by lazy { stroke("Box", "M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10") }
 
     val Settings: ImageVector by lazy { stroke("Settings", "M4 7h9M17 7h3M4 17h3M11 17h9M15 5v4M9 15v4") }
+
+    val Folder: ImageVector by lazy { stroke("Folder", "M3 6h6l2 2h10v11H3zM3 10h18") }
+
+    val Spam: ImageVector by lazy { stroke("Spam", "M8.5 3h7L21 8.5v7L15.5 21h-7L3 15.5v-7L8.5 3zM12 8v5M12 16h.01") }
+
+    val Menu: ImageVector by lazy { stroke("Menu", "M4 7h16M4 12h16M4 17h16") }
 }
 
 private fun stroke(

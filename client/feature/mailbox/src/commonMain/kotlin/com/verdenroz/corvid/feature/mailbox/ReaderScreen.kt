@@ -89,7 +89,11 @@ private fun ActionBar(
             PageHeader(null, stringResource(Res.string.mailbox_back), onBack)
             Spacer(Modifier.weight(1f))
             thread?.let { loaded ->
-                ConversationActionRow(actionsFor(loaded.kind, loaded.target())) { action ->
+                val onMove = { folder: MoveFolder ->
+                    actions.moveTo(loaded.target().all, 1, folder)
+                    onBack()
+                }
+                ConversationActionRow(actionsFor(loaded.kind, loaded.target()), rememberMoveMenu(actions), onMove) { action ->
                     if (action == ConversationAction.Destroy) {
                         confirming = true
                     } else {

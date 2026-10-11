@@ -143,4 +143,30 @@
     <string name="headers_loading">Reading headers…</string>
     <string name="headers_gone">This message no longer exists.</string>
     <string name="ledger_empty_trash">Trash is empty.</string>
+    <string name="ledger_empty_archive">Nothing archived yet.</string>
+    <string name="ledger_empty_junk">No junk caught.</string>
+    <string name="action_report_spam">Report spam</string>
+    <string name="action_not_spam">Not spam</string>
+    <string name="action_move_to">Move to</string>
+    <string name="action_move_loading">Reading folders…</string>
+    <string name="action_partly_kept">%1$d kept: %2$s</string>
+    <string name="action_empty_trash">Empty Trash</string>
+    <string name="action_empty_junk">Empty Junk</string>
+    <string name="action_empty_question">Delete everything here for good? This cannot be undone.</string>
+    <plurals name="action_reported">
+        <item quantity="one">Reported as spam</item>
+        <item quantity="other">%1$d conversations reported as spam</item>
+    </plurals>
+    <plurals name="action_rescued">
+        <item quantity="one">Moved to Inbox</item>
+        <item quantity="other">%1$d conversations moved to Inbox</item>
+    </plurals>
+    <plurals name="action_moved">
+        <item quantity="one">Moved to %2$s</item>
+        <item quantity="other">%1$d conversations moved to %2$s</item>
+    </plurals>
+    <plurals name="action_emptied">
+        <item quantity="one">%1$d message deleted for good</item>
+        <item quantity="other">%1$d messages deleted for good</item>
+    </plurals>
 </resources>

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.core.data.Correction
 import com.verdenroz.corvid.core.data.INBOX
+import com.verdenroz.corvid.core.data.JUNK
 import com.verdenroz.corvid.core.data.KeywordPatch
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.data.TRASH
@@ -124,9 +125,11 @@ class ReaderViewModel(
     private suspend fun kindOf(messages: List<EmailDetail>): ListKind {
         val inbox = repository.mailboxId(INBOX)
         val trash = repository.mailboxId(TRASH)
+        val junk = repository.mailboxId(JUNK)
         return when {
             messages.any { inbox in it.mailboxIds } -> ListKind.Inbox
             trash != null && messages.all { it.mailboxIds == setOf(trash) } -> ListKind.Trash
+            junk != null && messages.all { it.mailboxIds == setOf(junk) } -> ListKind.Junk
             else -> ListKind.Other
         }
     }

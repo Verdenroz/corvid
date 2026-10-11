@@ -3,6 +3,8 @@ package com.verdenroz.corvid.app
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.saveable.SaveableStateHolder
+import com.verdenroz.corvid.app.shell.SidebarPlace
+import com.verdenroz.corvid.app.shell.sidebarPlace
 import com.verdenroz.corvid.core.model.ComposeIntent
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -95,6 +97,35 @@ class NavigatorTest {
         nav.search("")
 
         assertEquals(Route.Home(HomeTab.Inbox), nav.route)
+    }
+
+    @Test
+    fun `opening a tab from a pushed screen closes it and forgets what it saved`() {
+        val holder = RecordingHolder()
+        val nav = navigator(holder, Route.Reader("m1"))
+        val readerKey = nav.entryKey(1)
+
+        nav.openTab(HomeTab.Junk)
+
+        assertEquals(listOf<Route>(Route.Home(HomeTab.Junk)), (0 until nav.depth).map(nav::get))
+        assertEquals(listOf<Any>(readerKey), holder.removed)
+    }
+
+    @Test
+    fun `opening a page already on the stack returns to it rather than stacking a second`() {
+        val nav = navigator(RecordingHolder(), Route.Settings, Route.Notices)
+
+        nav.open(Route.Settings)
+
+        assertEquals(Route.Settings, nav.route)
+        assertEquals(2, nav.depth)
+    }
+
+    @Test
+    fun `the sidebar marks the page at its foot, and the tab underneath anything else`() {
+        assertEquals(SidebarPlace.Settings, sidebarPlace(HomeTab.Inbox, Route.Notices))
+        assertEquals(SidebarPlace.Filters, sidebarPlace(HomeTab.Inbox, Route.Filters))
+        assertEquals(SidebarPlace.Tab(HomeTab.Junk), sidebarPlace(HomeTab.Junk, Route.Reader("m1")))
     }
 
     @Test

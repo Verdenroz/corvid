@@ -18,6 +18,7 @@
     <string name="settings_theme_light">Light</string>
     <string name="settings_theme_dark">Dark</string>
     <string name="settings_security">Security</string>
+    <string name="settings_devices">Devices</string>
     <string name="settings_auto_lock">Lock after</string>
     <string name="settings_auto_lock_option">%1$d min</string>
     <string name="settings_auto_lock_detail">Idle time before the key drops and the app locks.</string>

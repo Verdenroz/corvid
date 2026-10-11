@@ -30,4 +30,18 @@ class BackGuardTest {
     fun `a guard that lets back through pops the screen`() {
         assertEquals(Route.Home(HomeTab.Inbox), routeAfterBack(takesBack = false))
     }
+
+    @Test
+    fun `opening a tab stops at a screen whose guard takes back`() {
+        val nav = navigator(RecordingHolder(), Route.Filters)
+        runComposeUiTest {
+            setContent {
+                CompositionLocalProvider(LocalBackGuard provides nav.guard(1)) { GuardBack { true } }
+            }
+            runOnIdle { nav.openTab(HomeTab.Sent) }
+        }
+
+        assertEquals(Route.Filters, nav.route)
+        assertEquals(HomeTab.Inbox, nav.homeTab)
+    }
 }

@@ -38,6 +38,7 @@ import kotlinx.serialization.json.putJsonObject
 import kotlin.time.Instant
 
 private const val PAGE_SIZE = 50
+private const val SET_CHUNK = 250
 const val INBOX = "inbox"
 const val TRASH = "trash"
 const val ARCHIVE = "archive"
@@ -288,30 +289,93 @@ class MailboxRepository(private val jmapClient: JmapClient) {
         }
 
     /** Files the messages in Trash alone; with no Trash mailbox every one is refused. */
-    suspend fun trash(ids: Collection<String>): MailMove =
-        moving(ids) {
-            val trash = mailboxId(TRASH) ?: return@moving MailMove(emptyMap(), emptyMap(), ids.associateWith { "no Trash mailbox" })
-            val before = mailboxIdsOf(ids).filterValues { it != setOf(trash) }
-            move(before, before.mapValues { setOf(trash) })
-        }
+    suspend fun trash(ids: Collection<String>): MailMove = fileIn(ids, TRASH, "no Trash mailbox")
+
+    /** Files the messages in Junk alone; with no Junk mailbox every one is refused. */
+    suspend fun reportSpam(ids: Collection<String>): MailMove = fileIn(ids, JUNK, "no Junk mailbox")
+
+    /** Files the messages in the Inbox alone, out of Junk. */
+    suspend fun notSpam(ids: Collection<String>): MailMove = fileIn(ids, INBOX, "no Inbox")
+
+    /** Files the messages in [mailboxId] alone, wherever they were. */
+    suspend fun moveTo(
+        ids: Collection<String>,
+        mailboxId: String,
+    ): MailMove = moving(ids) { fileAlone(ids, mailboxId) }
 
     /** Puts every message [done] moved back where it was. */
     suspend fun undo(done: MailMove): MailMove =
         moving(done.moved) { move(done.after.filterKeys { it in done.moved }, done.before.filterKeys { it in done.moved }) }
 
     /**
-     * Deletes for good, with no undo, only those of [ids] filed in Trash alone: a thread in Trash can
-     * still hold a message filed elsewhere. Returns the server's reason for each id it kept.
+     * Deletes for good, with no undo, only those of [ids] filed in Trash alone or Junk alone: a thread
+     * there can still hold a message filed elsewhere. Returns the server's reason for each id it kept.
      */
     suspend fun destroy(ids: Collection<String>): Map<String, String> =
         moving(ids) {
-            val trash = mailboxId(TRASH) ?: return@moving emptyMap()
-            val doomed = mailboxIdsOf(ids).filterValues { it == setOf(trash) }.keys
-            if (doomed.isEmpty()) return@moving emptyMap()
-            val arguments = buildJsonObject { putJsonArray("destroy") { doomed.forEach { add(JsonPrimitive(it)) } } }
-            val result = jmapClient.callOne("Email/set", arguments)
-            doomed.mapNotNull { id -> result.setErrorReason("notDestroyed", id)?.let { id to it } }.toMap()
+            val discarded = listOfNotNull(mailboxId(TRASH), mailboxId(JUNK)).map(::setOf)
+            destroyNow(mailboxIdsOf(ids).filterValues { it in discarded }.keys)
         }
+
+    /**
+     * Empties the [role] mailbox: a message filed there alone is deleted for good, one also filed
+     * elsewhere only leaves it. Ids are paged in from the server, so a large mailbox empties whole.
+     */
+    suspend fun empty(role: String): Emptied {
+        val box = mailboxId(role) ?: return Emptied(0, emptyMap())
+        val ids = idsIn(box)
+        if (ids.isEmpty()) return Emptied(0, emptyMap())
+        return moving(ids) {
+            val (doomed, kept) = ids.chunked(SET_CHUNK).flatMap { mailboxIdsOf(it).entries }.partition { it.value == setOf(box) }
+            val destroyed = doomed.map { it.key }.chunked(SET_CHUNK).flatMap { destroyNow(it).entries }
+            val unfiled =
+                kept.chunked(SET_CHUNK).flatMap { chunk ->
+                    patchEmails(chunk.associate { (id, boxes) -> id to mailboxPatch(boxes, boxes - box).pointers("mailboxIds") }).entries
+                }
+            val refused = (destroyed + unfiled).associate { it.key to it.value }
+            Emptied(doomed.count { it.key !in refused }, refused)
+        }
+    }
+
+    private suspend fun destroyNow(ids: Collection<String>): Map<String, String> {
+        if (ids.isEmpty()) return emptyMap()
+        val arguments = buildJsonObject { putJsonArray("destroy") { ids.forEach { add(JsonPrimitive(it)) } } }
+        val result = jmapClient.callOne("Email/set", arguments)
+        return ids.mapNotNull { id -> result.setErrorReason("notDestroyed", id)?.let { id to it } }.toMap()
+    }
+
+    private suspend fun idsIn(mailboxId: String): List<String> {
+        val ids = mutableListOf<String>()
+        do {
+            val arguments =
+                buildJsonObject {
+                    put("filter", buildJsonObject { put("inMailbox", mailboxId) })
+                    put("position", ids.size)
+                    put("limit", SET_CHUNK)
+                }
+            val page = jmapClient.callOne("Email/query", arguments).idList("ids")
+            ids += page
+        } while (page.size == SET_CHUNK)
+        return ids
+    }
+
+    private suspend fun fileIn(
+        ids: Collection<String>,
+        role: String,
+        missing: String,
+    ): MailMove =
+        moving(ids) {
+            val target = mailboxId(role) ?: return@moving MailMove(emptyMap(), emptyMap(), ids.associateWith { missing })
+            fileAlone(ids, target)
+        }
+
+    private suspend fun fileAlone(
+        ids: Collection<String>,
+        target: String,
+    ): MailMove {
+        val before = mailboxIdsOf(ids).filterValues { it != setOf(target) }
+        return move(before, before.mapValues { setOf(target) })
+    }
 
     /** Every header field of one message, unfolded and in order; null when it is gone. */
     suspend fun headers(id: String): List<HeaderField>? {

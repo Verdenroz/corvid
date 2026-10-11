@@ -71,7 +71,9 @@ class LedgerViewModel(
         _selected.value = emptySet()
     }
 
-    fun refresh(): Job? = if (_state.value is LedgerUiState.Loaded) viewModelScope.launch { restartFromTop() } else null
+    /** A list whose mailbox did not exist yet looks for it again, as archiving makes one on first use. */
+    fun refresh(): Job? =
+        if (_state.value is LedgerUiState.Loaded) viewModelScope.launch { if (filter == null) start() else restartFromTop() } else null
 
     private fun apply(patch: KeywordPatch) {
         if (_state.value !is LedgerUiState.Loaded || conversations.none { patch.emailId in it.emailIds }) return
@@ -116,7 +118,14 @@ class LedgerViewModel(
     private suspend fun tabFilter(tab: LedgerTab): MailFilter? {
         val role = tab.role ?: return MailFilter.Starred
         val id = repository.mailboxId(role)
-        if (id == null) _state.value = LedgerUiState.Failed(uiText(Res.string.mailbox_no_mailbox, role))
+        if (id == null) {
+            _state.value =
+                if (tab == LedgerTab.Archive) {
+                    LedgerUiState.Loaded(emptyList(), canLoadMore = false)
+                } else {
+                    LedgerUiState.Failed(uiText(Res.string.mailbox_no_mailbox, role))
+                }
+        }
         return id?.let { MailFilter.InMailbox(it, threaded = tab != LedgerTab.Drafts) }
     }
 

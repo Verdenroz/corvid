@@ -21,7 +21,7 @@ sealed interface ReaderUiState {
 
     /**
      * [messages] is the whole thread, oldest first; [expanded] are the ids shown in full, the rest as a summary line.
-     * [kind] is where the thread sits, which decides whether it archives or deletes for good.
+     * [kind] is where the thread sits, which decides whether it archives, deletes for good or comes out of Junk.
      */
     data class Loaded(
         val messages: List<EmailDetail>,

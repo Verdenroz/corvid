@@ -24,10 +24,12 @@ import com.verdenroz.corvid.appcommon.resources.write
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
+import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.core.ui.QuietPane
 import com.verdenroz.corvid.feature.mailbox.LedgerScreen
 import org.jetbrains.compose.resources.stringResource
 
+/** Narrow, Write floats over the list; wide, it heads the sidebar. */
 @Composable
 internal fun HomeContent(
     tab: HomeTab,
@@ -43,7 +45,7 @@ internal fun HomeContent(
         } else {
             LedgerScreen(ledgers.of(ledger), ledgers.actions, ledger, onOpenEmail, onOpenSender)
         }
-        WriteButton(onWrite, Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 22.dp))
+        if (!LocalWideLayout.current) WriteButton(onWrite, Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 22.dp))
     }
 }
 

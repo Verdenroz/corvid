@@ -13,8 +13,13 @@ import com.verdenroz.corvid.core.text.uiText
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.action_archived
 import com.verdenroz.corvid.feature.mailbox.resources.action_deleted
+import com.verdenroz.corvid.feature.mailbox.resources.action_emptied
+import com.verdenroz.corvid.feature.mailbox.resources.action_moved
+import com.verdenroz.corvid.feature.mailbox.resources.action_partly_kept
 import com.verdenroz.corvid.feature.mailbox.resources.action_partly_refused
 import com.verdenroz.corvid.feature.mailbox.resources.action_refused
+import com.verdenroz.corvid.feature.mailbox.resources.action_reported
+import com.verdenroz.corvid.feature.mailbox.resources.action_rescued
 import com.verdenroz.corvid.feature.mailbox.resources.action_restored
 import com.verdenroz.corvid.feature.mailbox.resources.action_trashed
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,6 +37,11 @@ class MailActions(
     private val _notice = MutableStateFlow<ActionNotice?>(null)
     val notice: StateFlow<ActionNotice?> = _notice
 
+    private val _folders = MutableStateFlow<List<MoveFolder>?>(null)
+
+    /** Where Move to can file a conversation; null until the server has answered once. */
+    val folders: StateFlow<List<MoveFolder>?> = _folders
+
     fun archive(
         ids: Set<String>,
         conversations: Int,
@@ -41,6 +51,54 @@ class MailActions(
         ids: Set<String>,
         conversations: Int,
     ) = moveAway(ids, conversations, Res.plurals.action_trashed) { repository.trash(it) }
+
+    fun reportSpam(
+        ids: Set<String>,
+        conversations: Int,
+    ) = moveAway(ids, conversations, Res.plurals.action_reported) { repository.reportSpam(it) }
+
+    fun notSpam(
+        ids: Set<String>,
+        conversations: Int,
+    ) = moveAway(ids, conversations, Res.plurals.action_rescued) { repository.notSpam(it) }
+
+    fun moveTo(
+        ids: Set<String>,
+        conversations: Int,
+        folder: MoveFolder,
+    ) = act {
+        val moved = repository.moveTo(ids, folder.id)
+        val text =
+            refusal(moved.refused, ids)
+                ?: UiText.Plural(Res.plurals.action_moved, conversations, listOf(conversations, UiText.FromServer(folder.label)))
+        _notice.value = ActionNotice(text, moved.takeIf { it.moved.isNotEmpty() })
+    }
+
+    /** Asks the server each time, so a folder made elsewhere shows up the next time the menu opens. */
+    fun loadFolders() {
+        viewModelScope.launch {
+            try {
+                _folders.value = moveFolders(repository.mailboxes())
+            } catch (e: JmapException) {
+                _notice.value = ActionNotice(e.userMessage())
+            }
+        }
+    }
+
+    /** Deletes for good everything in the [role] mailbox; no undo. */
+    fun empty(role: String) =
+        act {
+            val emptied = repository.empty(role)
+            val kept = emptied.refused.values.firstOrNull()
+            _notice.value =
+                ActionNotice(
+                    if (kept == null) {
+                        uiPlural(Res.plurals.action_emptied, emptied.destroyed)
+                    } else {
+                        uiText(Res.string.action_partly_kept, emptied.refused.size, UiText.FromServer(kept))
+                    },
+                )
+        }
 
     /** No undo: the server keeps nothing to restore. */
     fun destroy(

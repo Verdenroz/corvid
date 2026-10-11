@@ -38,8 +38,10 @@ import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.core.ui.QuietPane
 import com.verdenroz.corvid.feature.mailbox.resources.Res
+import com.verdenroz.corvid.feature.mailbox.resources.ledger_empty_archive
 import com.verdenroz.corvid.feature.mailbox.resources.ledger_empty_drafts
 import com.verdenroz.corvid.feature.mailbox.resources.ledger_empty_inbox
+import com.verdenroz.corvid.feature.mailbox.resources.ledger_empty_junk
 import com.verdenroz.corvid.feature.mailbox.resources.ledger_empty_sent
 import com.verdenroz.corvid.feature.mailbox.resources.ledger_empty_starred
 import com.verdenroz.corvid.feature.mailbox.resources.ledger_empty_trash
@@ -85,6 +87,7 @@ internal fun LedgerContent(
     var refreshing by remember { mutableStateOf(false) }
     var doomed by remember { mutableStateOf<ActionTarget?>(null) }
     val kind = viewModel.source.kind
+    val menu = rememberMoveMenu(actions)
     val onAction: (ConversationAction, ActionTarget) -> Unit = { action, target ->
         if (action == ConversationAction.Destroy) {
             doomed = target
@@ -92,6 +95,10 @@ internal fun LedgerContent(
             actions.perform(action, target)
             if (action.leavesList) viewModel.clearSelection()
         }
+    }
+    val onMove: (MoveFolder, ActionTarget) -> Unit = { folder, target ->
+        actions.moveTo(target.all, target.conversations, folder)
+        viewModel.clearSelection()
     }
     Column(modifier.fillMaxSize()) {
         doomed?.let { target ->
@@ -113,8 +120,12 @@ internal fun LedgerContent(
                 allSelected = ticked.size == conversations.size,
                 onSelectAll = viewModel::selectAll,
                 onClear = viewModel::clearSelection,
+                menu = menu,
+                onMove = { onMove(it, ticked.target()) },
                 onAction = { onAction(it, ticked.target()) },
             )
+        } else if (conversations.isNotEmpty()) {
+            (viewModel.source as? LedgerSource.Tab)?.tab?.let { tab -> EmptyMailboxBar(tab) { actions.empty(it) } }
         }
         PullToRefreshBox(
             isRefreshing = refreshing,
@@ -145,6 +156,8 @@ internal fun LedgerContent(
                             onOpenEmail,
                             onOpenSender,
                             onAction,
+                            menu,
+                            onMove,
                             viewModel::loadMore,
                         )
                     }
@@ -160,6 +173,8 @@ private fun SelectionBar(
     allSelected: Boolean,
     onSelectAll: () -> Unit,
     onClear: () -> Unit,
+    menu: MoveMenu,
+    onMove: (MoveFolder) -> Unit,
     onAction: (ConversationAction) -> Unit,
 ) {
     val colors = CorvidTheme.colors
@@ -178,7 +193,7 @@ private fun SelectionBar(
             )
             if (!allSelected) PillButton(stringResource(Res.string.selection_all), null, onSelectAll, height = 30.dp)
             Spacer(Modifier.weight(1f))
-            ConversationActionRow(actions, onAction = onAction)
+            ConversationActionRow(actions, menu, onMove, onAction = onAction)
         }
         HorizontalDivider(color = colors.line)
     }
@@ -194,6 +209,8 @@ private fun Ledger(
     onOpenEmail: (String) -> Unit,
     onOpenSender: (String) -> Unit,
     onAction: (ConversationAction, ActionTarget) -> Unit,
+    menu: MoveMenu,
+    onMove: (MoveFolder, ActionTarget) -> Unit,
     onLoadMore: () -> Unit,
 ) {
     val conversations = state.conversations
@@ -208,6 +225,7 @@ private fun Ledger(
     val wide = LocalWideLayout.current
     val selecting = selected.isNotEmpty()
     val onRowAction = remember(onAction) { { action: ConversationAction, row: Conversation -> onAction(action, listOf(row).target()) } }
+    val onRowMove = remember(onMove) { { folder: MoveFolder, row: Conversation -> onMove(folder, listOf(row).target()) } }
     LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 96.dp), modifier = Modifier.fillMaxSize()) {
         days.forEach { day ->
             stickyHeader(key = day.date.toString()) { DayHeader(day, wide) }
@@ -222,6 +240,8 @@ private fun Ledger(
                     onToggle = onToggle,
                     onOpen = onOpenEmail,
                     onAction = onRowAction,
+                    menu = menu,
+                    onMove = onRowMove,
                     onOpenSender = onOpenSender,
                 )
             }
@@ -259,5 +279,7 @@ private fun LedgerTab.emptyText() =
         LedgerTab.Starred -> Res.string.ledger_empty_starred
         LedgerTab.Sent -> Res.string.ledger_empty_sent
         LedgerTab.Drafts -> Res.string.ledger_empty_drafts
+        LedgerTab.Archive -> Res.string.ledger_empty_archive
+        LedgerTab.Junk -> Res.string.ledger_empty_junk
         LedgerTab.Trash -> Res.string.ledger_empty_trash
     }
