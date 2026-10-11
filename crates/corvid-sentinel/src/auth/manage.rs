@@ -155,6 +155,7 @@ async fn forget(state: &Shared, id: String) -> Result<StatusCode, StatusCode> {
         }
         let mut next = auth.clone();
         next.credentials.remove(&id);
+        next.families.retain(|_, family| family.credential != id);
         (Some(next), Removal::Done)
     })
     .await?;
@@ -187,10 +188,13 @@ async fn internal_remove(
 struct Status {
     daily: usize,
     master: usize,
+    /// The roles holding an enrollment code that has not expired.
+    codes: Vec<Role>,
     passkeys: Vec<Passkey>,
 }
 
-/// How many passkeys each role has, which is what `deploy.sh` waits on before it cuts over.
+/// How many passkeys each role has, which is what `deploy.sh` waits on before it cuts over, and
+/// which roles still have a code waiting to be used.
 async fn status(
     State(state): State<Shared>,
     headers: HeaderMap,
@@ -203,9 +207,18 @@ async fn status(
             .filter(|passkey| passkey.role == role)
             .count()
     };
+    let now = dates::now_secs();
+    let codes = state.auth.read(|auth| {
+        auth.codes
+            .iter()
+            .filter(|(_, code)| code.expires_at > now)
+            .map(|(role, _)| *role)
+            .collect()
+    });
     Ok(Json(Status {
         daily: count(Role::Daily),
         master: count(Role::Master),
+        codes,
         passkeys,
     }))
 }

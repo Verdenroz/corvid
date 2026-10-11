@@ -104,6 +104,7 @@ async fn register_options(
                 code,
                 handle: handle.clone(),
             },
+            &address,
             now,
         )
         .ok_or(StatusCode::TOO_MANY_REQUESTS)?;
@@ -113,7 +114,7 @@ async fn register_options(
         "rp": {"id": state.rp_id, "name": "Corvid"},
         "user": {"id": encode(&handle), "name": username, "displayName": username},
         "pubKeyCredParams": [{"type": "public-key", "alg": -7}],
-        "authenticatorSelection": {"residentKey": "required", "userVerification": "required"},
+        "authenticatorSelection": {"residentKey": "preferred", "userVerification": "required"},
         "attestation": "none",
         "timeout": CEREMONY_TIMEOUT_MS,
         "excludeCredentials": enrolled
@@ -211,6 +212,7 @@ struct Which {
 
 async fn login_options(
     State(state): State<Shared>,
+    headers: HeaderMap,
     Json(which): Json<Which>,
 ) -> Result<Json<Value>, StatusCode> {
     let role = which.role;
@@ -222,7 +224,11 @@ async fn login_options(
     }
     let challenge = state
         .challenges
-        .issue(Pending::Login { role }, dates::now_secs())
+        .issue(
+            Pending::Login { role },
+            &client_address(&headers),
+            dates::now_secs(),
+        )
         .ok_or(StatusCode::TOO_MANY_REQUESTS)?;
     Ok(Json(json!({
         "challenge": encode(challenge),
@@ -338,7 +344,10 @@ async fn login_finish(
                 family,
                 Family {
                     user,
+                    credential: id,
                     current: secret_hash(&secret),
+                    previous: None,
+                    rotated_at: now,
                     created_at: now,
                     last_used: now,
                 },
@@ -409,7 +418,8 @@ async fn refresh(
                 next.families.remove(&family);
                 return (Some(next), Grant::Invalid);
             }
-            if found.current != presented {
+            let retry = found.is_retry(&presented, now);
+            if found.current != presented && !retry {
                 next.families.remove(&family);
                 return (Some(next), Grant::Reused);
             }
@@ -418,7 +428,15 @@ async fn refresh(
                 .families
                 .get_mut(&family)
                 .expect("the family was just found");
-            entry.current = secret_hash(&next_secret);
+            if retry {
+                entry.current = secret_hash(&next_secret);
+            } else {
+                entry.previous = Some(std::mem::replace(
+                    &mut entry.current,
+                    secret_hash(&next_secret),
+                ));
+                entry.rotated_at = now;
+            }
             entry.last_used = now;
             (Some(next), Grant::Rotated { user })
         }

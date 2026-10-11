@@ -584,13 +584,15 @@ async fn reusing_an_old_refresh_token_revokes_the_whole_family() {
         .to_owned();
     let second: Value = rig.refresh(&first).await.json().await.unwrap();
     let second = second["refresh_token"].as_str().unwrap().to_owned();
+    let third: Value = rig.refresh(&second).await.json().await.unwrap();
+    let third = third["refresh_token"].as_str().unwrap().to_owned();
 
     let reuse = rig.refresh(&first).await;
 
     assert_eq!(reuse.status(), 400);
     let body: Value = reuse.json().await.unwrap();
     assert_eq!(body["error"], "invalid_grant");
-    assert_eq!(rig.refresh(&second).await.status(), 400);
+    assert_eq!(rig.refresh(&third).await.status(), 400);
     assert_eq!(rig.notices().await, ["Refresh token reused"]);
 }
 
@@ -612,7 +614,10 @@ fn aged_family(last_used: i64, created_at: i64) -> Auth {
         "fam".to_owned(),
         Family {
             user: "handle".to_owned(),
+            credential: "credential".to_owned(),
             current: code_hash("secret"),
+            previous: None,
+            rotated_at: created_at,
             created_at,
             last_used,
         },
@@ -936,4 +941,169 @@ async fn a_host_without_auth_config_answers_every_auth_route_with_auth_off() {
         let body: Value = response.json().await.unwrap();
         assert_eq!(body["error"], "auth_off");
     }
+}
+
+fn rotated_family(rotated_at: i64) -> Auth {
+    let mut auth = aged_family(now() - 60, now() - 3600);
+    let family = auth.families.get_mut("fam").unwrap();
+    family.current = code_hash("new");
+    family.previous = Some(code_hash("old"));
+    family.rotated_at = rotated_at;
+    auth
+}
+
+#[tokio::test]
+async fn the_token_a_lost_response_replaced_still_refreshes_inside_the_grace() {
+    let rig = rig_with(rotated_family(now() - 30)).await;
+
+    let response = rig.refresh("fam.old").await;
+
+    assert_eq!(response.status(), 200);
+    assert!(rig.notices().await.is_empty());
+}
+
+#[tokio::test]
+async fn the_token_a_retry_replaced_is_the_one_that_works_after_it() {
+    let rig = rig_with(rotated_family(now() - 30)).await;
+    let body: Value = rig.refresh("fam.old").await.json().await.unwrap();
+    let retried = body["refresh_token"].as_str().unwrap().to_owned();
+
+    assert_eq!(rig.refresh(&retried).await.status(), 200);
+}
+
+#[tokio::test]
+async fn the_replaced_token_presented_after_the_grace_revokes_the_family_and_notices() {
+    let rig = rig_with(rotated_family(now() - 61)).await;
+
+    assert_eq!(rig.refresh("fam.old").await.status(), 400);
+
+    assert_eq!(rig.refresh("fam.new").await.status(), 400);
+    assert_eq!(rig.notices().await, ["Refresh token reused"]);
+}
+
+#[tokio::test]
+async fn removing_a_passkey_ends_the_sign_ins_it_made() {
+    let rig = rig().await;
+    let mut phone = rig.enrolled("daily").await;
+    rig.enrolled("daily").await;
+    let mut master = rig.enrolled("master").await;
+    let refresh = rig.signed_in(&mut phone, "daily").await["refresh_token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let token = rig.master_token(&mut master).await;
+
+    let removed = rig
+        .with_master(
+            reqwest::Method::DELETE,
+            &format!("/corvid/auth/passkeys/{}", encode(&phone.credential_id)),
+            &token,
+            json!({}),
+        )
+        .await;
+
+    assert_eq!(removed.status(), 204);
+    assert_eq!(rig.refresh(&refresh).await.status(), 400);
+}
+
+#[tokio::test]
+async fn removing_one_passkey_leaves_the_sign_ins_of_another() {
+    let rig = rig().await;
+    let mut phone = rig.enrolled("daily").await;
+    let mut tablet = rig.enrolled("daily").await;
+    let mut master = rig.enrolled("master").await;
+    let kept = rig.signed_in(&mut tablet, "daily").await["refresh_token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    rig.signed_in(&mut phone, "daily").await;
+    let token = rig.master_token(&mut master).await;
+
+    rig.with_master(
+        reqwest::Method::DELETE,
+        &format!("/corvid/auth/passkeys/{}", encode(&phone.credential_id)),
+        &token,
+        json!({}),
+    )
+    .await;
+
+    assert_eq!(rig.refresh(&kept).await.status(), 200);
+}
+
+#[tokio::test]
+async fn one_address_cannot_crowd_another_out_of_sign_in() {
+    let rig = rig().await;
+    let mut soft = rig.enrolled("daily").await;
+    let mut challenges = Vec::new();
+    for _ in 0..100 {
+        let response = rig
+            .post_from(
+                "/corvid/auth/login/options",
+                json!({"role": "daily"}),
+                "203.0.113.5",
+            )
+            .await;
+        assert_eq!(response.status(), 200);
+        let options: Value = response.json().await.unwrap();
+        challenges.push(decode(options["challenge"].as_str().unwrap()));
+    }
+
+    let elsewhere = rig
+        .post_from(
+            "/corvid/auth/login/options",
+            json!({"role": "daily"}),
+            "203.0.113.6",
+        )
+        .await;
+
+    assert_eq!(elsewhere.status(), 200);
+    assert_eq!(
+        rig.finish_login(&mut soft, challenges.last().unwrap())
+            .await
+            .status(),
+        200
+    );
+}
+
+#[tokio::test]
+async fn an_address_past_its_share_loses_its_oldest_challenge() {
+    let rig = rig().await;
+    let mut soft = rig.enrolled("daily").await;
+    let mut first = None;
+    for _ in 0..5 {
+        let options: Value = rig
+            .post_from(
+                "/corvid/auth/login/options",
+                json!({"role": "daily"}),
+                "203.0.113.5",
+            )
+            .await
+            .json()
+            .await
+            .unwrap();
+        first.get_or_insert(decode(options["challenge"].as_str().unwrap()));
+    }
+
+    assert_eq!(
+        rig.finish_login(&mut soft, &first.unwrap()).await.status(),
+        401
+    );
+}
+
+#[tokio::test]
+async fn the_host_status_lists_the_roles_with_a_code_waiting() {
+    let rig = rig().await;
+    rig.host_code("master").await;
+
+    let body: Value = reqwest::Client::new()
+        .get(format!("{}/internal/auth/status", rig.url))
+        .header("X-Signature", signature("status"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+
+    assert_eq!(body["codes"], json!(["master"]));
 }

@@ -16,6 +16,7 @@ const SCHEMA: u32 = 1;
 pub const CODE_LIFETIME_SECONDS: i64 = 24 * 3600;
 pub const REFRESH_IDLE_SECONDS: i64 = 24 * 3600;
 pub const REFRESH_TOTAL_SECONDS: i64 = 7 * 24 * 3600;
+pub const REFRESH_GRACE_SECONDS: i64 = 60;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -70,12 +71,16 @@ pub struct Code {
     pub expires_at: i64,
 }
 
-/// One sign-in's chain of refresh tokens. `current` is the hash of the only token that still
-/// works; presenting any other member of the family revokes it.
+/// One sign-in's chain of refresh tokens, minted by `credential`. `current` is the hash of the
+/// token that works; `previous` is the one it replaced, which still works for a short grace
+/// after `rotated_at` so a lost response can be retried. Any other member revokes the family.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Family {
     pub user: String,
+    pub credential: String,
     pub current: String,
+    pub previous: Option<String>,
+    pub rotated_at: i64,
     pub created_at: i64,
     pub last_used: i64,
 }
@@ -103,7 +108,10 @@ corvid_store::pin_shape!(Credential {
 corvid_store::pin_shape!(Code { hash, expires_at });
 corvid_store::pin_shape!(Family {
     user,
+    credential,
     current,
+    previous,
+    rotated_at,
     created_at,
     last_used
 });
@@ -124,6 +132,11 @@ impl Credential {
 }
 
 impl Family {
+    /// Whether `hash` is the token this family replaced, presented inside the grace.
+    pub fn is_retry(&self, hash: &str, now: i64) -> bool {
+        self.previous.as_deref() == Some(hash) && now - self.rotated_at < REFRESH_GRACE_SECONDS
+    }
+
     pub fn is_live(&self, now: i64) -> bool {
         now - self.last_used < REFRESH_IDLE_SECONDS && now - self.created_at < REFRESH_TOTAL_SECONDS
     }
