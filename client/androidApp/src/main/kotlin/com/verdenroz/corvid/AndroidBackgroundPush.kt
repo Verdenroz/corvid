@@ -3,6 +3,7 @@ package com.verdenroz.corvid
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.net.toUri
@@ -11,18 +12,30 @@ import com.verdenroz.corvid.core.prefs.PushSubscription
 import com.verdenroz.corvid.feature.settings.BackgroundPush
 import com.verdenroz.corvid.feature.settings.PushTransport
 import org.unifiedpush.android.connector.UnifiedPush
-import org.unifiedpush.android.connector.keys.DefaultKeyManager
+
+private const val GOOGLE_SERVICES = "com.google.android.gms"
 
 /**
  * Push through the embedded FCM distributor, which lives in this app and registers with Play Services or microG; the
- * connector lists it only where one of them is installed. Elsewhere the app keeps its own connection, whose keys the
- * connector's key manager holds, wrapped by the Android keystore.
+ * connector lists it only where one of them is installed. Elsewhere the app keeps its own connection.
  */
 class AndroidBackgroundPush(private val context: Context) : BackgroundPush {
-    private val keys = DefaultKeyManager(context)
+    private val keyStore = StreamKeyStore(context)
 
     override fun transport(): PushTransport =
-        if (context.packageName in UnifiedPush.getDistributors(context)) PushTransport.Google else PushTransport.OwnConnection
+        if (context.packageName in UnifiedPush.getDistributors(context) && googleServicesEnabled()) {
+            PushTransport.Google
+        } else {
+            PushTransport.OwnConnection
+        }
+
+    // The connector counts a disabled Play Services as installed.
+    private fun googleServicesEnabled(): Boolean =
+        try {
+            context.packageManager.getApplicationInfo(GOOGLE_SERVICES, 0).enabled
+        } catch (e: PackageManager.NameNotFoundException) {
+            false
+        }
 
     override fun register(vapid: String) {
         UnifiedPush.saveDistributor(context, context.packageName)
@@ -30,16 +43,14 @@ class AndroidBackgroundPush(private val context: Context) : BackgroundPush {
     }
 
     override fun registerOwnConnection(): PushSubscription {
-        keys.delete(STREAM_KEYS)
-        keys.generate(STREAM_KEYS)
-        val published = checkNotNull(keys.getPublicKeySet(STREAM_KEYS)) { "the stream keys were just generated" }
+        val keys = keyStore.create()
         askToStayRunning()
-        return PushSubscription(OWN_CONNECTION, published.pubKey, published.auth)
+        return PushSubscription(OWN_CONNECTION, keys.p256dh, keys.authSecret)
     }
 
     override fun unregister() {
         UnifiedPush.unregister(context)
-        keys.delete(STREAM_KEYS)
+        keyStore.delete()
     }
 
     // The app is not distributed through Play, whose policy is what this check enforces.

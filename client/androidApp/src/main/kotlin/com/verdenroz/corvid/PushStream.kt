@@ -10,7 +10,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import org.unifiedpush.android.connector.keys.DefaultKeyManager
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -19,7 +18,6 @@ import kotlin.coroutines.coroutineContext
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
-internal const val STREAM_KEYS = "stream"
 private const val UNAUTHORIZED = 401
 private val CONNECT_TIMEOUT_MS = 15.seconds.inWholeMilliseconds
 
@@ -33,7 +31,7 @@ internal class PushStream(
     context: Context,
     private val preferences: DevicePreferences,
 ) {
-    private val keys = DefaultKeyManager(context)
+    private val keys = StreamKeyStore(context).load()
     private val previews = AndroidMailPreviews(context)
 
     suspend fun run() {
@@ -97,7 +95,7 @@ internal class PushStream(
         val sealed = Base64.decode(data, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
         val content =
             try {
-                keys.decrypt(STREAM_KEYS, sealed)
+                keys?.decrypt(sealed)
             } catch (e: GeneralSecurityException) {
                 null
             }
