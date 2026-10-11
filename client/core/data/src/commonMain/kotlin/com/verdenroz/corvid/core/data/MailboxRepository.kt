@@ -112,10 +112,11 @@ sealed interface ThreadLookup {
  * is stateless across pages.
  */
 class MailboxRepository(private val jmapClient: JmapClient) {
-    private val vocabulary = SearchVocabulary(jmapClient)
+    private val sample = MailSample(jmapClient)
+    private val vocabulary = SearchVocabulary(sample)
     private val identityLock = Mutex()
     private val rolesLock = Mutex()
-    private var identity: KnownIdentity? = null
+    private var identities: List<Identity>? = null
     private var roleIds: Map<String, String>? = null
     private val _keywordPatches = MutableSharedFlow<KeywordPatch>(extraBufferCapacity = 16)
 
@@ -397,16 +398,22 @@ class MailboxRepository(private val jmapClient: JmapClient) {
             created?.getValue("id")?.jsonPrimitive?.content?.also { roleIds = roleIds.orEmpty() + (ARCHIVE to it) }
         }
 
-    /** The account's first identity, fetched once: who the account avatar is, and which senders are its own server. */
-    suspend fun identity(): Identity? =
+    /** The account's first identity: who the account avatar is, and which senders are its own server. */
+    suspend fun identity(): Identity? = identities().firstOrNull()
+
+    /** Everyone the newest messages name, ranked by [rankContacts], from the same fetch search completion reads. */
+    suspend fun contacts(): List<Contact> = rankContacts(sample.emails(), identities().map { it.email }.toSet())
+
+    /** Every identity the account may send as, fetched once. */
+    private suspend fun identities(): List<Identity> =
         identityLock.withLock {
-            (identity ?: KnownIdentity(fetchIdentity()).also { identity = it }).identity
+            identities ?: fetchIdentities().also { identities = it }
         }
 
     internal suspend fun ownDomain(): String? = identity()?.email?.substringAfterLast('@')
 
-    private suspend fun fetchIdentity(): Identity? =
-        jmapClient.callOne("Identity/get", JsonObject(emptyMap())).getValue("list").jsonArray.firstOrNull()?.jsonObject?.toIdentity()
+    private suspend fun fetchIdentities(): List<Identity> =
+        jmapClient.callOne("Identity/get", JsonObject(emptyMap())).getValue("list").jsonArray.map { it.jsonObject.toIdentity() }
 }
 
 internal fun JsonObject.toMailbox() =
@@ -438,8 +445,6 @@ internal fun JsonObject.toEmailSummary(ownDomain: String?): EmailSummary {
 private fun MethodOutcome.anchorNotFound() = (this as? MethodOutcome.Failure)?.error?.type == "anchorNotFound"
 
 private fun JsonObject.queryState() = getValue("queryState").jsonPrimitive.content
-
-private class KnownIdentity(val identity: Identity?)
 
 /** email is null for MIME group syntax ("undisclosed-recipients:;"), which carries a name and no address. */
 private fun JsonObject.toEmailAddress(): EmailAddress? {

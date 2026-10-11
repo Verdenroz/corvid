@@ -52,7 +52,6 @@ import com.verdenroz.corvid.feature.compose.resources.compose_message
 import com.verdenroz.corvid.feature.compose.resources.compose_not_saved
 import com.verdenroz.corvid.feature.compose.resources.compose_retry_save
 import com.verdenroz.corvid.feature.compose.resources.compose_send
-import com.verdenroz.corvid.feature.compose.resources.compose_show_copies
 import com.verdenroz.corvid.feature.compose.resources.compose_subject
 import com.verdenroz.corvid.feature.compose.resources.compose_title_draft
 import com.verdenroz.corvid.feature.compose.resources.compose_title_forward
@@ -76,7 +75,17 @@ fun ComposeScreen(
         if (current != restore) SideEffect { restore = current }
     }
     val close = { if (viewModel.requestClose()) onClose() }
-    GuardBack { !viewModel.requestClose() }
+    // Escape arrives here as back too, so an open suggestion list closes before the screen does.
+    GuardBack { viewModel.dismissSuggestions() || !viewModel.requestClose() }
+    val recipients =
+        remember(viewModel) {
+            RecipientActions(
+                viewModel::editRecipients,
+                viewModel::moveHighlight,
+                viewModel::acceptSuggestion,
+                viewModel::dismissSuggestions,
+            )
+        }
 
     Column(Modifier.fillMaxSize().background(CorvidTheme.colors.surface)) {
         val editing = state as? ComposeUiState.Editing
@@ -98,7 +107,7 @@ fun ComposeScreen(
                         onCancel = viewModel::keepEditing,
                     )
                 }
-                Fields(current, onEdit = viewModel::edit, onRetrySave = viewModel::retrySave)
+                Fields(current, recipients, onEdit = viewModel::edit, onRetrySave = viewModel::retrySave)
             }
         }
     }
@@ -135,6 +144,7 @@ private fun Bar(
 @Composable
 private fun Fields(
     state: ComposeUiState.Editing,
+    recipients: RecipientActions,
     onEdit: (ComposeForm.() -> ComposeForm) -> Unit,
     onRetrySave: () -> Unit,
 ) {
@@ -149,14 +159,17 @@ private fun Fields(
             )
         }
         var copies by rememberSaveable { mutableStateOf(state.form.cc.isNotEmpty() || state.form.bcc.isNotEmpty()) }
-        Field(
+        RecipientInput(
             stringResource(Res.string.compose_to),
+            RecipientField.To,
             state.form.to,
+            state.suggestions,
+            recipients,
             onShowCopies = if (copies) null else ({ copies = true }),
-        ) { onEdit { copy(to = it) } }
+        )
         if (copies) {
-            Field(stringResource(Res.string.compose_cc), state.form.cc) { onEdit { copy(cc = it) } }
-            Field(stringResource(Res.string.compose_bcc), state.form.bcc) { onEdit { copy(bcc = it) } }
+            RecipientInput(stringResource(Res.string.compose_cc), RecipientField.Cc, state.form.cc, state.suggestions, recipients)
+            RecipientInput(stringResource(Res.string.compose_bcc), RecipientField.Bcc, state.form.bcc, state.suggestions, recipients)
         }
         Field(stringResource(Res.string.compose_subject), state.form.subject) { onEdit { copy(subject = it) } }
         Body(state.form.body) { onEdit { copy(body = it) } }
@@ -184,7 +197,6 @@ private fun NotSaved(onRetry: () -> Unit) {
 private fun Field(
     label: String,
     value: String,
-    onShowCopies: (() -> Unit)? = null,
     onChange: (String) -> Unit,
 ) {
     val colors = CorvidTheme.colors
@@ -199,14 +211,6 @@ private fun Field(
                 cursorBrush = SolidColor(colors.accent),
                 modifier = Modifier.weight(1f),
             )
-            onShowCopies?.let {
-                Text(
-                    stringResource(Res.string.compose_show_copies),
-                    style = CorvidTheme.type.meta,
-                    color = colors.inkMuted,
-                    modifier = Modifier.clickable(onClick = it).padding(8.dp),
-                )
-            }
         }
         HorizontalDivider(color = colors.line)
     }

@@ -3,10 +3,12 @@ package com.verdenroz.corvid.feature.compose
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.core.data.ComposeRepository
+import com.verdenroz.corvid.core.data.Contact
 import com.verdenroz.corvid.core.data.DraftSaveResult
 import com.verdenroz.corvid.core.data.SendResult
 import com.verdenroz.corvid.core.data.SendUnavailable
 import com.verdenroz.corvid.core.data.StartResult
+import com.verdenroz.corvid.core.data.matching
 import com.verdenroz.corvid.core.data.userMessage
 import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.model.ComposeIntent
@@ -47,6 +49,8 @@ class ComposeViewModel(
     private val saves = Mutex()
     private var pendingSave: Job? = null
     private var discarded = false
+    private var contacts: List<Contact> = emptyList()
+    private var typing: Typing? = null
 
     init {
         viewModelScope.launch {
@@ -70,6 +74,16 @@ class ComposeViewModel(
             }
             if (restored != null) scheduleSave()
         }
+        viewModelScope.launch {
+            contacts =
+                try {
+                    composeRepository.contacts()
+                } catch (_: JmapException) {
+                    // Suggestions are a convenience; a field typed in full still sends.
+                    emptyList()
+                }
+            _state.update { if (it is ComposeUiState.Editing) it.suggesting() else it }
+        }
     }
 
     /** The restored text outlives a draft that was replaced or sent in the meantime; it saves as a new one. */
@@ -83,6 +97,57 @@ class ComposeViewModel(
         val current = _state.value as? ComposeUiState.Editing ?: return
         _state.value = current.copy(form = current.form.change())
         scheduleSave()
+    }
+
+    /** [caret] is where the cursor sits in [text], so the address around it is the one suggestions complete. */
+    fun editRecipients(
+        field: RecipientField,
+        text: String,
+        caret: Int = text.length,
+    ) {
+        val current = _state.value as? ComposeUiState.Editing ?: return
+        typing = Typing(field, caret.coerceIn(0, text.length))
+        _state.value = current.copy(form = current.form.withRecipients(field, text)).suggesting()
+        scheduleSave()
+    }
+
+    /** Moves the highlight by [step], stopping at either end of the list. */
+    fun moveHighlight(step: Int) {
+        val current = _state.value as? ComposeUiState.Editing ?: return
+        val suggestions = current.suggestions ?: return
+        val highlighted = (suggestions.highlighted + step).coerceIn(0, suggestions.contacts.lastIndex)
+        _state.value = current.copy(suggestions = suggestions.copy(highlighted = highlighted))
+    }
+
+    /** Puts the suggestion at [index], the highlighted one by default, in place of the address being typed. */
+    fun acceptSuggestion(index: Int? = null) {
+        val current = _state.value as? ComposeUiState.Editing ?: return
+        val suggestions = current.suggestions ?: return
+        val contact = suggestions.contacts.getOrNull(index ?: suggestions.highlighted) ?: return
+        val field = suggestions.field
+        val text = current.form.recipients(field)
+        val replaced = AddressSpan(text, typing?.caret ?: text.length).replacedBy(contact.address)
+        typing = null
+        _state.value = current.copy(form = current.form.withRecipients(field, replaced), suggestions = null)
+        scheduleSave()
+    }
+
+    /** Closes the list until the next keystroke; true when there was one to close. */
+    fun dismissSuggestions(): Boolean {
+        val current = _state.value as? ComposeUiState.Editing ?: return false
+        typing = null
+        if (current.suggestions == null) return false
+        _state.value = current.copy(suggestions = null)
+        return true
+    }
+
+    private fun ComposeUiState.Editing.suggesting(): ComposeUiState.Editing {
+        val typing = typing ?: return copy(suggestions = null)
+        val span = AddressSpan(form.recipients(typing.field), typing.caret)
+        val fragment = span.fragment
+        val taken = (span.others.map { it.email } + fragment).map { it.lowercase() }.toSet()
+        val found = contacts.filterNot { it.address.email.lowercase() in taken }.matching(fragment, SUGGESTION_LIMIT)
+        return copy(suggestions = found.takeIf { it.isNotEmpty() }?.let { Suggestions(typing.field, it) })
     }
 
     /**
@@ -209,6 +274,9 @@ class ComposeViewModel(
 }
 
 private val AUTOSAVE_DELAY = 2.seconds
+private const val SUGGESTION_LIMIT = 6
+
+private class Typing(val field: RecipientField, val caret: Int)
 
 private fun ComposeForm.isBlank() = listOf(to, cc, bcc, subject, body).all { it.isBlank() }
 

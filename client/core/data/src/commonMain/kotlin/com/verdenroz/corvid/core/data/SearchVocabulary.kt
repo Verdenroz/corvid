@@ -1,33 +1,26 @@
 package com.verdenroz.corvid.core.data
 
-import com.verdenroz.corvid.core.jmap.JmapClient
-import com.verdenroz.corvid.core.jmap.resultOrThrow
 import com.verdenroz.corvid.core.model.EmailAddress
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 
-private const val SAMPLE = 500
 private const val MAX_EXPANSIONS = 20
 private const val MIN_FRAGMENT = 2
 private const val MIN_WORD = 3
 private val SEPARATOR = Regex("[^\\p{L}\\p{N}]+")
 
 /**
- * The addresses and words of the newest [SAMPLE] messages, read once a session. The server's text
+ * The addresses and words of the [MailSample], read once a session. The server's text
  * search covers subject, body, sender and recipients but matches whole words only, so "green"
  * never finds greenpieguy@gmail.com and "invo" never finds an invoice. The word being typed is
  * completed against these first, and each completion is searched as a whole word.
  */
-internal class SearchVocabulary(private val jmapClient: JmapClient) {
+internal class SearchVocabulary(private val sample: MailSample) {
     private val lock = Mutex()
     private var known: Known? = null
 
@@ -60,28 +53,11 @@ internal class SearchVocabulary(private val jmapClient: JmapClient) {
         }
     }
 
-    private suspend fun known(): Known = lock.withLock { known ?: fetch().also { known = it } }
+    private suspend fun known(): Known = lock.withLock { known ?: build(sample.emails()).also { known = it } }
 
-    private suspend fun fetch(): Known {
-        val query =
-            buildJsonObject {
-                putJsonArray("sort") {
-                    addJsonObject {
-                        put("property", "receivedAt")
-                        put("isAscending", false)
-                    }
-                }
-                put("limit", SAMPLE)
-            }
-        val emails =
-            jmapClient.queryAndGet(query, listOf("from", "to", "cc", "subject", "preview")).get.resultOrThrow()
-                .getValue("list").jsonArray.map { it.jsonObject }
-        val addresses =
-            emails.flatMap {
-                    email ->
-                listOf("from", "to", "cc").flatMap { email.addressList(it) }
-            }.distinctBy { it.email.lowercase() }
-        val text = emails.flatMap { email -> listOf("subject", "preview").mapNotNull { email[it]?.jsonPrimitive?.contentOrNull } }
+    private fun build(emails: List<SampledEmail>): Known {
+        val addresses = emails.flatMap { it.from + it.to + it.cc }.distinctBy { it.email.lowercase() }
+        val text = emails.flatMap { listOfNotNull(it.subject, it.preview) }
         val words = text.flatMap { it.lowercase().split(SEPARATOR) }.filter { it.length >= MIN_WORD }
         return Known(addresses, words.groupingBy { it }.eachCount())
     }

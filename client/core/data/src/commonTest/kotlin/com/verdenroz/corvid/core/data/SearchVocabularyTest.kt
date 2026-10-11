@@ -32,7 +32,7 @@ private fun server() =
                 .copy(preview = "Invoice paid")
     }
 
-private suspend fun filter(text: String) = SearchVocabulary(server().client()).searchFilter(text)
+private suspend fun filter(text: String) = SearchVocabulary(MailSample(server().client())).searchFilter(text)
 
 private fun JsonObject.conditions() = getValue("conditions").jsonArray.map { it.jsonObject }
 

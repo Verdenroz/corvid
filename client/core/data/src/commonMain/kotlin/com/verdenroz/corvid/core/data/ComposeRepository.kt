@@ -168,6 +168,9 @@ class ComposeRepository(
             outcome.refusal("submission")?.let { SendResult.Rejected(it) } ?: SendResult.Sent
         }
 
+    /** People to suggest as recipients, best first. */
+    suspend fun contacts(): List<Contact> = mailboxRepository.contacts()
+
     suspend fun discard(emailId: String) {
         val arguments = buildJsonObject { putJsonArray("destroy") { add(JsonPrimitive(emailId)) } }
         jmapClient.callOne("Email/set", arguments)
