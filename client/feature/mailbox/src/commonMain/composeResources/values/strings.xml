@@ -167,6 +167,7 @@
     <string name="ledger_empty_junk">No junk caught.</string>
     <string name="action_report_spam">Report spam</string>
     <string name="action_not_spam">Not spam</string>
+    <string name="action_more">More</string>
     <string name="action_move_to">Move to</string>
     <string name="action_move_loading">Reading folders…</string>
     <string name="action_partly_kept">%1$d kept: %2$s</string>

@@ -47,6 +47,7 @@ import com.verdenroz.corvid.feature.mailbox.resources.action_destroy_confirm
 import com.verdenroz.corvid.feature.mailbox.resources.action_destroy_question
 import com.verdenroz.corvid.feature.mailbox.resources.action_dismiss
 import com.verdenroz.corvid.feature.mailbox.resources.action_keep
+import com.verdenroz.corvid.feature.mailbox.resources.action_more
 import com.verdenroz.corvid.feature.mailbox.resources.action_move_loading
 import com.verdenroz.corvid.feature.mailbox.resources.action_move_to
 import com.verdenroz.corvid.feature.mailbox.resources.action_undo
@@ -103,20 +104,99 @@ internal fun rememberMoveMenu(actions: MailActions): MoveMenu {
     return remember(actions, folders) { MoveMenu(folders, actions::loadFolders) }
 }
 
+/** How many action buttons a narrow bar shows before More. */
+internal const val NARROW_SHOWN = 2
+
+/** Shows the first [shown] buttons, Move to counted among them; the rest wait under More, for a bar too narrow to hold them all. */
 @Composable
 internal fun ConversationActionRow(
     actions: List<ConversationAction>,
     menu: MoveMenu,
     onMove: (MoveFolder) -> Unit,
     size: Dp = 40.dp,
+    shown: Int = Int.MAX_VALUE,
     onMenuShown: (Boolean) -> Unit = {},
     onAction: (ConversationAction) -> Unit,
 ) {
     val (moves, marks) = actions.partition { it.moves }
+    val buttons: List<ConversationAction?> = moves + null + marks
     Row(verticalAlignment = Alignment.CenterVertically) {
-        moves.forEach { action -> ConversationActionIcon(action, { onAction(action) }, size) }
-        MoveToButton(menu, onMove, size, onMenuShown)
-        marks.forEach { action -> ConversationActionIcon(action, { onAction(action) }, size) }
+        buttons.take(shown).forEach { action ->
+            if (action == null) {
+                MoveToButton(
+                    menu,
+                    onMove,
+                    size,
+                    onMenuShown,
+                )
+            } else {
+                ConversationActionIcon(action, { onAction(action) }, size)
+            }
+        }
+        val rest = buttons.drop(shown)
+        if (rest.isNotEmpty()) MoreButton(rest, menu, onMove, size, onMenuShown, onAction)
+    }
+}
+
+/** A null entry in [rest] is Move to, which opens the folder list in place. */
+@Composable
+private fun MoreButton(
+    rest: List<ConversationAction?>,
+    menu: MoveMenu,
+    onMove: (MoveFolder) -> Unit,
+    size: Dp,
+    onShown: (Boolean) -> Unit,
+    onAction: (ConversationAction) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    var folders by remember { mutableStateOf(false) }
+    val show = { shown: Boolean ->
+        expanded = shown
+        if (!shown) folders = false
+        onShown(shown)
+    }
+    Box {
+        ActionIcon(stringResource(Res.string.action_more), CorvidIcons.More, { show(true) }, size = size)
+        DropdownMenu(expanded = expanded, onDismissRequest = { show(false) }) {
+            if (folders) {
+                FolderItems(menu) { folder ->
+                    show(false)
+                    onMove(folder)
+                }
+            } else {
+                rest.forEach { action ->
+                    val label = stringResource(action?.label ?: Res.string.action_move_to)
+                    DropdownMenuItem(
+                        text = { Text(label, style = CorvidTheme.type.name) },
+                        leadingIcon = { Icon(action?.icon ?: CorvidIcons.Folder, null, tint = CorvidTheme.colors.inkMuted) },
+                        onClick = {
+                            if (action == null) {
+                                menu.onOpen()
+                                folders = true
+                            } else {
+                                show(false)
+                                onAction(action)
+                            }
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FolderItems(
+    menu: MoveMenu,
+    onPick: (MoveFolder) -> Unit,
+) {
+    val folders = menu.folders
+    if (folders == null) {
+        DropdownMenuItem(text = { Text(stringResource(Res.string.action_move_loading)) }, onClick = {}, enabled = false)
+    } else {
+        folders.forEach { folder ->
+            DropdownMenuItem(text = { Text(folder.label, style = CorvidTheme.type.name) }, onClick = { onPick(folder) })
+        }
     }
 }
 
@@ -138,19 +218,9 @@ private fun MoveToButton(
             show(true)
         }, size = size)
         DropdownMenu(expanded = expanded, onDismissRequest = { show(false) }) {
-            val folders = menu.folders
-            if (folders == null) {
-                DropdownMenuItem(text = { Text(stringResource(Res.string.action_move_loading)) }, onClick = {}, enabled = false)
-            } else {
-                folders.forEach { folder ->
-                    DropdownMenuItem(
-                        text = { Text(folder.label, style = CorvidTheme.type.name) },
-                        onClick = {
-                            show(false)
-                            onMove(folder)
-                        },
-                    )
-                }
+            FolderItems(menu) { folder ->
+                show(false)
+                onMove(folder)
             }
         }
     }

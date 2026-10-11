@@ -182,7 +182,7 @@ private fun ActionBar(
     ) {
         ActionIcon(stringResource(Res.string.mailbox_back), CorvidIcons.Back, onBack, size = 48.dp)
         Spacer(Modifier.weight(1f))
-        ConversationActionRow(offered, menu, onMove, target, onAction = onAction)
+        ConversationActionRow(offered, menu, onMove, target, shown = if (wide) Int.MAX_VALUE else NARROW_SHOWN, onAction = onAction)
         neighbours?.let {
             if (wide && offered.isNotEmpty()) {
                 VerticalDivider(Modifier.padding(horizontal = 8.dp).height(20.dp), color = CorvidTheme.colors.line)

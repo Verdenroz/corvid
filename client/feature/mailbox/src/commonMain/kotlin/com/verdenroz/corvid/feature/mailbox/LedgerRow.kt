@@ -3,6 +3,7 @@ package com.verdenroz.corvid.feature.mailbox
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -29,9 +30,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.focusProperties
-import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.input.InputMode
+import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -66,7 +67,7 @@ import kotlinx.datetime.TimeZone
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
-private val FOCUS_BAR = 3.dp
+private val FOCUS_RING = 1.5.dp
 
 /**
  * While selecting, the whole row ticks. Otherwise a tap opens the conversation, a long press anywhere ticks it, and the
@@ -96,7 +97,7 @@ internal fun LedgerRow(
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     var menuShown by remember { mutableStateOf(false) }
-    val focused by interaction.collectIsFocusedAsState()
+    val focused = interaction.collectIsFocusedAsState().value && LocalInputModeManager.current.inputMode == InputMode.Keyboard
     val background =
         when {
             selected -> colors.accentSoft
@@ -109,7 +110,7 @@ internal fun LedgerRow(
         modifier
             .fillMaxWidth()
             .background(background)
-            .then(if (focused) Modifier.drawBehind { drawRect(accent, size = Size(FOCUS_BAR.toPx(), size.height)) } else Modifier)
+            .then(if (focused) Modifier.border(FOCUS_RING, accent) else Modifier)
             .hoverable(interaction)
             .combinedClickable(
                 interactionSource = interaction,

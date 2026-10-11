@@ -261,7 +261,14 @@ private fun SelectionBar(
             )
             if (!allSelected) PillButton(stringResource(Res.string.selection_all), null, onSelectAll, height = 30.dp)
             Spacer(Modifier.weight(1f))
-            ConversationActionRow(actions, menu, onMove, size = target, onAction = onAction)
+            ConversationActionRow(
+                actions,
+                menu,
+                onMove,
+                size = target,
+                shown = if (LocalWideLayout.current) Int.MAX_VALUE else NARROW_SHOWN,
+                onAction = onAction,
+            )
         }
         HorizontalDivider(color = colors.line)
     }
