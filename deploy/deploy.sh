@@ -147,33 +147,26 @@ if ! grep -q '^CORVID_STALWART_TOKEN=.' "$CORVID_DIR/sentinel-devices.env" 2>/de
   systemctl restart corvid-sentinel.service
 fi
 
+# Asked before any plan is applied: a sentinel that is down says nothing about who is enrolled.
+step "checking passkey enrollment"
+if unit_masked corvid-sentinel.service; then
+  summary="off 0 0"
+else
+  summary="$(auth_decision)" || {
+    echo "the sentinel did not answer /internal/auth/status; sign-in is left as it is, check: journalctl -u corvid-sentinel" >&2
+    exit 1
+  }
+fi
+read -r sign_in passkeys_daily passkeys_master waiting_codes <<<"$summary"
+enrollment=
+
 step "applying configuration"
 CORVID_SKIP_RELOAD=1 "$HERE/apply-plan.sh"
-
-# The sentinel's passkey counts and waiting codes: "DAILY MASTER ROLE...". Nothing while it is down
-# or has no sentinel.auth, which is when sign-in stays with Pocket-ID.
-auth_summary() {
-  local reply
-  for _ in $(seq 1 30); do
-    reply="$(sentinel_signed GET /internal/auth/status status 2>/dev/null)"
-    case "${reply%%$'\n'*}" in
-      200)
-        python3 -c 'import json, sys; s = json.load(sys.stdin); print(s["daily"], s["master"], *s["codes"])' <<<"${reply#*$'\n'}"
-        return
-        ;;
-      503) return ;;
-    esac
-    sleep 2
-  done
-}
 
 # Account passwords stop working once an external directory is applied, so someone must be enrolled
 # in it first, and the deploy scripts use the API key. Passkeys replace Pocket-ID once each role
 # has one; until then Pocket-ID keeps signing people in.
-step "checking passkey enrollment"
-read -r passkeys_daily passkeys_master waiting_codes <<<"$(auth_summary)"
-enrollment=
-if (( ${passkeys_daily:-0} > 0 && ${passkeys_master:-0} > 0 )); then
+if [[ "$sign_in" == passkeys ]]; then
   step "switching sign-in to passkeys"
   CORVID_SKIP_RELOAD=1 PLAN="$HERE/auth.plan.ndjson" "$HERE/apply-plan.sh"
 else
@@ -199,11 +192,12 @@ else
 fi
 
 # A role with no passkey and no code waiting gets one, so a fresh install ends with both to redeem.
-if [[ -n "$passkeys_daily" ]]; then
+if [[ "$sign_in" == pocket-id ]]; then
   minted=
   for role in daily master; do
-    count="passkeys_$role"
-    [[ "${!count}" == 0 && " $waiting_codes " != *" $role "* ]] || continue
+    enrolled="$passkeys_daily"
+    [[ "$role" == daily ]] || enrolled="$passkeys_master"
+    [[ "$enrolled" == 0 && " $waiting_codes " != *" $role "* ]] || continue
     code="$(sentinel_signed POST "/internal/auth/codes/$role" "code $role" | sed -n 's/.*"code":"\([^"]*\)".*/\1/p')"
     [[ -n "$code" ]] && minted+="$role $code"$'\n'
   done

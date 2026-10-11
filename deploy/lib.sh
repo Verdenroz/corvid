@@ -42,6 +42,32 @@ print(base64.b64encode(hmac.new(secret.encode(), sys.argv[2].encode(), hashlib.s
   printf '%s\n%s\n' "${reply##*$'\n'}" "${reply%$'\n'*}"
 }
 
+# What deploy.sh should do about sign-in, from the sentinel's own count of passkeys. Prints
+# "SIGN_IN DAILY MASTER ROLE...": SIGN_IN is `passkeys` when both roles have a passkey and
+# `pocket-id` when they do not, `off` when sentinel.auth is off, and ROLE... are the codes still
+# waiting.
+# Fails, printing nothing, when the sentinel never answers: no answer is not "nobody enrolled",
+# and acting on it would move a host that already switched back to the old directory.
+auth_decision() {
+  local reply
+  for _ in $(seq 1 "${AUTH_STATUS_TRIES:-45}"); do
+    reply="$(sentinel_signed GET /internal/auth/status status 2>/dev/null)"
+    case "${reply%%$'\n'*}" in
+      200)
+        python3 -c '
+import json, sys
+s = json.load(sys.stdin)
+ready = s["daily"] > 0 and s["master"] > 0
+print("passkeys" if ready else "pocket-id", s["daily"], s["master"], *s["codes"])' <<<"${reply#*$'\n'}"
+        return
+        ;;
+      503) echo "off 0 0"; return ;;
+    esac
+    sleep "${AUTH_STATUS_WAIT:-2}"
+  done
+  return 1
+}
+
 # stalwart-cli refuses a token alongside a user, so a token replaces the password pair in the
 # environment. load_env calls it after every source of corvid.env.
 prefer_token() {

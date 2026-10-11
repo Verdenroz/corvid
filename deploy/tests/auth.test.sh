@@ -152,10 +152,10 @@ check "a master passkey that can be backed up is refused" \
   "$(soft_status master enroll "$master_code" backup-eligible)" 1
 check "the code is still good after a refused enrollment" "$(soft_status master enroll "$master_code")" 0
 check "a code works once" "$(soft_status second enroll "$master_code")" 1
-check "the daily code enrolls the daily passkey" "$(soft_status daily enroll "$daily_code")" 0
+check "the daily code enrolls a synced daily passkey" "$(soft_status daily enroll "$daily_code" backup-eligible)" 0
 check "the status counts both roles" "$(passkey status)" "daily 1, master 1, codes waiting: none"
-check "the list shows a synced and a device-bound passkey" \
-  "$(passkey list | awk '{print $2, $4}' | sort | tr '\n' ' ')" "daily device-bound master device-bound "
+check "the list shows a synced daily passkey and a device-bound master one" \
+  "$(passkey list | awk '{print $2, $4}' | sort | tr '\n' ' ')" "daily synced master device-bound "
 check "a user's last passkey cannot be removed" \
   "$(passkey remove "$(passkey list | awk '$2=="daily"{print $1}')" >/dev/null; echo $?)" 1
 

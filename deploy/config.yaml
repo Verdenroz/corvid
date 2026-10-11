@@ -25,8 +25,8 @@ server:
   # with a path, so it needs a hostname of its own.
   # idp_hostname: idp.example.com
   # The Android apps that may sign in with a passkey, by package and the SHA-256 of the
-  # certificate that signs them. The default is the published app; list your own when you build
-  # and sign a fork. Served as /.well-known/assetlinks.json on the mail domain.
+  # certificate that signs them. The default is the published app; a list of your own replaces it,
+  # so keep the published entry too if you want both. Served as /.well-known/assetlinks.json on the mail domain.
   # android_apps:
   #   - package: com.example.corvid
   #     sha256: 00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF
