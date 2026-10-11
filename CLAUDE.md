@@ -49,8 +49,8 @@ namespace, so services reach each other on `127.0.0.1`:
 | `corvid-milter` | `corvid-milter` binary, called by Stalwart at DATA | 11332 |
 | `corvid-imgproxy` | serves the images the milter rewrote | 8081 |
 | `corvid-labeler` | polls JMAP, writes labels as keywords | none |
-| `corvid-sentinel` | the pod's authenticated side door: the alert feed from Stalwart webhooks and update status, update requests, and master-approved device keys | 11333 loopback |
-| `corvid-caddy` | the web tier: JMAP, `/i/*` to imgproxy, `/corvid/update`, `/corvid/notices` and `/corvid/devices/*` to the sentinel behind `forward_auth`; a second site proxies `server.idp_hostname` to Pocket-ID | `server.web_port`, 4443 by default |
+| `corvid-sentinel` | the pod's authenticated side door: the alert feed from Stalwart webhooks and update status, update requests, master-approved device keys, and new-mail previews pushed to approved devices | 11333 loopback |
+| `corvid-caddy` | the web tier: JMAP, `/i/*` to imgproxy, `/corvid/update`, `/corvid/notices` and `/corvid/devices/*` to the sentinel behind `forward_auth`, `/corvid/push/*` to it with no session; a second site proxies `server.idp_hostname` to Pocket-ID | `server.web_port`, 4443 by default |
 | `corvid-idp` | Pocket-ID, OIDC passkeys; provisioned by `idp.sh`, switched on by `oidc.plan.ndjson` | 1411 |
 
 `corvid-mirror` is the exception: a systemd timer on a separate machine that pulls over JMAP.
@@ -289,6 +289,29 @@ Caddyfile built from the same env vars as everything else. `core/discovery` hold
   the client to a group stops it at Pocket-ID: with `isGroupRestricted` and the allowed group set,
   `/authorize` redirects a non-member to `/interaction/error` and no code is issued. A member's
   token still works.
+- **Email/changes returns imports and restores, not only arrivals.** `message-ingest.ham` fires for SMTP
+  delivery and only wakes the sentinel's push watcher, which reads Email/changes since its held state. A
+  message appended over JMAP to the Inbox, unread, came back from that call at the next delivery and was
+  pushed as new mail (measured by `push.test.sh`). The watcher pushes only messages whose `receivedAt` is
+  within 15 minutes, which an import or restore keeps from the original and a catch-up after downtime lacks.
+- **`/corvid/push/*` sits outside `forward_auth` on purpose.** The stream's credential is its own bearer
+  token and the VAPID key is public, so a locked phone with no session can read both. Moving them under
+  `@corvid` would end every background connection when the daily session lapses.
+- **Registering an own-connection endpoint again mints a new token and closes the open stream.** The
+  sentinel keeps only the token's hash, so it cannot hand the old one back. A client registers it once and
+  keeps the token; an event id is the clock in milliseconds, so a resume after a sentinel restart still
+  sorts after what the device last saw.
+- **The sentinel posts to a fixed `fcm.googleapis.com`, so the rig reaches it by proxy.** `push.test.sh`
+  runs the real binary with `HTTPS_PROXY` at a TLS-terminating stand-in and `SSL_CERT_FILE` at a throwaway
+  CA; reqwest's rustls honours both on Linux. A change to the endpoint policy that allows another host needs
+  the rig's `CONNECT` assertion widened with it.
+- **UnifiedPush's embedded FCM distributor is listed only where `com.google.android.gms` exists.** Read from
+  the connector 3.3.5 and distributor 3.1.0 sources, not run on a device: `getDistributors` drops the
+  app's own package without Play Services or microG, and a default pick prefers an installed external
+  distributor over the embedded one, so the app saves its own package as the distributor explicitly.
+- **A config key a host's running image does not know exits every service 78.** `sentinel.push: {}` is
+  safe in `deploy/config.yaml` and unsafe in a host's `/opt/corvid/config.yaml` until that host runs an
+  image that parses it.
 - **A new NetworkListener needs a restart**, not just `ReloadSettings`; the port stays closed.
 - **`systemctl disable` does not stick on a quadlet unit; `mask` does.** The generator rebuilds
   the unit on every `daemon-reload`, so a removed enable symlink comes straight back and
