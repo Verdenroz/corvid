@@ -80,10 +80,13 @@ jobs:
           toolchain: "1.98"
       - uses: Swatinem/rust-cache@v2
       - run: cargo build -p corvid-sentinel --locked
+      - run: cargo build -p corvid-sentinel --locked --example soft-authenticator --features soft-authenticator
       - uses: actions/upload-artifact@v4
         with:
           name: corvid-sentinel
-          path: target/debug/corvid-sentinel
+          path: |
+            target/debug/corvid-sentinel
+            target/debug/examples/soft-authenticator
           retention-days: 1
 
   deploy:
@@ -121,10 +124,14 @@ jobs:
           echo "76fcd7250a10c7bee704dc4a08000b3faca6b5a22895d41831c0c37efd95acce  cli.tar.xz" | sha256sum -c --quiet
           tar -xJf cli.tar.xz
           sudo install -m 755 stalwart-cli-x86_64-unknown-linux-musl/stalwart-cli /usr/local/bin/stalwart-cli
-      - run: chmod +x sentinel/corvid-sentinel
+      - run: chmod +x sentinel/corvid-sentinel sentinel/examples/soft-authenticator
       - run: bash deploy/tests/oidc.test.sh
         env:
           CORVID_SENTINEL_BIN: ${{ github.workspace }}/sentinel/corvid-sentinel
+      - run: bash deploy/tests/auth.test.sh
+        env:
+          CORVID_SENTINEL_BIN: ${{ github.workspace }}/sentinel/corvid-sentinel
+          CORVID_SOFT_BIN: ${{ github.workspace }}/sentinel/examples/soft-authenticator
       - name: Install python3 cryptography
         run: python3 -I -c 'import cryptography' 2>/dev/null || { sudo apt-get update -qq && sudo apt-get install -y python3-cryptography; }
       - run: bash deploy/tests/push.test.sh
@@ -132,6 +139,7 @@ jobs:
           CORVID_SENTINEL_BIN: ${{ github.workspace }}/sentinel/corvid-sentinel
       - run: cat deploy/stalwart.plan.ndjson deploy/stalwart.host-zone.ndjson > combined.ndjson && ./deploy/check-plan.py combined.ndjson
       - run: ./deploy/check-plan.py
+      - run: ./deploy/check-plan.py deploy/auth.plan.ndjson
       - run: ./deploy/check-env.sh
       - run: ./deploy/check-sentinel-events.sh
 

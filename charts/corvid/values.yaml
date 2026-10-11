@@ -16,6 +16,8 @@ config:
   imgproxy: {}
   sentinel:
     state: /var/lib/corvid/sentinel.json
+    auth:
+      state: /var/lib/corvid/auth.json
 
 images:
   # Built from deploy/Containerfile and pushed to a registry the cluster can pull from.

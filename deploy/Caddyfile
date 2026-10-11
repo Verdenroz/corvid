@@ -21,9 +21,15 @@
 			flush_interval -1
 		}
 	}
+	# Signing in and enrolling happen before a session exists. The issuer's discovery, key set and
+	# userinfo are not routed at all: Stalwart reads them on loopback.
+	@auth path /corvid/auth/register/options /corvid/auth/register/finish /corvid/auth/login/options /corvid/auth/login/finish /corvid/auth/token
+	handle @auth {
+		reverse_proxy 127.0.0.1:11333
+	}
 	# Stalwart answers a credential-less /jmap/session with 200, which forward_auth would pass.
 	@corvid {
-		path /corvid/update /corvid/notices /corvid/devices/*
+		path /corvid/update /corvid/notices /corvid/devices/* /corvid/auth/passkeys /corvid/auth/passkeys/* /corvid/auth/enroll-codes
 		header Authorization *
 	}
 	handle @corvid {

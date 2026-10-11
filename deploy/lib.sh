@@ -26,6 +26,22 @@ in_pod() {
   "$@"
 }
 
+# Calls a sentinel route that Caddy does not serve, from inside the pod. The route takes an HMAC
+# of MESSAGE under the webhook secret. Prints the status, then the body, and fails only when the
+# sentinel cannot be reached.
+sentinel_signed() {
+  local method="$1" path="$2" message="$3" signature reply
+  signature="$(python3 -c '
+import base64, hashlib, hmac, sys
+secret = next(l.split("=", 1)[1].strip() for l in open(sys.argv[1]) if l.startswith("CORVID_SENTINEL_SECRET="))
+print(base64.b64encode(hmac.new(secret.encode(), sys.argv[2].encode(), hashlib.sha256).digest()).decode())' \
+    "$CORVID_DIR/sentinel-webhook.env" "$message")"
+  in_pod corvid-sentinel true
+  reply="$(in_pod corvid-sentinel curl -s -w '\n%{http_code}' -X "$method" -H "X-Signature: $signature" \
+    "$SENTINEL_URL$path" || true)"
+  printf '%s\n%s\n' "${reply##*$'\n'}" "${reply%$'\n'*}"
+}
+
 # stalwart-cli refuses a token alongside a user, so a token replaces the password pair in the
 # environment. load_env calls it after every source of corvid.env.
 prefer_token() {
@@ -198,7 +214,7 @@ load_server() {
   fi
   while IFS='=' read -r key value; do
     case "$key" in
-      MAIL_DOMAIN|MAIL_HOSTNAME|MAIL_USER|ACME_CONTACT|WEB_PORT|HOST_ZONE|IDP_HOSTNAME|IDP_URL|SENTINEL_URL|ADMIN_USER|PUBLISH_MTA_STS|PUBLISH_TLSA|MTA_STS_MODE|CLIENT_SOURCES|UPDATE_AUTO)
+      MAIL_DOMAIN|MAIL_HOSTNAME|MAIL_USER|ACME_CONTACT|WEB_PORT|HOST_ZONE|IDP_HOSTNAME|IDP_URL|SENTINEL_URL|ISSUER_URL|ADMIN_USER|PUBLISH_MTA_STS|PUBLISH_TLSA|MTA_STS_MODE|CLIENT_SOURCES|UPDATE_AUTO)
         printf -v "$key" '%s' "$value"
         export "${key?}"
         ;;
@@ -223,6 +239,7 @@ CORVID_MAIL_DOMAIN=$MAIL_DOMAIN
 CORVID_IDP_HOSTNAME=$IDP_HOSTNAME
 CORVID_MTA_STS_SITE=$([[ "$PUBLISH_MTA_STS" == true ]] && echo "mta-sts.$MAIL_DOMAIN:443")
 APP_URL=https://$IDP_HOSTNAME:$WEB_PORT
+CORVID_ISSUER_URL=$ISSUER_URL
 EOF
   chmod 644 "$CORVID_DIR/server.env"
 }
