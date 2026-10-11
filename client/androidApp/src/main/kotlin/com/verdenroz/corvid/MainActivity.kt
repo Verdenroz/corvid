@@ -19,6 +19,7 @@ class MainActivity : ComponentActivity() {
     private val authFlowFactory: AndroidCodeAuthFlowFactory by inject()
     private val privateAuthFlowFactory: AndroidCodeAuthFlowFactory by inject(privateAndroidFlowQualifier)
     private val backgroundDropController: BackgroundDropController by inject()
+    private val attachmentFiles: AndroidAttachmentFiles by inject()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -28,6 +29,7 @@ class MainActivity : ComponentActivity() {
         }
         authFlowFactory.registerActivity(this)
         privateAuthFlowFactory.registerActivity(this)
+        attachmentFiles.register(this)
         enableEdgeToEdge()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerForActivityResult(ActivityResultContracts.RequestPermission()) {}.launch(Manifest.permission.POST_NOTIFICATIONS)

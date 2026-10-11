@@ -8,6 +8,7 @@ import com.verdenroz.corvid.core.jmap.callOne
 import com.verdenroz.corvid.core.jmap.reason
 import com.verdenroz.corvid.core.jmap.resultOrThrow
 import com.verdenroz.corvid.core.jmap.setErrorReason
+import com.verdenroz.corvid.core.model.Attachment
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.model.CorvidKeywords
 import com.verdenroz.corvid.core.model.Draft
@@ -167,6 +168,13 @@ class ComposeRepository(
             val outcome = jmapClient.call(listOf(Invocation("EmailSubmission/set", arguments, "c0"))).getValue("c0")
             outcome.refusal("submission")?.let { SendResult.Rejected(it) } ?: SendResult.Sent
         }
+
+    /** Uploads [file] as a blob for a draft to name; one over the session's `maxSizeUpload` is refused before it is read. */
+    suspend fun upload(file: PickedFile): UploadResult {
+        jmapClient.session.maxSizeUpload?.takeIf { file.size > it }?.let { return UploadResult.TooLarge(it) }
+        val blobId = jmapClient.uploadBlob(file.read(), file.type)
+        return UploadResult.Uploaded(Attachment(blobId, file.name, file.type, file.size))
+    }
 
     suspend fun discard(emailId: String) {
         val arguments = buildJsonObject { putJsonArray("destroy") { add(JsonPrimitive(emailId)) } }

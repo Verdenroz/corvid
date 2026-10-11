@@ -7,6 +7,7 @@ import com.verdenroz.corvid.core.jmap.callOne
 import com.verdenroz.corvid.core.jmap.resultOrThrow
 import com.verdenroz.corvid.core.jmap.resultReference
 import com.verdenroz.corvid.core.jmap.setErrorReason
+import com.verdenroz.corvid.core.model.Attachment
 import com.verdenroz.corvid.core.model.Conversation
 import com.verdenroz.corvid.core.model.CorvidKeywords
 import com.verdenroz.corvid.core.model.EmailAddress
@@ -26,6 +27,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.int
@@ -43,11 +45,12 @@ const val TRASH = "trash"
 const val ARCHIVE = "archive"
 const val JUNK = "junk"
 private const val MAX_BODY_VALUE_BYTES = 262_144
-internal val EMAIL_PROPERTIES = listOf("id", "threadId", "subject", "from", "receivedAt", "keywords", "preview") + PROVENANCE_PROPERTIES
+internal val EMAIL_PROPERTIES =
+    listOf("id", "threadId", "subject", "from", "receivedAt", "keywords", "preview", "hasAttachment") + PROVENANCE_PROPERTIES
 private val EMAIL_DETAIL_PROPERTIES =
     listOf(
         "id", "subject", "from", "to", "cc", "replyTo", "messageId", "references", "receivedAt", "keywords", "preview",
-        "textBody", "htmlBody", "bodyValues", "mailboxIds",
+        "textBody", "htmlBody", "bodyValues", "mailboxIds", "attachments",
     ) + PROVENANCE_PROPERTIES
 
 /** What a list shows: one mailbox, every starred message wherever it is filed, or every message matching a text search. */
@@ -132,6 +135,10 @@ class MailboxRepository(private val jmapClient: JmapClient) {
 
     /** Never fetches outside [imageProxyBase], whatever the caller passes. */
     suspend fun proxiedImage(url: String): ByteArray? = if (url.startsWith(imageProxyBase)) jmapClient.fetchPublic(url) else null
+
+    /** The attachment's bytes, as the server stores the decoded part. */
+    suspend fun download(attachment: Attachment): ByteArray =
+        jmapClient.downloadBlob(attachment.blobId, attachment.fileName(), attachment.type)
 
     suspend fun mailboxes(): List<Mailbox> =
         jmapClient.callOne("Mailbox/get", JsonObject(emptyMap())).getValue("list").jsonArray.map { it.jsonObject.toMailbox() }
@@ -432,6 +439,7 @@ internal fun JsonObject.toEmailSummary(ownDomain: String?): EmailSummary {
         keywords = getValue("keywords").jsonObject.keys,
         preview = get("preview")?.jsonPrimitive?.contentOrNull.orEmpty(),
         provenance = provenance(from, ownDomain),
+        hasAttachment = get("hasAttachment")?.jsonPrimitive?.booleanOrNull ?: false,
     )
 }
 
@@ -470,6 +478,7 @@ private fun JsonObject.toEmailDetail(ownDomain: String?): EmailDetail {
             text to value.getValue("isTruncated").jsonPrimitive.boolean
         }
     val from = addressList("from").firstOrNull()
+    val html = htmlBody(bodyValues)
     return EmailDetail(
         id = getValue("id").jsonPrimitive.content,
         subject = get("subject")?.jsonPrimitive?.contentOrNull.orEmpty(),
@@ -482,11 +491,12 @@ private fun JsonObject.toEmailDetail(ownDomain: String?): EmailDetail {
         receivedAt = Instant.parse(getValue("receivedAt").jsonPrimitive.content),
         body = parts.joinToString("\n\n") { it.first },
         bodyTruncated = parts.any { it.second },
-        html = htmlBody(bodyValues),
+        html = html,
         preview = get("preview")?.jsonPrimitive?.contentOrNull.orEmpty(),
         keywords = getValue("keywords").jsonObject.keys,
         provenance = provenance(from, ownDomain),
         mailboxIds = (get("mailboxIds") as? JsonObject)?.keys.orEmpty(),
+        attachments = attachmentList(html?.html),
     )
 }
 

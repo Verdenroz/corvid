@@ -1,5 +1,6 @@
 package com.verdenroz.corvid.core.testing
 
+import com.verdenroz.corvid.core.jmap.CORE_CAPABILITY
 import com.verdenroz.corvid.core.jmap.Invocation
 import com.verdenroz.corvid.core.jmap.JmapJson
 import com.verdenroz.corvid.core.jmap.MAIL_CAPABILITY
@@ -79,6 +80,9 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
 
     /** Drops one callId from the response, as a buggy server might. */
     var dropCallId: String? = null
+
+    /** The core capability's `maxSizeUpload`, left out of the session while null. */
+    var maxSizeUpload: Long? = null
 
     /** Omits the session's `state`, to exercise adopting a call's sessionState instead of refetching. */
     var omitSessionState: Boolean = false
@@ -410,7 +414,7 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
         val created =
             creating.filterKeys { it !in notCreated }.mapValues { (creationId, spec) ->
                 val id = "sent${nextEmailId++}"
-                emails += spec.jsonObject.toFakeEmail(id)
+                emails += spec.jsonObject.toFakeEmail(id) { blobs[it]?.size?.toLong() ?: 0 }
                 createdIds[creationId] = id
                 buildJsonObject {
                     put("id", id)
@@ -632,7 +636,9 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
         buildJsonObject {
             putJsonObject("capabilities") {
                 for (capability in REQUIRED_CAPABILITIES) {
-                    if (capability != missingCapability) putJsonObject(capability) {}
+                    if (capability != missingCapability) {
+                        putJsonObject(capability) { if (capability == CORE_CAPABILITY) maxSizeUpload?.let { put("maxSizeUpload", it) } }
+                    }
                 }
             }
             if (unauthenticated) {
@@ -745,6 +751,8 @@ private fun FakeEmail.toJson(headerProperties: List<String>): JsonObject =
         }
         putJsonObject("keywords") { for (keyword in keywords) put(keyword, true) }
         preview?.let { put("preview", it) }
+        put("hasAttachment", attachments.any { it.disposition == "attachment" })
+        putJsonArray("attachments") { attachments.forEach { addJsonObject { putAttachment(it) } } }
         if (body == null) {
             put("textBody", null as String?)
             put("htmlBody", null as String?)
@@ -768,6 +776,16 @@ private fun JsonObjectBuilder.putPart(
     put("partId", partId)
     put("type", type)
     put("size", content.length)
+}
+
+private fun JsonObjectBuilder.putAttachment(attachment: FakeAttachment) {
+    put("partId", attachment.blobId)
+    put("blobId", attachment.blobId)
+    put("size", attachment.size)
+    put("name", attachment.name)
+    put("type", attachment.type)
+    put("disposition", attachment.disposition)
+    put("cid", attachment.cid)
 }
 
 private fun JsonObjectBuilder.putValue(
@@ -797,7 +815,23 @@ private fun JsonObjectBuilder.putAddressList(
     }
 }
 
-private fun JsonObject.toFakeEmail(id: String): FakeEmail {
+/** A created part carries no size; the server takes it from the uploaded blob, which [blobSizes] measures. */
+private fun JsonObject.toFakeAttachment(blobSizes: (String) -> Long): FakeAttachment {
+    val blobId = getValue("blobId").jsonPrimitive.content
+    return FakeAttachment(
+        blobId = blobId,
+        name = get("name")?.jsonPrimitive?.contentOrNull,
+        type = getValue("type").jsonPrimitive.content,
+        size = blobSizes(blobId),
+        disposition = get("disposition")?.jsonPrimitive?.contentOrNull,
+        cid = get("cid")?.jsonPrimitive?.contentOrNull,
+    )
+}
+
+private fun JsonObject.toFakeEmail(
+    id: String,
+    blobSizes: (String) -> Long,
+): FakeEmail {
     fun addresses(key: String) = (get(key) as? JsonArray)?.map { it.jsonObject.getValue("email").jsonPrimitive.content }.orEmpty()
 
     fun ids(key: String) = (get(key) as? JsonArray)?.map { it.jsonPrimitive.content }.orEmpty()
@@ -817,6 +851,7 @@ private fun JsonObject.toFakeEmail(id: String): FakeEmail {
         inReplyTo = ids("inReplyTo"),
         references = ids("references"),
         body = getValue("bodyValues").jsonObject.getValue(partId).jsonObject.getValue("value").jsonPrimitive.content,
+        attachments = (get("attachments") as? JsonArray)?.map { it.jsonObject.toFakeAttachment(blobSizes) }.orEmpty(),
     )
 }
 

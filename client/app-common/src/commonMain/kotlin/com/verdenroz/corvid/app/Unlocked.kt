@@ -52,6 +52,7 @@ import com.verdenroz.corvid.app.shell.NarrowTopBar
 import com.verdenroz.corvid.app.shell.SearchTopBar
 import com.verdenroz.corvid.app.shell.TabsBar
 import com.verdenroz.corvid.app.shell.WideTopBar
+import com.verdenroz.corvid.core.data.AttachmentFiles
 import com.verdenroz.corvid.core.data.ComposeRepository
 import com.verdenroz.corvid.core.data.FiltersRepository
 import com.verdenroz.corvid.core.data.MailboxRepository
@@ -278,6 +279,7 @@ private fun Page(
     ledgers: Ledgers,
     entryKey: String,
     session: SettingsSession,
+    files: AttachmentFiles = koinInject(),
     home: @Composable (Route.Home) -> Unit,
 ) {
     val mailbox = remember(scope) { scope.get<MailboxRepository>() }
@@ -286,6 +288,7 @@ private fun Page(
         is Route.Reader ->
             ReaderScreen(
                 mailbox,
+                files,
                 ledgers.actions,
                 route.emailId,
                 onBack = navigator::back,
@@ -305,7 +308,13 @@ private fun Page(
                 onOpenSender = { navigator.push(Route.Sender(it)) },
             )
         }
-        is Route.Compose -> ComposeScreen(remember(scope) { scope.get<ComposeRepository>() }, route.intent, onClose = navigator::back)
+        is Route.Compose ->
+            ComposeScreen(
+                remember(scope) { scope.get<ComposeRepository>() },
+                files,
+                route.intent,
+                onClose = navigator::back,
+            )
         is Route.Filters -> FiltersScreen(remember(scope) { scope.get<FiltersRepository>() }, onBack = navigator::back)
         is Route.Settings -> SettingsPage(scope, session, navigator, models, entryKey)
         is Route.ApproveDevice -> ApproveDevicePage(scope, navigator, models, entryKey)

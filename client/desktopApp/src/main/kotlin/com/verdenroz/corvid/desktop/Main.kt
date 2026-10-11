@@ -18,6 +18,7 @@ import com.verdenroz.corvid.app.di.appModules
 import com.verdenroz.corvid.core.auth.InMemoryPreferencesFactory
 import com.verdenroz.corvid.core.auth.platformAuthModule
 import com.verdenroz.corvid.core.data.AppInstaller
+import com.verdenroz.corvid.core.data.AttachmentFiles
 import com.verdenroz.corvid.core.discovery.platformDiscoveryModule
 import com.verdenroz.corvid.core.prefs.platformPreferencesModule
 import kotlinx.coroutines.runBlocking
@@ -35,6 +36,7 @@ fun main() {
         module {
             single<NoticeNotifier> { notifier }
             single<AppInstaller> { DesktopAppInstaller() }
+            single<AttachmentFiles> { DesktopAttachmentFiles() }
         }
     startKoin { modules(appModules + platformAuthModule + platformDiscoveryModule + platformPreferencesModule + notices) }
     application {

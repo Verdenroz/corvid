@@ -33,6 +33,18 @@ data class FakeEmail(
     val htmlBody: String? = null,
     /** Raw header values by field name, in the order they appear in the message. */
     val headers: Map<String, List<String>> = emptyMap(),
+    /** The parts Email/get lists under `attachments`, inline ones included, as a real server lists them. */
+    val attachments: List<FakeAttachment> = emptyList(),
+)
+
+/** One non-body part; its bytes, if a test downloads it, go in [FakeJmapServer.blobs] under [blobId]. */
+data class FakeAttachment(
+    val blobId: String,
+    val name: String?,
+    val type: String,
+    val size: Long,
+    val disposition: String? = "attachment",
+    val cid: String? = null,
 )
 
 data class FakeIdentity(

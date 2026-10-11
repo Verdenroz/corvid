@@ -18,14 +18,17 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.verdenroz.corvid.core.data.AttachmentFiles
 import com.verdenroz.corvid.core.data.Correction
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.model.Attachment
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.LocalWideLayout
@@ -40,6 +43,7 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 fun ReaderScreen(
     repository: MailboxRepository,
+    files: AttachmentFiles,
     actions: MailActions,
     emailId: String,
     onBack: () -> Unit,
@@ -51,6 +55,10 @@ fun ReaderScreen(
     val onToggle = remember(viewModel) { viewModel::toggle }
     val onAnswer = remember(viewModel) { viewModel::answer }
     val onHeaders = remember(viewModel) { viewModel::toggleHeaders }
+    val scope = rememberCoroutineScope()
+    val downloads = remember(repository, files) { AttachmentDownloads(repository, files, scope) }
+    val attachments by downloads.states.collectAsState()
+    val onOpenAttachment = remember(downloads) { downloads::open }
 
     val wide = LocalWideLayout.current
     Box(Modifier.fillMaxSize()) {
@@ -65,9 +73,11 @@ fun ReaderScreen(
                         current,
                         repository,
                         wide,
+                        attachments,
                         onToggle,
                         onAnswer,
                         onHeaders,
+                        onOpenAttachment,
                         onCompose,
                         onOpenSender,
                     )
@@ -117,9 +127,11 @@ private fun ThreadColumn(
     state: ReaderUiState.Loaded,
     repository: MailboxRepository,
     wide: Boolean,
+    attachments: Map<String, AttachmentState>,
     onToggle: (String) -> Unit,
     onAnswer: (String, Correction) -> Unit,
     onHeaders: (String) -> Unit,
+    onOpenAttachment: (Attachment) -> Unit,
     onCompose: (ComposeIntent) -> Unit,
     onOpenSender: (String) -> Unit,
 ) {
@@ -148,9 +160,11 @@ private fun ThreadColumn(
                 wide = wide,
                 teach = state.teach[email.id] ?: TeachState(),
                 headers = state.headers[email.id],
+                attachments = attachments,
                 onToggle = onToggle,
                 onAnswer = onAnswer,
                 onHeaders = onHeaders,
+                onOpenAttachment = onOpenAttachment,
                 onCompose = onCompose,
                 onOpenSender = onOpenSender,
             )

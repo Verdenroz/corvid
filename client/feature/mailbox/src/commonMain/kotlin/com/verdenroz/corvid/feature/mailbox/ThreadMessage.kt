@@ -29,6 +29,7 @@ import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.PillButton
+import com.verdenroz.corvid.core.model.Attachment
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.model.EmailAddress
 import com.verdenroz.corvid.core.model.EmailDetail
@@ -39,6 +40,7 @@ import com.verdenroz.corvid.core.ui.provenance.sealDescription
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.action_headers
 import com.verdenroz.corvid.feature.mailbox.resources.action_hide_headers
+import com.verdenroz.corvid.feature.mailbox.resources.has_attachments
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_forward
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_reply
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_reply_all
@@ -60,9 +62,11 @@ internal fun ThreadMessage(
     wide: Boolean,
     teach: TeachState,
     headers: HeadersState?,
+    attachments: Map<String, AttachmentState>,
     onToggle: (String) -> Unit,
     onAnswer: (String, Correction) -> Unit,
     onHeaders: (String) -> Unit,
+    onOpenAttachment: (Attachment) -> Unit,
     onCompose: (ComposeIntent) -> Unit,
     onOpenSender: (String) -> Unit,
 ) {
@@ -83,9 +87,11 @@ internal fun ThreadMessage(
                     wide = wide,
                     teach = teach,
                     headers = headers,
+                    attachments = attachments,
                     onToggle = toggle,
                     onAnswer = answer,
                     onHeaders = showHeaders,
+                    onOpenAttachment = onOpenAttachment,
                     onCompose = onCompose,
                     onOpenSender = onOpenSender,
                 )
@@ -106,9 +112,11 @@ private fun ExpandedMessage(
     wide: Boolean,
     teach: TeachState,
     headers: HeadersState?,
+    attachments: Map<String, AttachmentState>,
     onToggle: () -> Unit,
     onAnswer: (Correction) -> Unit,
     onHeaders: () -> Unit,
+    onOpenAttachment: (Attachment) -> Unit,
     onCompose: (ComposeIntent) -> Unit,
     onOpenSender: (String) -> Unit,
 ) {
@@ -117,6 +125,7 @@ private fun ExpandedMessage(
         headers?.let { HeadersPanel(it, Modifier.padding(bottom = 16.dp)) }
         Custody(email, wide) { guess -> TeachControls(guess, teach.answering, teach.error, onAnswer) }
         MessageBody(email, repository, Modifier.padding(top = 18.dp).widthIn(max = 640.dp))
+        AttachmentStrip(email, attachments, onOpenAttachment, Modifier.padding(top = 20.dp))
         if (newest) Replies(email, onCompose) else QuietReplies(email, onCompose)
     }
 }
@@ -188,6 +197,14 @@ private fun CollapsedMessage(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
+        if (email.attachments.isNotEmpty()) {
+            Icon(
+                CorvidIcons.Paperclip,
+                stringResource(Res.string.has_attachments),
+                tint = colors.inkFaint,
+                modifier = Modifier.size(14.dp),
+            )
+        }
         Text(stamp(email.receivedAt, zone, Clock.System.now()).asString(), style = CorvidTheme.type.meta, color = colors.inkFaint)
     }
 }
