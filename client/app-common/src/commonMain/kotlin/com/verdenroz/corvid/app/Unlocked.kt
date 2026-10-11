@@ -120,6 +120,7 @@ internal fun UnlockedContent(
     val route = navigator.route
     val entryKeys = (0 until navigator.depth).map(navigator::entryKey).toSet()
     LaunchedEffect(entryKeys) { models.retainOnly(entryKeys) }
+    DropOnLeave(navigator, ledgers)
     val home = route is Route.Home
     LaunchedEffect(home) { if (home) shell.refresh() }
     NavigationBackHandler(
@@ -196,7 +197,12 @@ internal fun UnlockedContent(
                             notice,
                             Modifier
                                 .align(if (wide) Alignment.BottomStart else Alignment.BottomCenter)
-                                .padding(start = 16.dp, end = 16.dp, bottom = if (wide) 22.dp else 80.dp),
+                                // A floating compose panel is 540dp wide and 24dp from the edge; the notice stays left of it.
+                                .padding(
+                                    start = 16.dp,
+                                    end = if (floats && route is Route.Compose) 580.dp else 16.dp,
+                                    bottom = if (wide) 22.dp else 80.dp,
+                                ),
                         )
                     }
                 }

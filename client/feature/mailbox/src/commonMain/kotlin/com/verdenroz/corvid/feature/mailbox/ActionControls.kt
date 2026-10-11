@@ -27,11 +27,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -46,7 +41,6 @@ import com.verdenroz.corvid.feature.mailbox.resources.action_destroy_question
 import com.verdenroz.corvid.feature.mailbox.resources.action_dismiss
 import com.verdenroz.corvid.feature.mailbox.resources.action_keep
 import com.verdenroz.corvid.feature.mailbox.resources.action_undo
-import com.verdenroz.corvid.feature.mailbox.resources.selection_select
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Duration.Companion.seconds
@@ -120,33 +114,15 @@ internal fun StarMark(modifier: Modifier = Modifier) {
 
 /** Takes the avatar's place while a row can be ticked: an empty ring, or filled with a check once ticked. */
 @Composable
-internal fun SelectMark(
-    selected: Boolean,
-    onToggle: () -> Unit,
-    size: Dp = 40.dp,
-) {
+internal fun TickRing(selected: Boolean) {
     val colors = CorvidTheme.colors
-    val label = stringResource(Res.string.selection_select)
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier =
-            Modifier
-                .size(size)
-                .clickable(onClick = onToggle)
-                .semantics {
-                    contentDescription = label
-                    role = Role.Checkbox
-                    this.selected = selected
-                },
-    ) {
-        val ring = Modifier.size(22.dp)
-        if (selected) {
-            Box(ring.background(colors.accent, CircleShape), contentAlignment = Alignment.Center) {
-                Icon(CorvidIcons.Check, null, tint = colors.onAccent, modifier = Modifier.size(15.dp))
-            }
-        } else {
-            Box(ring.border(1.5.dp, colors.inkFaint, CircleShape))
+    val ring = Modifier.size(22.dp)
+    if (selected) {
+        Box(ring.background(colors.accent, CircleShape), contentAlignment = Alignment.Center) {
+            Icon(CorvidIcons.Check, null, tint = colors.onAccent, modifier = Modifier.size(15.dp))
         }
+    } else {
+        Box(ring.border(1.5.dp, colors.inkFaint, CircleShape))
     }
 }
 

@@ -18,6 +18,8 @@ internal class Ledgers(private val repository: MailboxRepository) {
 
     fun refreshAll() = opened.values.forEach(LedgerViewModel::refresh)
 
+    fun clearSelections() = opened.values.forEach(LedgerViewModel::clearSelection)
+
     fun clear() {
         store.clear()
         opened.clear()
