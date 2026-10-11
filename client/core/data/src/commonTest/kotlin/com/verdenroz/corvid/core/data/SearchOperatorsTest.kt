@@ -109,6 +109,16 @@ class SearchOperatorsTest {
         }
 
     @Test
+    fun `a label operator finds the messages carrying that exact keyword`() =
+        runTest {
+            val fake = server()
+            fake.emails.replaceAll { if (it.id == "invoice") it.copy(keywords = setOf("corvid-llm-label-receipts")) else it }
+
+            assertEquals(listOf("invoice"), search("label:corvid-llm-label-receipts", fake).conversations.map { it.latest.id })
+            assertEquals(emptyList(), search("label:receipts", fake).conversations.map { it.latest.id })
+        }
+
+    @Test
     fun `dates and ages bound when the message arrived`() =
         runTest {
             assertEquals(listOf("reply", "lunch"), ids("before:2026-10-01"))

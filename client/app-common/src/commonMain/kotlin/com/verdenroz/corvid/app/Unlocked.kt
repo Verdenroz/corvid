@@ -130,10 +130,8 @@ internal fun UnlockedContent(
         newMail.check()
         followMailboxChanges(scope.get<JmapClient>().stateChanges(), isOwnEmailState = repository::isOwnEmailState) { echo ->
             shell.refresh()
-            if (!echo) {
-                ledgers.mailChanged()
-                newMail.check()
-            }
+            ledgers.mailChanged(echo)
+            if (!echo) newMail.check()
         }
     }
     val entryKeys = (0 until navigator.depth).map(navigator::entryKey).toSet()
@@ -234,7 +232,15 @@ private fun Shell(
                     // One keyed call site for every visible entry, so crossing the breakpoint moves a screen rather than rebuilding it.
                     (if (floats) listOf(top - 1, top) else listOf(top)).forEach { index ->
                         Entry(index, floating = floats && index == top, pages) {
-                            Home(it, key, shellState, navigator, pages.ledgers, onMenu = { drawerScope.launch { drawer.open() } })
+                            Home(
+                                it,
+                                key,
+                                shellState,
+                                navigator,
+                                pages.ledgers,
+                                pages.onQuery,
+                                onMenu = { drawerScope.launch { drawer.open() } },
+                            )
                         }
                     }
                     Notice(pages.ledgers.actions, composeFloats = floats && route is Route.Compose)
@@ -319,6 +325,7 @@ internal fun Home(
     shellState: ShellState,
     navigator: Navigator,
     ledgers: Ledgers,
+    onQuery: (String) -> Unit,
     onMenu: () -> Unit,
 ) {
     Column {
@@ -337,6 +344,7 @@ internal fun Home(
             ledgers = ledgers,
             onOpenEmail = navigator::openEmail,
             onOpenSender = { navigator.push(Route.Sender(it)) },
+            onSearch = onQuery,
             onWrite = { navigator.push(Route.Compose(ComposeIntent.New)) },
         )
     }

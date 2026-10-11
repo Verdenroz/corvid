@@ -2,6 +2,9 @@ package com.verdenroz.corvid.core.data
 
 import com.verdenroz.corvid.core.model.CorvidKeywords
 import com.verdenroz.corvid.core.model.EmailAddress
+import com.verdenroz.corvid.core.model.Provenance
+import com.verdenroz.corvid.core.model.Seal
+import com.verdenroz.corvid.core.model.SenderKind
 import com.verdenroz.corvid.core.testing.FakeEmail
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.SENDABLE_ACCOUNT_EMAIL
@@ -27,7 +30,9 @@ private fun sampled(
     subject = null,
     preview = null,
     receivedAt = Instant.parse(at),
-    draft = draft,
+    keywords = if (draft) setOf(CorvidKeywords.DRAFT) else emptySet(),
+    mailboxIds = emptySet(),
+    provenance = Provenance(Seal.Unsigned, null, SenderKind.Person, emptyList()),
 )
 
 private fun List<Contact>.emails() = map { it.address.email }

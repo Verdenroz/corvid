@@ -95,7 +95,14 @@ class NavDrawerTest {
                                 {},
                             ),
                     ) {
-                        Home(Route.Home(navigator.homeTab), key, ShellState(), navigator, ledgers) { scope.launch { drawer.open() } }
+                        Home(
+                            Route.Home(navigator.homeTab),
+                            key,
+                            ShellState(),
+                            navigator,
+                            ledgers,
+                            onQuery = {},
+                        ) { scope.launch { drawer.open() } }
                     }
                 }
             }

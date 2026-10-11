@@ -133,7 +133,7 @@ class MailboxRepository(
     private val clock: Clock = Clock.System,
     private val zone: TimeZone = TimeZone.currentSystemDefault(),
 ) {
-    private val sample = MailSample(jmapClient)
+    private val sample = MailSample(jmapClient, ::ownDomain)
     private val vocabulary = SearchVocabulary(sample)
     private val identityLock = Mutex()
     private val rolesLock = Mutex()
@@ -570,6 +570,12 @@ class MailboxRepository(
 
     /** Everyone the newest messages name, ranked by [rankContacts], from the same fetch search completion reads. */
     suspend fun contacts(): List<Contact> = rankContacts(sample.emails(), identities().map { it.email }.toSet())
+
+    /** Who wrote and what was labelled in the newest messages, read afresh, which also renews what search completion reads. */
+    suspend fun directory(): Directory {
+        val discarded = setOfNotNull(mailboxId(JUNK), mailboxId(TRASH))
+        return directory(sample.emails(fresh = true), identities().map { it.email }.toSet(), discarded)
+    }
 
     /** Every identity the account may send as, fetched once. */
     private suspend fun identities(): List<Identity> =

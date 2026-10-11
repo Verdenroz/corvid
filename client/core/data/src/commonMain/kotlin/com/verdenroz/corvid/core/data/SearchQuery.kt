@@ -14,7 +14,7 @@ import kotlin.time.Instant
 
 private const val ANYWHERE = "anywhere"
 private val FIELDS = setOf("from", "to", "cc", "subject")
-private val OPERATORS = FIELDS + setOf("has", "is", "in", "before", "after", "older_than", "newer_than")
+private val OPERATORS = FIELDS + setOf("has", "is", "label", "in", "before", "after", "older_than", "newer_than")
 private val MAILBOX_ROLES =
     listOf(INBOX, SENT, DRAFTS, TRASH, JUNK, ARCHIVE).associateWith { it } + ("spam" to JUNK)
 private val DATE = Regex("(\\d{4})[-/](\\d{1,2})[-/](\\d{1,2})")
@@ -165,6 +165,7 @@ private fun operatorTerm(
         in FIELDS -> SearchTerm.Field(name, value)
         "has" -> SearchTerm.HasAttachment.takeIf { lower == "attachment" }
         "is" -> keyword(lower)
+        "label" -> SearchTerm.Keyword(lower, present = true)
         "in" -> MAILBOX_ROLES[lower]?.let(SearchTerm::InMailbox)
         "before" -> date(value, zone)?.let(SearchTerm::Before)
         "after" -> date(value, zone)?.let(SearchTerm::After)

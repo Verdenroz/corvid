@@ -200,4 +200,24 @@
     <string name="attachment_open_anyway">Open anyway</string>
     <string name="attachment_keep_closed">Cancel</string>
     <string name="has_attachments">Has attachments</string>
+    <plurals name="directory_window">
+        <item quantity="one">Counted over the newest message outside Junk and Trash</item>
+        <item quantity="other">Counted over the newest %1$d messages outside Junk and Trash</item>
+    </plurals>
+    <plurals name="directory_messages">
+        <item quantity="one">%1$d message</item>
+        <item quantity="other">%1$d messages</item>
+    </plurals>
+    <string name="directory_source_detail">%1$s · %2$s</string>
+    <string name="directory_signed">Signed</string>
+    <string name="directory_signed_by">Signed by %1$s</string>
+    <string name="directory_unsigned">Not signed</string>
+    <string name="directory_failed">Failed authentication</string>
+    <string name="people_empty">Nobody wrote to you here, and you wrote to nobody.</string>
+    <string name="sources_empty">No services, lists or newsletters among these messages.</string>
+    <string name="labels_empty">Nothing here carries a label.</string>
+    <string name="labels_yours">Yours</string>
+    <string name="labels_labeler">Labeler</string>
+    <string name="labels_guess">Model guesses</string>
+    <string name="labels_rule">Filter rules</string>
 </resources>
