@@ -25,16 +25,24 @@ impl Vapid {
     /// Reads the key at `path`, creating it read-only on first use. It is never replaced: every
     /// registration made under the old key would stop being accepted.
     pub fn open(path: &Path) -> io::Result<Self> {
-        match OpenOptions::new()
+        let pending = path.with_extension("key.tmp");
+        match fs::remove_file(&pending) {
+            Err(error) if error.kind() != ErrorKind::NotFound => return Err(error),
+            _ => {}
+        }
+        let mut file = OpenOptions::new()
             .write(true)
             .create_new(true)
             .mode(0o400)
-            .open(path)
-        {
-            Ok(mut file) => file.write_all(&Self::generate().to_bytes())?,
-            Err(error) if error.kind() == ErrorKind::AlreadyExists => {}
-            Err(error) => return Err(error),
+            .open(&pending)?;
+        file.write_all(&Self::generate().to_bytes())?;
+        file.sync_all()?;
+        // A hard link fails when the key exists, and a reader never sees it half written.
+        match fs::hard_link(&pending, path) {
+            Err(error) if error.kind() != ErrorKind::AlreadyExists => return Err(error),
+            _ => {}
         }
+        fs::remove_file(&pending)?;
         SigningKey::from_slice(&fs::read(path)?)
             .map(|key| Self { key })
             .map_err(|error| io::Error::new(ErrorKind::InvalidData, error))
@@ -135,6 +143,18 @@ mod tests {
             fs::metadata(&path).unwrap().permissions().mode() & 0o777,
             0o400
         );
+    }
+
+    #[test]
+    fn a_leftover_temporary_file_does_not_block_the_next_open() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vapid.key");
+        fs::write(dir.path().join("vapid.key.tmp"), b"half").unwrap();
+
+        let vapid = Vapid::open(&path).unwrap();
+
+        assert_eq!(Vapid::open(&path).unwrap().public_key(), vapid.public_key());
+        assert!(!dir.path().join("vapid.key.tmp").exists());
     }
 
     #[test]
