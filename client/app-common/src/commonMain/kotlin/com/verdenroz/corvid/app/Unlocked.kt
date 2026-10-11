@@ -128,10 +128,12 @@ internal fun UnlockedContent(
     val newMail = rememberNewMail(scope, navigator)
     LaunchedEffect(scope) {
         newMail.check()
-        followMailboxChanges(scope.get<JmapClient>().stateChanges()) {
+        followMailboxChanges(scope.get<JmapClient>().stateChanges(), isOwnEmailState = repository::isOwnEmailState) { echo ->
             shell.refresh()
-            ledgers.mailChanged()
-            newMail.check()
+            if (!echo) {
+                ledgers.mailChanged()
+                newMail.check()
+            }
         }
     }
     val entryKeys = (0 until navigator.depth).map(navigator::entryKey).toSet()
@@ -198,7 +200,7 @@ private fun Shell(
     val sidebarExpanded = sidebarChoice ?: roomForSidebar
     val places =
         Places(
-            sidebarPlace(navigator.homeTab, route),
+            sidebarPlace(navigator.homeTab, route, navigator.searching),
             shellState.inboxUnread,
             onSelect = navigator::openTab,
             onFilters = { navigator.open(Route.Filters) },

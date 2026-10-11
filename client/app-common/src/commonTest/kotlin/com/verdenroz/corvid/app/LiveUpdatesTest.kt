@@ -22,7 +22,10 @@ import kotlin.test.assertEquals
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Instant
 
-private fun change(vararg types: String) = StateChange(mapOf("u1" to types.associateWith { "s2" }))
+private fun change(
+    vararg types: String,
+    state: String = "s2",
+) = StateChange(mapOf("u1" to types.associateWith { state }))
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class LiveUpdatesTest {
@@ -57,6 +60,29 @@ class LiveUpdatesTest {
             advanceTimeBy(5_000.milliseconds)
 
             assertEquals(0, runs)
+            job.cancel()
+        }
+
+    @Test
+    fun `a burst made only of the client's own writes is an echo`() =
+        runTest {
+            val changes = MutableSharedFlow<StateChange>()
+            val echoes = mutableListOf<Boolean>()
+            val own = mutableSetOf<String>()
+            val job = launch { followMailboxChanges(changes, 500.milliseconds, own::contains) { echoes += it } }
+            runCurrent()
+
+            changes.emit(change("Email", "Mailbox", state = "s5"))
+            own += "s5"
+            advanceTimeBy(501.milliseconds)
+            changes.emit(change("Email", state = "s6"))
+            changes.emit(change("Email", state = "s7"))
+            own += "s7"
+            advanceTimeBy(501.milliseconds)
+            changes.emit(change("Mailbox", state = "s8"))
+            advanceTimeBy(501.milliseconds)
+
+            assertEquals(listOf(true, false, false), echoes)
             job.cancel()
         }
 
