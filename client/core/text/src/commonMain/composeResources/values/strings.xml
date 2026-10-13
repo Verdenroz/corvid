@@ -3,7 +3,7 @@
     <string name="server_unreachable">Could not reach the server.</string>
     <string name="passkey_cancelled">The passkey prompt was dismissed.</string>
     <string name="passkey_none">No passkey for this account on this device.</string>
-    <string name="passkey_not_associated">The server does not list this build of Corvid for passkeys. Its assetlinks.json must name the app\'s package and signing key.</string>
+    <string name="passkey_not_associated">The server does not list this build of Corvid for passkeys. Its assetlinks.json must name the app's package and signing key.</string>
     <string name="passkey_unsupported">This device cannot make or use passkeys here.</string>
     <string name="passkey_refused">The passkey prompt was refused: %1$s</string>
     <string name="passkey_code_bad">That code was used or has expired. Get a new one from a device that's already signed in (Settings, Passkeys, Set up another device), or from your server (passkey.sh code).</string>

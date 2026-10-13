@@ -64,7 +64,6 @@ import com.verdenroz.corvid.feature.settings.resources.passkeys_working
 import com.verdenroz.corvid.feature.settings.resources.settings_back
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
-import kotlin.time.Instant
 
 @Composable
 fun PasskeysScreen(
@@ -224,12 +223,6 @@ private fun IssuedCode(step: PasskeyStep.Code) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(step.code, style = CorvidTheme.type.headline, color = CorvidTheme.colors.ink)
         val approves = stringResource(if (step.approves) Res.string.passkeys_code_approves else Res.string.passkeys_code_plain)
-        Text(
-            stringResource(Res.string.passkeys_code_expiry, step.expiresAt.stamp(), approves),
-            style = CorvidTheme.type.meta,
-            color = CorvidTheme.colors.inkMuted,
-        )
+        Text(stringResource(Res.string.passkeys_code_expiry, approves), style = CorvidTheme.type.meta, color = CorvidTheme.colors.inkMuted)
     }
 }
-
-private fun Instant.stamp() = toString().substringBefore('Z').substringBeforeLast(':').replace('T', ' ') + " UTC"

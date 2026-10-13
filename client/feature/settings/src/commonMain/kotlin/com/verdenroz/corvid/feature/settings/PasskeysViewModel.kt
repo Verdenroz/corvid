@@ -22,7 +22,6 @@ import com.verdenroz.corvid.feature.settings.resources.passkeys_failed_not_accep
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import kotlin.time.Instant
 
 sealed interface PasskeyList {
     data object Loading : PasskeyList
@@ -42,7 +41,7 @@ sealed interface PasskeyStep {
     data object Working : PasskeyStep
 
     /** A code to type on another device, shown once. */
-    data class Code(val approves: Boolean, val code: String, val expiresAt: Instant) : PasskeyStep
+    data class Code(val approves: Boolean, val code: String) : PasskeyStep
 
     data class Added(val approves: Boolean) : PasskeyStep
 
@@ -96,7 +95,7 @@ class PasskeysViewModel(
 
     /** Makes a code for another device; the passkey it sets up approves devices when [approves]. */
     fun makeCode(approves: Boolean) =
-        withApprover { token -> withCode(approves, token) { minted -> PasskeyStep.Code(approves, minted.code, minted.expiresAt) } }
+        withApprover { token -> withCode(approves, token) { minted -> PasskeyStep.Code(approves, minted.code) } }
 
     /** Makes a passkey on this device, through a code an approver makes for it. */
     fun addHere(approves: Boolean) =

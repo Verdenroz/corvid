@@ -20,7 +20,6 @@ import kotlinx.coroutines.flow.first
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
-import kotlin.time.Instant
 
 private val SERVER = ServerAddress("https://mail.example.test")
 
@@ -96,7 +95,7 @@ class PasskeysViewModelTest {
             r.viewModel.makeCode(true)
             val done = r.viewModel.settled()
 
-            assertEquals(PasskeyStep.Code(true, "ABCD-EFGH-IJKL-MNOP", Instant.parse("2030-01-02T00:00:00Z")), done.step)
+            assertEquals(PasskeyStep.Code(true, "ABCD-EFGH-IJKL-MNOP"), done.step)
             assertEquals(1, r.signIns())
             assertEquals(listOf(true), r.fake.passkeys.minted)
             assertEquals(listOf<String?>("master-token"), r.fake.passkeys.masters)

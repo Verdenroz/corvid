@@ -31,7 +31,7 @@
     <string name="passkeys_add_here_asks">Asks for a key that approves devices, then this device adds one.</string>
     <string name="passkeys_add_other">Set up another device</string>
     <string name="passkeys_add_other_asks">Asks for a key that approves devices, then shows a code to type there.</string>
-    <string name="passkeys_code_expiry">Valid until %1$s, once. The key it sets up %2$s.</string>
+    <string name="passkeys_code_expiry">Valid for 24 hours, once. The key it sets up %1$s.</string>
     <string name="passkeys_code_approves">approves devices</string>
     <string name="passkeys_code_plain">signs in only</string>
     <string name="passkeys_removed">Passkey removed.</string>
