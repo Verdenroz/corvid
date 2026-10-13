@@ -37,7 +37,7 @@ for port, handler in ((8080, Stalwart), (11333, Sentinel)):
 ' &
 stubs=$!
 
-links='[{"relation":["delegate_permission/common.get_login_creds"],"target":{"namespace":"android_app","package_name":"org.example","sha256_cert_fingerprints":["AB:CD"]}}]'
+links='[{"relation":["delegate_permission/common.handle_all_urls","delegate_permission/common.get_login_creds"],"target":{"namespace":"android_app","package_name":"org.example","sha256_cert_fingerprints":["AB:CD"]}}]'
 mkdir -p "$work/apps/current"
 printf 'manifest' > "$work/apps/current/manifest.json"
 chmod -R a+rX "$work/apps"

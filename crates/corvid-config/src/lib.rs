@@ -329,14 +329,18 @@ impl Server {
     }
 
     /// `/.well-known/assetlinks.json`: each app may use credentials of the relying party, which
-    /// is the mail domain.
+    /// is the mail domain. Google Password Manager refuses a passkey with "RP ID cannot be
+    /// validated" unless `handle_all_urls` is listed too, though Google's checker links without it.
     pub fn assetlinks(&self) -> String {
         let statements: Vec<Value> = self
             .android_apps
             .iter()
             .map(|app| {
                 serde_json::json!({
-                    "relation": ["delegate_permission/common.get_login_creds"],
+                    "relation": [
+                        "delegate_permission/common.handle_all_urls",
+                        "delegate_permission/common.get_login_creds",
+                    ],
                     "target": {
                         "namespace": "android_app",
                         "package_name": app.package.as_str(),
@@ -911,7 +915,7 @@ mod server_tests {
     }
 
     #[test]
-    fn assetlinks_grants_get_login_creds_to_each_app() {
+    fn assetlinks_grants_each_app_passkeys_and_links() {
         let digits = "ab".repeat(32);
         let text = format!(
             "{SERVER}  android_apps:\n    - {{package: org.example.mail, sha256: {digits}}}\n"
@@ -923,7 +927,10 @@ mod server_tests {
         assert_eq!(
             value,
             serde_json::json!([{
-                "relation": ["delegate_permission/common.get_login_creds"],
+                "relation": [
+                    "delegate_permission/common.handle_all_urls",
+                    "delegate_permission/common.get_login_creds",
+                ],
                 "target": {
                     "namespace": "android_app",
                     "package_name": "org.example.mail",

@@ -504,7 +504,13 @@ Caddyfile built from the same env vars as everything else. `core/discovery` hold
   an old library would enumerate fine and fail at the first sign-in, after the touch. The desktop
   app reads the CBOR-wrapped `fido_assert_authdata_ptr`, strips the header, and maps a missing
   symbol to `Unsupported`. `Fido2LiveTest` is the only check against a real key; it needs
-  `CORVID_FIDO2_LIVE=1`, a PIN and two touches.
+  `CORVID_FIDO2_LIVE=1`, a PIN and three touches (register, sign in, approve).
+- **Google Password Manager needs `handle_all_urls` in `assetlinks.json`, not only
+  `get_login_creds`.** With `get_login_creds` alone, Google's Digital Asset Links check answered
+  `linked: true` and the right package and certificate were served, yet creating a passkey on a
+  phone failed with "RP ID cannot be validated". Listing `delegate_permission/common.handle_all_urls`
+  as well fixed it on the next try. `verify.sh` compares the served file byte for byte with
+  `corvid-config assetlinks`, so a hand edit to the Worker fails the next update's verify.
 - **A debug build of the Android app is `com.verdenroz.corvid.debug` and does not trust the
   rig's CA.** Credential Manager only accepts a passkey for a domain whose `assetlinks.json`
   lists the exact package and signing certificate, so a rig needs its own `android_apps`
