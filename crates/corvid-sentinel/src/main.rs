@@ -130,8 +130,6 @@ fn device_config(
         secret: webhook_secret,
         state_path: settings.state,
         devices: state,
-        issuer: settings.issuer.unwrap_or_else(|| server.idp_issuer()),
-        idp_url: settings.idp_url,
         admin_user: server.admin_user(),
         keys_address: server.keys_address(),
         mail_address: format!("{}@{}", server.mail_user(), server.domain.as_str()),

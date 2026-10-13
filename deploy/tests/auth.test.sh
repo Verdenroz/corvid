@@ -60,7 +60,7 @@ account_of() { stalwart_id Account emailAddress "$1"; }
 export CORVID_DIR="$work"; . "$here/lib.sh"
 cat > "$work/shell" <<SH
 #!/bin/sh
-printf 'MAIL_DOMAIN=rig.test\nMAIL_HOSTNAME=mail.rig.test\nMAIL_USER=mailuser\nACME_CONTACT=ops@rig.test\nWEB_PORT=4443\nIDP_HOSTNAME=idp.rig.test\nADMIN_USER=mailuser-admin\nIDP_URL=http://127.0.0.1:1411\nSENTINEL_URL=http://127.0.0.1:$sentinel_port\nISSUER_URL=http://127.0.0.1:$sentinel_port/internal/issuer\n'
+printf 'MAIL_DOMAIN=rig.test\nMAIL_HOSTNAME=mail.rig.test\nMAIL_USER=mailuser\nACME_CONTACT=ops@rig.test\nWEB_PORT=4443\nADMIN_USER=mailuser-admin\nSENTINEL_URL=http://127.0.0.1:$sentinel_port\nISSUER_URL=http://127.0.0.1:$sentinel_port/internal/issuer\n'
 SH
 chmod +x "$work/shell"
 printf 'STALWART_URL=http://127.0.0.1:8080\nRECOVERY_ADMIN_USER=recovery\nRECOVERY_ADMIN_PASSWORD=%s\n' \
@@ -169,8 +169,7 @@ check "the admin password logs in to JMAP" \
 
 echo "== switching the directory"
 # A decoy first, so the reconcile has something to remove.
-IDP_HOSTNAME=localhost WEB_PORT=1 MAIL_DOMAIN=rig.test \
-  envsubst '${MAIL_DOMAIN} ${IDP_HOSTNAME} ${WEB_PORT}' < "$here/oidc.plan.ndjson" | sed 's#"https://#"http://#' |
+sed 's#${ISSUER_URL}#http://localhost:1#g; s#${MAIL_DOMAIN}#rig.test#g' "$here/auth.plan.ndjson" |
   stalwart-cli apply --stdin >/dev/null
 directory_urls() {
   local id
@@ -295,8 +294,7 @@ echo "== the bounded wait before Stalwart starts (the script the unit runs, not 
 mkdir -p "$work/bin"
 printf '#!/bin/sh\necho masked\n' > "$work/bin/systemctl"
 chmod +x "$work/bin/systemctl"
-printf 'APP_URL=http://localhost:1\nCORVID_ISSUER_URL=http://127.0.0.1:%s/internal/issuer\n' "$sentinel_port" > "$work/server.env"
-# corvid-idp masked, as when Pocket-ID is gone, so only the sentinel is waited for.
+printf 'CORVID_ISSUER_URL=http://127.0.0.1:%s/internal/issuer\n' "$sentinel_port" > "$work/server.env"
 wait_issuer() { PATH="$work/bin:$PATH" CORVID_HOST_NET=1 CORVID_DIR="$work" bash "$here/wait-issuer.sh" "$@" 2>/dev/null; }
 stop_sentinel
 SECONDS=0

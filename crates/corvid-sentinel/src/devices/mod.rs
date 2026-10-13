@@ -1,5 +1,5 @@
-//! Master-approved device enrollment: a device's storage key is created only by a request that
-//! the admin user approves with a fresh Pocket-ID token, and is read back by the node id the
+//! Approver-approved device enrollment: a device's storage key is created only by a request that
+//! the admin user approves with a fresh admin token, and is read back by the node id the
 //! approval recorded.
 
 mod keys;
@@ -38,8 +38,6 @@ pub struct Config {
     pub secret: Vec<u8>,
     pub state_path: PathBuf,
     pub devices: Devices,
-    pub issuer: String,
-    pub idp_url: String,
     pub admin_user: String,
     pub keys_address: String,
     pub mail_address: String,
@@ -47,7 +45,7 @@ pub struct Config {
     pub stalwart_token: String,
     /// Absent, devices take no pushes and the mail WebHook is acknowledged and ignored.
     pub push: Option<PushConfig>,
-    /// Absent, only Pocket-ID master tokens are accepted.
+    /// Absent, no admin token is accepted and no device can be approved.
     pub local: Option<Arc<Issuer>>,
 }
 
@@ -76,12 +74,7 @@ pub fn routes(config: Config) -> Router {
     let state = Arc::new(DeviceState {
         secret: config.secret,
         devices: Persisted::new(config.state_path, config.devices, save),
-        master: Master::new(
-            config.issuer,
-            config.idp_url,
-            config.admin_user,
-            config.local,
-        ),
+        master: Master::new(config.admin_user, config.local),
         keys: Keys::new(
             config.stalwart_url,
             config.stalwart_token,
@@ -284,14 +277,12 @@ async fn approve(
     state
         .master
         .verify(token, dates::now_secs())
-        .await
         .map_err(|refusal| match refusal {
             Refusal::Invalid(reason) => {
-                tracing::info!(reason, "a master token was refused");
+                tracing::info!(reason, "an admin token was refused");
                 StatusCode::UNAUTHORIZED
             }
             Refusal::NotMaster => StatusCode::FORBIDDEN,
-            Refusal::Unreachable => StatusCode::BAD_GATEWAY,
         })?;
 
     let claim = claim(state.clone(), id.clone(), approval.code).await?;

@@ -25,7 +25,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/deploy/mta-sts-lib.sh"
 . "$HERE/deploy/assetlinks-lib.sh"
 . "$HERE/deploy/server-config-lib.sh"
-. "$HERE/deploy/idp-dns-lib.sh"
 . "$HERE/deploy/srv-dns-lib.sh"
 VERSION="$(sed -nE 's/^version = "([^"]+)"/\1/p' "$HERE/Cargo.toml" | head -1)"
 IMAGE="ghcr.io/verdenroz/corvid:stable"
@@ -35,7 +34,7 @@ declare -A CLI_SHA256=(
   [aarch64]=59dff5d52180df669eec705eb3fe2b80cee9267291e88123bd72af855d4c5bc3
 )
 # Must match POD_PORTS in crates/corvid-config: every container shares one network namespace.
-POD_PORTS=(25 80 465 587 993 1411 5335 8080 8081 8443 11332 11333)
+POD_PORTS=(25 80 465 587 993 5335 8080 8081 8443 11332 11333)
 key=""
 host=""
 ship_local=0
@@ -293,8 +292,6 @@ preset_address=""
 address="$(ask "Address" is_address "$preset_address" "$current_address")"
 mail_user="${address%@*}"
 domain="${address#*@}"
-# Always inside $domain, which the token must already edit; no question of its own.
-idp_hostname="idp.$domain"
 if [[ -n "$(current domain)" && "$domain" != "$(current domain)" ]]; then
   explain "This adds $domain alongside $(current domain). Stalwart keeps $(current domain) and its DNS" \
     "records stay at Cloudflare until you remove them."
@@ -360,7 +357,11 @@ if [[ -z "$a_records" ]]; then
 elif ! grep -qx "$server_ip" <<<"$a_records"; then
   die "$hostname points to $(tr '\n' ' ' <<<"$a_records")at Cloudflare, not to this server's $server_ip; fix that record and rerun"
 fi
-idp_dns_preflight "$token" "$domain_zone_id" "$idp_hostname" "$server_ip"
+# Pocket-ID is gone, so its name goes too, but only while it still points at this server.
+retired_idp=()
+while read -r id content; do
+  [[ "$content" == "$server_ip" ]] && retired_idp+=("$id")
+done < <(cloudflare "$token" records "$domain_zone_id" "idp.$domain" A)
 srv_dns_preflight "$token" "$domain_zone_id" "$domain" "$hostname" "$web_port"
 
 dnssec_off=()
@@ -411,7 +412,6 @@ cat <<EOF
   Password               $([[ -n "$password" ]] && echo "new" || echo "unchanged")
   Server name            $hostname$([[ $create_a == 1 ]] && echo " (A record to $server_ip will be created)")
   Web address            https://$hostname:$web_port
-  Identity provider      $idp_hostname$([[ $idp_create_a == 1 ]] && echo " (A record to $server_ip will be created)")
   App sign-in record     _corvid._tcp.$domain$(case "$srv_action" in create) echo " (SRV to $hostname port $web_port will be created)" ;; update) echo " (SRV port $srv_old_port -> $web_port will be updated)" ;; esac)
   Mail apps from         $(case "$client_access" in anywhere) echo "anywhere" ;; host) echo "this server only, such as its VPN" ;; *) echo "$client_access" ;; esac)
   Certificate notices    $acme_contact
@@ -421,6 +421,7 @@ cat <<EOF
   Android app links      $(case "$assetlinks_choice" in worker-domain) echo "published via a Cloudflare Worker on $domain" ;; worker-route) echo "published via a Cloudflare Worker route on $domain" ;; caddy) echo "served by the web tier on $domain" ;; *) echo "not served: $domain is not free to take over, so you serve the file" ;; esac)
   Corvid image           $IMAGE
 EOF
+(( ${#retired_idp[@]} )) && echo "  Pocket-ID's record     idp.$domain will be removed"
 if interactive; then
   echo
   read -r -p "Install Corvid on $server with these answers? [Y/n] " yes
@@ -431,11 +432,6 @@ if (( create_a )); then
   step "creating the A record"
   out="$(cloudflare "$token" create-a "$host_zone_id" "$hostname" "$server_ip" 2>&1)" || die "Cloudflare did not create it: $out"
   ok "$hostname now points to $server_ip"
-fi
-
-if (( idp_create_a )); then
-  step "creating the identity provider's A record"
-  idp_dns_create "$token" "$domain_zone_id" "$idp_hostname" "$server_ip"
 fi
 
 if [[ "$srv_action" != none ]]; then
@@ -504,8 +500,6 @@ keep() {
   else sed -i "/^$2=/d" "$1" 2>/dev/null || true; printf '%s=%s\n' "$2" "$3" >> "$1"; echo "  generated $2"; fi
 }
 keep /opt/corvid/rewriter.env CORVID_IMGPROXY_SECRET "$(openssl rand -hex 32)"
-keep /opt/corvid/idp.env ENCRYPTION_KEY "$(openssl rand -base64 32)"
-keep /opt/corvid/idp.env STATIC_API_KEY "$(openssl rand -hex 32)"
 EOF
 
 step "preparing the host"
@@ -513,7 +507,6 @@ on_host 'cd /opt/corvid/deploy && CORVID_INSTALLER=1 bash bootstrap.sh'
 # The labeler runs once config.yaml has its section; until then it stays masked, on every run.
 on_host 'bash -s' <<'EOF'
 grep -q "^labeler:" /opt/corvid/config.yaml || systemctl mask corvid-labeler.service >/dev/null 2>&1
-systemctl unmask corvid-idp.service >/dev/null 2>&1
 true
 EOF
 held="$(on_host "podman ps --format '{{.Names}}' | grep -vx 'corvid-.*' || true")"
@@ -531,6 +524,14 @@ fi
 
 step "deploying"
 on_host 'cd /opt/corvid/deploy && CORVID_INSTALLER=1 bash deploy.sh' || echo "  deploy.sh reported problems; see its output above"
+
+if (( ${#retired_idp[@]} )); then
+  step "removing Pocket-ID's record"
+  for id in "${retired_idp[@]}"; do
+    out="$(cloudflare "$token" delete "$domain_zone_id" "$id" 2>&1)" || die "Cloudflare did not remove record $id: $out"
+  done
+  ok "idp.$domain removed"
+fi
 
 if (( ${#stale_mta_sts[@]} )); then
   step "removing the MTA-STS records"

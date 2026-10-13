@@ -1,6 +1,5 @@
 #[path = "../common/mod.rs"]
 mod common;
-mod idp;
 mod push;
 mod stalwart;
 
@@ -10,7 +9,6 @@ use std::sync::Arc;
 use corvid_sentinel::auth::soft::signing_key;
 use corvid_sentinel::auth::{Audience, Issuer};
 use corvid_sentinel::devices::{self, Approved, Devices, Request, Stage};
-use idp::{ISSUER, Idp, claims, header, now, sign, token};
 use serde_json::{Value, json};
 use stalwart::{KEYS_ACCOUNT, MAIL_ACCOUNT, Stalwart, TOKEN};
 
@@ -20,7 +18,7 @@ const CONTACT: &str = "operator@elsewhere.test";
 
 struct Rig {
     url: String,
-    idp: Idp,
+    issuer: Arc<Issuer>,
     stalwart: Stalwart,
     state: PathBuf,
     _dir: tempfile::TempDir,
@@ -34,14 +32,19 @@ async fn rig_with(devices: Devices) -> Rig {
     rig_full(devices, None).await
 }
 
-async fn rig_full(devices: Devices, fcm_origin: Option<&str>) -> Rig {
-    rig_all(devices, fcm_origin, None).await
+const AUTH_URL: &str = "http://127.0.0.1:11333/internal/issuer";
+
+fn now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64
 }
 
-async fn rig_all(devices: Devices, fcm_origin: Option<&str>, local: Option<Arc<Issuer>>) -> Rig {
+async fn rig_full(devices: Devices, fcm_origin: Option<&str>) -> Rig {
     let dir = tempfile::tempdir().unwrap();
     let state = dir.path().join("devices.json");
-    let idp = Idp::start(ADMIN).await;
+    let issuer = Arc::new(Issuer::new(signing_key(), AUTH_URL.to_owned()));
     let stalwart = Stalwart::start().await;
     let mut config = common::config(
         &dir.path().join("sentinel.json"),
@@ -51,19 +54,17 @@ async fn rig_all(devices: Devices, fcm_origin: Option<&str>, local: Option<Arc<I
         secret: SECRET.to_vec(),
         state_path: state.clone(),
         devices,
-        issuer: ISSUER.to_owned(),
-        idp_url: idp.url.clone(),
         admin_user: ADMIN.to_owned(),
         keys_address: "corvid-keys@keys.rig.test".to_owned(),
         mail_address: "mailuser@rig.test".to_owned(),
         stalwart_url: stalwart.url.clone(),
         stalwart_token: TOKEN.to_owned(),
         push: fcm_origin.map(|origin| devices::PushConfig::open(&state, CONTACT, origin).unwrap()),
-        local,
+        local: Some(issuer.clone()),
     });
     Rig {
         url: common::serve(config).await,
-        idp,
+        issuer,
         stalwart,
         state,
         _dir: dir,
@@ -71,6 +72,10 @@ async fn rig_all(devices: Devices, fcm_origin: Option<&str>, local: Option<Arc<I
 }
 
 impl Rig {
+    fn token(&self) -> String {
+        self.issuer.mint(Audience::Master, "handle", ADMIN, now())
+    }
+
     async fn open(&self, name: &str) -> reqwest::Response {
         reqwest::Client::new()
             .post(format!("{}/corvid/devices/requests", self.url))
@@ -136,16 +141,10 @@ impl Rig {
 
     async fn approved(&self, name: &str) -> Approved {
         let (id, code) = self.request(name).await;
-        let response = self.approve(&id, &code, Some(&token())).await;
+        let response = self.approve(&id, &code, Some(&self.token())).await;
         assert_eq!(response.status(), 200);
         response.json().await.unwrap()
     }
-}
-
-fn with_header(field: &str, value: Value) -> String {
-    let mut header = header();
-    header[field] = value;
-    sign(&header, &claims())
 }
 
 fn expired_request(name: &str, code: &str) -> Devices {
@@ -283,7 +282,7 @@ async fn a_request_leaves_the_list_once_approved() {
     let (id, code) = rig.request("phone").await;
     assert_eq!(listed(&rig).await.len(), 1);
 
-    rig.approve(&id, &code, Some(&token())).await;
+    rig.approve(&id, &code, Some(&rig.token())).await;
 
     assert!(listed(&rig).await.is_empty());
 }
@@ -323,7 +322,9 @@ async fn an_unknown_or_expired_id_reads_as_expired_and_cannot_be_approved() {
     assert_eq!(rig.status("old").await, "expired");
     assert_eq!(rig.status("never-issued").await, "expired");
     assert_eq!(
-        rig.approve("old", "123456", Some(&token())).await.status(),
+        rig.approve("old", "123456", Some(&rig.token()))
+            .await
+            .status(),
         410
     );
     assert!(rig.stalwart.nodes().is_empty());
@@ -334,7 +335,7 @@ async fn the_admin_approving_with_the_right_code_creates_a_key_the_device_then_f
     let rig = rig().await;
     let (id, code) = rig.request("phone").await;
 
-    let response = rig.approve(&id, &code, Some(&token())).await;
+    let response = rig.approve(&id, &code, Some(&rig.token())).await;
 
     assert_eq!(response.status(), 200);
     assert_eq!(rig.status(&id).await, "approved");
@@ -422,10 +423,10 @@ async fn an_existing_folder_that_lost_its_share_is_shared_again() {
 async fn a_request_is_single_use() {
     let rig = rig().await;
     let (id, code) = rig.request("phone").await;
-    rig.approve(&id, &code, Some(&token())).await;
+    rig.approve(&id, &code, Some(&rig.token())).await;
     let before = rig.stalwart.nodes();
 
-    let again = rig.approve(&id, &code, Some(&token())).await;
+    let again = rig.approve(&id, &code, Some(&rig.token())).await;
 
     assert_eq!(again.status(), 410);
     assert_eq!(rig.stalwart.nodes(), before);
@@ -438,17 +439,23 @@ async fn a_wrong_code_is_refused_and_five_of_them_spend_the_request() {
     let wrong = if code == "000000" { "000001" } else { "000000" };
 
     for _ in 0..5 {
-        assert_eq!(rig.approve(&id, wrong, Some(&token())).await.status(), 403);
+        assert_eq!(
+            rig.approve(&id, wrong, Some(&rig.token())).await.status(),
+            403
+        );
     }
 
     assert_eq!(rig.status(&id).await, "expired");
-    assert_eq!(rig.approve(&id, &code, Some(&token())).await.status(), 410);
+    assert_eq!(
+        rig.approve(&id, &code, Some(&rig.token())).await.status(),
+        410
+    );
     assert!(rig.stalwart.nodes().is_empty());
     assert_eq!(rig.record("phone").await.status(), 404);
 }
 
 #[tokio::test]
-async fn an_approval_with_no_master_token_is_refused_before_anything_is_written() {
+async fn an_approval_with_no_admin_token_is_refused_before_anything_is_written() {
     let rig = rig().await;
     let (id, code) = rig.request("phone").await;
 
@@ -462,70 +469,32 @@ async fn an_approval_with_no_master_token_is_refused_before_anything_is_written(
 async fn a_token_that_does_not_prove_a_fresh_admin_sign_in_is_refused() {
     let rig = rig().await;
     let (id, code) = rig.request("phone").await;
-    let with = |change: &dyn Fn(&mut Value)| {
-        let mut claims = claims();
-        change(&mut claims);
-        sign(&header(), &claims)
-    };
     let tampered = {
-        let good = token();
+        let good = rig.token();
         let (head, rest) = good.split_once('.').unwrap();
         let (_, signature) = rest.split_once('.').unwrap();
-        let mut forged = claims();
-        forged["aud"] = json!(["corvid-admin"]);
-        forged["exp"] = json!(now() + 86400);
+        let forged = json!({"aud": "corvid-admin", "exp": now() + 86400});
         format!("{head}.{}.{signature}", base64_url(&forged.to_string()))
     };
     let refused = [
         (
-            "the daily client",
-            with(&|c| c["aud"] = json!(["corvid", ISSUER])),
+            "the mail audience",
+            rig.issuer.mint(Audience::Daily, "handle", ADMIN, now()),
         ),
         (
-            "another issuer",
-            with(&|c| c["iss"] = json!("https://elsewhere.test")),
+            "an expired token",
+            rig.issuer
+                .mint(Audience::Master, "handle", ADMIN, now() - 600),
         ),
-        ("an expired token", with(&|c| c["exp"] = json!(now() - 1))),
-        (
-            "a sign-in ten minutes old",
-            with(&|c| c["iat"] = json!(now() - 600)),
-        ),
-        (
-            "a sign-in from the future",
-            with(&|c| c["iat"] = json!(now() + 600)),
-        ),
-        (
-            "no time of sign-in",
-            with(&|c| {
-                c.as_object_mut().unwrap().remove("iat");
-            }),
-        ),
-        ("an id token", with_header("typ", json!("JWT"))),
-        ("an unsigned token", with_header("alg", json!("none"))),
-        ("an HMAC token", with_header("alg", json!("HS256"))),
-        ("an unknown key", with_header("kid", json!("k2"))),
         ("altered claims", tampered),
         ("not a token", "garbage".to_owned()),
     ];
 
-    for (what, master) in refused {
-        let status = rig.approve(&id, &code, Some(&master)).await.status();
+    for (what, admin) in refused {
+        let status = rig.approve(&id, &code, Some(&admin)).await.status();
         assert_eq!(status, 401, "{what}");
     }
 
-    assert_eq!(rig.status(&id).await, "pending");
-    assert_eq!(rig.stalwart.calls(), 0);
-}
-
-#[tokio::test]
-async fn a_token_for_a_user_other_than_the_admin_is_refused() {
-    let rig = rig().await;
-    rig.idp.sign_in_as("mailuser");
-    let (id, code) = rig.request("phone").await;
-
-    let response = rig.approve(&id, &code, Some(&token())).await;
-
-    assert_eq!(response.status(), 403);
     assert_eq!(rig.status(&id).await, "pending");
     assert_eq!(rig.stalwart.calls(), 0);
 }
@@ -579,7 +548,7 @@ async fn a_key_that_cannot_be_created_leaves_no_record_and_spends_the_request() 
     let (id, code) = rig.request("phone").await;
     rig.stalwart.refuse_creates();
 
-    let response = rig.approve(&id, &code, Some(&token())).await;
+    let response = rig.approve(&id, &code, Some(&rig.token())).await;
 
     assert_eq!(response.status(), 502);
     assert_eq!(rig.status(&id).await, "expired");
@@ -633,30 +602,21 @@ fn base64_url(text: &str) -> String {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(text)
 }
 
-const AUTH_URL: &str = "http://127.0.0.1:11333/internal/issuer";
-
-fn issuer() -> Arc<Issuer> {
-    Arc::new(Issuer::new(signing_key(), AUTH_URL.to_owned()))
-}
-
 #[tokio::test]
-async fn a_master_token_the_sentinel_issued_approves_a_device() {
-    let issuer = issuer();
-    let rig = rig_all(Devices::default(), None, Some(issuer.clone())).await;
+async fn a_token_the_sentinel_issued_approves_a_device() {
+    let rig = rig().await;
     let (id, code) = rig.request("phone").await;
-    let token = issuer.mint(Audience::Master, "handle", ADMIN, now());
 
-    let response = rig.approve(&id, &code, Some(&token)).await;
+    let response = rig.approve(&id, &code, Some(&rig.token())).await;
 
     assert_eq!(response.status(), 200);
     assert_eq!(rig.status(&id).await, "approved");
 }
 
 #[tokio::test]
-async fn a_sentinel_master_token_approves_one_request_and_no_second() {
-    let issuer = issuer();
-    let rig = rig_all(Devices::default(), None, Some(issuer.clone())).await;
-    let token = issuer.mint(Audience::Master, "handle", ADMIN, now());
+async fn an_admin_token_approves_one_request_and_no_second() {
+    let rig = rig().await;
+    let token = rig.token();
     let (first, first_code) = rig.request("phone").await;
     let (second, second_code) = rig.request("tablet").await;
     assert_eq!(
@@ -677,38 +637,32 @@ async fn a_sentinel_master_token_approves_one_request_and_no_second() {
 }
 
 #[tokio::test]
-async fn a_sentinel_daily_token_cannot_approve_a_device() {
-    let issuer = issuer();
-    let rig = rig_all(Devices::default(), None, Some(issuer.clone())).await;
+async fn a_mail_token_cannot_approve_a_device() {
+    let rig = rig().await;
     let (id, code) = rig.request("phone").await;
-    let token = issuer.mint(Audience::Daily, "handle", ADMIN, now());
+    let token = rig.issuer.mint(Audience::Daily, "handle", ADMIN, now());
 
     assert_eq!(rig.approve(&id, &code, Some(&token)).await.status(), 401);
 }
 
 #[tokio::test]
-async fn a_sentinel_master_token_for_another_user_is_refused() {
-    let issuer = issuer();
-    let rig = rig_all(Devices::default(), None, Some(issuer.clone())).await;
+async fn an_admin_token_for_another_user_is_refused() {
+    let rig = rig().await;
     let (id, code) = rig.request("phone").await;
-    let token = issuer.mint(Audience::Master, "handle", "someone-else", now());
+    let token = rig
+        .issuer
+        .mint(Audience::Master, "handle", "someone-else", now());
 
     assert_eq!(rig.approve(&id, &code, Some(&token)).await.status(), 403);
+    assert_eq!(rig.status(&id).await, "pending");
 }
 
 #[tokio::test]
-async fn a_pocket_id_token_still_approves_while_the_sentinel_issues_its_own() {
-    let rig = rig_all(Devices::default(), None, Some(issuer())).await;
+async fn an_admin_token_from_another_key_is_refused() {
+    let rig = rig().await;
     let (id, code) = rig.request("phone").await;
-
-    assert_eq!(rig.approve(&id, &code, Some(&token())).await.status(), 200);
-}
-
-#[tokio::test]
-async fn a_sentinel_token_from_another_key_is_refused() {
-    let rig = rig_all(Devices::default(), None, Some(issuer())).await;
-    let (id, code) = rig.request("phone").await;
-    let token = issuer().mint(Audience::Master, "handle", ADMIN, now());
+    let other = Issuer::new(signing_key(), AUTH_URL.to_owned());
+    let token = other.mint(Audience::Master, "handle", ADMIN, now());
 
     assert_eq!(rig.approve(&id, &code, Some(&token)).await.status(), 401);
 }

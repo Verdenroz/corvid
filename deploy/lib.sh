@@ -53,7 +53,7 @@ print(base64.b64encode(hmac.new(secret.encode(), sys.argv[2].encode(), hashlib.s
 
 # What deploy.sh should do about sign-in, from the sentinel's own count of passkeys. Prints
 # "SIGN_IN PASSKEYS APPROVERS WAITING": SIGN_IN is `passkeys` once a passkey can approve and
-# `pocket-id` until then, `off` when sentinel.auth is off, and WAITING is how many unexpired
+# `none` until then, `off` when sentinel.auth is off, and WAITING is how many unexpired
 # approver codes are still to be used.
 # Fails, printing nothing, when the sentinel never answers: no answer is not "nobody enrolled",
 # and acting on it would move a host that already switched back to the old directory.
@@ -67,7 +67,7 @@ auth_decision() {
 import json, sys
 s = json.load(sys.stdin)
 waiting = sum(code["approves"] for code in s["codes"])
-print("passkeys" if s["approvers"] > 0 else "pocket-id", len(s["passkeys"]), s["approvers"], waiting)' <<<"${reply#*$'\n'}"
+print("passkeys" if s["approvers"] > 0 else "none", len(s["passkeys"]), s["approvers"], waiting)' <<<"${reply#*$'\n'}"
         return
         ;;
       503) echo "off 0 0 0"; return ;;
@@ -271,7 +271,7 @@ corvid_config() {
 }
 
 # Sets and exports MAIL_DOMAIN, MAIL_HOSTNAME, MAIL_USER, ACME_CONTACT, WEB_PORT, HOST_ZONE,
-# IDP_HOSTNAME, IDP_URL, SENTINEL_URL, ISSUER_URL, ADMIN_USER, PUBLISH_MTA_STS, PUBLISH_TLSA,
+# SENTINEL_URL, ISSUER_URL, ADMIN_USER, PUBLISH_MTA_STS, PUBLISH_TLSA,
 # PUBLISH_ASSETLINKS, ASSETLINKS, MTA_STS_MODE, CLIENT_SOURCES and UPDATE_AUTO from config.yaml.
 # Tests set CORVID_CONFIG_CMD to run it without the container.
 load_server() {
@@ -279,7 +279,7 @@ load_server() {
   out="$(corvid_config shell)" || exit 78
   while IFS='=' read -r key value; do
     case "$key" in
-      MAIL_DOMAIN|MAIL_HOSTNAME|MAIL_USER|ACME_CONTACT|WEB_PORT|HOST_ZONE|IDP_HOSTNAME|IDP_URL|SENTINEL_URL|ISSUER_URL|ADMIN_USER|PUBLISH_MTA_STS|PUBLISH_TLSA|PUBLISH_ASSETLINKS|ASSETLINKS|MTA_STS_MODE|CLIENT_SOURCES|UPDATE_AUTO)
+      MAIL_DOMAIN|MAIL_HOSTNAME|MAIL_USER|ACME_CONTACT|WEB_PORT|HOST_ZONE|SENTINEL_URL|ISSUER_URL|ADMIN_USER|PUBLISH_MTA_STS|PUBLISH_TLSA|PUBLISH_ASSETLINKS|ASSETLINKS|MTA_STS_MODE|CLIENT_SOURCES|UPDATE_AUTO)
         printf -v "$key" '%s' "$value"
         export "${key?}"
         ;;
@@ -293,6 +293,12 @@ render_units() {
   local quadlet_dir="$1" here="$2" unit
   install -d -m 755 "$quadlet_dir"
   WEB_PORT="$WEB_PORT" envsubst '${WEB_PORT}' <"$here/corvid.pod" >"$quadlet_dir/corvid.pod"
+  # Hosts that ran Pocket-ID: with its quadlet gone the generator drops the unit, so it cannot
+  # come back at boot. Its data under $CORVID_DIR/idp stays on disk.
+  if [[ -e "$quadlet_dir/corvid-idp.container" ]]; then
+    systemctl stop corvid-idp.service 2>/dev/null || true
+    rm -f "$quadlet_dir/corvid-idp.container"
+  fi
   for unit in "$here"/*.container; do
     CORVID_IMAGE="$CORVID_IMAGE" envsubst '${CORVID_IMAGE}' <"$unit" >"$quadlet_dir/$(basename "$unit")"
   done
@@ -301,12 +307,10 @@ STALWART_HOSTNAME=$MAIL_HOSTNAME
 CORVID_WEB_HOSTNAME=$MAIL_HOSTNAME
 CORVID_WEB_PORT=$WEB_PORT
 CORVID_MAIL_DOMAIN=$MAIL_DOMAIN
-CORVID_IDP_HOSTNAME=$IDP_HOSTNAME
 CORVID_MTA_STS_SITE=$([[ "$PUBLISH_MTA_STS" == true ]] && echo "mta-sts.$MAIL_DOMAIN:443")
 CORVID_ASSETLINKS_SITE=$([[ "$PUBLISH_ASSETLINKS" == true && "$MAIL_HOSTNAME" != "$MAIL_DOMAIN" ]] && echo "$MAIL_DOMAIN:443")
 CORVID_ASSETLINKS_HOST=$([[ "$PUBLISH_ASSETLINKS" == true ]] && echo "$MAIL_DOMAIN" || echo assetlinks.invalid)
 CORVID_ASSETLINKS=$([[ "$PUBLISH_ASSETLINKS" == true ]] && echo "$ASSETLINKS")
-APP_URL=https://$IDP_HOSTNAME:$WEB_PORT
 CORVID_ISSUER_URL=$ISSUER_URL
 EOF
   chmod 644 "$CORVID_DIR/server.env"

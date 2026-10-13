@@ -27,7 +27,6 @@ images:
   stalwart: docker.io/stalwartlabs/stalwart:v0.16.21
   unbound: docker.io/klutchell/unbound@sha256:29aee253a86810f6d9738d77f21835c4f8fdf74ee6335b7a9e152790bd2781db
   caddy: docker.io/library/caddy:2.10-alpine
-  pocketId: ghcr.io/pocket-id/pocket-id:v2.17.0
   pullPolicy: IfNotPresent
 
 secrets:
@@ -43,8 +42,6 @@ secrets:
     STALWART_RECOVERY_ADMIN: ""
     # An app password for the labeler, created once Stalwart is running.
     CORVID_JMAP_PASSWORD: ""
-    # openssl rand -base64 32. Pocket-ID's key encryption; required when idp.enabled.
-    ENCRYPTION_KEY: ""
     # openssl rand -hex 32. The plan's WebHook signs with it; the sentinel verifies with it.
     CORVID_SENTINEL_SECRET: ""
 
@@ -52,15 +49,11 @@ secrets:
 labeler:
   enabled: false
 
-# On by default, unlike labeler and idp: the plan's WebHook is a static, unconditional entry in
+# On by default, unlike the labeler: the plan's WebHook is a static, unconditional entry in
 # stalwart.plan.ndjson (applied by deploy/apply-plan.sh, not templated per Values), so turning
 # this off leaves it posting to a container that does not exist.
 sentinel:
   enabled: true
-
-# Passkeys through Pocket-ID. Off until mail works; enabling the OIDC plan cuts over logins.
-idp:
-  enabled: false
 
 service:
   type: LoadBalancer
@@ -101,6 +94,3 @@ resources:
   unbound:
     requests: {memory: 16Mi}
     limits: {memory: 128Mi}
-  idp:
-    requests: {memory: 64Mi}
-    limits: {memory: 384Mi}

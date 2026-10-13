@@ -56,9 +56,9 @@ pub struct Server {
     /// The zone `hostname` belongs to, when it lies outside `domain`. Stalwart keeps a certificate
     /// for it through the same DNS provider and publishes no records there.
     pub host_zone: Option<Name>,
-    /// Where Pocket-ID answers, on the same `web_port`. Defaults to `idp.<domain>`; Pocket-ID
-    /// refuses an `APP_URL` with a path, so it needs a hostname of its own.
-    pub idp_hostname: Option<Name>,
+    /// Retired, and still accepted: an unattended update must not leave a service exiting 78 on a
+    /// `config.yaml` that carries it.
+    pub idp_hostname: Option<String>,
     /// The Android apps that may sign in with a passkey, which `/.well-known/assetlinks.json`
     /// lists and the sentinel accepts as WebAuthn origins. Defaults to the official release.
     #[serde(default = "official_apps")]
@@ -250,9 +250,7 @@ impl TryFrom<String> for Network {
 
 /// Ports something inside the pod already listens on. The pod shares one network namespace,
 /// so the web tier cannot take any of them.
-pub const POD_PORTS: [u16; 12] = [
-    25, 80, 465, 587, 993, 1411, 5335, 8080, 8081, 8443, 11332, 11333,
-];
+pub const POD_PORTS: [u16; 11] = [25, 80, 465, 587, 993, 5335, 8080, 8081, 8443, 11332, 11333];
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 #[serde(try_from = "u16")]
@@ -302,38 +300,11 @@ impl Server {
         Ok(())
     }
 
-    // Caddy needs two different site addresses; the same hostname on both would leave one
-    // handler unreachable.
-    fn check_idp_hostname(&self) -> Result<(), Error> {
-        if self
-            .idp_hostname
-            .as_ref()
-            .is_some_and(|idp| idp.0 == self.hostname.0)
-        {
-            return Err(Error(format!(
-                "server.idp_hostname {} is server.hostname; give Pocket-ID a hostname of its own",
-                self.hostname.0
-            )));
-        }
-        Ok(())
-    }
-
     pub fn web_url(&self) -> String {
         format!("https://{}:{}", self.hostname.0, self.web_port.0)
     }
 
-    pub fn idp_hostname(&self) -> String {
-        self.idp_hostname
-            .as_ref()
-            .map_or_else(|| format!("idp.{}", self.domain.0), |name| name.0.clone())
-    }
-
-    /// The `iss` Pocket-ID puts in its tokens.
-    pub fn idp_issuer(&self) -> String {
-        format!("https://{}:{}", self.idp_hostname(), self.web_port.0)
-    }
-
-    /// The Pocket-ID user whose passkey approves a device.
+    /// The name an approver's admin token carries, which the sentinel mints for approving devices.
     pub fn admin_user(&self) -> String {
         format!("{}-admin", self.mail_user.0)
     }
@@ -524,7 +495,7 @@ pub struct Sentinel {
     pub jmap_url: Option<String>,
     pub jmap_user: Option<String>,
     pub state: PathBuf,
-    /// Master-approved device enrollment. Absent, the sentinel serves no `/corvid/devices` routes.
+    /// Approver-approved device enrollment. Absent, the sentinel serves no `/corvid/devices` routes.
     pub devices: Option<Devices>,
     /// New-mail previews pushed to approved devices. Needs `devices`; absent, nothing is pushed.
     pub push: Option<Push>,
@@ -549,15 +520,14 @@ pub struct Auth {
 #[serde(deny_unknown_fields)]
 pub struct Push {}
 
-/// Needs a `server` section, which names the Pocket-ID issuer, the admin user and the mailbox.
+/// Needs a `server` section, which names the admin user and the mailbox.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Devices {
     pub state: PathBuf,
-    /// Overrides the issuer derived from `server`, for a Pocket-ID reached over another scheme.
+    /// Retired, and both stay accepted, like `server.idp_hostname`.
     pub issuer: Option<String>,
-    #[serde(default = "idp_url")]
-    pub idp_url: String,
+    pub idp_url: Option<String>,
     #[serde(default = "stalwart_url")]
     pub stalwart_url: String,
 }
@@ -629,7 +599,6 @@ impl Config {
             serde_saphyr::from_str(text).map_err(|error| Error(error.to_string()))?;
         if let Some(server) = &config.server {
             server.check_host_zone()?;
-            server.check_idp_hostname()?;
             server.check_assetlinks_caddy()?;
         }
         Ok(config)
@@ -655,13 +624,10 @@ impl Config {
     pub fn shell(&self) -> Result<String, Error> {
         let server = section(self.server.as_ref(), "server")?;
         let sentinel = self.sentinel.as_ref();
-        let idp_loopback = sentinel
-            .and_then(|sentinel| sentinel.devices.as_ref())
-            .map_or_else(idp_url, |devices| devices.idp_url.clone());
         let sentinel_addr = sentinel.map_or_else(sentinel_bind, |sentinel| sentinel.bind.clone());
         Ok(format!(
             "MAIL_DOMAIN={}\nMAIL_HOSTNAME={}\nMAIL_USER={}\nACME_CONTACT={}\nWEB_PORT={}\nHOST_ZONE={}\n\
-             IDP_HOSTNAME={}\nADMIN_USER={}\nIDP_URL={}\nSENTINEL_URL=http://{}\nISSUER_URL={}\nPUBLISH_MTA_STS={}\n\
+             ADMIN_USER={}\nSENTINEL_URL=http://{}\nISSUER_URL={}\nPUBLISH_MTA_STS={}\n\
              PUBLISH_TLSA={}\nPUBLISH_ASSETLINKS={}\nASSETLINKS={}\nMTA_STS_MODE={}\nMTA_STS_ID={}\nCLIENT_SOURCES={}\nUPDATE_AUTO={}\n",
             server.domain.0,
             server.hostname.0,
@@ -669,9 +635,7 @@ impl Config {
             server.acme_contact.0,
             server.web_port.0,
             server.host_zone.as_ref().map_or("", |zone| zone.as_str()),
-            server.idp_hostname(),
             server.admin_user(),
-            idp_loopback,
             sentinel_addr,
             issuer_url(&sentinel_addr),
             server.web_port.0 == 443,
@@ -746,9 +710,6 @@ fn yes() -> bool {
 }
 fn sentinel_bind() -> String {
     "127.0.0.1:11333".to_owned()
-}
-fn idp_url() -> String {
-    "http://127.0.0.1:1411".to_owned()
 }
 fn stalwart_url() -> String {
     "http://127.0.0.1:8080".to_owned()
@@ -869,8 +830,7 @@ mod server_tests {
             format!(
                 "MAIL_DOMAIN=example.com\nMAIL_HOSTNAME=mail.example.com\nMAIL_USER=alice\n\
                  ACME_CONTACT=you@elsewhere.example\nWEB_PORT=4443\nHOST_ZONE=\n\
-                 IDP_HOSTNAME=idp.example.com\nADMIN_USER=alice-admin\n\
-                 IDP_URL=http://127.0.0.1:1411\nSENTINEL_URL=http://127.0.0.1:11333\n\
+                 ADMIN_USER=alice-admin\nSENTINEL_URL=http://127.0.0.1:11333\n\
                  ISSUER_URL=http://127.0.0.1:11333/internal/issuer\nPUBLISH_MTA_STS=false\nPUBLISH_TLSA=true\nPUBLISH_ASSETLINKS=false\nASSETLINKS={}\nMTA_STS_MODE=testing\nMTA_STS_ID={id}\nCLIENT_SOURCES=any\nUPDATE_AUTO=true\n",
                 links.trim_end()
             )
@@ -1033,18 +993,16 @@ mod server_tests {
     }
 
     #[test]
-    fn the_issuer_and_admin_user_derive_from_the_server_section() {
-        let text = SERVER.to_owned() + "  web_port: 9443\n  idp_hostname: passkeys.example.com\n";
-        let config = Config::parse(&text).unwrap();
+    fn the_admin_user_and_keys_address_derive_from_the_server_section() {
+        let config = Config::parse(SERVER).unwrap();
         let server = config.server.unwrap();
 
-        assert_eq!(server.idp_issuer(), "https://passkeys.example.com:9443");
         assert_eq!(server.admin_user(), "alice-admin");
         assert_eq!(server.keys_address(), "corvid-keys@keys.example.com");
     }
 
     #[test]
-    fn a_devices_section_needs_its_own_state_file_and_defaults_the_loopback_urls() {
+    fn a_devices_section_needs_its_own_state_file_and_defaults_the_stalwart_url() {
         let text = "sentinel:\n  state: /s\n  devices:\n    state: /d\n";
         let devices = Config::parse(text)
             .unwrap()
@@ -1053,7 +1011,6 @@ mod server_tests {
             .devices
             .unwrap();
 
-        assert_eq!(devices.idp_url, "http://127.0.0.1:1411");
         assert_eq!(devices.stalwart_url, "http://127.0.0.1:8080");
         assert!(Config::parse("sentinel:\n  state: /s\n  devices: {}\n").is_err());
     }
@@ -1072,23 +1029,9 @@ mod server_tests {
     }
 
     #[test]
-    fn idp_hostname_defaults_to_idp_dot_domain() {
-        let shell = Config::parse(SERVER).unwrap().shell().unwrap();
-        assert!(
-            shell.lines().any(|l| l == "IDP_HOSTNAME=idp.example.com"),
-            "{shell}"
-        );
-    }
-
-    #[test]
-    fn the_sentinel_and_identity_provider_urls_follow_their_sections() {
-        let text = SERVER.to_owned()
-            + "sentinel:\n  state: /s\n  bind: 127.0.0.1:12000\n  devices:\n    state: /d\n    idp_url: http://127.0.0.1:2000\n";
+    fn the_sentinel_url_follows_its_section() {
+        let text = SERVER.to_owned() + "sentinel:\n  state: /s\n  bind: 127.0.0.1:12000\n";
         let shell = Config::parse(&text).unwrap().shell().unwrap();
-        assert!(
-            shell.lines().any(|l| l == "IDP_URL=http://127.0.0.1:2000"),
-            "{shell}"
-        );
         assert!(
             shell
                 .lines()
@@ -1098,33 +1041,10 @@ mod server_tests {
     }
 
     #[test]
-    fn a_stated_idp_hostname_overrides_the_default() {
-        let text = SERVER.to_owned() + "  idp_hostname: passkeys.example.com\n";
-        let shell = Config::parse(&text).unwrap().shell().unwrap();
-        assert!(
-            shell
-                .lines()
-                .any(|l| l == "IDP_HOSTNAME=passkeys.example.com"),
-            "{shell}"
-        );
-    }
-
-    #[test]
-    fn an_idp_hostname_with_bad_characters_is_refused() {
-        let text = SERVER.to_owned() + "  idp_hostname: \"pass;keys.example.com\"\n";
-        assert!(Config::parse(&text).is_err());
-    }
-
-    #[test]
-    fn an_idp_hostname_equal_to_the_mail_hostname_is_refused() {
-        let text = SERVER.to_owned() + "  idp_hostname: mail.example.com\n";
-        let error = Config::parse(&text).unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .contains("give Pocket-ID a hostname of its own"),
-            "{error}"
-        );
+    fn a_config_that_still_names_the_retired_identity_provider_settings_parses() {
+        let text = SERVER.to_owned()
+            + "  idp_hostname: idp.example.com\nsentinel:\n  state: /s\n  devices:\n    state: /d\n    issuer: https://idp.example.com:4443\n    idp_url: http://127.0.0.1:1411\n";
+        assert!(Config::parse(&text).is_ok());
     }
 
     #[test]
@@ -1419,7 +1339,6 @@ mod server_tests {
         let supplied: Vec<&str> = shell.lines().filter_map(|l| l.split('=').next()).collect();
         let plans = [
             include_str!("../../../deploy/stalwart.plan.ndjson"),
-            include_str!("../../../deploy/oidc.plan.ndjson"),
             include_str!("../../../deploy/auth.plan.ndjson"),
             include_str!("../../../deploy/stalwart.host-zone.ndjson"),
         ];

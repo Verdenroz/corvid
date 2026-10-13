@@ -1,7 +1,7 @@
 # Corvid Helm chart
 
 Runs Corvid as one pod: Stalwart, unbound, the milter, the image proxy, the sign-in sentinel,
-Caddy, and optionally the labeler and Pocket-ID. The containers share localhost exactly as in the
+Caddy, and optionally the labeler. The containers share localhost exactly as in the
 Podman deployment, so every setting means the same thing in both. `values.config` is rendered
 verbatim as the pod's `config.yaml` and follows its schema (`deploy/config.yaml`).
 
@@ -36,7 +36,7 @@ Podman deployment:
    and the secrets. Either name an existing Secret in `secrets.existingSecret`, with the keys
    listed under `secrets.values`, or fill `secrets.values`. The chart refuses to render without
    the image-proxy secret, the sentinel's HMAC secret and the Cloudflare token, or without the
-   labeler's or Pocket-ID's secret when those are enabled. Set `STALWART_RECOVERY_ADMIN`
+   labeler's secret when it is enabled. Set `STALWART_RECOVERY_ADMIN`
    to `recovery:<password>` for the first run.
 
 3. `helm install corvid charts/corvid -f values.yaml`
@@ -74,9 +74,9 @@ the admin credential for later applies.
 
 - For the labeler, create an app password for it (see `deploy/RUNBOOK.md`), add it to the Secret
   as `CORVID_JMAP_PASSWORD`, and upgrade with `labeler.enabled=true`.
-- For passkeys, add `ENCRYPTION_KEY` to the Secret, upgrade with `idp.enabled=true`, and apply
-  `deploy/oidc.plan.ndjson` as the RUNBOOK describes. That switches logins to the identity
-  provider, so enrol a passkey before relying on it.
+- For passkeys, mint a setup code with `deploy/passkey.sh code` (the first key on a server always
+  approves devices), enter it in the app, and apply `deploy/auth.plan.ndjson` as the RUNBOOK
+  describes. That switches logins to the sentinel, so enrol a passkey before relying on it.
 
 ## What the kind run showed
 
@@ -93,8 +93,6 @@ the admin credential for later applies.
 ## Not yet verified
 
 - A production cluster, certificates, and Cloudflare DNS automation.
-- Pocket-ID's own hostname (`config.server.idp_hostname`, see the RUNBOOK): the chart renders it,
-  but nothing here automates its DNS record the way `install.sh` does for the Podman deploy.
 - The labeler in the chart.
 - The sentinel in the chart: rendered and schema-validated (`helm template` plus `kubeconform`),
   never run against a live cluster.

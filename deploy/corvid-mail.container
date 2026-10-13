@@ -1,7 +1,7 @@
 [Unit]
 Description=Corvid mail server (Stalwart)
 Documentation=https://stalw.art/docs
-After=network-online.target corvid-unbound.service corvid-idp.service corvid-caddy.service corvid-sentinel.service
+After=network-online.target corvid-unbound.service corvid-caddy.service corvid-sentinel.service
 Wants=network-online.target corvid-unbound.service
 
 [Container]
