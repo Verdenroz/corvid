@@ -39,6 +39,7 @@ EOF
 
 echo "installed version $code; run corvid (make sure ~/.local/bin is on PATH)"
 
-if ! { PATH="$PATH:/sbin:/usr/sbin" ldconfig -p 2>/dev/null | grep -q 'libfido2\.so'; }; then
+# grep -q quits at the first match and ldconfig dies of SIGPIPE, which pipefail reads as no match.
+if ! { PATH="$PATH:/sbin:/usr/sbin" ldconfig -p 2>/dev/null | grep 'libfido2\.so' >/dev/null; }; then
   echo "warning: libfido2 not found; security-key sign-in needs it (libfido2-1) and udev rules that let your user open the key (libu2f-udev)" >&2
 fi
