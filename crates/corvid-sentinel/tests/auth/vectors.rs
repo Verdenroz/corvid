@@ -2,9 +2,7 @@
 //! crate. It carries no UV flag, so a UV-requiring verifier refuses it after everything else
 //! has parsed.
 
-use corvid_sentinel::auth::{
-    AssertionResponse, Policy, Refusal, RegistrationResponse, RelyingParty,
-};
+use corvid_sentinel::auth::{AssertionResponse, Refusal, RegistrationResponse, RelyingParty};
 use p256::ecdsa::signature::Verifier;
 use p256::ecdsa::{Signature, VerifyingKey};
 use sha2::{Digest, Sha256};
@@ -101,7 +99,7 @@ fn assertion() -> AssertionResponse {
 fn the_published_registration_is_read_down_to_the_missing_user_verification() {
     assert_eq!(
         party()
-            .register(&registration(false), &bytes(REG_CHALLENGE), Policy::Synced)
+            .register(&registration(false), &bytes(REG_CHALLENGE))
             .err(),
         Some(Refusal::UserVerification)
     );
@@ -110,7 +108,7 @@ fn the_published_registration_is_read_down_to_the_missing_user_verification() {
 #[test]
 fn the_published_registration_yields_its_credential_key_and_flags_once_verified_is_set() {
     let registration = party()
-        .register(&registration(true), &bytes(REG_CHALLENGE), Policy::Synced)
+        .register(&registration(true), &bytes(REG_CHALLENGE))
         .unwrap();
 
     assert_eq!(registration.credential_id, bytes(CREDENTIAL_ID));
@@ -118,20 +116,6 @@ fn the_published_registration_yields_its_credential_key_and_flags_once_verified_
     assert_eq!(registration.key, key());
     assert_eq!(registration.sign_count, 0);
     assert!(registration.backup_eligible);
-}
-
-#[test]
-fn the_published_registration_is_backup_eligible_so_a_device_bound_role_refuses_it() {
-    assert_eq!(
-        party()
-            .register(
-                &registration(true),
-                &bytes(REG_CHALLENGE),
-                Policy::DeviceBound
-            )
-            .err(),
-        Some(Refusal::NotDeviceBound)
-    );
 }
 
 #[test]
@@ -151,13 +135,7 @@ fn the_published_signature_verifies_over_authenticator_data_and_the_client_data_
 #[test]
 fn the_published_assertion_passes_the_signature_and_stops_at_the_missing_user_verification() {
     assert_eq!(
-        party().assert(
-            &assertion(),
-            &key(),
-            0,
-            &bytes(AUTH_CHALLENGE),
-            Policy::Synced
-        ),
+        party().assert(&assertion(), &key(), 0, &bytes(AUTH_CHALLENGE)),
         Err(Refusal::UserVerification)
     );
 }
@@ -168,7 +146,7 @@ fn the_published_assertion_with_its_client_data_altered_fails_the_signature() {
     response.client_data_json.push(b' ');
 
     assert_eq!(
-        party().assert(&response, &key(), 0, &bytes(AUTH_CHALLENGE), Policy::Synced),
+        party().assert(&response, &key(), 0, &bytes(AUTH_CHALLENGE)),
         Err(Refusal::Signature)
     );
 }

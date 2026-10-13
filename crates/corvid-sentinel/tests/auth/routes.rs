@@ -4,7 +4,7 @@ use std::sync::Arc;
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use corvid_sentinel::auth::soft::{BACKUP_ELIGIBLE, Soft, signing_key};
-use corvid_sentinel::auth::{self, Audience, Auth, Credential, Family, Issuer, Role};
+use corvid_sentinel::auth::{self, Audience, Auth, Credential, Family, Issuer, legacy};
 use corvid_sentinel::now_secs;
 use reqwest::Response;
 use serde_json::{Value, json};
@@ -87,19 +87,36 @@ impl Rig {
         reqwest::get(format!("{}{path}", self.url)).await.unwrap()
     }
 
-    async fn host_code(&self, role: &str) -> String {
+    async fn host_minted(&self, approves: bool) -> Value {
+        let message = if approves { "code approver" } else { "code" };
         let response = reqwest::Client::new()
-            .post(format!("{}/internal/auth/codes/{role}", self.url))
-            .header(
-                "X-Signature",
-                common::signature(SECRET, format!("code {role}").as_bytes()),
-            )
+            .post(format!("{}/internal/auth/codes", self.url))
+            .header("X-Signature", common::signature(SECRET, message.as_bytes()))
+            .json(&json!({"approves": approves}))
             .send()
             .await
             .unwrap();
         assert_eq!(response.status(), 200);
-        let body: Value = response.json().await.unwrap();
-        body["code"].as_str().unwrap().to_owned()
+        response.json().await.unwrap()
+    }
+
+    async fn host_code(&self, approves: bool) -> String {
+        self.host_minted(approves).await["code"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    }
+
+    async fn host_status(&self) -> Value {
+        reqwest::Client::new()
+            .get(format!("{}/internal/auth/status", self.url))
+            .header("X-Signature", common::signature(SECRET, b"status"))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap()
     }
 
     async fn enroll(&self, soft: &mut Soft, code: &str) -> Response {
@@ -118,17 +135,53 @@ impl Rig {
         .await
     }
 
-    async fn enrolled(&self, role: &str) -> Soft {
+    async fn enrolled_with(&self, approves: bool) -> Soft {
         let mut soft = Soft::new(RP_ID, ORIGIN);
-        let code = self.host_code(role).await;
+        let code = self.host_code(approves).await;
         let response = self.enroll(&mut soft, &code).await;
         assert_eq!(response.status(), 200);
         soft
     }
 
-    async fn login(&self, soft: &mut Soft, role: &str) -> Response {
+    async fn enrolled(&self) -> Soft {
+        self.enrolled_with(true).await
+    }
+
+    async fn enrolled_plain(&self) -> Soft {
+        let soft = self.enrolled_with(false).await;
+        let listed = self.passkeys().await;
+        let id = encode(&soft.credential_id);
+        let entry = listed.iter().find(|p| p["id"] == id).unwrap();
+        assert_eq!(entry["approves"], false, "an approver must exist first");
+        soft
+    }
+
+    async fn allowed(&self, purpose: &str) -> Vec<String> {
+        let options: Value = self
+            .post("/corvid/auth/login/options", json!({"purpose": purpose}))
+            .await
+            .json()
+            .await
+            .unwrap();
+        options["allowCredentials"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entry| entry["id"].as_str().unwrap().to_owned())
+            .collect()
+    }
+
+    async fn passkeys(&self) -> Vec<Value> {
+        self.get("/corvid/auth/passkeys")
+            .await
+            .json()
+            .await
+            .unwrap()
+    }
+
+    async fn login(&self, soft: &mut Soft, purpose: &str) -> Response {
         let options = self
-            .post("/corvid/auth/login/options", json!({"role": role}))
+            .post("/corvid/auth/login/options", json!({"purpose": purpose}))
             .await;
         if !options.status().is_success() {
             return options;
@@ -143,14 +196,14 @@ impl Rig {
             .await
     }
 
-    async fn signed_in(&self, soft: &mut Soft, role: &str) -> Value {
-        let response = self.login(soft, role).await;
+    async fn signed_in(&self, soft: &mut Soft, purpose: &str) -> Value {
+        let response = self.login(soft, purpose).await;
         assert_eq!(response.status(), 200);
         response.json().await.unwrap()
     }
 
     async fn master_token(&self, soft: &mut Soft) -> String {
-        self.signed_in(soft, "master").await["access_token"]
+        self.signed_in(soft, "approve").await["access_token"]
             .as_str()
             .unwrap()
             .to_owned()
@@ -188,28 +241,26 @@ impl Rig {
     }
 }
 
-fn with_code(role: Role, code: &str, expires_at: i64) -> Auth {
-    let mut auth = Auth::default();
-    auth.codes.insert(
-        role,
-        auth::Code {
+fn with_code(approves: bool, code: &str, expires_at: i64) -> Auth {
+    Auth {
+        codes: vec![auth::Code {
             hash: code_hash(code),
             expires_at,
-        },
-    );
-    auth
+            approves,
+        }],
+        ..Auth::default()
+    }
 }
 
 #[tokio::test]
-async fn a_host_code_enrolls_a_daily_passkey_that_then_signs_in_with_both_tokens() {
+async fn a_host_code_enrolls_a_passkey_that_then_signs_in_with_both_tokens() {
     let rig = rig().await;
-    let mut soft = rig.enrolled("daily").await;
+    let mut soft = rig.enrolled().await;
 
-    let tokens = rig.signed_in(&mut soft, "daily").await;
+    let tokens = rig.signed_in(&mut soft, "sign-in").await;
 
     assert_eq!(tokens["token_type"], "Bearer");
     assert_eq!(tokens["expires_in"], 900);
-    assert_eq!(tokens["role"], "daily");
     assert!(tokens["refresh_token"].is_string());
     let claims = rig
         .issuer
@@ -223,11 +274,49 @@ async fn a_host_code_enrolls_a_daily_passkey_that_then_signs_in_with_both_tokens
 }
 
 #[tokio::test]
-async fn a_master_passkey_signs_in_with_an_admin_token_and_no_refresh_token() {
+async fn registering_answers_with_the_tokens_of_a_sign_in_and_whether_the_key_approves() {
     let rig = rig().await;
-    let mut soft = rig.enrolled("master").await;
+    let mut soft = Soft::new(RP_ID, ORIGIN);
+    let code = rig.host_code(true).await;
 
-    let tokens = rig.signed_in(&mut soft, "master").await;
+    let response = rig.enroll(&mut soft, &code).await;
+
+    assert_eq!(response.status(), 200);
+    let tokens: Value = response.json().await.unwrap();
+    assert_eq!(tokens["approves"], true);
+    assert_eq!(tokens["expires_in"], 900);
+    let claims = rig
+        .issuer
+        .verify(
+            tokens["access_token"].as_str().unwrap(),
+            Audience::Daily,
+            now_secs(),
+        )
+        .unwrap();
+    assert_eq!(claims.preferred_username, DAILY);
+    let refreshed = rig.refresh(tokens["refresh_token"].as_str().unwrap()).await;
+    assert_eq!(refreshed.status(), 200);
+}
+
+#[tokio::test]
+async fn registering_with_a_plain_code_answers_that_the_key_does_not_approve() {
+    let rig = rig().await;
+    rig.enrolled().await;
+    let mut soft = Soft::new(RP_ID, ORIGIN);
+    let code = rig.host_code(false).await;
+
+    let tokens: Value = rig.enroll(&mut soft, &code).await.json().await.unwrap();
+
+    assert_eq!(tokens["approves"], false);
+    assert!(tokens["refresh_token"].is_string());
+}
+
+#[tokio::test]
+async fn an_approver_signs_in_to_approve_with_an_admin_token_and_no_refresh_token() {
+    let rig = rig().await;
+    let mut soft = rig.enrolled().await;
+
+    let tokens = rig.signed_in(&mut soft, "approve").await;
 
     assert_eq!(tokens["expires_in"], 300);
     assert!(tokens.get("refresh_token").is_none());
@@ -245,7 +334,7 @@ async fn a_master_passkey_signs_in_with_an_admin_token_and_no_refresh_token() {
 #[tokio::test]
 async fn an_enrollment_code_works_once() {
     let rig = rig().await;
-    let code = rig.host_code("daily").await;
+    let code = rig.host_code(false).await;
     let mut first = Soft::new(RP_ID, ORIGIN);
     assert_eq!(rig.enroll(&mut first, &code).await.status(), 200);
 
@@ -257,7 +346,7 @@ async fn an_enrollment_code_works_once() {
 #[tokio::test]
 async fn the_code_may_be_typed_in_lower_case_without_dashes() {
     let rig = rig().await;
-    let code = rig.host_code("daily").await;
+    let code = rig.host_code(false).await;
     let typed = code.replace('-', "").to_lowercase();
 
     assert_eq!(
@@ -272,7 +361,7 @@ async fn the_code_may_be_typed_in_lower_case_without_dashes() {
 async fn a_code_is_four_groups_of_four_base32_characters() {
     let rig = rig().await;
 
-    let code = rig.host_code("daily").await;
+    let code = rig.host_code(false).await;
 
     let groups: Vec<_> = code.split('-').collect();
     assert_eq!(groups.len(), 4);
@@ -287,28 +376,36 @@ async fn a_code_is_four_groups_of_four_base32_characters() {
 }
 
 #[tokio::test]
-async fn minting_a_new_code_replaces_the_previous_one_for_that_role() {
+async fn several_codes_are_live_at_once_and_each_is_spent_alone() {
     let rig = rig().await;
-    let old = rig.host_code("daily").await;
-    let new = rig.host_code("daily").await;
+    rig.enrolled().await;
+    let first = rig.host_code(false).await;
+    let second = rig.host_code(false).await;
 
     assert_eq!(
-        rig.enroll(&mut Soft::new(RP_ID, ORIGIN), &old)
-            .await
-            .status(),
-        401
-    );
-    assert_eq!(
-        rig.enroll(&mut Soft::new(RP_ID, ORIGIN), &new)
+        rig.enroll(&mut Soft::new(RP_ID, ORIGIN), &second)
             .await
             .status(),
         200
+    );
+
+    assert_eq!(
+        rig.enroll(&mut Soft::new(RP_ID, ORIGIN), &first)
+            .await
+            .status(),
+        200
+    );
+    assert_eq!(
+        rig.enroll(&mut Soft::new(RP_ID, ORIGIN), &second)
+            .await
+            .status(),
+        401
     );
 }
 
 #[tokio::test]
 async fn a_code_past_its_day_is_refused() {
-    let rig = rig_with(with_code(Role::Daily, "AAAABBBBCCCCDDDD", now_secs() - 1)).await;
+    let rig = rig_with(with_code(false, "AAAABBBBCCCCDDDD", now_secs() - 1)).await;
 
     assert_eq!(
         rig.enroll(&mut Soft::new(RP_ID, ORIGIN), "AAAA-BBBB-CCCC-DDDD")
@@ -319,21 +416,73 @@ async fn a_code_past_its_day_is_refused() {
 }
 
 #[tokio::test]
-async fn enrolling_with_a_daily_code_does_not_open_a_master_sign_in() {
+async fn a_plain_code_enrolls_a_key_that_signs_in_but_cannot_approve() {
     let rig = rig().await;
-    let code = rig.host_code("daily").await;
-    let mut soft = Soft::new(RP_ID, ORIGIN);
-    assert_eq!(rig.enroll(&mut soft, &code).await.status(), 200);
+    rig.enrolled().await;
+    let mut plain = rig.enrolled_plain().await;
 
-    let response = rig.login(&mut soft, "master").await;
+    assert_eq!(rig.login(&mut plain, "sign-in").await.status(), 200);
+
+    assert_eq!(rig.login(&mut plain, "approve").await.status(), 401);
+}
+
+#[tokio::test]
+async fn approving_lists_only_the_approvers() {
+    let rig = rig().await;
+    let approver = rig.enrolled().await;
+    let plain = rig.enrolled_plain().await;
+    let approving = rig.allowed("approve").await;
+    let signing_in = rig.allowed("sign-in").await;
+
+    assert_eq!(approving, [encode(&approver.credential_id)]);
+    assert!(signing_in.contains(&encode(&approver.credential_id)));
+    assert!(signing_in.contains(&encode(&plain.credential_id)));
+}
+
+#[tokio::test]
+async fn approving_with_no_approver_enrolled_answers_not_found() {
+    let mut auth = aged_family(now_secs() - 60, now_secs() - 3600);
+    auth.families.clear();
+    let rig = rig_with(auth).await;
+
+    let response = rig
+        .post("/corvid/auth/login/options", json!({"purpose": "approve"}))
+        .await;
 
     assert_eq!(response.status(), 404);
 }
 
 #[tokio::test]
+async fn while_no_approver_is_enrolled_a_plain_code_enrolls_an_approver() {
+    let rig = rig().await;
+
+    let minted = rig.host_minted(false).await;
+
+    assert_eq!(minted["approves"], true);
+    let mut soft = Soft::new(RP_ID, ORIGIN);
+    let tokens: Value = rig
+        .enroll(&mut soft, minted["code"].as_str().unwrap())
+        .await
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(tokens["approves"], true);
+}
+
+#[tokio::test]
+async fn once_an_approver_exists_a_plain_code_stays_plain() {
+    let rig = rig().await;
+    rig.enrolled().await;
+
+    let minted = rig.host_minted(false).await;
+
+    assert_eq!(minted["approves"], false);
+}
+
+#[tokio::test]
 async fn the_sixth_wrong_code_from_one_address_is_rate_limited_and_a_right_one_waits() {
     let rig = rig().await;
-    let code = rig.host_code("daily").await;
+    let code = rig.host_code(false).await;
     for _ in 0..5 {
         let response = rig
             .post_from(
@@ -413,19 +562,22 @@ async fn failed_redemptions_from_many_addresses_stop_everyone_at_the_global_limi
 }
 
 #[tokio::test]
-async fn a_master_passkey_that_can_be_backed_up_is_refused_at_enrollment() {
+async fn a_passkey_that_can_be_backed_up_can_be_an_approver() {
     let rig = rig().await;
-    let code = rig.host_code("master").await;
+    let code = rig.host_code(true).await;
     let mut soft = Soft::new(RP_ID, ORIGIN);
     soft.flags |= BACKUP_ELIGIBLE;
 
-    assert_eq!(rig.enroll(&mut soft, &code).await.status(), 401);
+    assert_eq!(rig.enroll(&mut soft, &code).await.status(), 200);
+
+    assert_eq!(rig.login(&mut soft, "approve").await.status(), 200);
 }
 
 #[tokio::test]
-async fn a_daily_passkey_that_can_be_backed_up_is_accepted() {
+async fn a_passkey_that_can_be_backed_up_is_accepted_as_a_plain_one() {
     let rig = rig().await;
-    let code = rig.host_code("daily").await;
+    rig.enrolled().await;
+    let code = rig.host_code(false).await;
     let mut soft = Soft::new(RP_ID, ORIGIN);
     soft.flags |= BACKUP_ELIGIBLE;
 
@@ -437,7 +589,7 @@ async fn signing_in_before_any_passkey_is_enrolled_answers_not_found() {
     let rig = rig().await;
 
     let response = rig
-        .post("/corvid/auth/login/options", json!({"role": "daily"}))
+        .post("/corvid/auth/login/options", json!({"purpose": "sign-in"}))
         .await;
 
     assert_eq!(response.status(), 404);
@@ -446,9 +598,9 @@ async fn signing_in_before_any_passkey_is_enrolled_answers_not_found() {
 #[tokio::test]
 async fn a_challenge_answers_once() {
     let rig = rig().await;
-    let mut soft = rig.enrolled("daily").await;
+    let mut soft = rig.enrolled().await;
     let options: Value = rig
-        .post("/corvid/auth/login/options", json!({"role": "daily"}))
+        .post("/corvid/auth/login/options", json!({"purpose": "sign-in"}))
         .await
         .json()
         .await
@@ -462,7 +614,7 @@ async fn a_challenge_answers_once() {
 #[tokio::test]
 async fn a_challenge_nobody_issued_is_refused() {
     let rig = rig().await;
-    let mut soft = rig.enrolled("daily").await;
+    let mut soft = rig.enrolled().await;
 
     let response = rig.finish_login(&mut soft, b"made up by the client").await;
 
@@ -472,29 +624,47 @@ async fn a_challenge_nobody_issued_is_refused() {
 #[tokio::test]
 async fn a_passkey_that_was_never_enrolled_cannot_sign_in() {
     let rig = rig().await;
-    rig.enrolled("daily").await;
+    rig.enrolled().await;
     let mut stranger = Soft::new(RP_ID, ORIGIN);
 
-    assert_eq!(rig.login(&mut stranger, "daily").await.status(), 401);
+    assert_eq!(rig.login(&mut stranger, "sign-in").await.status(), 401);
 }
 
 #[tokio::test]
-async fn a_master_passkey_cannot_answer_a_daily_challenge() {
+async fn a_challenge_issued_for_signing_in_does_not_give_an_admin_token() {
     let rig = rig().await;
-    rig.enrolled("daily").await;
-    let mut master = rig.enrolled("master").await;
+    let mut approver = rig.enrolled().await;
+    let options: Value = rig
+        .post("/corvid/auth/login/options", json!({"purpose": "sign-in"}))
+        .await
+        .json()
+        .await
+        .unwrap();
+    let challenge = decode(options["challenge"].as_str().unwrap());
 
-    assert_eq!(rig.login(&mut master, "daily").await.status(), 401);
+    let tokens: Value = rig
+        .finish_login(&mut approver, &challenge)
+        .await
+        .json()
+        .await
+        .unwrap();
+
+    let admin = rig.issuer.verify(
+        tokens["access_token"].as_str().unwrap(),
+        Audience::Master,
+        now_secs(),
+    );
+    assert!(admin.is_err());
 }
 
 #[tokio::test]
 async fn a_sign_count_that_goes_backwards_is_refused_and_leaves_a_notice() {
     let rig = rig().await;
-    let mut soft = rig.enrolled("daily").await;
-    rig.signed_in(&mut soft, "daily").await;
+    let mut soft = rig.enrolled().await;
+    rig.signed_in(&mut soft, "sign-in").await;
     soft.sign_count = 0;
 
-    assert_eq!(rig.login(&mut soft, "daily").await.status(), 401);
+    assert_eq!(rig.login(&mut soft, "sign-in").await.status(), 401);
 
     assert_eq!(rig.notices().await, ["Passkey counter went backwards"]);
 }
@@ -504,18 +674,18 @@ async fn a_synced_passkey_that_always_reports_zero_keeps_signing_in() {
     let rig = rig().await;
     let mut soft = Soft::new(RP_ID, ORIGIN);
     soft.frozen_counter = true;
-    let code = rig.host_code("daily").await;
+    let code = rig.host_code(false).await;
     assert_eq!(rig.enroll(&mut soft, &code).await.status(), 200);
 
-    rig.signed_in(&mut soft, "daily").await;
-    rig.signed_in(&mut soft, "daily").await;
+    rig.signed_in(&mut soft, "sign-in").await;
+    rig.signed_in(&mut soft, "sign-in").await;
 }
 
 #[tokio::test]
 async fn a_refresh_token_rotates_and_the_new_one_works() {
     let rig = rig().await;
-    let mut soft = rig.enrolled("daily").await;
-    let first = rig.signed_in(&mut soft, "daily").await["refresh_token"]
+    let mut soft = rig.enrolled().await;
+    let first = rig.signed_in(&mut soft, "sign-in").await["refresh_token"]
         .as_str()
         .unwrap()
         .to_owned();
@@ -530,10 +700,10 @@ async fn a_refresh_token_rotates_and_the_new_one_works() {
 }
 
 #[tokio::test]
-async fn a_refreshed_access_token_verifies_for_the_daily_user() {
+async fn a_refreshed_access_token_verifies_for_the_mail_user() {
     let rig = rig().await;
-    let mut soft = rig.enrolled("daily").await;
-    let refresh = rig.signed_in(&mut soft, "daily").await["refresh_token"]
+    let mut soft = rig.enrolled().await;
+    let refresh = rig.signed_in(&mut soft, "sign-in").await["refresh_token"]
         .as_str()
         .unwrap()
         .to_owned();
@@ -554,8 +724,8 @@ async fn a_refreshed_access_token_verifies_for_the_daily_user() {
 #[tokio::test]
 async fn reusing_an_old_refresh_token_revokes_the_whole_family() {
     let rig = rig().await;
-    let mut soft = rig.enrolled("daily").await;
-    let first = rig.signed_in(&mut soft, "daily").await["refresh_token"]
+    let mut soft = rig.enrolled().await;
+    let first = rig.signed_in(&mut soft, "sign-in").await["refresh_token"]
         .as_str()
         .unwrap()
         .to_owned();
@@ -586,15 +756,17 @@ async fn a_refresh_token_nobody_issued_is_an_invalid_grant() {
 }
 
 fn aged_family(last_used: i64, created_at: i64) -> Auth {
-    let mut auth = Auth::default();
-    auth.users.insert("handle".to_owned(), Role::Daily);
+    let mut auth = Auth {
+        user: Some("handle".to_owned()),
+        ..Auth::default()
+    };
     auth.credentials.insert(
         "credential".to_owned(),
         Credential {
-            user: "handle".to_owned(),
             public_key: String::new(),
             sign_count: 0,
             backup_eligible: true,
+            approves: false,
             created_at,
         },
     );
@@ -640,8 +812,8 @@ async fn a_refresh_token_inside_both_limits_is_accepted() {
 #[tokio::test]
 async fn enrolled_passkeys_and_refresh_tokens_survive_a_restart() {
     let rig = rig().await;
-    let mut soft = rig.enrolled("daily").await;
-    let refresh = rig.signed_in(&mut soft, "daily").await["refresh_token"]
+    let mut soft = rig.enrolled().await;
+    let refresh = rig.signed_in(&mut soft, "sign-in").await["refresh_token"]
         .as_str()
         .unwrap()
         .to_owned();
@@ -659,7 +831,7 @@ async fn enrolled_passkeys_and_refresh_tokens_survive_a_restart() {
     assert_eq!(response.status(), 200);
     let sign_in = reqwest::Client::new()
         .post(format!("{url}/corvid/auth/login/options"))
-        .json(&json!({"role": "daily"}))
+        .json(&json!({"purpose": "sign-in"}))
         .send()
         .await
         .unwrap();
@@ -683,7 +855,7 @@ async fn the_discovery_document_and_key_set_are_served_for_stalwart() {
 }
 
 #[tokio::test]
-async fn userinfo_names_the_user_of_a_daily_token() {
+async fn userinfo_names_the_user_of_a_mail_token() {
     let rig = rig().await;
     let token = rig
         .issuer
@@ -703,7 +875,7 @@ async fn userinfo_names_the_user_of_a_daily_token() {
 }
 
 #[tokio::test]
-async fn userinfo_refuses_a_master_token() {
+async fn userinfo_refuses_an_admin_token() {
     let rig = rig().await;
     let token = rig
         .issuer
@@ -720,56 +892,88 @@ async fn userinfo_refuses_a_master_token() {
 }
 
 #[tokio::test]
-async fn a_master_mints_a_code_for_another_passkey_and_the_token_is_spent() {
+async fn an_approver_mints_a_code_for_another_passkey_and_the_token_is_spent() {
     let rig = rig().await;
-    let mut master = rig.enrolled("master").await;
-    let token = rig.master_token(&mut master).await;
+    let mut approver = rig.enrolled().await;
+    let token = rig.master_token(&mut approver).await;
 
     let response = rig
         .with_master(
             reqwest::Method::POST,
             "/corvid/auth/enroll-codes",
             &token,
-            json!({"role": "daily"}),
+            json!({"approves": false}),
         )
         .await;
 
     assert_eq!(response.status(), 200);
     let body: Value = response.json().await.unwrap();
+    assert_eq!(body["approves"], false);
     let code = body["code"].as_str().unwrap();
-    assert_eq!(
-        rig.enroll(&mut Soft::new(RP_ID, ORIGIN), code)
-            .await
-            .status(),
-        200
-    );
+    let tokens: Value = rig
+        .enroll(&mut Soft::new(RP_ID, ORIGIN), code)
+        .await
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(tokens["approves"], false);
     let again = rig
         .with_master(
             reqwest::Method::POST,
             "/corvid/auth/enroll-codes",
             &token,
-            json!({"role": "daily"}),
+            json!({"approves": false}),
         )
         .await;
     assert_eq!(again.status(), 401);
 }
 
 #[tokio::test]
-async fn minting_a_code_without_a_master_token_is_refused() {
+async fn an_approver_can_ask_for_a_code_that_enrolls_another_approver() {
+    let rig = rig().await;
+    let mut approver = rig.enrolled().await;
+    let token = rig.master_token(&mut approver).await;
+
+    let body: Value = rig
+        .with_master(
+            reqwest::Method::POST,
+            "/corvid/auth/enroll-codes",
+            &token,
+            json!({"approves": true}),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+
+    let tokens: Value = rig
+        .enroll(
+            &mut Soft::new(RP_ID, ORIGIN),
+            body["code"].as_str().unwrap(),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(tokens["approves"], true);
+}
+
+#[tokio::test]
+async fn minting_a_code_without_an_admin_token_is_refused() {
     let rig = rig().await;
 
     let response = rig
-        .post("/corvid/auth/enroll-codes", json!({"role": "daily"}))
+        .post("/corvid/auth/enroll-codes", json!({"approves": false}))
         .await;
 
     assert_eq!(response.status(), 401);
 }
 
 #[tokio::test]
-async fn a_daily_token_cannot_mint_a_code() {
+async fn a_mail_token_cannot_mint_a_code() {
     let rig = rig().await;
-    let mut daily = rig.enrolled("daily").await;
-    let token = rig.signed_in(&mut daily, "daily").await["access_token"]
+    let mut soft = rig.enrolled().await;
+    let token = rig.signed_in(&mut soft, "sign-in").await["access_token"]
         .as_str()
         .unwrap()
         .to_owned();
@@ -779,7 +983,7 @@ async fn a_daily_token_cannot_mint_a_code() {
             reqwest::Method::POST,
             "/corvid/auth/enroll-codes",
             &token,
-            json!({"role": "daily"}),
+            json!({"approves": false}),
         )
         .await;
 
@@ -787,30 +991,34 @@ async fn a_daily_token_cannot_mint_a_code() {
 }
 
 #[tokio::test]
-async fn the_passkey_list_names_each_credential_with_its_role() {
+async fn the_passkey_list_says_which_credentials_approve() {
     let rig = rig().await;
-    let daily = rig.enrolled("daily").await;
-    rig.enrolled("master").await;
+    let approver = rig.enrolled().await;
+    let plain = rig.enrolled_plain().await;
 
-    let list: Vec<Value> = rig.get("/corvid/auth/passkeys").await.json().await.unwrap();
+    let list = rig.passkeys().await;
 
     assert_eq!(list.len(), 2);
-    let roles: Vec<_> = list.iter().map(|p| p["role"].as_str().unwrap()).collect();
-    assert!(roles.contains(&"daily") && roles.contains(&"master"));
-    assert!(list.iter().any(|p| p["id"] == encode(&daily.credential_id)));
+    let approves = |soft: &Soft| {
+        list.iter()
+            .find(|p| p["id"] == encode(&soft.credential_id))
+            .unwrap()["approves"]
+            .clone()
+    };
+    assert_eq!(approves(&approver), true);
+    assert_eq!(approves(&plain), false);
 }
 
 #[tokio::test]
-async fn a_users_last_passkey_cannot_be_removed() {
+async fn the_last_passkey_cannot_be_removed() {
     let rig = rig().await;
-    let daily = rig.enrolled("daily").await;
-    let mut master = rig.enrolled("master").await;
-    let token = rig.master_token(&mut master).await;
+    let mut only = rig.enrolled().await;
+    let token = rig.master_token(&mut only).await;
 
     let response = rig
         .with_master(
             reqwest::Method::DELETE,
-            &format!("/corvid/auth/passkeys/{}", encode(&daily.credential_id)),
+            &format!("/corvid/auth/passkeys/{}", encode(&only.credential_id)),
             &token,
             json!({}),
         )
@@ -820,12 +1028,31 @@ async fn a_users_last_passkey_cannot_be_removed() {
 }
 
 #[tokio::test]
-async fn a_second_passkey_can_be_removed_by_a_master() {
+async fn the_last_approver_cannot_be_removed_while_plain_passkeys_remain() {
     let rig = rig().await;
-    let first = rig.enrolled("daily").await;
-    let second = rig.enrolled("daily").await;
-    let mut master = rig.enrolled("master").await;
-    let token = rig.master_token(&mut master).await;
+    let mut approver = rig.enrolled().await;
+    rig.enrolled_plain().await;
+    let token = rig.master_token(&mut approver).await;
+
+    let response = rig
+        .with_master(
+            reqwest::Method::DELETE,
+            &format!("/corvid/auth/passkeys/{}", encode(&approver.credential_id)),
+            &token,
+            json!({}),
+        )
+        .await;
+
+    assert_eq!(response.status(), 409);
+    assert_eq!(rig.passkeys().await.len(), 2);
+}
+
+#[tokio::test]
+async fn an_approver_can_be_removed_while_another_remains() {
+    let rig = rig().await;
+    let mut first = rig.enrolled().await;
+    let second = rig.enrolled().await;
+    let token = rig.master_token(&mut first).await;
 
     let response = rig
         .with_master(
@@ -837,26 +1064,44 @@ async fn a_second_passkey_can_be_removed_by_a_master() {
         .await;
 
     assert_eq!(response.status(), 204);
-    let list: Vec<Value> = rig.get("/corvid/auth/passkeys").await.json().await.unwrap();
-    assert!(list.iter().any(|p| p["id"] == encode(&first.credential_id)));
-    assert!(
-        !list
-            .iter()
-            .any(|p| p["id"] == encode(&second.credential_id))
-    );
 }
 
 #[tokio::test]
-async fn removing_a_passkey_needs_a_master_token() {
+async fn a_plain_passkey_can_be_removed_by_an_approver() {
     let rig = rig().await;
-    let daily = rig.enrolled("daily").await;
-    rig.enrolled("daily").await;
+    let mut approver = rig.enrolled().await;
+    let plain = rig.enrolled_plain().await;
+    let token = rig.master_token(&mut approver).await;
+
+    let response = rig
+        .with_master(
+            reqwest::Method::DELETE,
+            &format!("/corvid/auth/passkeys/{}", encode(&plain.credential_id)),
+            &token,
+            json!({}),
+        )
+        .await;
+
+    assert_eq!(response.status(), 204);
+    let list = rig.passkeys().await;
+    assert!(
+        list.iter()
+            .any(|p| p["id"] == encode(&approver.credential_id))
+    );
+    assert!(!list.iter().any(|p| p["id"] == encode(&plain.credential_id)));
+}
+
+#[tokio::test]
+async fn removing_a_passkey_needs_an_admin_token() {
+    let rig = rig().await;
+    let first = rig.enrolled().await;
+    rig.enrolled().await;
 
     let response = reqwest::Client::new()
         .delete(format!(
             "{}/corvid/auth/passkeys/{}",
             rig.url,
-            encode(&daily.credential_id)
+            encode(&first.credential_id)
         ))
         .send()
         .await
@@ -866,21 +1111,15 @@ async fn removing_a_passkey_needs_a_master_token() {
 }
 
 #[tokio::test]
-async fn the_host_status_counts_passkeys_by_role() {
+async fn the_host_status_counts_approvers_among_the_passkeys() {
     let rig = rig().await;
-    rig.enrolled("daily").await;
+    rig.enrolled().await;
+    rig.enrolled_plain().await;
 
-    let response = reqwest::Client::new()
-        .get(format!("{}/internal/auth/status", rig.url))
-        .header("X-Signature", common::signature(SECRET, b"status"))
-        .send()
-        .await
-        .unwrap();
+    let body = rig.host_status().await;
 
-    assert_eq!(response.status(), 200);
-    let body: Value = response.json().await.unwrap();
-    assert_eq!(body["daily"], 1);
-    assert_eq!(body["master"], 0);
+    assert_eq!(body["approvers"], 1);
+    assert_eq!(body["passkeys"].as_array().unwrap().len(), 2);
 }
 
 #[tokio::test]
@@ -894,8 +1133,9 @@ async fn the_host_routes_refuse_an_unsigned_or_wrongly_signed_call() {
         .await
         .unwrap();
     let wrong = client
-        .post(format!("{}/internal/auth/codes/daily", rig.url))
-        .header("X-Signature", common::signature(SECRET, b"code master"))
+        .post(format!("{}/internal/auth/codes", rig.url))
+        .header("X-Signature", common::signature(SECRET, b"code"))
+        .json(&json!({"approves": true}))
         .send()
         .await
         .unwrap();
@@ -907,8 +1147,8 @@ async fn the_host_routes_refuse_an_unsigned_or_wrongly_signed_call() {
 #[tokio::test]
 async fn the_host_removes_a_second_passkey_by_id() {
     let rig = rig().await;
-    rig.enrolled("daily").await;
-    let second = rig.enrolled("daily").await;
+    rig.enrolled().await;
+    let second = rig.enrolled().await;
     let id = encode(&second.credential_id);
 
     let response = reqwest::Client::new()
@@ -983,10 +1223,10 @@ async fn the_replaced_token_presented_after_the_grace_revokes_the_family_and_not
 #[tokio::test]
 async fn removing_a_passkey_ends_the_sign_ins_it_made() {
     let rig = rig().await;
-    let mut phone = rig.enrolled("daily").await;
-    rig.enrolled("daily").await;
-    let mut master = rig.enrolled("master").await;
-    let refresh = rig.signed_in(&mut phone, "daily").await["refresh_token"]
+    let mut phone = rig.enrolled().await;
+    rig.enrolled().await;
+    let mut master = rig.enrolled().await;
+    let refresh = rig.signed_in(&mut phone, "sign-in").await["refresh_token"]
         .as_str()
         .unwrap()
         .to_owned();
@@ -1008,14 +1248,14 @@ async fn removing_a_passkey_ends_the_sign_ins_it_made() {
 #[tokio::test]
 async fn removing_one_passkey_leaves_the_sign_ins_of_another() {
     let rig = rig().await;
-    let mut phone = rig.enrolled("daily").await;
-    let mut tablet = rig.enrolled("daily").await;
-    let mut master = rig.enrolled("master").await;
-    let kept = rig.signed_in(&mut tablet, "daily").await["refresh_token"]
+    let mut phone = rig.enrolled().await;
+    let mut tablet = rig.enrolled().await;
+    let mut master = rig.enrolled().await;
+    let kept = rig.signed_in(&mut tablet, "sign-in").await["refresh_token"]
         .as_str()
         .unwrap()
         .to_owned();
-    rig.signed_in(&mut phone, "daily").await;
+    rig.signed_in(&mut phone, "sign-in").await;
     let token = rig.master_token(&mut master).await;
 
     rig.with_master(
@@ -1032,13 +1272,13 @@ async fn removing_one_passkey_leaves_the_sign_ins_of_another() {
 #[tokio::test]
 async fn one_address_cannot_crowd_another_out_of_sign_in() {
     let rig = rig().await;
-    let mut soft = rig.enrolled("daily").await;
+    let mut soft = rig.enrolled().await;
     let mut challenges = Vec::new();
     for _ in 0..100 {
         let response = rig
             .post_from(
                 "/corvid/auth/login/options",
-                json!({"role": "daily"}),
+                json!({"purpose": "sign-in"}),
                 "203.0.113.5",
             )
             .await;
@@ -1050,7 +1290,7 @@ async fn one_address_cannot_crowd_another_out_of_sign_in() {
     let elsewhere = rig
         .post_from(
             "/corvid/auth/login/options",
-            json!({"role": "daily"}),
+            json!({"purpose": "sign-in"}),
             "203.0.113.6",
         )
         .await;
@@ -1067,13 +1307,13 @@ async fn one_address_cannot_crowd_another_out_of_sign_in() {
 #[tokio::test]
 async fn an_address_past_its_share_loses_its_oldest_challenge() {
     let rig = rig().await;
-    let mut soft = rig.enrolled("daily").await;
+    let mut soft = rig.enrolled().await;
     let mut first = None;
     for _ in 0..5 {
         let options: Value = rig
             .post_from(
                 "/corvid/auth/login/options",
-                json!({"role": "daily"}),
+                json!({"purpose": "sign-in"}),
                 "203.0.113.5",
             )
             .await
@@ -1090,19 +1330,161 @@ async fn an_address_past_its_share_loses_its_oldest_challenge() {
 }
 
 #[tokio::test]
-async fn the_host_status_lists_the_roles_with_a_code_waiting() {
+async fn the_host_status_lists_the_codes_waiting_and_what_they_enroll() {
     let rig = rig().await;
-    rig.host_code("master").await;
+    let minted = rig.host_minted(true).await;
 
-    let body: Value = reqwest::Client::new()
-        .get(format!("{}/internal/auth/status", rig.url))
-        .header("X-Signature", common::signature(SECRET, b"status"))
-        .send()
+    let body = rig.host_status().await;
+
+    assert_eq!(
+        body["codes"],
+        json!([{"approves": true, "expiresAt": minted["expiresAt"]}])
+    );
+}
+
+const MASTER_HANDLE: &str = "master-handle";
+const DAILY_HANDLE: &str = "daily-handle";
+
+fn credential_of(soft: &Soft, user: &str) -> (String, legacy::Credential) {
+    (
+        encode(&soft.credential_id),
+        legacy::Credential {
+            user: user.to_owned(),
+            public_key: encode(soft.public_key().to_sec1_point(false).as_bytes()),
+            sign_count: soft.sign_count,
+            backup_eligible: false,
+            created_at: 1_700_000_000,
+        },
+    )
+}
+
+fn schema_one(master: &Soft) -> legacy::Auth {
+    let (id, credential) = credential_of(master, MASTER_HANDLE);
+    legacy::Auth {
+        users: [
+            (MASTER_HANDLE.to_owned(), legacy::Role::Master),
+            (DAILY_HANDLE.to_owned(), legacy::Role::Daily),
+        ]
+        .into(),
+        credentials: [(id, credential)].into(),
+        codes: [(
+            legacy::Role::Daily,
+            legacy::Code {
+                hash: code_hash("AAAABBBBCCCCDDDD"),
+                expires_at: now_secs() + 3600,
+            },
+        )]
+        .into(),
+        families: Default::default(),
+    }
+}
+
+fn write_schema_one(dir: &Path, old: &legacy::Auth) {
+    corvid_store::save(&dir.join("auth.json"), legacy::SCHEMA, old).unwrap();
+}
+
+async fn migrated_rig(master: &Soft) -> Rig {
+    let dir = tempfile::tempdir().unwrap();
+    write_schema_one(dir.path(), &schema_one(master));
+    let state = auth::open(&dir.path().join("auth.json")).unwrap();
+    let issuer = Arc::new(Issuer::new(signing_key(), ISSUER.to_owned()));
+    let url = start(dir.path(), state, issuer.clone()).await;
+    Rig { url, issuer, dir }
+}
+
+fn enrolled_master() -> Soft {
+    let mut soft = Soft::new(RP_ID, ORIGIN);
+    soft.sign_count = 3;
+    soft
+}
+
+#[tokio::test]
+async fn a_schema_one_master_credential_migrates_to_an_approver_that_signs_in() {
+    let mut master = enrolled_master();
+    let rig = migrated_rig(&master).await;
+
+    let tokens = rig.signed_in(&mut master, "sign-in").await;
+    let admin = rig.signed_in(&mut master, "approve").await;
+
+    assert!(tokens["refresh_token"].is_string());
+    rig.issuer
+        .verify(
+            admin["access_token"].as_str().unwrap(),
+            Audience::Master,
+            now_secs(),
+        )
+        .unwrap();
+    assert_eq!(rig.host_status().await["approvers"], 1);
+}
+
+#[test]
+fn a_schema_one_master_credential_keeps_the_master_user_handle() {
+    let master = enrolled_master();
+    let old = schema_one(&master);
+
+    let migrated = legacy::migrate(old);
+
+    assert_eq!(migrated.user.as_deref(), Some(MASTER_HANDLE));
+}
+
+#[tokio::test]
+async fn a_schema_one_daily_code_migrates_to_a_code_for_a_plain_passkey() {
+    let master = enrolled_master();
+    let rig = migrated_rig(&master).await;
+
+    let status = rig.host_status().await;
+
+    assert_eq!(status["codes"].as_array().unwrap().len(), 1);
+    assert_eq!(status["codes"][0]["approves"], false);
+    let tokens: Value = rig
+        .enroll(&mut Soft::new(RP_ID, ORIGIN), "AAAA-BBBB-CCCC-DDDD")
         .await
-        .unwrap()
         .json()
         .await
         .unwrap();
+    assert_eq!(tokens["approves"], false);
+}
 
-    assert_eq!(body["codes"], json!(["master"]));
+#[test]
+fn a_schema_one_master_code_migrates_to_an_approver_code_and_families_carry_over() {
+    let master = enrolled_master();
+    let mut old = schema_one(&master);
+    old.codes.insert(
+        legacy::Role::Master,
+        legacy::Code {
+            hash: code_hash("EEEEFFFFGGGGHHHH"),
+            expires_at: now_secs() + 3600,
+        },
+    );
+    old.families = aged_family(now_secs() - 60, now_secs() - 3600).families;
+
+    let migrated = legacy::migrate(old);
+
+    let approver_codes: Vec<_> = migrated.codes.iter().filter(|c| c.approves).collect();
+    assert_eq!(approver_codes.len(), 1);
+    assert_eq!(approver_codes[0].hash, code_hash("EEEEFFFFGGGGHHHH"));
+    assert_eq!(migrated.families.len(), 1);
+}
+
+#[tokio::test]
+async fn the_migrated_state_is_written_as_schema_two_on_the_next_change() {
+    let master = enrolled_master();
+    let rig = migrated_rig(&master).await;
+
+    rig.host_code(false).await;
+
+    let saved: Option<Auth> = corvid_store::load(&rig.dir.path().join("auth.json"), 2).unwrap();
+    assert_eq!(saved.unwrap().codes.len(), 2);
+}
+
+#[test]
+fn a_daily_only_schema_one_state_keeps_its_handle_and_has_no_approver() {
+    let mut old = legacy::Auth::default();
+    old.users
+        .insert(DAILY_HANDLE.to_owned(), legacy::Role::Daily);
+
+    let migrated = legacy::migrate(old);
+
+    assert_eq!(migrated.user.as_deref(), Some(DAILY_HANDLE));
+    assert_eq!(migrated.approvers(), 0);
 }

@@ -3,7 +3,7 @@
 //!
 //! ```text
 //! soft-authenticator STATE URL RP_ID ORIGIN enroll CODE [backup-eligible]
-//! soft-authenticator STATE URL RP_ID ORIGIN login ROLE
+//! soft-authenticator STATE URL RP_ID ORIGIN login PURPOSE
 //! ```
 
 use std::path::Path;
@@ -54,8 +54,9 @@ async fn enroll(soft: &mut Soft, url: &str, code: &str) -> (u16, Value) {
     .await
 }
 
-async fn login(soft: &mut Soft, url: &str, role: &str) -> (u16, Value) {
-    let (status, options) = post(&format!("{url}/login/options"), json!({"role": role})).await;
+async fn login(soft: &mut Soft, url: &str, purpose: &str) -> (u16, Value) {
+    let (status, options) =
+        post(&format!("{url}/login/options"), json!({"purpose": purpose})).await;
     if status != 200 {
         return (status, options);
     }
@@ -71,7 +72,7 @@ async fn login(soft: &mut Soft, url: &str, role: &str) -> (u16, Value) {
 async fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let [state, url, rp_id, origin, command, argument, rest @ ..] = args.as_slice() else {
-        eprintln!("usage: soft-authenticator STATE URL RP_ID ORIGIN enroll CODE | login ROLE");
+        eprintln!("usage: soft-authenticator STATE URL RP_ID ORIGIN enroll CODE | login PURPOSE");
         return ExitCode::from(64);
     };
     let url = format!("{}/corvid/auth", url.trim_end_matches('/'));

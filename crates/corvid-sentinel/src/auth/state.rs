@@ -7,43 +7,30 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use p256::ecdsa::VerifyingKey;
 use serde::{Deserialize, Serialize};
 
+use super::legacy;
 use super::token::Audience;
-use super::webauthn::Policy;
 
 /// Bump whenever `Auth`'s shape changes, and keep a migration from the version it leaves.
-const SCHEMA: u32 = 1;
+const SCHEMA: u32 = 2;
 
 pub const CODE_LIFETIME_SECONDS: i64 = 24 * 3600;
 pub const REFRESH_IDLE_SECONDS: i64 = 24 * 3600;
 pub const REFRESH_TOTAL_SECONDS: i64 = 7 * 24 * 3600;
 pub const REFRESH_GRACE_SECONDS: i64 = 60;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Role {
-    Daily,
-    Master,
+/// What a sign-in is for: mail, or approving devices and passkey changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Purpose {
+    SignIn,
+    Approve,
 }
 
-impl Role {
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Daily => "daily",
-            Self::Master => "master",
-        }
-    }
-
-    pub fn policy(self) -> Policy {
-        match self {
-            Self::Daily => Policy::Synced,
-            Self::Master => Policy::DeviceBound,
-        }
-    }
-
+impl Purpose {
     pub fn audience(self) -> Audience {
         match self {
-            Self::Daily => Audience::Daily,
-            Self::Master => Audience::Master,
+            Self::SignIn => Audience::Daily,
+            Self::Approve => Audience::Master,
         }
     }
 }
@@ -51,10 +38,11 @@ impl Role {
 /// A registered passkey. `public_key` is the uncompressed SEC1 point, base64url.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Credential {
-    pub user: String,
     pub public_key: String,
     pub sign_count: u32,
     pub backup_eligible: bool,
+    /// Whether this key can also approve devices and change passkeys.
+    pub approves: bool,
     pub created_at: i64,
 }
 
@@ -63,6 +51,8 @@ pub struct Credential {
 pub struct Code {
     pub hash: String,
     pub expires_at: i64,
+    /// Whether the key this code enrolls approves.
+    pub approves: bool,
 }
 
 /// One sign-in's chain of refresh tokens, minted by `credential`. `current` is the hash of the
@@ -80,23 +70,27 @@ pub struct Family {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Auth {
-    /// By handle, the opaque id a credential is registered under.
-    pub users: BTreeMap<String, Role>,
+    /// The opaque id every credential is registered under, made with the first one.
+    pub user: Option<String>,
     /// By credential id, base64url.
     pub credentials: BTreeMap<String, Credential>,
-    pub codes: BTreeMap<Role, Code>,
+    pub codes: Vec<Code>,
     /// By family id.
     pub families: BTreeMap<String, Family>,
 }
 
 corvid_store::pin_shape!(Credential {
-    user,
     public_key,
     sign_count,
     backup_eligible,
+    approves,
     created_at
 });
-corvid_store::pin_shape!(Code { hash, expires_at });
+corvid_store::pin_shape!(Code {
+    hash,
+    expires_at,
+    approves
+});
 corvid_store::pin_shape!(Family {
     credential,
     current,
@@ -106,7 +100,7 @@ corvid_store::pin_shape!(Family {
     last_used
 });
 corvid_store::pin_shape!(Auth {
-    users,
+    user,
     credentials,
     codes,
     families
@@ -133,41 +127,30 @@ impl Family {
 }
 
 impl Auth {
-    pub fn handle_of(&self, role: Role) -> Option<&String> {
-        self.users
-            .iter()
-            .find(|(_, user)| **user == role)
-            .map(|(handle, _)| handle)
-    }
-
-    pub fn role_of(&self, credential: &Credential) -> Role {
-        self.users[&credential.user]
-    }
-
-    pub fn credential_ids(&self, role: Role) -> Vec<&String> {
+    /// The ids a `purpose` sign-in may answer with.
+    pub fn credential_ids(&self, purpose: Purpose) -> Vec<&String> {
         self.credentials
             .iter()
-            .filter(|(_, credential)| self.role_of(credential) == role)
+            .filter(|(_, credential)| purpose == Purpose::SignIn || credential.approves)
             .map(|(id, _)| id)
             .collect()
     }
 
-    pub fn live_codes(&self, now: i64) -> impl Iterator<Item = (Role, &Code)> {
-        self.codes
-            .iter()
-            .filter(move |(_, code)| code.expires_at > now)
-            .map(|(role, code)| (*role, code))
+    pub fn approvers(&self) -> usize {
+        self.credentials.values().filter(|c| c.approves).count()
     }
 
-    pub fn code_role(&self, hash: &str, now: i64) -> Option<Role> {
-        self.live_codes(now)
-            .find(|(_, code)| code.hash == hash)
-            .map(|(role, _)| role)
+    pub fn live_codes(&self, now: i64) -> impl Iterator<Item = &Code> {
+        self.codes.iter().filter(move |code| code.expires_at > now)
+    }
+
+    pub fn live_code(&self, hash: &str, now: i64) -> Option<&Code> {
+        self.live_codes(now).find(|code| code.hash == hash)
     }
 }
 
 pub fn open(path: &Path) -> io::Result<Auth> {
-    corvid_store::open(path, SCHEMA)
+    corvid_store::open_migrating(path, SCHEMA, legacy::SCHEMA, legacy::migrate)
 }
 
 pub fn save(path: &Path, auth: &Auth) -> io::Result<()> {

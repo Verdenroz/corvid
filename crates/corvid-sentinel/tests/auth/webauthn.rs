@@ -1,5 +1,5 @@
 use corvid_sentinel::auth::soft::{BACKUP_ELIGIBLE, Soft, USER_PRESENT, USER_VERIFIED};
-use corvid_sentinel::auth::{Policy, Refusal, Registration, RelyingParty};
+use corvid_sentinel::auth::{Refusal, Registration, RelyingParty};
 
 const RP_ID: &str = "rig.test";
 const ORIGIN: &str = "android:apk-key-hash:abc";
@@ -15,26 +15,24 @@ fn soft() -> Soft {
     Soft::new(RP_ID, ORIGIN)
 }
 
-fn register(soft: &mut Soft, policy: Policy) -> Result<Registration, Refusal> {
-    party().register(&soft.create(CHALLENGE), CHALLENGE, policy)
+fn register(soft: &mut Soft) -> Result<Registration, Refusal> {
+    party().register(&soft.create(CHALLENGE), CHALLENGE)
 }
 
 fn enrolled(soft: &mut Soft) -> Registration {
-    register(soft, Policy::Synced).unwrap()
+    register(soft).unwrap()
 }
 
 fn assert_with(
     soft: &mut Soft,
     registration: &Registration,
     stored_count: u32,
-    policy: Policy,
 ) -> Result<u32, Refusal> {
     party().assert(
         &soft.get(CHALLENGE),
         &registration.key,
         stored_count,
         CHALLENGE,
-        policy,
     )
 }
 
@@ -55,10 +53,7 @@ fn an_assertion_from_the_registered_key_verifies_and_reports_its_counter() {
     let mut soft = soft();
     let registration = enrolled(&mut soft);
 
-    assert_eq!(
-        assert_with(&mut soft, &registration, 0, Policy::Synced),
-        Ok(1)
-    );
+    assert_eq!(assert_with(&mut soft, &registration, 0), Ok(1));
 }
 
 #[test]
@@ -66,7 +61,7 @@ fn an_assertion_from_the_desktop_origin_verifies() {
     let mut soft = Soft::new(RP_ID, DESKTOP_ORIGIN);
     let registration = enrolled(&mut soft);
 
-    assert!(assert_with(&mut soft, &registration, 0, Policy::Synced).is_ok());
+    assert!(assert_with(&mut soft, &registration, 0).is_ok());
 }
 
 #[test]
@@ -76,10 +71,7 @@ fn a_synced_passkey_that_always_reports_zero_keeps_verifying() {
     let registration = enrolled(&mut soft);
 
     for _ in 0..2 {
-        assert_eq!(
-            assert_with(&mut soft, &registration, 0, Policy::Synced),
-            Ok(0)
-        );
+        assert_eq!(assert_with(&mut soft, &registration, 0), Ok(0));
     }
 }
 
@@ -88,10 +80,7 @@ fn a_registration_for_another_rp_id_is_refused() {
     let mut soft = soft();
     soft.rp_id = "other.test".to_owned();
 
-    assert_eq!(
-        register(&mut soft, Policy::Synced).err(),
-        Some(Refusal::RpIdHash)
-    );
+    assert_eq!(register(&mut soft).err(), Some(Refusal::RpIdHash));
 }
 
 #[test]
@@ -101,7 +90,7 @@ fn an_assertion_for_another_rp_id_is_refused() {
     soft.rp_id = "other.test".to_owned();
 
     assert_eq!(
-        assert_with(&mut soft, &registration, 0, Policy::Synced),
+        assert_with(&mut soft, &registration, 0),
         Err(Refusal::RpIdHash)
     );
 }
@@ -111,10 +100,7 @@ fn a_registration_from_an_origin_outside_the_allowed_set_is_refused() {
     let mut soft = soft();
     soft.origin = "android:apk-key-hash:other".to_owned();
 
-    assert_eq!(
-        register(&mut soft, Policy::Synced).err(),
-        Some(Refusal::Origin)
-    );
+    assert_eq!(register(&mut soft).err(), Some(Refusal::Origin));
 }
 
 #[test]
@@ -124,7 +110,7 @@ fn an_assertion_from_an_origin_outside_the_allowed_set_is_refused() {
     soft.origin = "https://evil.test".to_owned();
 
     assert_eq!(
-        assert_with(&mut soft, &registration, 0, Policy::Synced),
+        assert_with(&mut soft, &registration, 0),
         Err(Refusal::Origin)
     );
 }
@@ -136,7 +122,7 @@ fn a_cross_origin_assertion_is_refused() {
     soft.cross_origin = true;
 
     assert_eq!(
-        assert_with(&mut soft, &registration, 0, Policy::Synced),
+        assert_with(&mut soft, &registration, 0),
         Err(Refusal::CrossOrigin)
     );
 }
@@ -146,10 +132,7 @@ fn a_registration_with_the_assertion_ceremony_type_is_refused() {
     let mut soft = soft();
     soft.client_data_type = Some("webauthn.get".to_owned());
 
-    assert_eq!(
-        register(&mut soft, Policy::Synced).err(),
-        Some(Refusal::ClientDataType)
-    );
+    assert_eq!(register(&mut soft).err(), Some(Refusal::ClientDataType));
 }
 
 #[test]
@@ -159,7 +142,7 @@ fn an_assertion_with_the_registration_ceremony_type_is_refused() {
     soft.client_data_type = Some("webauthn.create".to_owned());
 
     assert_eq!(
-        assert_with(&mut soft, &registration, 0, Policy::Synced),
+        assert_with(&mut soft, &registration, 0),
         Err(Refusal::ClientDataType)
     );
 }
@@ -169,10 +152,7 @@ fn a_registration_answering_another_challenge_is_refused() {
     let mut soft = soft();
     soft.challenge = Some(OTHER_CHALLENGE.to_vec());
 
-    assert_eq!(
-        register(&mut soft, Policy::Synced).err(),
-        Some(Refusal::Challenge)
-    );
+    assert_eq!(register(&mut soft).err(), Some(Refusal::Challenge));
 }
 
 #[test]
@@ -182,7 +162,7 @@ fn an_assertion_answering_another_challenge_is_refused() {
     soft.challenge = Some(OTHER_CHALLENGE.to_vec());
 
     assert_eq!(
-        assert_with(&mut soft, &registration, 0, Policy::Synced),
+        assert_with(&mut soft, &registration, 0),
         Err(Refusal::Challenge)
     );
 }
@@ -192,10 +172,7 @@ fn a_registration_without_user_verification_is_refused() {
     let mut soft = soft();
     soft.flags = USER_PRESENT;
 
-    assert_eq!(
-        register(&mut soft, Policy::Synced).err(),
-        Some(Refusal::UserVerification)
-    );
+    assert_eq!(register(&mut soft).err(), Some(Refusal::UserVerification));
 }
 
 #[test]
@@ -205,7 +182,7 @@ fn an_assertion_without_user_verification_is_refused() {
     soft.flags = USER_PRESENT;
 
     assert_eq!(
-        assert_with(&mut soft, &registration, 0, Policy::Synced),
+        assert_with(&mut soft, &registration, 0),
         Err(Refusal::UserVerification)
     );
 }
@@ -217,40 +194,17 @@ fn an_assertion_without_user_presence_is_refused() {
     soft.flags = USER_VERIFIED;
 
     assert_eq!(
-        assert_with(&mut soft, &registration, 0, Policy::Synced),
+        assert_with(&mut soft, &registration, 0),
         Err(Refusal::UserPresence)
     );
 }
 
 #[test]
-fn a_backup_eligible_credential_is_refused_for_a_device_bound_role() {
+fn a_backup_eligible_credential_is_accepted() {
     let mut soft = soft();
     soft.flags |= BACKUP_ELIGIBLE;
 
-    assert_eq!(
-        register(&mut soft, Policy::DeviceBound).err(),
-        Some(Refusal::NotDeviceBound)
-    );
-}
-
-#[test]
-fn a_backup_eligible_credential_is_accepted_for_a_synced_role() {
-    let mut soft = soft();
-    soft.flags |= BACKUP_ELIGIBLE;
-
-    assert!(register(&mut soft, Policy::Synced).is_ok());
-}
-
-#[test]
-fn a_master_assertion_that_turns_backup_eligible_is_refused() {
-    let mut soft = soft();
-    let registration = register(&mut soft, Policy::DeviceBound).unwrap();
-    soft.flags |= BACKUP_ELIGIBLE;
-
-    assert_eq!(
-        assert_with(&mut soft, &registration, 0, Policy::DeviceBound),
-        Err(Refusal::NotDeviceBound)
-    );
+    assert!(register(&mut soft).is_ok());
 }
 
 #[test]
@@ -259,7 +213,7 @@ fn a_counter_that_goes_backwards_is_refused() {
     let registration = enrolled(&mut soft);
 
     assert_eq!(
-        assert_with(&mut soft, &registration, 5, Policy::Synced),
+        assert_with(&mut soft, &registration, 5),
         Err(Refusal::CounterRegression)
     );
 }
@@ -270,7 +224,7 @@ fn a_counter_that_repeats_its_stored_value_is_refused() {
     let registration = enrolled(&mut soft);
 
     assert_eq!(
-        assert_with(&mut soft, &registration, 1, Policy::Synced),
+        assert_with(&mut soft, &registration, 1),
         Err(Refusal::CounterRegression)
     );
 }
@@ -280,10 +234,7 @@ fn a_credential_key_other_than_es256_is_refused() {
     let mut soft = soft();
     soft.cose_algorithm = -257;
 
-    assert_eq!(
-        register(&mut soft, Policy::Synced).err(),
-        Some(Refusal::Algorithm)
-    );
+    assert_eq!(register(&mut soft).err(), Some(Refusal::Algorithm));
 }
 
 #[test]
@@ -291,10 +242,7 @@ fn an_attestation_format_other_than_none_is_refused() {
     let mut soft = soft();
     soft.attestation_format = "packed".to_owned();
 
-    assert_eq!(
-        register(&mut soft, Policy::Synced).err(),
-        Some(Refusal::Attestation)
-    );
+    assert_eq!(register(&mut soft).err(), Some(Refusal::Attestation));
 }
 
 #[test]
@@ -304,7 +252,7 @@ fn a_tampered_signature_is_refused() {
     soft.corrupt_signature = true;
 
     assert_eq!(
-        assert_with(&mut soft, &registration, 0, Policy::Synced),
+        assert_with(&mut soft, &registration, 0),
         Err(Refusal::Signature)
     );
 }
@@ -316,7 +264,7 @@ fn an_assertion_signed_by_another_key_is_refused() {
     let mut intruder = Soft::new(RP_ID, ORIGIN);
 
     assert_eq!(
-        assert_with(&mut intruder, &registration, 0, Policy::Synced),
+        assert_with(&mut intruder, &registration, 0),
         Err(Refusal::Signature)
     );
 }
@@ -329,7 +277,7 @@ fn an_assertion_whose_client_data_was_altered_after_signing_is_refused() {
     response.client_data_json.push(b' ');
 
     assert_eq!(
-        party().assert(&response, &registration.key, 0, CHALLENGE, Policy::Synced),
+        party().assert(&response, &registration.key, 0, CHALLENGE),
         Err(Refusal::Signature)
     );
 }
@@ -339,10 +287,7 @@ fn a_credential_id_longer_than_the_spec_allows_is_refused() {
     let mut soft = soft();
     soft.credential_id = vec![7; 1024];
 
-    assert_eq!(
-        register(&mut soft, Policy::Synced).err(),
-        Some(Refusal::Malformed)
-    );
+    assert_eq!(register(&mut soft).err(), Some(Refusal::Malformed));
 }
 
 #[test]
@@ -363,7 +308,7 @@ fn authenticator_data_cut_short_after_signing_is_refused() {
     response.authenticator_data.truncate(20);
 
     assert_eq!(
-        party().assert(&response, &registration.key, 0, CHALLENGE, Policy::Synced),
+        party().assert(&response, &registration.key, 0, CHALLENGE),
         Err(Refusal::Signature)
     );
 }
@@ -400,9 +345,5 @@ fn the_attestation_object_the_desktop_app_builds_by_hand_registers() {
         .clone();
     response.attestation_object = desktop_attestation_object(&authenticator_data);
 
-    assert!(
-        party()
-            .register(&response, CHALLENGE, Policy::Synced)
-            .is_ok()
-    );
+    assert!(party().register(&response, CHALLENGE).is_ok());
 }

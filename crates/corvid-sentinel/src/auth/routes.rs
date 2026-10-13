@@ -12,9 +12,9 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use super::limits::Pending;
-use super::state::{Credential, Family, Role};
+use super::state::{Auth, Credential, Family, Purpose};
 use super::webauthn::{AssertionResponse, Refusal, RegistrationResponse};
-use super::{Audience, Shared, Which, codes, commit, notify};
+use super::{Audience, Shared, codes, commit, notify};
 use crate::dates;
 use crate::webpush::random_bytes;
 
@@ -93,20 +93,23 @@ async fn register_options(
         return Err(StatusCode::TOO_MANY_REQUESTS);
     }
     let code = codes::hash(&redemption.code);
-    let Some(role) = state.auth.read(|auth| auth.code_role(&code, now)) else {
+    if state.auth.read(|auth| auth.live_code(&code, now).is_none()) {
         state.failures.record(&address, now);
         return Err(StatusCode::UNAUTHORIZED);
-    };
+    }
     let (handle, enrolled) = state.auth.read(|auth| {
-        let ids: Vec<_> = auth.credential_ids(role).into_iter().cloned().collect();
-        (auth.handle_of(role).cloned(), ids)
+        let ids: Vec<_> = auth
+            .credential_ids(Purpose::SignIn)
+            .into_iter()
+            .cloned()
+            .collect();
+        (auth.user.clone(), ids)
     });
     let handle = handle.unwrap_or_else(|| hex::encode(random_bytes::<16>()));
     let challenge = state
         .challenges
         .issue(
             Pending::Register {
-                role,
                 code,
                 handle: handle.clone(),
             },
@@ -114,7 +117,7 @@ async fn register_options(
             now,
         )
         .ok_or(StatusCode::TOO_MANY_REQUESTS)?;
-    let username = state.username(role);
+    let username = state.username(Audience::Daily);
     Ok(Json(json!({
         "challenge": encode(challenge),
         "rp": {"id": state.rp_id, "name": "Corvid"},
@@ -140,13 +143,8 @@ struct AttestationBody {
     attestation_object: String,
 }
 
-#[derive(Serialize)]
-struct Registered {
-    role: Role,
-}
-
 enum Registration {
-    Done,
+    Done { approves: bool, user: String },
     CodeGone,
     Duplicate,
 }
@@ -154,53 +152,63 @@ enum Registration {
 async fn register_finish(
     State(state): State<Shared>,
     Json(attestation): Json<Attestation>,
-) -> Result<Json<Registered>, StatusCode> {
+) -> Result<Json<Tokens>, StatusCode> {
     let now = dates::now_secs();
     let response = RegistrationResponse {
         client_data_json: decode(&attestation.response.client_data_json)?,
         attestation_object: decode(&attestation.response.attestation_object)?,
     };
     let challenge = challenge_of(&response.client_data_json)?;
-    let Some(Pending::Register { role, code, handle }) = state.challenges.take(&challenge, now)
-    else {
+    let Some(Pending::Register { code, handle }) = state.challenges.take(&challenge, now) else {
         return Err(StatusCode::UNAUTHORIZED);
     };
     let registration = state
         .relying_party
-        .register(&response, &challenge, role.policy())
+        .register(&response, &challenge)
         .map_err(|refusal| refused(&refusal))?;
 
     let id = encode(&registration.credential_id);
     let public_key = encode(registration.key.to_sec1_point(false).as_bytes());
+    let (family, secret) = new_refresh_chain();
+    let refresh = refresh_token(&family, &secret);
     let outcome = commit(&state, move |auth| {
-        if auth.code_role(&code, now) != Some(role) {
+        let Some(approves) = auth.live_code(&code, now).map(|code| code.approves) else {
             return (None, Registration::CodeGone);
-        }
+        };
         if auth.credentials.contains_key(&id) {
             return (None, Registration::Duplicate);
         }
         let mut next = auth.clone();
-        next.codes.remove(&role);
-        let user = next.handle_of(role).cloned().unwrap_or(handle);
-        next.users.insert(user.clone(), role);
+        next.codes.retain(|spent| spent.hash != code);
+        let user = next.user.get_or_insert(handle).clone();
         next.credentials.insert(
-            id,
+            id.clone(),
             Credential {
-                user,
                 public_key,
                 sign_count: registration.sign_count,
                 backup_eligible: registration.backup_eligible,
+                approves,
                 created_at: now,
             },
         );
-        (Some(next), Registration::Done)
+        open_family(&mut next, family, &secret, id, now);
+        (Some(next), Registration::Done { approves, user })
     })
     .await?;
     match outcome {
-        Registration::Done => Ok(Json(Registered { role })),
+        Registration::Done { approves, user } => {
+            let mut body = tokens(&state, Purpose::SignIn, &user, now, Some(refresh));
+            body.approves = Some(approves);
+            Ok(Json(body))
+        }
         Registration::CodeGone => Err(StatusCode::UNAUTHORIZED),
         Registration::Duplicate => Err(StatusCode::CONFLICT),
     }
+}
+
+#[derive(Deserialize)]
+struct Which {
+    purpose: Purpose,
 }
 
 async fn login_options(
@@ -208,17 +216,17 @@ async fn login_options(
     headers: HeaderMap,
     Json(which): Json<Which>,
 ) -> Result<Json<Value>, StatusCode> {
-    let role = which.role;
+    let purpose = which.purpose;
     let enrolled: Vec<String> = state
         .auth
-        .read(|auth| auth.credential_ids(role).into_iter().cloned().collect());
+        .read(|auth| auth.credential_ids(purpose).into_iter().cloned().collect());
     if enrolled.is_empty() {
         return Err(StatusCode::NOT_FOUND);
     }
     let challenge = state
         .challenges
         .issue(
-            Pending::Login { role },
+            Pending::Login { purpose },
             &client_address(&headers),
             dates::now_secs(),
         )
@@ -254,7 +262,31 @@ struct Tokens {
     expires_in: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     refresh_token: Option<String>,
-    role: Role,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    approves: Option<bool>,
+}
+
+fn new_refresh_chain() -> (String, String) {
+    (
+        hex::encode(random_bytes::<16>()),
+        encode(random_bytes::<32>()),
+    )
+}
+
+/// Starts a chain of refresh tokens for `credential`, dropping the chains that have lapsed.
+fn open_family(auth: &mut Auth, family: String, secret: &str, credential: String, now: i64) {
+    auth.families.retain(|_, family| family.is_live(now));
+    auth.families.insert(
+        family,
+        Family {
+            credential,
+            current: secret_hash(secret),
+            previous: None,
+            rotated_at: now,
+            created_at: now,
+            last_used: now,
+        },
+    );
 }
 
 fn refresh_token(family: &str, secret: &str) -> String {
@@ -276,14 +308,17 @@ async fn login_finish(
         signature: decode(&assertion.response.signature)?,
     };
     let challenge = challenge_of(&response.client_data_json)?;
-    let Some(Pending::Login { role }) = state.challenges.take(&challenge, now) else {
+    let Some(Pending::Login { purpose }) = state.challenges.take(&challenge, now) else {
         return Err(StatusCode::UNAUTHORIZED);
     };
-    let credential = state
+    let (credential, user) = state
         .auth
         .read(|auth| {
             let credential = auth.credentials.get(&assertion.id)?;
-            (auth.role_of(credential) == role).then(|| credential.clone())
+            if purpose == Purpose::Approve && !credential.approves {
+                return None;
+            }
+            Some((credential.clone(), auth.user.clone()?))
         })
         .ok_or(StatusCode::UNAUTHORIZED)?;
     let count = match state.relying_party.assert(
@@ -291,18 +326,15 @@ async fn login_finish(
         &credential.key(),
         credential.sign_count,
         &challenge,
-        role.policy(),
     ) {
         Ok(count) => count,
         Err(Refusal::CounterRegression) => {
             notify(
                 &state,
                 "Passkey counter went backwards",
-                format!(
-                    "A {} passkey signed in with a lower sign count than before, which a copied \
-                     key would do.",
-                    role.name()
-                ),
+                "A passkey signed in with a lower sign count than before, which a copied key \
+                 would do."
+                    .to_owned(),
             )
             .await;
             return Err(StatusCode::UNAUTHORIZED);
@@ -311,13 +343,8 @@ async fn login_finish(
     };
 
     let id = assertion.id;
-    let family = (role == Role::Daily).then(|| {
-        (
-            hex::encode(random_bytes::<16>()),
-            encode(random_bytes::<32>()),
-        )
-    });
-    let new_family = family.clone();
+    let chain = (purpose == Purpose::SignIn).then(new_refresh_chain);
+    let new_chain = chain.clone();
     let recorded = commit(&state, move |auth| {
         if !auth.credentials.contains_key(&id) {
             return (None, false);
@@ -327,19 +354,8 @@ async fn login_finish(
             .get_mut(&id)
             .expect("the credential was just found")
             .sign_count = count;
-        if let Some((family, secret)) = new_family {
-            next.families.retain(|_, family| family.is_live(now));
-            next.families.insert(
-                family,
-                Family {
-                    credential: id,
-                    current: secret_hash(&secret),
-                    previous: None,
-                    rotated_at: now,
-                    created_at: now,
-                    last_used: now,
-                },
-            );
+        if let Some((family, secret)) = new_chain {
+            open_family(&mut next, family, &secret, id, now);
         }
         (Some(next), true)
     })
@@ -347,19 +363,26 @@ async fn login_finish(
     if !recorded {
         return Err(StatusCode::UNAUTHORIZED);
     }
-    let refresh = family.map(|(family, secret)| refresh_token(&family, &secret));
-    Ok(Json(tokens(&state, role, &credential.user, now, refresh)))
+    let refresh = chain.map(|(family, secret)| refresh_token(&family, &secret));
+    Ok(Json(tokens(&state, purpose, &user, now, refresh)))
 }
 
-fn tokens(state: &Shared, role: Role, subject: &str, now: i64, refresh: Option<String>) -> Tokens {
+fn tokens(
+    state: &Shared,
+    purpose: Purpose,
+    subject: &str,
+    now: i64,
+    refresh: Option<String>,
+) -> Tokens {
+    let audience = purpose.audience();
     Tokens {
         access_token: state
             .issuer
-            .mint(role.audience(), subject, state.username(role), now),
+            .mint(audience, subject, state.username(audience), now),
         token_type: "Bearer",
-        expires_in: role.audience().lifetime_seconds(),
+        expires_in: audience.lifetime_seconds(),
         refresh_token: refresh,
-        role,
+        approves: None,
     }
 }
 
@@ -411,7 +434,10 @@ async fn refresh(
                 next.families.remove(&family);
                 return (Some(next), Grant::Reused);
             }
-            let user = auth.credentials[&found.credential].user.clone();
+            let user = auth
+                .user
+                .clone()
+                .expect("a family belongs to a registered user");
             let entry = next
                 .families
                 .get_mut(&family)
@@ -446,7 +472,7 @@ async fn refresh(
         }
         Grant::Rotated { user } => Ok(Json(tokens(
             &state,
-            Role::Daily,
+            Purpose::SignIn,
             &user,
             now,
             Some(refresh_token(&family, &next_secret)),

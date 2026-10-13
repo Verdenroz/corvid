@@ -3,6 +3,7 @@
 
 mod codes;
 mod cose;
+pub mod legacy;
 mod limits;
 mod manage;
 mod routes;
@@ -21,7 +22,7 @@ use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::http::StatusCode;
 use axum::routing::any;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crate::dates;
 use crate::http::AppState;
@@ -31,11 +32,9 @@ use crate::state::NoticeKind;
 use limits::{Challenges, Failures};
 use state::save;
 
-pub use state::{Auth, Code, Credential, Family, Role, open};
+pub use state::{Auth, Code, Credential, Family, Purpose, open};
 pub use token::{Audience, Claims, Invalid, Issuer, MasterRefusal};
-pub use webauthn::{
-    AssertionResponse, Policy, Refusal, Registration, RegistrationResponse, RelyingParty,
-};
+pub use webauthn::{AssertionResponse, Refusal, Registration, RegistrationResponse, RelyingParty};
 
 /// The issuer for `url`, signing with the key at `key_path`, which is made on first use.
 pub fn issuer(key_path: &Path, url: String) -> io::Result<Issuer> {
@@ -70,16 +69,11 @@ struct AuthState {
 
 type Shared = Arc<AuthState>;
 
-#[derive(Deserialize)]
-struct Which {
-    role: Role,
-}
-
 impl AuthState {
-    fn username(&self, role: Role) -> &str {
-        match role {
-            Role::Daily => &self.daily_user,
-            Role::Master => &self.master_user,
+    fn username(&self, audience: Audience) -> &str {
+        match audience {
+            Audience::Daily => &self.daily_user,
+            Audience::Master => &self.master_user,
         }
     }
 }
