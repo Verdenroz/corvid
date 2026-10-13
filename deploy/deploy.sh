@@ -192,8 +192,8 @@ else
 fi
 
 # Until a passkey approves devices there is no way to make a second code, so a deploy leaves one
-# approver code waiting.
-if [[ "$sign_in" == pocket-id && "$waiting_approver_codes" == 0 ]]; then
+# approver code waiting. An unattended update never does: its output lands in the journal.
+if [[ -z "${CORVID_UPDATING:-}" && "$sign_in" == pocket-id && "$waiting_approver_codes" == 0 ]]; then
   code="$(sentinel_signed POST /internal/auth/codes "code approver" '{"approves":true}' | sed -n 's/.*"code":"\([^"]*\)".*/\1/p')"
   if [[ -n "$code" ]]; then
     step "passkey setup code"
