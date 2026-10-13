@@ -14,6 +14,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.TextContent
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
@@ -25,17 +26,23 @@ import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
-/** The two identities a passkey can sign in as. */
-enum class PasskeyRole(val wire: String) {
-    Daily("daily"),
-    Master("master"),
+/** What a passkey sign-in is for: mail, or approving devices and passkey changes. */
+enum class Purpose(val wire: String) {
+    SignIn("sign-in"),
+    Approve("approve"),
 }
 
-/** A sign-in's tokens. The master role gets an access token and no [refreshToken]. */
+/** A sign-in's tokens. An approval gets an access token and no [refreshToken]. */
 data class AuthTokens(
     val accessToken: String,
     val refreshToken: String?,
     val expiresAt: Instant,
+)
+
+/** A passkey made from a setup code, which has signed in: [approves] says it can approve devices. */
+data class Registered(
+    val tokens: AuthTokens,
+    val approves: Boolean,
 )
 
 sealed interface Refreshed {
@@ -47,13 +54,13 @@ sealed interface Refreshed {
 
 /** What the sentinel said about a ceremony, as opposed to the network failing, which is a [JmapException]. */
 sealed class AuthFailure : Exception() {
-    /** The enrollment code is unknown, spent or expired. */
+    /** The setup code is unknown, spent or expired. */
     data object BadCode : AuthFailure()
 
     /** The passkey was not accepted. */
     data object Refused : AuthFailure()
 
-    /** No passkey is enrolled for the role. */
+    /** No passkey is enrolled that can do what was asked. */
     data object NotEnrolled : AuthFailure()
 
     /** The server has passkey sign-in switched off. */
@@ -65,7 +72,7 @@ sealed class AuthFailure : Exception() {
 
 /** The sentinel's public passkey routes: everything a client needs before it holds a token. */
 interface AuthApi {
-    /** `PublicKeyCredentialCreationOptionsJSON` for the role the [code] enrolls. */
+    /** `PublicKeyCredentialCreationOptionsJSON` for the passkey the [code] sets up. */
     suspend fun registerOptions(
         server: ServerAddress,
         code: String,
@@ -74,11 +81,11 @@ interface AuthApi {
     suspend fun registerFinish(
         server: ServerAddress,
         credential: String,
-    ): PasskeyRole
+    ): Registered
 
     suspend fun loginOptions(
         server: ServerAddress,
-        role: PasskeyRole,
+        purpose: Purpose,
     ): String
 
     suspend fun loginFinish(
@@ -116,19 +123,18 @@ class HttpAuthApi(
     override suspend fun registerFinish(
         server: ServerAddress,
         credential: String,
-    ): PasskeyRole {
+    ): Registered {
         val body =
             post(server, "register/finish", credential)
                 .ok(HttpStatusCode.Unauthorized to AuthFailure.BadCode, HttpStatusCode.Conflict to AuthFailure.AlreadyEnrolled)
-        val role = parse(body).getValue("role").jsonPrimitive.content
-        return PasskeyRole.entries.first { it.wire == role }
+        return Registered(tokens(body), parse(body).getValue("approves").jsonPrimitive.boolean)
     }
 
     override suspend fun loginOptions(
         server: ServerAddress,
-        role: PasskeyRole,
+        purpose: Purpose,
     ): String =
-        post(server, "login/options", buildJsonObject { put("role", role.wire) }.toString())
+        post(server, "login/options", buildJsonObject { put("purpose", purpose.wire) }.toString())
             .ok(HttpStatusCode.NotFound to AuthFailure.NotEnrolled)
 
     override suspend fun loginFinish(

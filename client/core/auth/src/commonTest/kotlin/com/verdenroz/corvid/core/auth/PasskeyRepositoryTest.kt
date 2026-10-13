@@ -21,16 +21,16 @@ class PasskeyRepositoryTest {
         PasskeyRepository(JmapClient.connect(createJmapHttpClient(fake.engine), latch, BASE_URL, bearerToken = { "daily" }))
 
     @Test
-    fun `the list names each passkey's role, whether it syncs and when it was made`() =
+    fun `the list names whether each passkey approves devices, whether it syncs and when it was made`() =
         runTest {
-            fake.passkeys.passkeys += FakePasskey("a", "daily", backupEligible = true, createdAt = "2030-01-03T10:00:00Z")
-            fake.passkeys.passkeys += FakePasskey("b", "master")
+            fake.passkeys.passkeys += FakePasskey("a", backupEligible = true, createdAt = "2030-01-03T10:00:00Z")
+            fake.passkeys.passkeys += FakePasskey("b", approves = true)
 
             assertEquals(
                 PasskeyListing.Listed(
                     listOf(
-                        Passkey("a", PasskeyRole.Daily, true, Instant.parse("2030-01-03T10:00:00Z")),
-                        Passkey("b", PasskeyRole.Master, false, Instant.parse("2030-01-01T00:00:00Z")),
+                        Passkey("a", false, true, Instant.parse("2030-01-03T10:00:00Z")),
+                        Passkey("b", true, false, Instant.parse("2030-01-01T00:00:00Z")),
                     ),
                 ),
                 repository().list(),
@@ -47,19 +47,19 @@ class PasskeyRepositoryTest {
         }
 
     @Test
-    fun `a code is minted for the role with the master token on one header`() =
+    fun `a code is minted with the admin token on one header and says when it expires`() =
         runTest {
-            val outcome = repository().mintCode(PasskeyRole.Daily, "master-token")
+            val outcome = repository().mintCode(approves = false, "master-token")
 
-            assertEquals(CodeOutcome.Minted("ABCD-EFGH-IJKL-MNOP"), outcome)
-            assertEquals(listOf("daily"), fake.passkeys.minted)
+            assertEquals(CodeOutcome.Minted("ABCD-EFGH-IJKL-MNOP", Instant.parse("2030-01-02T00:00:00Z")), outcome)
+            assertEquals(listOf(false), fake.passkeys.minted)
             assertEquals(listOf<String?>("master-token"), fake.passkeys.masters)
         }
 
     @Test
-    fun `a master token the server does not accept mints nothing and does not trip the latch`() =
+    fun `an admin token the server does not accept mints nothing and does not trip the latch`() =
         runTest {
-            val outcome = repository().mintCode(PasskeyRole.Daily, "stale")
+            val outcome = repository().mintCode(approves = false, "stale")
 
             assertEquals(CodeOutcome.NotAccepted, outcome)
             assertEquals(emptyList(), fake.passkeys.minted)
@@ -71,14 +71,14 @@ class PasskeyRepositoryTest {
         runTest {
             fake.passkeys.off = true
 
-            assertEquals(CodeOutcome.NotServed, repository().mintCode(PasskeyRole.Daily, "master-token"))
+            assertEquals(CodeOutcome.NotServed, repository().mintCode(approves = false, "master-token"))
         }
 
     @Test
-    fun `a passkey is removed with the master token`() =
+    fun `a passkey is removed with the admin token`() =
         runTest {
-            fake.passkeys.passkeys += FakePasskey("a", "daily")
-            fake.passkeys.passkeys += FakePasskey("b", "daily")
+            fake.passkeys.passkeys += FakePasskey("a")
+            fake.passkeys.passkeys += FakePasskey("b")
 
             assertEquals(RemoveOutcome.Removed, repository().remove("a", "master-token"))
 
@@ -86,13 +86,24 @@ class PasskeyRepositoryTest {
         }
 
     @Test
-    fun `the last passkey of a role is kept`() =
+    fun `the last passkey is kept`() =
         runTest {
-            fake.passkeys.passkeys += FakePasskey("a", "daily")
+            fake.passkeys.passkeys += FakePasskey("a", approves = true)
 
             assertEquals(RemoveOutcome.Last, repository().remove("a", "master-token"))
 
             assertEquals(1, fake.passkeys.passkeys.size)
+        }
+
+    @Test
+    fun `the last approver is kept while plain passkeys remain`() =
+        runTest {
+            fake.passkeys.passkeys += FakePasskey("a", approves = true)
+            fake.passkeys.passkeys += FakePasskey("b")
+
+            assertEquals(RemoveOutcome.Last, repository().remove("a", "master-token"))
+
+            assertEquals(2, fake.passkeys.passkeys.size)
         }
 
     @Test
@@ -102,10 +113,10 @@ class PasskeyRepositoryTest {
         }
 
     @Test
-    fun `a removal with a master token the server does not accept removes nothing`() =
+    fun `a removal with an admin token the server does not accept removes nothing`() =
         runTest {
-            fake.passkeys.passkeys += FakePasskey("a", "daily")
-            fake.passkeys.passkeys += FakePasskey("b", "daily")
+            fake.passkeys.passkeys += FakePasskey("a")
+            fake.passkeys.passkeys += FakePasskey("b")
 
             assertEquals(RemoveOutcome.NotAccepted, repository().remove("a", "stale"))
 

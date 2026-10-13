@@ -20,7 +20,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.auth.Passkey
-import com.verdenroz.corvid.core.auth.PasskeyRole
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.PillButton
@@ -109,7 +108,7 @@ private fun PasskeyRow(
     Column(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(stringResource(passkey.role.label()), style = CorvidTheme.type.name)
+                Text(stringResource(passkey.label()), style = CorvidTheme.type.name)
                 val kind = if (passkey.backupEligible) Res.string.passkeys_synced else Res.string.passkeys_device_bound
                 val added = stringResource(Res.string.passkeys_added_on, passkey.createdAt.toString().substringBefore('T'))
                 Text(
@@ -137,10 +136,10 @@ private fun PasskeyRow(
 @Composable
 private fun Actions(viewModel: PasskeysViewModel) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        PillButton(stringResource(Res.string.passkeys_add_daily), null, onClick = { viewModel.addHere(PasskeyRole.Daily) })
-        PillButton(stringResource(Res.string.passkeys_add_master), null, onClick = { viewModel.addHere(PasskeyRole.Master) })
-        PillButton(stringResource(Res.string.passkeys_code_daily), null, onClick = { viewModel.makeCode(PasskeyRole.Daily) })
-        PillButton(stringResource(Res.string.passkeys_code_master), null, onClick = { viewModel.makeCode(PasskeyRole.Master) })
+        PillButton(stringResource(Res.string.passkeys_add_daily), null, onClick = { viewModel.addHere(false) })
+        PillButton(stringResource(Res.string.passkeys_add_master), null, onClick = { viewModel.addHere(true) })
+        PillButton(stringResource(Res.string.passkeys_code_daily), null, onClick = { viewModel.makeCode(false) })
+        PillButton(stringResource(Res.string.passkeys_code_master), null, onClick = { viewModel.makeCode(true) })
     }
 }
 
@@ -151,16 +150,14 @@ private fun StepText(step: PasskeyStep) {
             PasskeyStep.Idle -> return
             PasskeyStep.SigningIn -> stringResource(Res.string.passkeys_signing_in)
             PasskeyStep.Working -> stringResource(Res.string.passkeys_working)
-            is PasskeyStep.Code -> stringResource(Res.string.passkeys_code_made, stringResource(step.role.label()), step.code)
-            is PasskeyStep.Added -> stringResource(Res.string.passkeys_added, stringResource(step.role.label()))
+            is PasskeyStep.Code -> stringResource(Res.string.passkeys_code_made, stringResource(approvesLabel(step.approves)), step.code)
+            is PasskeyStep.Added -> stringResource(Res.string.passkeys_added, stringResource(approvesLabel(step.approves)))
             PasskeyStep.Removed -> stringResource(Res.string.passkeys_removed)
             is PasskeyStep.Failed -> step.message.asString()
         }
     Text(text, style = CorvidTheme.type.body, color = CorvidTheme.colors.ink)
 }
 
-private fun PasskeyRole.label() =
-    when (this) {
-        PasskeyRole.Daily -> Res.string.passkeys_role_daily
-        PasskeyRole.Master -> Res.string.passkeys_role_master
-    }
+private fun Passkey.label() = approvesLabel(approves)
+
+private fun approvesLabel(approves: Boolean) = if (approves) Res.string.passkeys_role_master else Res.string.passkeys_role_daily

@@ -2,7 +2,7 @@ package com.verdenroz.corvid.feature.settings
 
 import com.verdenroz.corvid.core.auth.PasskeyException
 import com.verdenroz.corvid.core.data.userMessage
-import com.verdenroz.corvid.core.domain.MasterSignIn
+import com.verdenroz.corvid.core.domain.ApproveWithKey
 import com.verdenroz.corvid.core.keyring.DeviceApprovalRepository
 import com.verdenroz.corvid.core.keyring.DeviceKeyLookup
 import com.verdenroz.corvid.core.keyring.DeviceKeyRepository
@@ -47,7 +47,7 @@ private suspend fun ViewModelTestScope.setup(
         track(
             ApproveDeviceViewModel(
                 repository,
-                object : MasterSignIn {
+                object : ApproveWithKey {
                     override suspend fun <T> withAdminToken(use: suspend (String) -> T): T {
                         signIns++
                         return use(signIn())

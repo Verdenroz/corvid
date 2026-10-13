@@ -2,7 +2,6 @@ package com.verdenroz.corvid.feature.signin
 
 import com.verdenroz.corvid.core.auth.AuthFailure
 import com.verdenroz.corvid.core.auth.PasskeyException
-import com.verdenroz.corvid.core.auth.PasskeyRole
 import com.verdenroz.corvid.core.data.userMessage
 import com.verdenroz.corvid.core.domain.DiscoverAccount
 import com.verdenroz.corvid.core.domain.Discovery
@@ -259,35 +258,34 @@ class SignInViewModelTest {
         }
 
     @Test
-    fun `a daily code adds the passkey and then signs in`() =
+    fun `a code makes the passkey, which signs in without a second prompt`() =
         runViewModelTest {
             val steps = mutableListOf<String>()
             val viewModel =
                 track(
                     viewModel(
-                        SignIn { steps += "sign-in" },
+                        SignIn { error("enrolling already signed in") },
                         EnrollPasskey { _, code ->
                             steps += "enroll $code"
-                            PasskeyRole.Daily
+                            false
                         },
                     ),
                 )
 
             viewModel.signIn("https://mail.example.com", " ABCD-EFGH ")
 
-            assertEquals(listOf("enroll ABCD-EFGH", "sign-in"), steps)
+            assertEquals(listOf("enroll ABCD-EFGH"), steps)
             assertEquals(SignInUiState.Idle, viewModel.state.value)
         }
 
     @Test
-    fun `a master code adds its passkey and signs nobody in`() =
+    fun `a code that signs in is remembered like any other sign-in`() =
         runViewModelTest {
-            val viewModel =
-                track(viewModel(SignIn { error("must not sign in") }, EnrollPasskey { _, _ -> PasskeyRole.Master }))
+            val viewModel = track(viewModel(SignIn { error("enrolling already signed in") }, EnrollPasskey { _, _ -> true }))
 
-            viewModel.signIn("https://mail.example.com", "ABCD-EFGH")
+            viewModel.signIn("https://mail.example.com/", "ABCD-EFGH")
 
-            assertEquals(SignInUiState.MasterEnrolled, viewModel.state.value)
+            assertEquals("https://mail.example.com", viewModel.remembered.value?.server)
         }
 
     @Test

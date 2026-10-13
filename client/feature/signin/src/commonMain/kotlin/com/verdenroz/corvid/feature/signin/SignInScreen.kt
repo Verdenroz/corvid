@@ -34,7 +34,6 @@ import com.verdenroz.corvid.feature.signin.resources.signin_discovering
 import com.verdenroz.corvid.feature.signin.resources.signin_email
 import com.verdenroz.corvid.feature.signin.resources.signin_have_code
 import com.verdenroz.corvid.feature.signin.resources.signin_in_progress
-import com.verdenroz.corvid.feature.signin.resources.signin_master_enrolled
 import com.verdenroz.corvid.feature.signin.resources.signin_remembered
 import com.verdenroz.corvid.feature.signin.resources.signin_remembered_detail
 import com.verdenroz.corvid.feature.signin.resources.signin_server
@@ -124,9 +123,6 @@ private fun AccountEntry(
         }
         (state as? SignInUiState.DiscoveryFailed)?.let { Problem(it.message.asString()) }
         (state as? SignInUiState.Failed)?.let { Problem(it.message.asString()) }
-        if (state is SignInUiState.MasterEnrolled) {
-            Text(stringResource(Res.string.signin_master_enrolled), style = CorvidTheme.type.meta, color = CorvidTheme.colors.ink)
-        }
         if (advanced || discovery != null) {
             PrimaryButton(
                 stringResource(if (signingIn) Res.string.signin_in_progress else Res.string.signin_submit),

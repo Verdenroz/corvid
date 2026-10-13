@@ -2,7 +2,6 @@ package com.verdenroz.corvid.feature.signin
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.verdenroz.corvid.core.auth.PasskeyRole
 import com.verdenroz.corvid.core.data.catchingSignIn
 import com.verdenroz.corvid.core.domain.DiscoverAccount
 import com.verdenroz.corvid.core.domain.Discovery
@@ -40,9 +39,6 @@ sealed interface SignInUiState {
     data class DiscoveryFailed(val message: UiText) : SignInUiState
 
     data class Failed(val message: UiText) : SignInUiState
-
-    /** A code made a master passkey, which signs nobody in: the daily passkey does that. */
-    data object MasterEnrolled : SignInUiState
 }
 
 val SignInUiState.discovery: Discovery?
@@ -81,7 +77,7 @@ class SignInViewModel(
         _state.value = SignInUiState.Idle
     }
 
-    /** Signs in to a server entered by address, adding a passkey first when [code] is given. */
+    /** Signs in to a server entered by address; a [code] makes a passkey, which signs in. */
     fun signIn(
         server: String,
         code: String = "",
@@ -115,14 +111,9 @@ class SignInViewModel(
             val server = ServerAddress(account.server)
             _state.value =
                 catchingSignIn(SignInUiState::Failed) {
-                    val enrolled = if (code.isBlank()) null else enrollPasskey(server, code.trim())
-                    if (enrolled == PasskeyRole.Master) {
-                        SignInUiState.MasterEnrolled
-                    } else {
-                        signInUseCase(server)
-                        preferences.rememberAccount(account)
-                        SignInUiState.Idle
-                    }
+                    if (code.isBlank()) signInUseCase(server) else enrollPasskey(server, code.trim())
+                    preferences.rememberAccount(account)
+                    SignInUiState.Idle
                 }
         }
     }

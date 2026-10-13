@@ -32,8 +32,8 @@ class SignInUseCaseTest {
 
             signIn(tokenSource)(SERVER)
 
-            assertEquals(listOf("get request-options:daily"), authenticator.calls)
-            assertEquals(listOf("loginOptions daily", "loginFinish asserted:request-options:daily"), api.calls)
+            assertEquals(listOf("get request-options:sign-in"), authenticator.calls)
+            assertEquals(listOf("loginOptions sign-in", "loginFinish asserted:request-options:sign-in"), api.calls)
             assertEquals(AuthState.SignedIn("daily-at", SERVER), tokenSource.state.value)
             assertEquals(listOf(SERVER), authenticator.servers)
         }
@@ -58,7 +58,7 @@ class SignInUseCaseTest {
             assertFailsWith<PasskeyException.Cancelled> { signIn(tokenSource)(SERVER) }
 
             assertEquals(AuthState.SignedOut, tokenSource.state.value)
-            assertEquals(listOf("loginOptions daily"), api.calls)
+            assertEquals(listOf("loginOptions sign-in"), api.calls)
         }
 
     @Test

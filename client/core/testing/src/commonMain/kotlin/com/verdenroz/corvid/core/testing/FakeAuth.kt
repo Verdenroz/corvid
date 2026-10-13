@@ -3,8 +3,9 @@ package com.verdenroz.corvid.core.testing
 import com.verdenroz.corvid.core.auth.AuthApi
 import com.verdenroz.corvid.core.auth.AuthTokens
 import com.verdenroz.corvid.core.auth.Authenticator
-import com.verdenroz.corvid.core.auth.PasskeyRole
+import com.verdenroz.corvid.core.auth.Purpose
 import com.verdenroz.corvid.core.auth.Refreshed
+import com.verdenroz.corvid.core.auth.Registered
 import com.verdenroz.corvid.core.model.ServerAddress
 import kotlin.time.Clock
 import kotlin.time.Duration
@@ -33,7 +34,7 @@ fun authTokens(
  */
 class FakeAuthApi(var tokens: AuthTokens = authTokens()) : AuthApi {
     val calls: MutableList<String> = mutableListOf()
-    var registers: PasskeyRole = PasskeyRole.Daily
+    var registersApprover: Boolean = false
     var optionsFailure: Exception? = null
     var finishFailure: Exception? = null
     var refresh: suspend (String) -> Refreshed = { Refreshed.Tokens(tokens) }
@@ -50,19 +51,19 @@ class FakeAuthApi(var tokens: AuthTokens = authTokens()) : AuthApi {
     override suspend fun registerFinish(
         server: ServerAddress,
         credential: String,
-    ): PasskeyRole {
+    ): Registered {
         calls += "registerFinish $credential"
         finishFailure?.let { throw it }
-        return registers
+        return Registered(tokens, registersApprover)
     }
 
     override suspend fun loginOptions(
         server: ServerAddress,
-        role: PasskeyRole,
+        purpose: Purpose,
     ): String {
-        calls += "loginOptions ${role.wire}"
+        calls += "loginOptions ${purpose.wire}"
         optionsFailure?.let { throw it }
-        return "request-options:${role.wire}"
+        return "request-options:${purpose.wire}"
     }
 
     override suspend fun loginFinish(

@@ -1,34 +1,63 @@
 package com.verdenroz.corvid.core.domain
 
 import com.verdenroz.corvid.core.auth.AuthFailure
+import com.verdenroz.corvid.core.auth.AuthState
 import com.verdenroz.corvid.core.auth.PasskeyException
-import com.verdenroz.corvid.core.auth.PasskeyRole
+import com.verdenroz.corvid.core.auth.TokenSource
+import com.verdenroz.corvid.core.jmap.AuthLatch
 import com.verdenroz.corvid.core.model.ServerAddress
 import com.verdenroz.corvid.core.testing.FakeAuthApi
 import com.verdenroz.corvid.core.testing.FakeAuthenticator
+import com.verdenroz.corvid.core.testing.authTokens
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 private val SERVER = ServerAddress("https://mail.example.test")
 
 class EnrollPasskeyUseCaseTest {
-    private val api = FakeAuthApi()
+    private val latch = AuthLatch()
+    private val api = FakeAuthApi(authTokens("at-from-register"))
     private val authenticator = FakeAuthenticator()
-    private val enroll = EnrollPasskeyUseCase(api, authenticator)
+
+    private fun TestScope.enroll(tokenSource: TokenSource) = EnrollPasskeyUseCase(api, authenticator, tokenSource, latch)
 
     @Test
     fun `the code's options go to the prompt and the credential it makes goes back`() =
         runTest {
-            api.registers = PasskeyRole.Master
+            api.registersApprover = true
 
-            val role = enroll(SERVER, "ABCD-EFGH")
+            val approves = enroll(TokenSource(latch, backgroundScope, api))(SERVER, "ABCD-EFGH")
 
-            assertEquals(PasskeyRole.Master, role)
+            assertTrue(approves)
             assertEquals(listOf("create creation-options:ABCD-EFGH"), authenticator.calls)
             assertEquals(listOf(SERVER), authenticator.servers)
             assertEquals(listOf("registerOptions ABCD-EFGH", "registerFinish created:creation-options:ABCD-EFGH"), api.calls)
+        }
+
+    @Test
+    fun `registering signs in with the tokens it returned and no second prompt`() =
+        runTest {
+            val tokenSource = TokenSource(latch, backgroundScope, api)
+
+            enroll(tokenSource)(SERVER, "ABCD-EFGH")
+
+            assertEquals(AuthState.SignedIn("at-from-register", SERVER), tokenSource.state.value)
+            assertEquals(listOf("create creation-options:ABCD-EFGH"), authenticator.calls)
+        }
+
+    @Test
+    fun `registering clears a latch tripped by an earlier 401`() =
+        runTest {
+            latch.trip()
+
+            enroll(TokenSource(latch, backgroundScope, api))(SERVER, "ABCD-EFGH")
+
+            assertFalse(latch.tripped.value)
         }
 
     @Test
@@ -36,18 +65,20 @@ class EnrollPasskeyUseCaseTest {
         runTest {
             api.optionsFailure = AuthFailure.BadCode
 
-            assertFailsWith<AuthFailure.BadCode> { enroll(SERVER, "x") }
+            assertFailsWith<AuthFailure.BadCode> { enroll(TokenSource(latch, backgroundScope, api))(SERVER, "x") }
 
             assertEquals(emptyList(), authenticator.calls)
         }
 
     @Test
-    fun `a dismissed prompt finishes nothing`() =
+    fun `a dismissed prompt finishes nothing and signs nobody in`() =
         runTest {
             authenticator.failure = PasskeyException.Cancelled
+            val tokenSource = TokenSource(latch, backgroundScope, api)
 
-            assertFailsWith<PasskeyException.Cancelled> { enroll(SERVER, "ABCD-EFGH") }
+            assertFailsWith<PasskeyException.Cancelled> { enroll(tokenSource)(SERVER, "ABCD-EFGH") }
 
             assertEquals(listOf("registerOptions ABCD-EFGH"), api.calls)
+            assertEquals(AuthState.SignedOut, tokenSource.state.value)
         }
 }
