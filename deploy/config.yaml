@@ -94,8 +94,8 @@ sentinel:
   # Approving a new device with the Pocket-ID admin's passkey. Needs CORVID_STALWART_TOKEN.
   devices:
     state: /var/lib/corvid/devices.json
-  # Passkey sign-in: the sentinel issues the tokens Stalwart trusts. Enroll with
-  # deploy/passkey.sh code daily|master; deploy.sh switches Stalwart over once both roles have one.
+  # Passkey sign-in: the sentinel issues the tokens Stalwart trusts. Set up the first passkey with
+  # deploy/passkey.sh code; deploy.sh switches Stalwart over once a passkey approves devices.
   auth:
     state: /var/lib/corvid/auth.json
   # New-mail previews (sender, subject, a snippet) encrypted to each approved device, sent

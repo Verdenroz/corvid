@@ -34,10 +34,12 @@ issuer_status() {
 }
 
 # Calls a sentinel route that Caddy does not serve, from inside the pod. The route takes an HMAC
-# of MESSAGE under the webhook secret. Prints the status, then the body, and fails only when the
-# sentinel cannot be reached.
+# of MESSAGE under the webhook secret, and BODY, when given, is sent as JSON. Prints the status,
+# then the body, and fails only when the sentinel cannot be reached.
 sentinel_signed() {
-  local method="$1" path="$2" message="$3" signature reply
+  local method="$1" path="$2" message="$3" body="${4:-}" signature reply
+  local data=()
+  [[ -z "$body" ]] || data=(-H 'Content-Type: application/json' -d "$body")
   signature="$(python3 -c '
 import base64, hashlib, hmac, sys
 secret = next(l.split("=", 1)[1].strip() for l in open(sys.argv[1]) if l.startswith("CORVID_SENTINEL_SECRET="))
@@ -45,14 +47,14 @@ print(base64.b64encode(hmac.new(secret.encode(), sys.argv[2].encode(), hashlib.s
     "$CORVID_DIR/sentinel-webhook.env" "$message")"
   in_pod corvid-sentinel true
   reply="$(in_pod corvid-sentinel curl -s -w '\n%{http_code}' -X "$method" -H "X-Signature: $signature" \
-    "$SENTINEL_URL$path" || true)"
+    "${data[@]}" "$SENTINEL_URL$path" || true)"
   printf '%s\n%s\n' "${reply##*$'\n'}" "${reply%$'\n'*}"
 }
 
 # What deploy.sh should do about sign-in, from the sentinel's own count of passkeys. Prints
-# "SIGN_IN DAILY MASTER ROLE...": SIGN_IN is `passkeys` when both roles have a passkey and
-# `pocket-id` when they do not, `off` when sentinel.auth is off, and ROLE... are the codes still
-# waiting.
+# "SIGN_IN PASSKEYS APPROVERS WAITING": SIGN_IN is `passkeys` once a passkey can approve and
+# `pocket-id` until then, `off` when sentinel.auth is off, and WAITING is how many unexpired
+# approver codes are still to be used.
 # Fails, printing nothing, when the sentinel never answers: no answer is not "nobody enrolled",
 # and acting on it would move a host that already switched back to the old directory.
 auth_decision() {
@@ -64,11 +66,11 @@ auth_decision() {
         python3 -c '
 import json, sys
 s = json.load(sys.stdin)
-ready = s["daily"] > 0 and s["master"] > 0
-print("passkeys" if ready else "pocket-id", s["daily"], s["master"], *s["codes"])' <<<"${reply#*$'\n'}"
+waiting = sum(code["approves"] for code in s["codes"])
+print("passkeys" if s["approvers"] > 0 else "pocket-id", len(s["passkeys"]), s["approvers"], waiting)' <<<"${reply#*$'\n'}"
         return
         ;;
-      503) echo "off 0 0"; return ;;
+      503) echo "off 0 0 0"; return ;;
     esac
     sleep "${AUTH_STATUS_WAIT:-2}"
   done

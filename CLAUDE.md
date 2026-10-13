@@ -49,7 +49,7 @@ namespace, so services reach each other on `127.0.0.1`:
 | `corvid-milter` | `corvid-milter` binary, called by Stalwart at DATA | 11332 |
 | `corvid-imgproxy` | serves the images the milter rewrote | 8081 |
 | `corvid-labeler` | polls JMAP, writes labels as keywords | none |
-| `corvid-sentinel` | the pod's authenticated side door: the alert feed from Stalwart webhooks and update status, update requests, master-approved device keys, and new-mail previews pushed to approved devices | 11333 loopback |
+| `corvid-sentinel` | the pod's authenticated side door: the alert feed from Stalwart webhooks and update status, update requests, approver-approved device keys, and new-mail previews pushed to approved devices | 11333 loopback |
 | `corvid-caddy` | the web tier: JMAP, `/i/*` to imgproxy, `/corvid/update`, `/corvid/notices` and `/corvid/devices/*` to the sentinel behind `forward_auth`, `/corvid/push/vapid` and `/corvid/push/stream` to it with no session; a second site proxies `server.idp_hostname` to Pocket-ID | `server.web_port`, 4443 by default |
 | `corvid-idp` | Pocket-ID, OIDC passkeys; provisioned by `idp.sh`, switched on by `oidc.plan.ndjson` | 1411 |
 
@@ -96,10 +96,10 @@ wires them through the lock gate (`AppLockState`).
 `androidApp` and `desktopApp` are thin per-platform shells. Its gates are the three Gradle
 commands above; it is not part of the Cargo workspace.
 
-**The app never makes a device key.** A device with none asks `/corvid/devices/requests`, a master
-device approves with a fresh `corvid-admin` passkey sign-in whose token goes to that one request
+**The app never makes a device key.** A device with none asks `/corvid/devices/requests`, a device
+with an approver key approves with a fresh `corvid-admin` passkey sign-in whose token goes to that one request
 and is never adopted, and every device reads its key only by the record `/corvid/devices/<name>`
-returns. The approve route's own 401 (a bad master token) carries no `WWW-Authenticate`, while the
+returns. The approve route's own 401 (a bad admin token) carries no `WWW-Authenticate`, while the
 forward-auth gate's 401 does, so only the second signs the session out (`JmapClient.webSend`).
 qrose 1.2 and later need Kotlin 2.4 and Compose 1.12 by their published metadata, so the QR is
 drawn from zxing's module matrix instead.
@@ -519,11 +519,12 @@ Caddyfile built from the same env vars as everything else. `core/discovery` hold
   visible only in a WebHook capture. The rest of the documented shape holds: `{"type":"authCode",
   "accountName","accountSecret","clientId","redirectUri"}`, then the same body plus `"mfaToken":
   "<6-digit code>"` once the first call answers `{"type":"mfaRequired"}`.
-- **A master passkey must be device-bound, and the sentinel enforces it.** The master role refuses a
-  credential whose backup-eligible flag (BE) is set, since a synced passkey would put the key that
-  approves devices in a cloud account. The daily role accepts both. `auth.test.sh` enrolls the
-  daily passkey backup-eligible on purpose, so a rig that only enrols device-bound ones proves
-  nothing about the synced path.
+- **Every passkey signs in; one that approves devices is chosen when its setup code is made.** There
+  is no rule on the backup-eligible flag, so a synced passkey can approve. While no key approves,
+  every code the sentinel mints enrolls an approver, and `register/finish` applies the same rule
+  when the code is spent, since a schema-1 daily code migrates as a plain one. `register/finish`
+  returns the sign-in tokens, so enrolling needs no second prompt. `auth.test.sh` rewrites its
+  state file as schema 1 and checks the enrolled keys still sign in and approve.
 - **A refresh token redeemed twice inside 60 seconds is a retry, not a theft.** A phone that lost
   the reply to a rotation presents the old token again. Inside the window the sentinel rotates
   again, handing out a new secret and keeping `previous` and `rotated_at`; after it, the reuse

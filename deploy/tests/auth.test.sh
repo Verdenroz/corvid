@@ -2,8 +2,9 @@
 # Runs the pinned Stalwart with the real sentinel as its OIDC issuer, enrolls passkeys with a
 # software authenticator over the sentinel's public routes, applies auth.plan.ndjson, and checks
 # what Stalwart makes of the tokens over JMAP: that the account is the same one it was before the
-# directory switched, that a master token opens no mailbox, that the admin API key works throughout,
-# and that a token stays refused after the issuer was down when Stalwart first checked it. The
+# directory switched, that an admin token opens no mailbox, that the admin API key works throughout,
+# that a schema-1 state file keeps its enrolled keys signing in, and that a token stays refused
+# after the issuer was down when Stalwart first checked it. The
 # sentinel and the authenticator are built with cargo unless CORVID_SENTINEL_BIN and
 # CORVID_SOFT_BIN name them. Needs stalwart-cli, curl, python3, envsubst and docker or podman;
 # bootstrap mode needs port 8080 free, and a run takes a few minutes.
@@ -143,21 +144,24 @@ print(s["primaryAccounts"]["urn:ietf:params:jmap:mail"])' < "$work/body"
 
 echo "== enrollment"
 mailuser_account="$(account_of mailuser@rig.test)"
-check "the status of a fresh sentinel is empty" "$(passkey status)" "daily 0, master 0, codes waiting: none"
-daily_code="$(passkey code daily)"
-master_code="$(passkey code master)"
-check "a code is four groups of four characters" "$(grep -cE '^([A-Z2-7]{4}-){3}[A-Z2-7]{4}$' <<<"$daily_code")" 1
-check "the status shows both codes waiting" "$(passkey status)" "daily 0, master 0, codes waiting: daily master"
-check "a master passkey that can be backed up is refused" \
-  "$(soft_status master enroll "$master_code" backup-eligible)" 1
-check "the code is still good after a refused enrollment" "$(soft_status master enroll "$master_code")" 0
-check "a code works once" "$(soft_status second enroll "$master_code")" 1
-check "the daily code enrolls a synced daily passkey" "$(soft_status daily enroll "$daily_code" backup-eligible)" 0
-check "the status counts both roles" "$(passkey status)" "daily 1, master 1, codes waiting: none"
-check "the list shows a synced daily passkey and a device-bound master one" \
-  "$(passkey list | awk '{print $2, $4}' | sort | tr '\n' ' ')" "daily synced master device-bound "
-check "a user's last passkey cannot be removed" \
-  "$(passkey remove "$(passkey list | awk '$2=="daily"{print $1}')" >/dev/null; echo $?)" 1
+check "the status of a fresh sentinel is empty" "$(passkey status)" "passkeys 0, approvers 0, codes waiting: none"
+first_code="$(passkey code)"
+check "a code is four groups of four characters" "$(grep -cE '^([A-Z2-7]{4}-){3}[A-Z2-7]{4}$' <<<"$first_code")" 1
+check "with no approver enrolled even a plain code is an approver code" \
+  "$(passkey status)" "passkeys 0, approvers 0, codes waiting: 1 approver"
+first_registration="$(soft first enroll "$first_code" backup-eligible)"
+check "the first key enrolls from a host code and is told it approves" "$(json approves <<<"$first_registration")" True
+check "a code works once" "$(soft_status second enroll "$first_code")" 1
+check "the status counts one approver" "$(passkey status)" "passkeys 1, approvers 1, codes waiting: none"
+second_code="$(passkey code)"
+check "once an approver exists a plain code stays plain" \
+  "$(passkey status)" "passkeys 1, approvers 1, codes waiting: 1 plain"
+second_registration="$(soft second enroll "$second_code")"
+check "the second key enrolls and is told it does not approve" "$(json approves <<<"$second_registration")" False
+check "the list tells which passkey approves devices" \
+  "$(passkey list | awk '{print $2}' | sort | tr '\n' ' ')" "- approves "
+check "the last approver cannot be removed" \
+  "$(passkey remove "$(passkey list | awk '$2=="approves"{print $1}')" >/dev/null; echo $?)" 1
 
 echo "== before the directory switches"
 check "the admin password logs in to JMAP" \
@@ -186,14 +190,19 @@ check "the plan leaves the sentinel as the only directory" "$(directory_urls)" "
 wait_for "$STALWART_URL/healthz/live" || { echo "Stalwart never restarted" >&2; exit 1; }
 
 echo "== signing in"
-daily_tokens="$(soft daily login daily)"
-daily_token="$(access_token <<<"$daily_tokens")"
-check "the sentinel issues a daily token" "$([[ -n "$daily_token" ]] && echo yes)" yes
-check "Stalwart accepts the daily token over JMAP" "$(session "$daily_token")" 200
+registration_token="$(access_token <<<"$first_registration")"
+check "the token the first registration returned opens JMAP with no second prompt" "$(session "$registration_token")" 200
 check "the session's mail account is the one the mailbox had before the switch" \
   "$(primary_account)" "$mailuser_account"
-master_token="$(soft master login master | access_token)"
-check "a master token is refused over JMAP by audience" "$(session "$master_token" | cut -d' ' -f1)" 401
+first_tokens="$(soft first login sign-in)"
+first_token="$(access_token <<<"$first_tokens")"
+check "an approver signs in for mail" "$(session "$first_token")" 200
+second_tokens="$(soft second login sign-in)"
+second_token="$(access_token <<<"$second_tokens")"
+check "a key that does not approve signs in for mail" "$(session "$second_token")" 200
+check "a key that does not approve cannot get an admin token" "$(soft_status second login approve)" 1
+admin_token="$(soft first login approve | access_token)"
+check "an admin token is refused over JMAP by audience" "$(session "$admin_token" | cut -d' ' -f1)" 401
 check "the admin password no longer logs in" \
   "$(curl -s -u "$admin_user:$admin_pw" "$STALWART_URL/jmap/session" -o /dev/null -w '%{http_code}')" 401
 check "the admin API key still works" \
@@ -202,7 +211,7 @@ check "stalwart-cli with the admin API key still reads" \
   "$(stalwart-cli query Account --json 2>&1 | grep -c '"emailAddress":"mailuser@rig.test"')" 1
 
 echo "== refresh tokens"
-refresh="$(json refresh_token <<<"$daily_tokens")"
+refresh="$(json refresh_token <<<"$first_tokens")"
 refreshed="$(curl -s -H 'content-type: application/json' -d "{\"refresh_token\":\"$refresh\"}" \
   "http://127.0.0.1:$sentinel_port/corvid/auth/token")"
 check "a refresh answers a new access token Stalwart accepts" "$(session "$(access_token <<<"$refreshed")")" 200
@@ -210,7 +219,7 @@ check "the old refresh token works again within its grace" \
   "$(curl -s -o /dev/null -w '%{http_code}' -H 'content-type: application/json' -d "{\"refresh_token\":\"$refresh\"}" \
     "http://127.0.0.1:$sentinel_port/corvid/auth/token")" 200
 
-echo "== approving a device with a master token"
+echo "== approving a device with an admin token"
 sentinel() {
   local method="$1" path="$2"
   shift 2
@@ -221,15 +230,53 @@ check "a device asks for a key" "$(sentinel POST /corvid/devices/requests -d '{"
 request_id="$(json id < "$work/sbody")"
 request_code="$(json code < "$work/sbody")"
 approve() { sentinel POST "/corvid/devices/requests/$request_id/approve" -H "X-Corvid-Master: $1" -d "{\"code\":\"$2\"}"; }
-check "a daily token cannot approve it" "$(approve "$daily_token" "$request_code")" 401
-fresh="$(soft master login master | access_token)"
-check "a master token with a wrong code is refused" "$(approve "$fresh" 000000)" 403
+check "a mail token cannot approve it" "$(approve "$second_token" "$request_code")" 401
+fresh="$(soft first login approve | access_token)"
+check "an admin token with a wrong code is refused" "$(approve "$fresh" 000000)" 403
 check "and is spent by that request" "$(approve "$fresh" "$request_code")" 401
-fresh="$(soft master login master | access_token)"
-check "a fresh master token with the code approves it" "$(approve "$fresh" "$request_code")" 200
+fresh="$(soft first login approve | access_token)"
+check "a fresh admin token with the code approves it" "$(approve "$fresh" "$request_code")" 200
+
+echo "== an approver makes a code for another key"
+fresh="$(soft first login approve | access_token)"
+check "an approver's admin token makes a plain code" \
+  "$(sentinel POST /corvid/auth/enroll-codes -H "X-Corvid-Master: $fresh" -d '{"approves":false}')" 200
+third_code="$(json code < "$work/sbody")"
+third_registration="$(soft third enroll "$third_code")"
+check "a key set up from it signs in at once and does not approve" \
+  "$(session "$(access_token <<<"$third_registration")") $(json approves <<<"$third_registration")" "200 False"
+
+echo "== a schema-1 state file on startup"
+stop_sentinel
+python3 - "$work/auth.json" <<'PY'
+import hashlib, json, sys
+
+path = sys.argv[1]
+_, body = open(path).read().split("\n", 1)
+_, payload = body.split("\n", 1)
+new = json.loads(payload)
+users = {}
+credentials = {}
+for key, credential in new["credentials"].items():
+    handle = "master-handle" if credential["approves"] else "daily-handle"
+    users[handle] = "master" if credential["approves"] else "daily"
+    credentials[key] = {
+        "user": handle,
+        **{k: credential[k] for k in ("public_key", "sign_count", "backup_eligible", "created_at")},
+    }
+old = json.dumps({"users": users, "credentials": credentials, "codes": {}, "families": new["families"]})
+body = "1\n" + old
+open(path, "w").write(hashlib.sha256(body.encode()).hexdigest() + "\n" + body)
+PY
+start_sentinel
+check "the first key still signs in after the migration" "$(session "$(soft first login sign-in | access_token)")" 200
+check "and still approves" "$(soft_status first login approve)" 0
+check "the second key still signs in and still does not approve" \
+  "$(soft_status second login sign-in) $(soft_status second login approve)" "0 1"
+check "the status counts the migrated approver" "$(passkey status | cut -d, -f1-2)" "passkeys 3, approvers 1"
 
 echo "== the issuer down when Stalwart verifies a token"
-token="$(soft daily login daily | access_token)"
+token="$(soft second login sign-in | access_token)"
 basic_admin() { curl_authed -s "$STALWART_URL/api/account" -o /dev/null -w '%{http_code}'; }
 restart_mail() {
   "$engine" restart "$mail" >/dev/null

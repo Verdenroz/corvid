@@ -64,12 +64,14 @@ decide() {
   AUTH_STATUS_TRIES=2 AUTH_STATUS_WAIT=0 bash -c ". \"$here/lib.sh\"; sentinel_signed() { printf '%b' \"\$REPLY_FROM_SENTINEL\"; }; auth_decision"
 }
 export REPLY_FROM_SENTINEL
-REPLY_FROM_SENTINEL='200\n{"daily":1,"master":1,"codes":[],"passkeys":[]}\n'
-check "both roles enrolled switches to passkeys" '[[ "$(decide)" == "passkeys 1 1" ]]'
-REPLY_FROM_SENTINEL='200\n{"daily":1,"master":0,"codes":["master"],"passkeys":[]}\n'
-check "one role enrolled stays with Pocket-ID and reports the waiting code" '[[ "$(decide)" == "pocket-id 1 0 master" ]]'
+REPLY_FROM_SENTINEL='200\n{"approvers":1,"codes":[],"passkeys":[{"id":"a"},{"id":"b"}]}\n'
+check "an approver switches to passkeys" '[[ "$(decide)" == "passkeys 2 1 0" ]]'
+REPLY_FROM_SENTINEL='200\n{"approvers":0,"codes":[{"approves":true,"expiresAt":"x"},{"approves":false,"expiresAt":"x"}],"passkeys":[{"id":"a"}]}\n'
+check "passkeys without an approver stay with Pocket-ID and count the approver codes waiting" '[[ "$(decide)" == "pocket-id 1 0 1" ]]'
+REPLY_FROM_SENTINEL='200\n{"approvers":0,"codes":[],"passkeys":[]}\n'
+check "a fresh sentinel stays with Pocket-ID with no code waiting" '[[ "$(decide)" == "pocket-id 0 0 0" ]]'
 REPLY_FROM_SENTINEL='503\n{"error":"auth_off"}\n'
-check "passkeys switched off in the sentinel is off, not an error" '[[ "$(decide)" == "off 0 0" ]]'
+check "passkeys switched off in the sentinel is off, not an error" '[[ "$(decide)" == "off 0 0 0" ]]'
 REPLY_FROM_SENTINEL='000\n\n'
 check "no answer from the sentinel is a failure that prints nothing" 'out="$(decide)"; [[ $? -ne 0 && -z "$out" ]]'
 REPLY_FROM_SENTINEL='502\nbad gateway\n'

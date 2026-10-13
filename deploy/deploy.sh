@@ -150,22 +150,22 @@ fi
 # Asked before any plan is applied: a sentinel that is down says nothing about who is enrolled.
 step "checking passkey enrollment"
 if unit_masked corvid-sentinel.service; then
-  summary="off 0 0"
+  summary="off 0 0 0"
 else
   summary="$(auth_decision)" || {
     echo "the sentinel did not answer /internal/auth/status; sign-in is left as it is, check: journalctl -u corvid-sentinel" >&2
     exit 1
   }
 fi
-read -r sign_in passkeys_daily passkeys_master waiting_codes <<<"$summary"
+read -r sign_in _ _ waiting_approver_codes <<<"$summary"
 enrollment=
 
 step "applying configuration"
 CORVID_SKIP_RELOAD=1 "$HERE/apply-plan.sh"
 
 # Account passwords stop working once an external directory is applied, so someone must be enrolled
-# in it first, and the deploy scripts use the API key. Passkeys replace Pocket-ID once each role
-# has one; until then Pocket-ID keeps signing people in.
+# in it first, and the deploy scripts use the API key. Passkeys replace Pocket-ID once one of them
+# approves devices; until then Pocket-ID keeps signing people in.
 if [[ "$sign_in" == passkeys ]]; then
   step "switching sign-in to passkeys"
   CORVID_SKIP_RELOAD=1 PLAN="$HERE/auth.plan.ndjson" "$HERE/apply-plan.sh"
@@ -191,20 +191,14 @@ else
   [[ "$config" == unknown ]] || printf '%s\n' "$config" > "$CONFIG_MARKER"
 fi
 
-# A role with no passkey and no code waiting gets one, so a fresh install ends with both to redeem.
-if [[ "$sign_in" == pocket-id ]]; then
-  minted=
-  for role in daily master; do
-    enrolled="$passkeys_daily"
-    [[ "$role" == daily ]] || enrolled="$passkeys_master"
-    [[ "$enrolled" == 0 && " $waiting_codes " != *" $role "* ]] || continue
-    code="$(sentinel_signed POST "/internal/auth/codes/$role" "code $role" | sed -n 's/.*"code":"\([^"]*\)".*/\1/p')"
-    [[ -n "$code" ]] && minted+="$role $code"$'\n'
-  done
-  if [[ -n "$minted" ]]; then
-    step "passkey enrollment codes"
-    echo "Enter each in the app within 24 hours; deploy/passkey.sh code daily|master mints another."
-    printf '%s' "$minted"
+# Until a passkey approves devices there is no way to make a second code, so a deploy leaves one
+# approver code waiting.
+if [[ "$sign_in" == pocket-id && "$waiting_approver_codes" == 0 ]]; then
+  code="$(sentinel_signed POST /internal/auth/codes "code approver" '{"approves":true}' | sed -n 's/.*"code":"\([^"]*\)".*/\1/p')"
+  if [[ -n "$code" ]]; then
+    step "passkey setup code"
+    echo "$code"
+    echo "Enter it in the Corvid app: Set up this device. Valid for 24 hours; deploy/passkey.sh code mints another."
   fi
 fi
 
