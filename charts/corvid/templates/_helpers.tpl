@@ -25,7 +25,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 
 {{- define "corvid.webPort" -}}
 {{- $port := .Values.config.server.web_port | default 4443 | int -}}
-{{- if has $port (list 25 80 465 587 993 1411 5335 8080 8081 8443 11332 11333) -}}
+{{- if has $port (list 25 80 465 587 993 5335 8080 8081 8443 11332 11333) -}}
 {{- fail (printf "config.server.web_port %d is taken inside the pod; choose another" $port) -}}
 {{- end -}}
 {{- $port -}}
@@ -35,6 +35,3 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- required "config.server.hostname is required" .Values.config.server.hostname -}}
 {{- end -}}
 
-{{- define "corvid.idpHostname" -}}
-{{- .Values.config.server.idp_hostname | default (printf "idp.%s" .Values.config.server.domain) -}}
-{{- end -}}

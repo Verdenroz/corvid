@@ -2,7 +2,7 @@ package com.verdenroz.corvid.core.domain
 
 import com.verdenroz.corvid.core.auth.AuthApi
 import com.verdenroz.corvid.core.auth.Authenticator
-import com.verdenroz.corvid.core.auth.PasskeyRole
+import com.verdenroz.corvid.core.auth.Purpose
 import com.verdenroz.corvid.core.auth.TokenSource
 import com.verdenroz.corvid.core.jmap.AuthLatch
 import com.verdenroz.corvid.core.model.ServerAddress
@@ -24,7 +24,7 @@ class SignInUseCase(
     private val authLatch: AuthLatch,
 ) : SignIn {
     override suspend operator fun invoke(server: ServerAddress) {
-        val options = authApi.loginOptions(server, PasskeyRole.Daily)
+        val options = authApi.loginOptions(server, Purpose.SignIn)
         val tokens = authApi.loginFinish(server, authenticator.get(server, options))
         tokenSource.adopt(tokens, server)
         authLatch.clear()

@@ -22,7 +22,7 @@ bad()  { echo "  FAIL  $*"; ((fail++)); }
 warn() { echo "  warn  $*"; }
 
 echo "== services =="
-services=(corvid-unbound corvid-mail corvid-milter corvid-imgproxy corvid-labeler corvid-sentinel corvid-caddy corvid-idp)
+services=(corvid-unbound corvid-mail corvid-milter corvid-imgproxy corvid-labeler corvid-sentinel corvid-caddy)
 # A service that started before the mail server exits 75 and sits "activating" through RestartSec.
 deadline=$((SECONDS + 60))
 while (( SECONDS < deadline )) && systemctl is-active "${services[@]/%/.service}" | grep -qx activating; do
@@ -73,18 +73,6 @@ code="$(web_status "$MAIL_HOSTNAME" /.well-known/corvid)"
 [[ "$code" == 200 ]] \
   && ok "Caddy serves /.well-known/corvid on $MAIL_HOSTNAME:$WEB_PORT" \
   || bad "/.well-known/corvid on $MAIL_HOSTNAME:$WEB_PORT answers $code, not 200; check: journalctl -u corvid-caddy"
-if unit_masked corvid-idp.service; then
-  warn "corvid-idp is masked, so the issuer is not checked"
-else
-  code="$(web_status "$IDP_HOSTNAME" /.well-known/openid-configuration)"
-  [[ "$code" == 200 ]] \
-    && ok "the issuer answers through Caddy at $IDP_HOSTNAME:$WEB_PORT" \
-    || bad "the issuer at $IDP_HOSTNAME:$WEB_PORT answers $code, not 200; check: journalctl -u corvid-idp"
-  code="$(web_status "$IDP_HOSTNAME" /setup)"
-  [[ "$code" == 404 ]] \
-    && ok "Caddy refuses the Pocket-ID setup page" \
-    || bad "the Pocket-ID setup page answers $code, not 404; Caddy must refuse it, or the first visitor can claim the admin account"
-fi
 
 echo "== devices =="
 # Through Caddy, the way the app reaches them. An unknown id answers 200 when the routes are on and

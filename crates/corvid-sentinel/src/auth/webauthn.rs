@@ -32,19 +32,9 @@ pub enum Refusal {
     Attestation,
     UserPresence,
     UserVerification,
-    NotDeviceBound,
     Algorithm,
     Signature,
     CounterRegression,
-}
-
-/// What a credential must be, by the role it signs in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Policy {
-    /// May be synced between the user's devices.
-    Synced,
-    /// Must report that its key cannot leave the authenticator (BE clear).
-    DeviceBound,
 }
 
 pub struct RegistrationResponse {
@@ -99,7 +89,6 @@ impl RelyingParty {
         &self,
         response: &RegistrationResponse,
         challenge: &[u8],
-        policy: Policy,
     ) -> Result<Registration, Refusal> {
         self.check_client_data(&response.client_data_json, "webauthn.create", challenge)?;
         let Value::Map(object) = ciborium::from_reader(response.attestation_object.as_slice())
@@ -119,7 +108,7 @@ impl RelyingParty {
         let bytes = field("authData")
             .and_then(Value::as_bytes)
             .ok_or(Refusal::Malformed)?;
-        let data = self.auth_data(bytes, policy)?;
+        let data = self.auth_data(bytes)?;
         if data.flags & ATTESTED == 0 {
             return Err(Refusal::Malformed);
         }
@@ -153,7 +142,6 @@ impl RelyingParty {
         key: &VerifyingKey,
         stored_count: u32,
         challenge: &[u8],
-        policy: Policy,
     ) -> Result<u32, Refusal> {
         self.check_client_data(&response.client_data_json, "webauthn.get", challenge)?;
         let signed = [
@@ -164,7 +152,7 @@ impl RelyingParty {
         let signature = Signature::from_der(&response.signature).map_err(|_| Refusal::Signature)?;
         key.verify(&signed, &signature)
             .map_err(|_| Refusal::Signature)?;
-        let data = self.auth_data(&response.authenticator_data, policy)?;
+        let data = self.auth_data(&response.authenticator_data)?;
         // Synced passkeys report 0 forever, which is not a regression.
         if (data.sign_count != 0 || stored_count != 0) && data.sign_count <= stored_count {
             return Err(Refusal::CounterRegression);
@@ -189,7 +177,7 @@ impl RelyingParty {
         Ok(())
     }
 
-    fn auth_data<'a>(&self, bytes: &'a [u8], policy: Policy) -> Result<AuthData<'a>, Refusal> {
+    fn auth_data<'a>(&self, bytes: &'a [u8]) -> Result<AuthData<'a>, Refusal> {
         if bytes.len() < FIXED_LENGTH {
             return Err(Refusal::Malformed);
         }
@@ -205,9 +193,6 @@ impl RelyingParty {
         }
         if flags & BACKED_UP != 0 && flags & BACKUP_ELIGIBLE == 0 {
             return Err(Refusal::Malformed);
-        }
-        if policy == Policy::DeviceBound && flags & BACKUP_ELIGIBLE != 0 {
-            return Err(Refusal::NotDeviceBound);
         }
         Ok(AuthData {
             flags,

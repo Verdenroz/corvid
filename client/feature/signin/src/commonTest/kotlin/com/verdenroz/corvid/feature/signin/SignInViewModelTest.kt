@@ -2,7 +2,6 @@ package com.verdenroz.corvid.feature.signin
 
 import com.verdenroz.corvid.core.auth.AuthFailure
 import com.verdenroz.corvid.core.auth.PasskeyException
-import com.verdenroz.corvid.core.auth.PasskeyRole
 import com.verdenroz.corvid.core.data.userMessage
 import com.verdenroz.corvid.core.domain.DiscoverAccount
 import com.verdenroz.corvid.core.domain.Discovery
@@ -41,7 +40,7 @@ private fun preferences() = DevicePreferences(InMemoryPreferencesStore(), Corout
 private fun discoverAccount(documents: Map<String, String> = mapOf("https://example.com/.well-known/corvid" to DOCUMENT)) =
     DiscoverAccount(srvLookup = SrvLookup { null }, documents = DiscoveryDocumentSource { documents[it] })
 
-private val NO_ENROLL = EnrollPasskey { _, _ -> error("no enrollment was asked for") }
+private val NO_ENROLL = EnrollPasskey { _, _, _ -> error("no enrollment was asked for") }
 
 private fun viewModel(
     signIn: SignIn = SignIn { },
@@ -196,7 +195,7 @@ class SignInViewModelTest {
                     ),
                 )
 
-            viewModel.signInAs(REMEMBERED)
+            viewModel.setUp(REMEMBERED, "")
 
             assertEquals(SignInUiState.SigningIn(null), viewModel.state.value)
             gate.complete(Unit)
@@ -223,7 +222,6 @@ class SignInViewModelTest {
         runViewModelTest {
             val failures =
                 listOf(
-                    PasskeyException.NoCredential,
                     PasskeyException.NotAssociated,
                     PasskeyException.Unsupported,
                     PasskeyException.Refused("blocked"),
@@ -238,13 +236,26 @@ class SignInViewModelTest {
         }
 
     @Test
-    fun `a server that says no daily passkey is enrolled says so`() =
+    fun `a device with no passkey for the account offers setting it up`() =
+        runViewModelTest {
+            val viewModel = track(viewModel(SignIn { throw PasskeyException.NoCredential }))
+
+            viewModel.signIn("https://mail.example.org")
+
+            assertEquals(
+                SignInUiState.Failed(PasskeyException.NoCredential.userMessage(), FailureHint.SetUp),
+                viewModel.state.value,
+            )
+        }
+
+    @Test
+    fun `a server with no passkey enrolled offers setting this device up`() =
         runViewModelTest {
             val viewModel = track(viewModel(SignIn { throw AuthFailure.NotEnrolled }))
 
             viewModel.signIn("https://mail.example.org")
 
-            assertEquals(SignInUiState.Failed(AuthFailure.NotEnrolled.userMessage()), viewModel.state.value)
+            assertEquals(SignInUiState.Failed(AuthFailure.NotEnrolled.userMessage(), FailureHint.SetUp), viewModel.state.value)
         }
 
     @Test
@@ -259,46 +270,66 @@ class SignInViewModelTest {
         }
 
     @Test
-    fun `a daily code adds the passkey and then signs in`() =
+    fun `a code makes the passkey, which signs in without a second prompt`() =
         runViewModelTest {
             val steps = mutableListOf<String>()
             val viewModel =
                 track(
                     viewModel(
-                        SignIn { steps += "sign-in" },
-                        EnrollPasskey { _, code ->
+                        SignIn { error("enrolling already signed in") },
+                        EnrollPasskey { _, code, _ ->
                             steps += "enroll $code"
-                            PasskeyRole.Daily
+                            false
                         },
                     ),
                 )
 
-            viewModel.signIn("https://mail.example.com", " ABCD-EFGH ")
+            viewModel.setUp(RememberedAccount("https://mail.example.com"), " ABCD-EFGH ")
 
-            assertEquals(listOf("enroll ABCD-EFGH", "sign-in"), steps)
+            assertEquals(listOf("enroll ABCD-EFGH"), steps)
             assertEquals(SignInUiState.Idle, viewModel.state.value)
         }
 
     @Test
-    fun `a master code adds its passkey and signs nobody in`() =
+    fun `a code that signs in is remembered like any other sign-in`() =
         runViewModelTest {
-            val viewModel =
-                track(viewModel(SignIn { error("must not sign in") }, EnrollPasskey { _, _ -> PasskeyRole.Master }))
+            val viewModel = track(viewModel(SignIn { error("enrolling already signed in") }, EnrollPasskey { _, _, _ -> true }))
 
-            viewModel.signIn("https://mail.example.com", "ABCD-EFGH")
+            viewModel.setUp(RememberedAccount("https://mail.example.com"), "ABCD-EFGH")
 
-            assertEquals(SignInUiState.MasterEnrolled, viewModel.state.value)
+            assertEquals("https://mail.example.com", viewModel.remembered.value?.server)
         }
 
     @Test
-    fun `a code the server refuses stops before sign-in`() =
+    fun `a code the server refuses stops before sign-in and asks for a new one`() =
         runViewModelTest {
             val viewModel =
-                track(viewModel(SignIn { error("must not sign in") }, EnrollPasskey { _, _ -> throw AuthFailure.BadCode }))
+                track(viewModel(SignIn { error("must not sign in") }, EnrollPasskey { _, _, _ -> throw AuthFailure.BadCode }))
 
-            viewModel.signIn("https://mail.example.com", "nope")
+            viewModel.setUp(RememberedAccount("https://mail.example.com"), "nope")
 
-            assertEquals(SignInUiState.Failed(AuthFailure.BadCode.userMessage()), viewModel.state.value)
+            assertEquals(SignInUiState.Failed(AuthFailure.BadCode.userMessage(), FailureHint.NewCode), viewModel.state.value)
+        }
+
+    @Test
+    fun `setting up a remembered account enrolls at its server and keeps it remembered`() =
+        runViewModelTest {
+            val enrolled = mutableListOf<Pair<ServerAddress, String>>()
+            val viewModel =
+                track(
+                    viewModel(
+                        SignIn { error("enrolling already signed in") },
+                        EnrollPasskey { server, code, _ ->
+                            enrolled += server to code
+                            false
+                        },
+                    ),
+                )
+
+            viewModel.setUp(REMEMBERED, "ABCD-EFGH")
+
+            assertEquals(listOf(ServerAddress(REMEMBERED.server) to "ABCD-EFGH"), enrolled)
+            assertEquals(REMEMBERED, viewModel.remembered.value)
         }
 
     @Test
@@ -306,8 +337,48 @@ class SignInViewModelTest {
         runViewModelTest {
             val viewModel = track(viewModel())
 
-            viewModel.signIn("https://mail.example.com", "   ")
+            viewModel.setUp(RememberedAccount("https://mail.example.com"), "   ")
 
             assertIs<SignInUiState.Idle>(viewModel.state.value)
+        }
+
+    @Test
+    fun `a server still switching passkeys on shows finishing setup until it accepts the session`() =
+        runViewModelTest {
+            val seen = mutableListOf<SignInUiState>()
+            lateinit var viewModel: SignInViewModel
+            viewModel =
+                track(
+                    viewModel(
+                        SignIn { error("enrolling already signed in") },
+                        EnrollPasskey { _, _, onWaiting ->
+                            onWaiting()
+                            seen += viewModel.state.value
+                            true
+                        },
+                    ),
+                )
+
+            viewModel.setUp(RememberedAccount("https://mail.example.com"), "ABCD-EFGH")
+
+            assertEquals(listOf<SignInUiState>(SignInUiState.FinishingSetup), seen)
+            assertEquals(SignInUiState.Idle, viewModel.state.value)
+        }
+
+    @Test
+    fun `a session the server never accepts says setup is pending and still remembers the account`() =
+        runViewModelTest {
+            val viewModel =
+                track(
+                    viewModel(
+                        SignIn { error("must not sign in") },
+                        EnrollPasskey { _, _, _ -> throw AuthFailure.SetupPending },
+                    ),
+                )
+
+            viewModel.setUp(RememberedAccount("https://mail.example.com"), "ABCD-EFGH")
+
+            assertEquals(SignInUiState.Failed(AuthFailure.SetupPending.userMessage()), viewModel.state.value)
+            assertEquals("https://mail.example.com", viewModel.remembered.value?.server)
         }
 }

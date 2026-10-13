@@ -4,7 +4,7 @@ use std::sync::{Mutex, PoisonError};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
-use super::state::Role;
+use super::state::Purpose;
 use crate::webpush::random_bytes;
 
 const CHALLENGE_LIFETIME_SECONDS: i64 = 300;
@@ -17,14 +17,8 @@ const FAILURES_IN_ALL: usize = 20;
 /// What a challenge was issued for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Pending {
-    Register {
-        role: Role,
-        code: String,
-        handle: String,
-    },
-    Login {
-        role: Role,
-    },
+    Register { code: String, handle: String },
+    Login { purpose: Purpose },
 }
 
 /// Challenges in flight. They live in memory only: a restart voids them, which costs a retry.

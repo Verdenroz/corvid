@@ -11,7 +11,7 @@ import com.verdenroz.corvid.core.auth.AuthState
 import com.verdenroz.corvid.core.auth.PasskeyException
 import com.verdenroz.corvid.core.auth.TokenSource
 import com.verdenroz.corvid.core.data.userMessage
-import com.verdenroz.corvid.core.domain.MasterSignIn
+import com.verdenroz.corvid.core.domain.ApproveWithKey
 import com.verdenroz.corvid.core.jmap.AuthLatch
 import com.verdenroz.corvid.core.jmap.createJmapHttpClient
 import com.verdenroz.corvid.core.keyring.DeviceRequest
@@ -67,7 +67,7 @@ private suspend fun StateFlow<AppLockState>.awaitState(predicate: (AppLockState)
 private class Harness(
     scope: CoroutineScope,
     fake: FakeJmapServer,
-    masterSignIn: MasterSignIn,
+    approveWithKey: ApproveWithKey,
     store: InMemoryPreferencesStore = InMemoryPreferencesStore(),
 ) {
     val devicePreferences = DevicePreferences(store, scope, DeviceSettings())
@@ -81,15 +81,15 @@ private class Harness(
             authLatch = authLatch,
             httpClient = createJmapHttpClient(fake.engine),
             unlockedScopeHolder = UnlockedScopeHolder(koinApplication {}.koin),
-            masterSignIn = masterSignIn,
+            approveWithKey = approveWithKey,
             devicePreferences = devicePreferences,
         )
 
     fun signIn() = tokenSource.adopt(authTokens(), ServerAddress(BASE_URL))
 }
 
-private fun fakeMasterSignIn(token: suspend () -> String) =
-    object : MasterSignIn {
+private fun fakeApproveWithKey(token: suspend () -> String) =
+    object : ApproveWithKey {
         override suspend fun <T> withAdminToken(use: suspend (String) -> T): T = use(token())
     }
 
@@ -129,9 +129,9 @@ class AppLockViewModelTest {
     private fun harness(
         scope: CoroutineScope,
         fake: FakeJmapServer,
-        masterSignIn: MasterSignIn = fakeMasterSignIn { fake.devices.masterToken },
+        approveWithKey: ApproveWithKey = fakeApproveWithKey { fake.devices.masterToken },
         store: InMemoryPreferencesStore = InMemoryPreferencesStore(),
-    ) = Harness(scope, fake, masterSignIn, store).also { harness = it }
+    ) = Harness(scope, fake, approveWithKey, store).also { harness = it }
 
     private suspend fun Harness.awaitSelfApprovalFailure(): EnrollmentRequest.Open {
         val failed =
@@ -176,7 +176,7 @@ class AppLockViewModelTest {
         runTest(testDispatcher) {
             val store = InMemoryPreferencesStore()
             val fake = FakeJmapServer()
-            val master = fakeMasterSignIn { fake.devices.masterToken }
+            val master = fakeApproveWithKey { fake.devices.masterToken }
             Harness(backgroundScope, fake, master, store).also { harness = it }.requestKey("laptop-1")
 
             val reopened = Harness(backgroundScope, fake, master, store)
@@ -412,7 +412,7 @@ class AppLockViewModelTest {
     fun `a token the server does not accept leaves the request open with a message`() =
         runTest(testDispatcher) {
             val fake = FakeJmapServer()
-            val harness = harness(backgroundScope, fake, fakeMasterSignIn { "stale" })
+            val harness = harness(backgroundScope, fake, fakeApproveWithKey { "stale" })
             val request = harness.requestKey("laptop-1")
 
             harness.viewModel.approveWithAdminPasskey()
@@ -426,7 +426,7 @@ class AppLockViewModelTest {
     fun `a cancelled admin sign-in sends nothing and leaves the request open with a message`() =
         runTest(testDispatcher) {
             val fake = FakeJmapServer()
-            val cancelled = fakeMasterSignIn { throw PasskeyException.Cancelled }
+            val cancelled = fakeApproveWithKey { throw PasskeyException.Cancelled }
             val harness = harness(backgroundScope, fake, cancelled)
             harness.requestKey("laptop-1")
 

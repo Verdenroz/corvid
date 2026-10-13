@@ -65,11 +65,20 @@ class HttpAuthApiTest {
         }
 
     @Test
-    fun `finishing a registration sends the credential as it came and reads the role`() =
+    fun `finishing a registration sends the credential as it came and reads the sign-in it made`() =
         runTest {
-            val api = api { respond("""{"role":"master"}""", HttpStatusCode.OK, JSON) }
+            val api =
+                api {
+                    respond(
+                        """{"access_token":"at","token_type":"Bearer","expires_in":900,"refresh_token":"rt","approves":true}""",
+                        HttpStatusCode.OK,
+                        JSON,
+                    )
+                }
 
-            assertEquals(PasskeyRole.Master, api.registerFinish(SERVER, """{"id":"abc"}"""))
+            val registered = api.registerFinish(SERVER, """{"id":"abc"}""")
+
+            assertEquals(Registered(AuthTokens("at", "rt", clock.now() + 900.seconds), approves = true), registered)
 
             assertEquals("""{"id":"abc"}""", requests.single().sent())
             assertEquals("https://mail.corvid.test:4443/corvid/auth/register/finish", requests.single().url.toString())
@@ -84,22 +93,22 @@ class HttpAuthApiTest {
         }
 
     @Test
-    fun `sign-in options name the role`() =
+    fun `sign-in options name the purpose`() =
         runTest {
             val api = api { respond("""{"challenge":"c"}""", HttpStatusCode.OK, JSON) }
 
-            api.loginOptions(SERVER, PasskeyRole.Master)
+            api.loginOptions(SERVER, Purpose.Approve)
 
-            assertEquals("""{"role":"master"}""", requests.single().sent())
+            assertEquals("""{"purpose":"approve"}""", requests.single().sent())
             assertEquals("https://mail.corvid.test:4443/corvid/auth/login/options", requests.single().url.toString())
         }
 
     @Test
-    fun `a role with no passkey is not enrolled`() =
+    fun `a purpose no passkey can serve is not enrolled`() =
         runTest {
             val api = api { respond("", HttpStatusCode.NotFound) }
 
-            assertIs<AuthFailure.NotEnrolled>(assertFailsWith<AuthFailure> { api.loginOptions(SERVER, PasskeyRole.Daily) })
+            assertIs<AuthFailure.NotEnrolled>(assertFailsWith<AuthFailure> { api.loginOptions(SERVER, Purpose.SignIn) })
         }
 
     @Test
@@ -108,7 +117,7 @@ class HttpAuthApiTest {
             val api =
                 api {
                     respond(
-                        """{"access_token":"at","token_type":"Bearer","expires_in":900,"refresh_token":"rt","role":"daily"}""",
+                        """{"access_token":"at","token_type":"Bearer","expires_in":900,"refresh_token":"rt"}""",
                         HttpStatusCode.OK,
                         JSON,
                     )
@@ -120,10 +129,10 @@ class HttpAuthApiTest {
         }
 
     @Test
-    fun `a master sign-in answers no refresh token`() =
+    fun `an approval answers no refresh token`() =
         runTest {
             val api =
-                api { respond("""{"access_token":"at","token_type":"Bearer","expires_in":300,"role":"master"}""", HttpStatusCode.OK, JSON) }
+                api { respond("""{"access_token":"at","token_type":"Bearer","expires_in":300}""", HttpStatusCode.OK, JSON) }
 
             assertNull(api.loginFinish(SERVER, "{}").refreshToken)
         }
@@ -177,7 +186,7 @@ class HttpAuthApiTest {
             val api = api { respond("""{"error":"auth_off"}""", HttpStatusCode.ServiceUnavailable, JSON) }
 
             assertIs<AuthFailure.Off>(assertFailsWith<AuthFailure> { api.registerOptions(SERVER, "x") })
-            assertIs<AuthFailure.Off>(assertFailsWith<AuthFailure> { api.loginOptions(SERVER, PasskeyRole.Daily) })
+            assertIs<AuthFailure.Off>(assertFailsWith<AuthFailure> { api.loginOptions(SERVER, Purpose.SignIn) })
         }
 
     @Test
@@ -212,8 +221,8 @@ class HttpAuthApiTest {
             val dropped = api { throw IOException("down") }
             val untrusted = api { throw SSLHandshakeException("no") }
 
-            assertIs<JmapError.Unreachable>(assertFailsWith<JmapException> { dropped.loginOptions(SERVER, PasskeyRole.Daily) }.error)
-            assertIs<JmapError.TlsFailure>(assertFailsWith<JmapException> { untrusted.loginOptions(SERVER, PasskeyRole.Daily) }.error)
+            assertIs<JmapError.Unreachable>(assertFailsWith<JmapException> { dropped.loginOptions(SERVER, Purpose.SignIn) }.error)
+            assertIs<JmapError.TlsFailure>(assertFailsWith<JmapException> { untrusted.loginOptions(SERVER, Purpose.SignIn) }.error)
         }
 
     @Test
@@ -222,5 +231,26 @@ class HttpAuthApiTest {
             val api = api { respond("<html>", HttpStatusCode.OK) }
 
             assertIs<JmapError.Request>(assertFailsWith<JmapException> { api.loginFinish(SERVER, "{}") }.error)
+        }
+
+    @Test
+    fun `the mail server accepting a token is a 200 on the session carrying it as a bearer`() =
+        runTest {
+            val api = api { respond("{}", HttpStatusCode.OK, JSON) }
+
+            assertEquals(true, api.mailAccepts(SERVER, "at"))
+
+            assertEquals("https://mail.corvid.test:4443/jmap/session", requests.single().url.toString())
+            assertEquals("Bearer at", requests.single().headers["Authorization"])
+        }
+
+    @Test
+    fun `a refused token or a server still restarting is not yet accepted`() =
+        runTest {
+            for (status in listOf(HttpStatusCode.Unauthorized, HttpStatusCode.BadGateway)) {
+                val api = api { respond("", status) }
+
+                assertEquals(false, api.mailAccepts(SERVER, "at"), status.toString())
+            }
         }
 }

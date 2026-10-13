@@ -91,7 +91,7 @@ class Fido2LiveTest {
         check(listening(http, base)) { "the sentinel never answered on $base" }
 
         val code =
-            Json.parseToJsonElement(signed(http, "$base/internal/auth/codes/daily", "code daily")).jsonObject
+            Json.parseToJsonElement(signed(http, "$base/internal/auth/codes", "code approver", """{"approves":true}""")).jsonObject
                 .getValue("code").jsonPrimitive.content
         val loopback = ServerAddress(base)
         // The sentinel lists https://mail.rig.test:4443 as the one origin; the ceremony is signed for it.
@@ -111,14 +111,18 @@ class Fido2LiveTest {
                         }
                     }
                 }
-            val role = api.registerFinish(loopback, authenticator.create(origin, api.registerOptions(loopback, code)))
-            assertEquals(PasskeyRole.Daily, role)
+            val registered = api.registerFinish(loopback, authenticator.create(origin, api.registerOptions(loopback, code)))
+            assertTrue(registered.approves, "the first key on a server approves")
+            assertTrue(verifiesAgainstJwks(http, base, registered.tokens.accessToken), "the registration's token does not verify")
+            assertEquals(200, userinfo(http, base, registered.tokens.accessToken))
 
-            val tokens = api.loginFinish(loopback, authenticator.get(origin, api.loginOptions(loopback, PasskeyRole.Daily)))
+            val tokens = api.loginFinish(loopback, authenticator.get(origin, api.loginOptions(loopback, Purpose.SignIn)))
+            val admin = api.loginFinish(loopback, authenticator.get(origin, api.loginOptions(loopback, Purpose.Approve)))
             watcher.cancel()
 
             assertTrue(verifiesAgainstJwks(http, base, tokens.accessToken), "the access token does not verify against the issuer's key set")
             assertEquals(200, userinfo(http, base, tokens.accessToken))
+            assertEquals(null, admin.refreshToken)
         }
     }
 
@@ -135,10 +139,17 @@ class Fido2LiveTest {
         http: HttpClient,
         url: String,
         message: String,
+        body: String,
     ): String {
         val mac = Mac.getInstance("HmacSHA256").apply { init(SecretKeySpec(secret.toByteArray(), "HmacSHA256")) }
         val signature = Base64.getEncoder().encodeToString(mac.doFinal(message.toByteArray()))
-        val request = HttpRequest.newBuilder(URI(url)).header("X-Signature", signature).POST(HttpRequest.BodyPublishers.noBody()).build()
+        val request =
+            HttpRequest.newBuilder(
+                URI(url),
+            ).header(
+                "X-Signature",
+                signature,
+            ).header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body)).build()
         val reply = http.send(request, HttpResponse.BodyHandlers.ofString())
         check(reply.statusCode() == 200) { "minting a code answered ${reply.statusCode()}" }
         return reply.body()

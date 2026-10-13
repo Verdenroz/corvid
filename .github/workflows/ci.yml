@@ -107,8 +107,6 @@ jobs:
       - run: bash deploy/tests/mta-sts-lib.test.sh
       - run: bash deploy/tests/assetlinks-lib.test.sh
       - run: bash deploy/tests/server-config-lib.test.sh
-      - run: bash deploy/tests/idp-hostname.test.sh
-      - run: bash deploy/tests/idp-dns-lib.test.sh
       - run: bash deploy/tests/srv-dns-lib.test.sh
       - run: bash deploy/tests/set-password.test.sh
       - run: bash deploy/tests/device.test.sh
@@ -127,9 +125,6 @@ jobs:
           tar -xJf cli.tar.xz
           sudo install -m 755 stalwart-cli-x86_64-unknown-linux-musl/stalwart-cli /usr/local/bin/stalwart-cli
       - run: chmod +x sentinel/corvid-sentinel sentinel/examples/soft-authenticator
-      - run: bash deploy/tests/oidc.test.sh
-        env:
-          CORVID_SENTINEL_BIN: ${{ github.workspace }}/sentinel/corvid-sentinel
       - run: bash deploy/tests/auth.test.sh
         env:
           CORVID_SENTINEL_BIN: ${{ github.workspace }}/sentinel/corvid-sentinel
@@ -180,7 +175,7 @@ jobs:
                  --set secrets.values.CORVID_SENTINEL_SECRET=x \
                  --set-string 'secrets.values.cloudflare\.token=x'
           helm lint charts/corvid "$@"
-          helm template ci charts/corvid "$@" --set labeler.enabled=true --set idp.enabled=true \
-            --set secrets.values.CORVID_JMAP_PASSWORD=x --set secrets.values.ENCRYPTION_KEY=x > rendered.yaml
+          helm template ci charts/corvid "$@" --set labeler.enabled=true \
+            --set secrets.values.CORVID_JMAP_PASSWORD=x > rendered.yaml
           test "$(grep -c '^kind:' rendered.yaml)" -gt 0
           kubeconform -strict -summary rendered.yaml

@@ -34,16 +34,6 @@ if (( ${#missing[@]} )); then
   exit 78
 fi
 [[ -s "$CORVID_DIR/secrets/cloudflare.token" ]] || { echo "$CORVID_DIR/secrets/cloudflare.token is empty; write the Cloudflare API token to it" >&2; exit 78; }
-# Rendered into server.env so it always equals the OIDC issuer; a second value here would race it.
-if grep -q '^APP_URL=' "$CORVID_DIR/idp.env" 2>/dev/null; then
-  echo "$CORVID_DIR/idp.env sets APP_URL; remove that line, since server.env already sets it" >&2
-  exit 78
-fi
-
-grep -q '^STATIC_API_KEY=.' "$CORVID_DIR/idp.env" 2>/dev/null || {
-  echo "$CORVID_DIR/idp.env has no STATIC_API_KEY; install.sh generates it, or set one: openssl rand -hex 32" >&2
-  exit 78
-}
 
 step() { echo; echo "== $* =="; }
 
@@ -83,9 +73,9 @@ wait_healthy() {
 # restarts only what changed, and a run that died before its restart is caught by the next.
 POD_MARKER="$CORVID_DIR/.live-pod"
 CONFIG_MARKER="$CORVID_DIR/.live-config"
-mapfile -t PLAN_OBJECTS < <(grep -oh '"object":"[A-Za-z]*"' "$HERE"/stalwart*.ndjson "$HERE/oidc.plan.ndjson" "$HERE/auth.plan.ndjson" | cut -d'"' -f4 | sort -u)
+mapfile -t PLAN_OBJECTS < <(grep -oh '"object":"[A-Za-z]*"' "$HERE"/stalwart*.ndjson "$HERE/auth.plan.ndjson" | cut -d'"' -f4 | sort -u)
 pod_inputs() {
-  { cat /etc/containers/systemd/corvid* "$CORVID_DIR"/{server.env,idp.env,Caddyfile,unbound.conf}
+  { cat /etc/containers/systemd/corvid* "$CORVID_DIR"/{server.env,Caddyfile,unbound.conf}
     podman image inspect -f '{{.Id}}' "$CORVID_IMAGE"; } | sha256sum
 }
 # Snapshots list object keys in a different order each call, so they are sorted before hashing.
@@ -150,31 +140,24 @@ fi
 # Asked before any plan is applied: a sentinel that is down says nothing about who is enrolled.
 step "checking passkey enrollment"
 if unit_masked corvid-sentinel.service; then
-  summary="off 0 0"
+  summary="off 0"
 else
   summary="$(auth_decision)" || {
     echo "the sentinel did not answer /internal/auth/status; sign-in is left as it is, check: journalctl -u corvid-sentinel" >&2
     exit 1
   }
 fi
-read -r sign_in passkeys_daily passkeys_master waiting_codes <<<"$summary"
-enrollment=
+read -r sign_in waiting_approver_codes <<<"$summary"
 
 step "applying configuration"
 CORVID_SKIP_RELOAD=1 "$HERE/apply-plan.sh"
 
-# Account passwords stop working once an external directory is applied, so someone must be enrolled
-# in it first, and the deploy scripts use the API key. Passkeys replace Pocket-ID once each role
-# has one; until then Pocket-ID keeps signing people in.
+# Account passwords stop working once the sentinel is Stalwart's directory, so a passkey that
+# approves devices must exist first, and the deploy scripts use the API key. Until then Stalwart
+# keeps the directory it has.
 if [[ "$sign_in" == passkeys ]]; then
   step "switching sign-in to passkeys"
   CORVID_SKIP_RELOAD=1 PLAN="$HERE/auth.plan.ndjson" "$HERE/apply-plan.sh"
-else
-  step "configuring Pocket-ID"
-  systemctl start corvid-idp.service
-  enrollment="$("$HERE/idp.sh" provision)"
-  step "switching sign-in to Pocket-ID"
-  CORVID_SKIP_RELOAD=1 PLAN="$HERE/oidc.plan.ndjson" "$HERE/apply-plan.sh"
 fi
 
 config="$(config_state)" || config="unknown"
@@ -184,34 +167,20 @@ else
   step "waiting for queued tasks"
   wait_for_due_tasks
   step "waiting for the issuer"
-  "$HERE/wait-issuer.sh" 300 || { echo "Stalwart is not restarted; check: journalctl -u corvid-caddy -u corvid-idp -u corvid-sentinel, then rerun" >&2; exit 1; }
+  "$HERE/wait-issuer.sh" 300 || { echo "Stalwart is not restarted; check: journalctl -u corvid-caddy -u corvid-sentinel, then rerun" >&2; exit 1; }
   step "restart to make the configuration live"
   systemctl restart corvid-mail.service
   wait_healthy
   [[ "$config" == unknown ]] || printf '%s\n' "$config" > "$CONFIG_MARKER"
 fi
 
-# A role with no passkey and no code waiting gets one, so a fresh install ends with both to redeem.
-if [[ "$sign_in" == pocket-id ]]; then
-  minted=
-  for role in daily master; do
-    enrolled="$passkeys_daily"
-    [[ "$role" == daily ]] || enrolled="$passkeys_master"
-    [[ "$enrolled" == 0 && " $waiting_codes " != *" $role "* ]] || continue
-    code="$(sentinel_signed POST "/internal/auth/codes/$role" "code $role" | sed -n 's/.*"code":"\([^"]*\)".*/\1/p')"
-    [[ -n "$code" ]] && minted+="$role $code"$'\n'
-  done
-  if [[ -n "$minted" ]]; then
-    step "passkey enrollment codes"
-    echo "Enter each in the app within 24 hours; deploy/passkey.sh code daily|master mints another."
-    printf '%s' "$minted"
+# Until a passkey approves devices there is no way to make a second code, so a deploy leaves one
+# approver code waiting. An unattended update never does: its output lands in the journal.
+if [[ -z "${CORVID_UPDATING:-}" && "$sign_in" == none && "$waiting_approver_codes" == 0 ]]; then
+  step "passkey setup code"
+  if "$HERE/passkey.sh" code --approver; then
+    echo "Enter it in the Corvid app: Set up this device. deploy/passkey.sh code mints another."
   fi
-fi
-
-if [[ -n "$enrollment" ]]; then
-  step "enrollment links"
-  echo "Open each link once within 24 hours and add a passkey; deploy/idp.sh link USERNAME mints another."
-  echo "$enrollment"
 fi
 
 # install.sh verifies once certificates are in, so a second run here would repeat it.

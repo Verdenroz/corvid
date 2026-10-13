@@ -23,7 +23,7 @@ import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 
-/** The quiet action: a hairline pill, for everything that is not the one primary action on screen. */
+/** A hairline pill, a step below the primary action and above a [QuietLink]. */
 @Composable
 fun PillButton(
     text: String,

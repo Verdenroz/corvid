@@ -43,7 +43,8 @@ pub fn build(config: Config) -> (Router, impl Future<Output = ()> + Send + 'stat
         secret: config.secret,
         seen: Persisted::new(config.state_path, config.seen, save),
     });
-    let watcher = watch::updates(state.clone(), config.update_dir.clone(), config.update_poll);
+    let update_dir = config.update_dir.clone();
+    let watcher = watch::updates(state.clone(), update_dir.clone(), config.update_poll);
     let router = Router::new()
         .route("/webhook", post(webhook))
         .route("/corvid/notices", get(notices))
@@ -54,7 +55,7 @@ pub fn build(config: Config) -> (Router, impl Future<Output = ()> + Send + 'stat
         None => devices::off(),
     });
     let router = router.merge(match config.auth {
-        Some(auth) => auth::routes(auth, state),
+        Some(auth) => auth::routes(auth, state, update_dir),
         None => auth::off(),
     });
     (router, watcher)

@@ -49,13 +49,14 @@ namespace, so services reach each other on `127.0.0.1`:
 | `corvid-milter` | `corvid-milter` binary, called by Stalwart at DATA | 11332 |
 | `corvid-imgproxy` | serves the images the milter rewrote | 8081 |
 | `corvid-labeler` | polls JMAP, writes labels as keywords | none |
-| `corvid-sentinel` | the pod's authenticated side door: the alert feed from Stalwart webhooks and update status, update requests, master-approved device keys, and new-mail previews pushed to approved devices | 11333 loopback |
-| `corvid-caddy` | the web tier: JMAP, `/i/*` to imgproxy, `/corvid/update`, `/corvid/notices` and `/corvid/devices/*` to the sentinel behind `forward_auth`, `/corvid/push/vapid` and `/corvid/push/stream` to it with no session; a second site proxies `server.idp_hostname` to Pocket-ID | `server.web_port`, 4443 by default |
-| `corvid-idp` | Pocket-ID, OIDC passkeys; provisioned by `idp.sh`, switched on by `oidc.plan.ndjson` | 1411 |
+| `corvid-sentinel` | the pod's authenticated side door: the alert feed from Stalwart webhooks and update status, update requests, approver-approved device keys, and new-mail previews pushed to approved devices | 11333 loopback |
+| `corvid-caddy` | the web tier: JMAP, `/i/*` to imgproxy, `/corvid/update`, `/corvid/notices` and `/corvid/devices/*` to the sentinel behind `forward_auth`, `/corvid/push/vapid` and `/corvid/push/stream` to it with no session | `server.web_port`, 4443 by default |
 
 `corvid-mirror` is the exception: a systemd timer on a separate machine that pulls over JMAP.
 `corvid-update.{service,timer,path}` are host units outside the pod: `update.sh` follows the
-image tag, on the timer or when the sentinel writes `update/request`.
+image tag, on the timer or when the sentinel writes `update/request`. The first passkey that approves
+devices makes the sentinel write `deploy`, which runs the deploy files on the host with no pull, so
+Stalwart switches to passkeys without waiting for the nightly update.
 
 `charts/corvid` runs the same pod on Kubernetes, with `values.config` rendered verbatim as
 `config.yaml`. It carries its own `unbound.conf` (loopback only, since pod addresses are
@@ -96,10 +97,10 @@ wires them through the lock gate (`AppLockState`).
 `androidApp` and `desktopApp` are thin per-platform shells. Its gates are the three Gradle
 commands above; it is not part of the Cargo workspace.
 
-**The app never makes a device key.** A device with none asks `/corvid/devices/requests`, a master
-device approves with a fresh `corvid-admin` passkey sign-in whose token goes to that one request
+**The app never makes a device key.** A device with none asks `/corvid/devices/requests`, a device
+with an approver key approves with a fresh approve sign-in (audience `corvid-admin`) whose token goes to that one request
 and is never adopted, and every device reads its key only by the record `/corvid/devices/<name>`
-returns. The approve route's own 401 (a bad master token) carries no `WWW-Authenticate`, while the
+returns. The approve route's own 401 (a bad admin token) carries no `WWW-Authenticate`, while the
 forward-auth gate's 401 does, so only the second signs the session out (`JmapClient.webSend`).
 qrose 1.2 and later need Kotlin 2.4 and Compose 1.12 by their published metadata, so the QR is
 drawn from zxing's module matrix instead.
@@ -124,10 +125,10 @@ the server's set of objects exactly the plan's, so a listener missing from the p
 
 Everything that names the web tier derives from `server.hostname` and `server.web_port`: the
 pod's published port (`corvid.pod` is rendered), Caddy's main site address, Stalwart's hostname
-and the milter's default proxy base, all in the generated `server.env`. Pocket-ID's `APP_URL` and
-the OIDC issuer derive instead from `server.idp_hostname` (default `idp.<domain>`) and the same
-`web_port`, since Pocket-ID cannot share a path on the main site; Caddy gets a second site for it.
-`bootstrap.sh` and `deploy.sh` both render them. The web port must not be one the pod already
+and the milter's default proxy base, all in the generated `server.env`. `bootstrap.sh` and
+`deploy.sh` both render them. `server.idp_hostname`, `sentinel.devices.issuer` and
+`sentinel.devices.idp_url` are retired and still accepted, since an update must not leave a service
+exiting 78 on a config that names them. The web port must not be one the pod already
 uses (`POD_PORTS`), since every container shares one network namespace.
 
 Clients must rebase the URLs a JMAP session advertises onto the address they dialled, since the
@@ -243,8 +244,8 @@ Caddyfile built from the same env vars as everything else. `core/discovery` hold
   message the header lands in the sub-part.
 - **`Authentication.directoryId` is a cutover, not an addition.** Null means the internal
   directory; setting it to an OIDC directory means Stalwart stops consulting its own account
-  store. With nobody enrolled in the IdP that is a login outage, so `deploy.sh` applies
-  `oidc.plan.ndjson` only after `idp.sh provision` has created the users. Measured: once active,
+  store. With no passkey enrolled that is a login outage, so `deploy.sh` applies
+  `auth.plan.ndjson` only once a passkey that approves devices exists. Measured: once active,
   the admin's own password gets a 401 on JMAP, while an admin API key (`x:ApiKey/set`, kept as
   `STALWART_TOKEN`) still reads, applies plans and acts on other accounts, since a Bearer key is
   tried before any directory. `stalwart-cli` errors if a user and a token are both set, even
@@ -253,47 +254,25 @@ Caddyfile built from the same env vars as everything else. `core/discovery` hold
   after `Bootstrap` the new admin gets a 401 until the restart, so the key is created by
   `deploy.sh` after that restart, not by `bootstrap-server.sh`. The default quota is 5 keys per
   account; creating one destroys earlier `corvid-deploy` keys.
-- **Pocket-ID's setup page gives the admin account to whoever opens it first, and no variable
-  disables it.** Caddy answers 404 for `/setup` and `/api/signup/setup` on its site, and the pod
-  provisions everything through `STATIC_API_KEY`. Pocket-ID's port is not published, so `idp.sh`
-  runs the host's curl in the `corvid-idp` network namespace (`nsenter`), which needs neither a
-  certificate nor a new image; the container's own busybox `wget` cannot send `PUT`.
-- **Pocket-ID rate-limits one-time token redemption.** A rig minting seven tokens in under a
-  minute hit a `429`, so a test that mints many waits and retries. A token's `ttl` is a Go
-  duration: `168h` works, `7d` is a 400.
-- **Pocket-ID's device login is closed at Caddy** (`/login/alternative/device`,
-  `/api/device-login/*`), since it lets any signed-in session approve a new device as itself. A
-  new device signs in with the phone's passkey through the browser's own cross-device prompt.
 - **A token Stalwart verifies while the issuer is unreachable stays refused until Stalwart
-  restarts.** Measured in `deploy/tests/oidc.test.sh`: with Pocket-ID stopped, a restarted
+  restarts.** Measured in `deploy/tests/auth.test.sh`: with the sentinel stopped, a restarted
   Stalwart answers a bearer token `401 Failed to decode token` while the admin API key and app
-  passwords still authenticate, and the token is still refused after Pocket-ID returns. One run
-  that restarted Stalwart with the issuer down and asked nothing until it returned was accepted;
-  another stayed refused for two minutes, so a restart with the issuer down is not safe.
-  `deploy.sh` waits for the issuer through Caddy before the restart that loads the directory, and
-  `corvid-mail` runs `wait-issuer.sh 60` as an `ExecStartPre` whose exit status the unit ignores,
-  so a boot or update restart delays Stalwart by at most 60 seconds and never stops it. The unit
-  orders itself after `corvid-idp` and `corvid-caddy` without requiring them, so the first probe
-  usually passes. Pocket-ID down longer than that at boot still needs one `systemctl restart
-  corvid-mail` once it is back. The rig tests the script, not the unit's `ExecStartPre`, and
-  reaches Pocket-ID directly, since it runs no Caddy.
-- **Stalwart's OIDC directory demands the `email` scope by default**, and Pocket-ID's access token
-  is an RFC 9068 JWT with no `preferred_username` or `email` claim, only the scopes the client
-  asked for. `requireScopes` defaults to `openid` and `email`, so a client asking `openid profile`
-  is refused with 401 before Stalwart ever calls Pocket-ID's userinfo. `oidc.plan.ndjson` sets it
-  to `openid` and `profile`, and the client requests exactly that: `profile` is what makes
-  userinfo return `preferred_username`. Measured by `deploy/tests/oidc.test.sh`, which mints real
-  tokens non-interactively against the pinned Stalwart and Pocket-ID.
+  passwords still authenticate, and the token is still refused after the sentinel returns. So
+  `deploy.sh` waits for the issuer before the restart that loads the directory, and `corvid-mail`
+  runs `wait-issuer.sh 60` as an `ExecStartPre` whose exit status the unit ignores, so a boot or
+  update restart delays Stalwart by at most 60 seconds and never stops it. The unit orders itself
+  after `corvid-caddy` and `corvid-sentinel` without requiring them. A sentinel down longer than
+  that at boot still needs one `systemctl restart corvid-mail` once it is back. The rig tests the
+  script, not the unit's `ExecStartPre`.
+- **Stalwart's OIDC directory demands the `email` scope by default.** `requireScopes` defaults to
+  `openid` and `email`, and the sentinel's tokens carry only `openid profile`, so Stalwart refuses
+  them with 401 before it asks for userinfo. `auth.plan.ndjson` sets it to `openid` and `profile`;
+  `profile` is what makes userinfo return `preferred_username`. Measured by `deploy/tests/auth.test.sh`
+  against the pinned Stalwart.
 - **The scope refusal is logged as `auth.failed`, which the plan's `info` tracer never prints.**
   At `info` a refused bearer is a bare 401 with nothing in `journalctl -u corvid-mail`; at `debug`
   it reads `Missing required scope 'email', present scopes: ["openid", "profile"]`. Raise the
   Tracer to `debug` before concluding Stalwart ignores a token.
-- **Stalwart creates a mailbox for any valid OIDC token whose username has no account.** A second
-  Pocket-ID user with no mailbox got a 200 and a new `nomail@<domain>` account on its first
-  token, so every Pocket-ID user who can reach the `corvid` client becomes a mailbox. Restricting
-  the client to a group stops it at Pocket-ID: with `isGroupRestricted` and the allowed group set,
-  `/authorize` redirects a non-member to `/interaction/error` and no code is issued. A member's
-  token still works.
 - **Email/changes returns imports and restores, not only arrivals.** `message-ingest.ham` fires for SMTP
   delivery and only wakes the sentinel's push watcher, which reads Email/changes since its held state. A
   message appended over JMAP to the Inbox, unread, came back from that call at the next delivery and was
@@ -419,7 +398,7 @@ Caddyfile built from the same env vars as everything else. `core/discovery` hold
   operation and could consult existing state. That only proves it makes JMAP calls, since every
   JMAP call needs that session, but it is consistent with a reference resolving against an
   object already on the host. A third reason to keep it a warning: references resolve within a
-  file and the file is not always the unit. `oidc.plan.ndjson` is its own file, and
+  file and the file is not always the unit. `auth.plan.ndjson` is its own file, and
   a plan split further would warn once per cross-file reference. A failure there would make
   splitting impossible without silencing the check.
 - **`stalwart-cli` caches the server's schema under `~/.cache/stalwart-cli/`**, and it can be
@@ -461,28 +440,16 @@ Caddyfile built from the same env vars as everything else. `core/discovery` hold
   `shareWith: {<id>: {mayRead: true}}`, the sharee reads the nodes and is refused update, destroy and
   a `shareWith` change, but `FileNode/set create` under any existing folder of that account is
   accepted, even a folder it cannot see. Only a top-level create is refused. Measured on the rig with
-  a real Pocket-ID token. So a shared folder proves what the owner wrote only if readers look up
+  a real OIDC token. So a shared folder proves what the owner wrote only if readers look up
   nodes by the id the owner recorded, never by name.
 - **An account that must take no mail needs more than a permission.** Disabling `emailReceive`
   on an account, or `isEnabled` on its domain, still answers `250` to `RCPT TO`. What refuses it is
   an `MtaStageRcpt.script` naming a Sieve script that `reject`s on `rcpt_domain`, which is how
   `corvid-keys` is closed, in a `keys.<domain>` domain of its own. Disabling `authenticate` is what
   refuses its credentials (`403`).
-- **An account name is not unique across domains.** A Pocket-ID user called `corvid-keys` gets its
-  own auto-created `corvid-keys@<mail domain>`, so `x:Account/query` by `name` returns two
-  accounts. The sentinel matches on `emailAddress`. The namesake gets a session of its own and
+- **An account name is not unique across domains.** `corvid-keys@<mail domain>` and the keys
+  account share a name, so `x:Account/query` by `name` returns two accounts. The sentinel matches on `emailAddress`. The namesake gets a session of its own and
   `forbidden` on the keys account.
-- **Pocket-ID's `requiresReauthentication` stops the authorization at a `reauthenticate` step**
-  that only a passkey assertion completes (`reauthenticationToken` is required), so a one-time
-  link session cannot mint a `corvid-admin` token. The rig switches the flag off to mint one and
-  `idp.sh provision` puts it back.
-- **A Pocket-ID refresh keeps the access token's `iat`.** A refresh grant needs no passkey, hands
-  out a rotated refresh token each time (so a chain never expires) and extends `exp`, but the new
-  access token carries the original `iat`. The sentinel's five minute window runs on `iat`, so a
-  chain of refreshes never renews it. The rig refreshes once and checks `iat` is unchanged, `exp`
-  moved and the sentinel still approves with it; the sentinel's own tests refuse an `iat` older
-  than five minutes. Pocket-ID issues a refresh token even without `offline_access`, and one minute is
-  the shortest refresh lifetime it accepts, which `idp.sh` sets on `corvid-admin`.
 - **A default 5-app-password-per-account quota exists**, reported as `overQuota` in `notCreated`
   rather than failing the request outright. `stalwart.plan.ndjson` raises it to 20 via
   `Account.quotas/maxAppPasswords`; verified by creating a 6th after applying.
@@ -519,11 +486,12 @@ Caddyfile built from the same env vars as everything else. `core/discovery` hold
   visible only in a WebHook capture. The rest of the documented shape holds: `{"type":"authCode",
   "accountName","accountSecret","clientId","redirectUri"}`, then the same body plus `"mfaToken":
   "<6-digit code>"` once the first call answers `{"type":"mfaRequired"}`.
-- **A master passkey must be device-bound, and the sentinel enforces it.** The master role refuses a
-  credential whose backup-eligible flag (BE) is set, since a synced passkey would put the key that
-  approves devices in a cloud account. The daily role accepts both. `auth.test.sh` enrolls the
-  daily passkey backup-eligible on purpose, so a rig that only enrols device-bound ones proves
-  nothing about the synced path.
+- **Every passkey signs in; one that approves devices is chosen when its setup code is made.** There
+  is no rule on the backup-eligible flag, so a synced passkey can approve. While no key approves,
+  every code the sentinel mints enrolls an approver, and `register/finish` applies the same rule
+  when the code is spent, since a schema-1 daily code migrates as a plain one. `register/finish`
+  returns the sign-in tokens, so enrolling needs no second prompt. `auth.test.sh` rewrites its
+  state file as schema 1 and checks the enrolled keys still sign in and approve.
 - **A refresh token redeemed twice inside 60 seconds is a retry, not a theft.** A phone that lost
   the reply to a rotation presents the old token again. Inside the window the sentinel rotates
   again, handing out a new secret and keeping `previous` and `rotated_at`; after it, the reuse

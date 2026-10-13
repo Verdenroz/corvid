@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Follows the release tag in image.ref: pulls it, deploys what the new image carries, and puts
 # the previous image and deploy files back if that fails. Run as root by corvid-update.timer,
-# or by corvid-update.path when /opt/corvid/update/request holds `check` or `apply`. Every run
-# leaves its outcome in update/status.json.
+# or by corvid-update.path when /opt/corvid/update/request holds `check`, `apply` or `deploy`.
+# `deploy` runs the deploy files already on the host against the running image, with no pull; the
+# sentinel asks for it when the first passkey that approves devices is set up. Every run leaves
+# its outcome in update/status.json.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -77,8 +79,8 @@ if [[ -e "$update_dir/request" ]]; then
   mode="$(head -c 16 "$update_dir/request" | tr -d '[:space:]')"
   rm -f "$update_dir/request"
   case "$mode" in
-    check|apply) ;;
-    *) echo "ignoring an update request that is neither check nor apply"; exit 0 ;;
+    check|apply|deploy) ;;
+    *) echo "ignoring an update request that is not check, apply or deploy"; exit 0 ;;
   esac
 fi
 
@@ -92,15 +94,25 @@ detail="stopped before finishing"
 trap write_status EXIT
 write_status true
 
-if ! registry_ref "$ref"; then
-  result=skipped
-  detail="image.ref is $ref, which is not a registry image; this host does not update itself"
-  echo "$detail"
-  exit 0
-fi
 if unit_masked corvid-pod.service; then
   result=skipped
   detail="corvid-pod is masked (a container replacement is in progress); not updating"
+  echo "$detail"
+  exit 0
+fi
+if [[ "$mode" == deploy ]]; then
+  if deploy_from "$deploy_dir"; then
+    result=current
+    detail=""
+    exit 0
+  fi
+  detail="deploying $running failed; the host needs attention"
+  echo "$detail" >&2
+  exit 1
+fi
+if ! registry_ref "$ref"; then
+  result=skipped
+  detail="image.ref is $ref, which is not a registry image; this host does not update itself"
   echo "$detail"
   exit 0
 fi

@@ -4,6 +4,8 @@ import com.verdenroz.corvid.core.jmap.JmapError
 import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.model.ServerAddress
 import io.ktor.client.HttpClient
+import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
@@ -14,6 +16,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.TextContent
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
@@ -25,17 +28,23 @@ import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
-/** The two identities a passkey can sign in as. */
-enum class PasskeyRole(val wire: String) {
-    Daily("daily"),
-    Master("master"),
+/** What a passkey sign-in is for: mail, or approving devices and passkey changes. */
+enum class Purpose(val wire: String) {
+    SignIn("sign-in"),
+    Approve("approve"),
 }
 
-/** A sign-in's tokens. The master role gets an access token and no [refreshToken]. */
+/** A sign-in's tokens. An approval gets an access token and no [refreshToken]. */
 data class AuthTokens(
     val accessToken: String,
     val refreshToken: String?,
     val expiresAt: Instant,
+)
+
+/** A passkey made from a setup code, which has signed in: [approves] says it can approve devices. */
+data class Registered(
+    val tokens: AuthTokens,
+    val approves: Boolean,
 )
 
 sealed interface Refreshed {
@@ -47,13 +56,13 @@ sealed interface Refreshed {
 
 /** What the sentinel said about a ceremony, as opposed to the network failing, which is a [JmapException]. */
 sealed class AuthFailure : Exception() {
-    /** The enrollment code is unknown, spent or expired. */
+    /** The setup code is unknown, spent or expired. */
     data object BadCode : AuthFailure()
 
     /** The passkey was not accepted. */
     data object Refused : AuthFailure()
 
-    /** No passkey is enrolled for the role. */
+    /** No passkey is enrolled that can do what was asked. */
     data object NotEnrolled : AuthFailure()
 
     /** The server has passkey sign-in switched off. */
@@ -61,11 +70,14 @@ sealed class AuthFailure : Exception() {
 
     /** The code was redeemed with a passkey the server already holds. */
     data object AlreadyEnrolled : AuthFailure()
+
+    /** The passkey was made, but the server had not yet started accepting its tokens when we gave up. */
+    data object SetupPending : AuthFailure()
 }
 
 /** The sentinel's public passkey routes: everything a client needs before it holds a token. */
 interface AuthApi {
-    /** `PublicKeyCredentialCreationOptionsJSON` for the role the [code] enrolls. */
+    /** `PublicKeyCredentialCreationOptionsJSON` for the passkey the [code] sets up. */
     suspend fun registerOptions(
         server: ServerAddress,
         code: String,
@@ -74,11 +86,11 @@ interface AuthApi {
     suspend fun registerFinish(
         server: ServerAddress,
         credential: String,
-    ): PasskeyRole
+    ): Registered
 
     suspend fun loginOptions(
         server: ServerAddress,
-        role: PasskeyRole,
+        purpose: Purpose,
     ): String
 
     suspend fun loginFinish(
@@ -90,6 +102,12 @@ interface AuthApi {
         server: ServerAddress,
         refreshToken: String,
     ): Refreshed
+
+    /** Whether the mail server accepts [accessToken] yet. The first passkey on a server waits for this. */
+    suspend fun mailAccepts(
+        server: ServerAddress,
+        accessToken: String,
+    ): Boolean
 }
 
 private const val AUTH_PATH = "/corvid/auth"
@@ -116,25 +134,26 @@ class HttpAuthApi(
     override suspend fun registerFinish(
         server: ServerAddress,
         credential: String,
-    ): PasskeyRole {
-        val body =
-            post(server, "register/finish", credential)
-                .ok(HttpStatusCode.Unauthorized to AuthFailure.BadCode, HttpStatusCode.Conflict to AuthFailure.AlreadyEnrolled)
-        val role = parse(body).getValue("role").jsonPrimitive.content
-        return PasskeyRole.entries.first { it.wire == role }
+    ): Registered {
+        val fields =
+            parse(
+                post(server, "register/finish", credential)
+                    .ok(HttpStatusCode.Unauthorized to AuthFailure.BadCode, HttpStatusCode.Conflict to AuthFailure.AlreadyEnrolled),
+            )
+        return Registered(tokens(fields), fields.getValue("approves").jsonPrimitive.boolean)
     }
 
     override suspend fun loginOptions(
         server: ServerAddress,
-        role: PasskeyRole,
+        purpose: Purpose,
     ): String =
-        post(server, "login/options", buildJsonObject { put("role", role.wire) }.toString())
+        post(server, "login/options", buildJsonObject { put("purpose", purpose.wire) }.toString())
             .ok(HttpStatusCode.NotFound to AuthFailure.NotEnrolled)
 
     override suspend fun loginFinish(
         server: ServerAddress,
         credential: String,
-    ): AuthTokens = tokens(post(server, "login/finish", credential).ok(HttpStatusCode.Unauthorized to AuthFailure.Refused))
+    ): AuthTokens = tokens(parse(post(server, "login/finish", credential).ok(HttpStatusCode.Unauthorized to AuthFailure.Refused)))
 
     override suspend fun refresh(
         server: ServerAddress,
@@ -143,17 +162,24 @@ class HttpAuthApi(
         val reply = post(server, "token", buildJsonObject { put("refresh_token", refreshToken) }.toString())
         if (reply.status == HttpStatusCode.ServiceUnavailable) throw JmapException(JmapError.Server(reply.status.value))
         if (reply.status == HttpStatusCode.BadRequest && reply.error() == "invalid_grant") return Refreshed.InvalidGrant
-        return Refreshed.Tokens(tokens(reply.ok()))
+        return Refreshed.Tokens(tokens(parse(reply.ok())))
     }
 
-    private fun tokens(body: String): AuthTokens {
-        val fields = parse(body)
-        return AuthTokens(
+    override suspend fun mailAccepts(
+        server: ServerAddress,
+        accessToken: String,
+    ): Boolean =
+        transport {
+            httpClient.get("${server.baseUrl}/jmap/session") { header(HttpHeaders.Authorization, "Bearer $accessToken") }.status ==
+                HttpStatusCode.OK
+        }
+
+    private fun tokens(fields: JsonObject): AuthTokens =
+        AuthTokens(
             accessToken = fields.getValue("access_token").jsonPrimitive.content,
             refreshToken = fields["refresh_token"]?.jsonPrimitive?.contentOrNull,
             expiresAt = clock.now() + fields.getValue("expires_in").jsonPrimitive.content.toLong().seconds,
         )
-    }
 
     private fun parse(body: String): JsonObject =
         parseOrNull(body) ?: throw JmapException(JmapError.Request("malformed", "the server's answer was not a JSON object"))
@@ -163,10 +189,15 @@ class HttpAuthApi(
         path: String,
         body: String,
     ): Reply =
-        try {
+        transport {
             val response: HttpResponse =
                 httpClient.post("${server.baseUrl}$AUTH_PATH/$path") { setBody(TextContent(body, ContentType.Application.Json)) }
             Reply(response.status, response.bodyAsText(), response.headers[HttpHeaders.RetryAfter]?.toLongOrNull())
+        }
+
+    private inline fun <T> transport(call: () -> T): T =
+        try {
+            call()
         } catch (e: SSLException) {
             throw JmapException(JmapError.TlsFailure(e))
         } catch (e: IOException) {

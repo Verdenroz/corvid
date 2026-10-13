@@ -21,9 +21,6 @@ server:
   # Only when hostname lies outside domain, e.g. a host named n1.example.net serving mail for
   # example.com. Stalwart then keeps a certificate for this zone and publishes no records in it.
   # host_zone: example.net
-  # Where Pocket-ID answers, on web_port. Defaults to idp.<domain>; Pocket-ID refuses an APP_URL
-  # with a path, so it needs a hostname of its own.
-  # idp_hostname: idp.example.com
   # The Android apps that may sign in with a passkey, by package and the SHA-256 of the
   # certificate that signs them. The default is the published app; a list of your own replaces it,
   # so keep the published entry too if you want both. Served as /.well-known/assetlinks.json on the mail domain.
@@ -91,11 +88,11 @@ mirror:
 sentinel:
   bind: 127.0.0.1:11333
   state: /var/lib/corvid/sentinel.json
-  # Approving a new device with the Pocket-ID admin's passkey. Needs CORVID_STALWART_TOKEN.
+  # Approving a new device with a passkey that approves devices. Needs CORVID_STALWART_TOKEN.
   devices:
     state: /var/lib/corvid/devices.json
-  # Passkey sign-in: the sentinel issues the tokens Stalwart trusts. Enroll with
-  # deploy/passkey.sh code daily|master; deploy.sh switches Stalwart over once both roles have one.
+  # Passkey sign-in: the sentinel issues the tokens Stalwart trusts. Set up the first passkey with
+  # deploy/passkey.sh code; deploy.sh switches Stalwart over once a passkey approves devices.
   auth:
     state: /var/lib/corvid/auth.json
   # New-mail previews (sender, subject, a snippet) encrypted to each approved device, sent

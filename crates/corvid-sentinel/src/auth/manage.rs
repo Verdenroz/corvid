@@ -1,14 +1,14 @@
-//! Enrollment codes and the passkey list, for a signed-in master and for the host.
+//! Setup codes and the passkey list, for a signed-in approver and for the host.
 
 use axum::Json;
 use axum::Router;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{delete, get, post};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-use super::state::{CODE_LIFETIME_SECONDS, Code, Role};
-use super::{MasterRefusal, Shared, Which, codes, commit};
+use super::state::{Auth, CODE_LIFETIME_SECONDS, Code};
+use super::{Shared, codes, commit, master_status};
 use crate::dates;
 
 pub fn routes() -> Router<Shared> {
@@ -16,7 +16,7 @@ pub fn routes() -> Router<Shared> {
         .route("/corvid/auth/passkeys", get(list))
         .route("/corvid/auth/passkeys/{id}", delete(remove))
         .route("/corvid/auth/enroll-codes", post(enroll))
-        .route("/internal/auth/codes/{role}", post(internal_code))
+        .route("/internal/auth/codes", post(internal_code))
         .route("/internal/auth/status", get(status))
         .route("/internal/auth/passkeys/{id}", delete(internal_remove))
 }
@@ -25,35 +25,34 @@ pub fn routes() -> Router<Shared> {
 #[serde(rename_all = "camelCase")]
 struct Passkey {
     id: String,
-    role: Role,
+    approves: bool,
     backup_eligible: bool,
     created_at: String,
 }
 
-fn passkeys(state: &Shared) -> Vec<Passkey> {
-    let mut listed: Vec<(i64, Passkey)> = state.auth.read(|auth| {
-        auth.credentials
-            .iter()
-            .map(|(id, credential)| {
-                let passkey = Passkey {
-                    id: id.clone(),
-                    role: auth.role_of(credential),
-                    backup_eligible: credential.backup_eligible,
-                    created_at: dates::rfc3339(credential.created_at),
-                };
-                (credential.created_at, passkey)
-            })
-            .collect()
-    });
+fn passkeys(auth: &Auth) -> Vec<Passkey> {
+    let mut listed: Vec<(i64, Passkey)> = auth
+        .credentials
+        .iter()
+        .map(|(id, credential)| {
+            let passkey = Passkey {
+                id: id.clone(),
+                approves: credential.approves,
+                backup_eligible: credential.backup_eligible,
+                created_at: dates::rfc3339(credential.created_at),
+            };
+            (credential.created_at, passkey)
+        })
+        .collect();
     listed.sort_by_key(|(created_at, _)| *created_at);
     listed.into_iter().map(|(_, passkey)| passkey).collect()
 }
 
 async fn list(State(state): State<Shared>) -> Json<Vec<Passkey>> {
-    Json(passkeys(&state))
+    Json(state.auth.read(passkeys))
 }
 
-/// Accepts a master token in `X-Corvid-Master`, which is spent by this one request.
+/// Accepts an admin token in `X-Corvid-Master`, which is spent by this one request.
 fn require_master(state: &Shared, headers: &HeaderMap) -> Result<(), StatusCode> {
     let token = headers
         .get("X-Corvid-Master")
@@ -62,13 +61,7 @@ fn require_master(state: &Shared, headers: &HeaderMap) -> Result<(), StatusCode>
     state
         .issuer
         .verify_master(token, &state.master_user, dates::now_secs())
-        .map_err(|refusal| match refusal {
-            MasterRefusal::Invalid(reason) => {
-                tracing::info!(?reason, "a master token was refused");
-                StatusCode::UNAUTHORIZED
-            }
-            MasterRefusal::NotMaster => StatusCode::FORBIDDEN,
-        })
+        .map_err(master_status)
 }
 
 /// How the host proves itself: the webhook secret signs what it asks for.
@@ -87,43 +80,60 @@ fn require_host(state: &Shared, headers: &HeaderMap, message: &str) -> Result<()
 #[serde(rename_all = "camelCase")]
 struct Minted {
     code: String,
+    approves: bool,
     expires_at: String,
 }
 
-/// Replaces any earlier code for the role.
-async fn mint(state: &Shared, role: Role) -> Result<Json<Minted>, StatusCode> {
+#[derive(Deserialize)]
+struct Minting {
+    approves: bool,
+}
+
+async fn mint(state: &Shared, approves: bool) -> Result<Json<Minted>, StatusCode> {
     let now = dates::now_secs();
     let code = codes::generate();
-    let stored = Code {
-        hash: codes::hash(&code),
-        expires_at: now + CODE_LIFETIME_SECONDS,
-    };
-    let expires_at = dates::rfc3339(stored.expires_at);
-    commit(state, move |auth| {
+    let hash = codes::hash(&code);
+    let expires_at = now + CODE_LIFETIME_SECONDS;
+    let approves = commit(state, move |auth| {
+        let approves = auth.grants_approval(approves);
         let mut next = auth.clone();
-        next.codes.insert(role, stored);
-        (Some(next), ())
+        next.codes.retain(|code| code.is_live(now));
+        next.codes.push(Code {
+            hash,
+            expires_at,
+            approves,
+        });
+        (Some(next), approves)
     })
     .await?;
-    Ok(Json(Minted { code, expires_at }))
+    Ok(Json(Minted {
+        code,
+        approves,
+        expires_at: dates::rfc3339(expires_at),
+    }))
 }
 
 async fn enroll(
     State(state): State<Shared>,
     headers: HeaderMap,
-    Json(which): Json<Which>,
+    Json(minting): Json<Minting>,
 ) -> Result<Json<Minted>, StatusCode> {
     require_master(&state, &headers)?;
-    mint(&state, which.role).await
+    mint(&state, minting.approves).await
 }
 
 async fn internal_code(
     State(state): State<Shared>,
     headers: HeaderMap,
-    Path(role): Path<Role>,
+    Json(minting): Json<Minting>,
 ) -> Result<Json<Minted>, StatusCode> {
-    require_host(&state, &headers, &format!("code {}", role.name()))?;
-    mint(&state, role).await
+    let message = if minting.approves {
+        "code approver"
+    } else {
+        "code"
+    };
+    require_host(&state, &headers, message)?;
+    mint(&state, minting.approves).await
 }
 
 enum Removal {
@@ -132,18 +142,13 @@ enum Removal {
     Done,
 }
 
-/// A user's last passkey stays, so a removal cannot lock a role out.
+/// The last passkey and the last approver stay, so a removal cannot lock everyone out.
 async fn forget(state: &Shared, id: String) -> Result<StatusCode, StatusCode> {
     let removal = commit(state, move |auth| {
         let Some(credential) = auth.credentials.get(&id) else {
             return (None, Removal::Gone);
         };
-        let siblings = auth
-            .credentials
-            .values()
-            .filter(|other| other.user == credential.user)
-            .count();
-        if siblings == 1 {
+        if auth.credentials.len() == 1 || credential.approves && auth.approvers() == 1 {
             return (None, Removal::Last);
         }
         let mut next = auth.clone();
@@ -178,36 +183,38 @@ async fn internal_remove(
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WaitingCode {
+    approves: bool,
+    expires_at: String,
+}
+
+#[derive(Serialize)]
 struct Status {
-    daily: usize,
-    master: usize,
-    /// The roles holding an enrollment code that has not expired.
-    codes: Vec<Role>,
+    approvers: usize,
+    codes: Vec<WaitingCode>,
     passkeys: Vec<Passkey>,
 }
 
-/// How many passkeys each role has, which is what `deploy.sh` waits on before it cuts over, and
-/// which roles still have a code waiting to be used.
+/// The passkeys, how many approve, and the codes still waiting, which is what `deploy.sh` reads
+/// before it cuts over.
 async fn status(
     State(state): State<Shared>,
     headers: HeaderMap,
 ) -> Result<Json<Status>, StatusCode> {
     require_host(&state, &headers, "status")?;
-    let passkeys = passkeys(&state);
-    let count = |role| {
-        passkeys
-            .iter()
-            .filter(|passkey| passkey.role == role)
-            .count()
-    };
     let now = dates::now_secs();
-    let codes = state
-        .auth
-        .read(|auth| auth.live_codes(now).map(|(role, _)| role).collect());
-    Ok(Json(Status {
-        daily: count(Role::Daily),
-        master: count(Role::Master),
-        codes,
-        passkeys,
-    }))
+    Ok(Json(state.auth.read(|auth| {
+        Status {
+            approvers: auth.approvers(),
+            codes: auth
+                .live_codes(now)
+                .map(|code| WaitingCode {
+                    approves: code.approves,
+                    expires_at: dates::rfc3339(code.expires_at),
+                })
+                .collect(),
+            passkeys: passkeys(auth),
+        }
+    })))
 }

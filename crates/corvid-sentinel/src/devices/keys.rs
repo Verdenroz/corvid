@@ -157,7 +157,7 @@ impl Keys {
         })
     }
 
-    /// Looks accounts up by address, since a Pocket-ID user of the same name in the mail domain
+    /// Looks accounts up by address, since a mailbox user of the same name in the mail domain
     /// gets an account of its own with the same local part.
     pub(super) async fn account(&self, address: &str) -> Result<String, Error> {
         let local = address.split('@').next().unwrap_or_default();

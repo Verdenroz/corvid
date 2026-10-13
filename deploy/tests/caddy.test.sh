@@ -31,13 +31,8 @@ class Sentinel(http.server.BaseHTTPRequestHandler):
         self.send_response(200); self.end_headers(); self.wfile.write(b"sentinel")
     do_POST = do_GET
     def log_message(self, *a): pass
-class Idp(http.server.BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200); self.end_headers(); self.wfile.write(b"idp")
-    do_POST = do_GET
-    def log_message(self, *a): pass
 socketserver.ThreadingTCPServer.allow_reuse_address = True
-for port, handler in ((8080, Stalwart), (11333, Sentinel), (1411, Idp)):
+for port, handler in ((8080, Stalwart), (11333, Sentinel)):
     threading.Thread(target=socketserver.ThreadingTCPServer(("127.0.0.1", port), handler).serve_forever).start()
 ' &
 stubs=$!
@@ -51,12 +46,12 @@ chmod -R a+rX "$work/apps"
 { printf '{\n\thttp_port 18080\n}\n\n'; cat "$here/Caddyfile"; } > "$work/Caddyfile"
 "$engine" run -d --name "$name" --network host \
   -e CORVID_WEB_HOSTNAME=localhost -e CORVID_WEB_PORT="$port" -e CORVID_MTA_STS_SITE= \
-  -e CORVID_MAIL_DOMAIN=localhost -e CORVID_IDP_HOSTNAME=idp.localhost \
+  -e CORVID_MAIL_DOMAIN=localhost \
   -e CORVID_ASSETLINKS_HOST=localhost -e "CORVID_ASSETLINKS=$links" \
   -v "$work/Caddyfile:/etc/caddy/Caddyfile:ro,z" -v "$work/apps:/srv/corvid-apps:ro,z" "$image" >/dev/null
 
 fetch() {
-  curl -sk --max-time 5 -o "$work/body" -w '%{http_code}' --resolve "localhost:$port:127.0.0.1" --resolve "idp.localhost:$port:127.0.0.1" \
+  curl -sk --max-time 5 -o "$work/body" -w '%{http_code}' --resolve "localhost:$port:127.0.0.1" \
     "$@" 2>/dev/null
   printf ' %s' "$(cat "$work/body" 2>/dev/null)"
 }
@@ -97,15 +92,15 @@ for path in /corvid/auth/passkeys /corvid/auth/passkeys/abc /corvid/auth/enroll-
   check "$path with an accepted credential reaches the sentinel" "$(fetch -X POST -d '{}' -u good:good "$url$path")" "200 sentinel"
 done
 for path in /internal/issuer/jwks /internal/issuer/userinfo /internal/issuer/.well-known/openid-configuration \
-  /corvid/auth/jwks /corvid/auth/authorize /corvid/auth/other /internal/auth/status /internal/auth/codes/daily /internal/auth/passkeys/abc; do
+  /corvid/auth/jwks /corvid/auth/authorize /corvid/auth/other /internal/auth/status /internal/auth/codes /internal/auth/passkeys/abc; do
   check "$path is never routed to the sentinel" "$(fetch -u good:good "$url$path")" "404 stalwart"
 done
 check "an app file without a credential stays with Stalwart" "$(fetch "$url/corvid/app/manifest.json")" "404 stalwart"
 check "an app file with a refused credential gets Stalwart's 401" "$(fetch -u bad:bad "$url/corvid/app/manifest.json")" "401 stalwart"
 check "an app file with an accepted credential is served" "$(fetch -u good:good "$url/corvid/app/manifest.json")" "200 manifest"
 check "a missing app file is a 404" "$(fetch -u good:good "$url/corvid/app/absent.apk")" "404 "
-doc='{"version":1,"server":"https://localhost:'"$port"'","issuer":"https://idp.localhost:'"$port"'"}'
-check "the discovery document names the web tier and the issuer" "$(fetch "$url/.well-known/corvid")" "200 $doc"
+doc='{"version":2,"server":"https://localhost:'"$port"'"}'
+check "the discovery document names the web tier" "$(fetch "$url/.well-known/corvid")" "200 $doc"
 check "the discovery document ignores a credential" "$(fetch -u bad:bad "$url/.well-known/corvid")" "200 $doc"
 check "the discovery document is JSON" "$(curl -sk --max-time 5 -o /dev/null -w '%{content_type}' --resolve "localhost:$port:127.0.0.1" "$url/.well-known/corvid")" application/json
 check "everything else goes to Stalwart" "$(fetch "$url/jmap/session")" "200 stalwart"
@@ -114,21 +109,13 @@ check "the app links document ignores a credential" "$(fetch -u bad:bad "$url/.w
 check "the app links document is JSON and not a redirect" \
   "$(curl -sk --max-time 5 -o /dev/null -w '%{content_type} %{redirect_url}' --resolve "localhost:$port:127.0.0.1" "$url/.well-known/assetlinks.json")" "application/json "
 check "another path under .well-known stays with Stalwart" "$(fetch "$url/.well-known/other")" "404 stalwart"
-idp="https://idp.localhost:$port"
-check "the app links document is not served on the identity provider's site" "$(fetch "$idp/.well-known/assetlinks.json")" "200 idp"
-check "the identity provider's site reaches Pocket-ID" "$(fetch "$idp/api/users")" "200 idp"
-for path in /setup /setup/ /api/signup/setup /api/signup/setup/ /login/alternative/device /login/alternative/device/x \
-  /api/device-login/requests /api/device-login/requests/x/exchange /api/device-login/verification; do
-  check "$path on the identity provider's site is a 404" "$(fetch "$idp$path")" "404 "
-  check "$path POST on the identity provider's site is a 404" "$(fetch -X POST -d '{}' "$idp$path")" "404 "
-done
 
 # The env above is hand-written; a host gets server.env from render_units, including its empty values.
 # shellcheck source=../lib.sh
 . "$here/lib.sh"
 for publish in false true; do
   mkdir -p "$work/host-$publish"
-  MAIL_HOSTNAME=n1.relay.example MAIL_DOMAIN=corvid.example WEB_PORT=4443 IDP_HOSTNAME=idp.corvid.example \
+  MAIL_HOSTNAME=n1.relay.example MAIL_DOMAIN=corvid.example WEB_PORT=4443 \
     PUBLISH_MTA_STS=false PUBLISH_ASSETLINKS="$publish" ASSETLINKS="$links" \
     ISSUER_URL=http://127.0.0.1:11333/internal/issuer CORVID_DIR="$work/host-$publish" CORVID_IMAGE=localhost/corvid:latest \
     render_units "$work/host-$publish/units" "$here"

@@ -7,7 +7,7 @@ cd "$(dirname "$0")/.."
 read_by_code=$(grep -rhoE '(require|number|env_usize|var|secret)\("CORVID_[A-Z_]+"' crates/*/src | grep -oE 'CORVID_[A-Z_]+' | grep -v '^CORVID_TEST_' || true)
 documented=$(
   grep -ohE '^(# )?[A-Z_]+=' deploy/env/*.example | tr -d '# ='
-  grep -ohE '^Environment=[A-Z_]+' deploy/*.container | cut -d= -f2
+  { grep -ohE '^Environment=[A-Z_]+' deploy/*.container || true; } | cut -d= -f2
 )
 
 missing=$(comm -23 <(printf '%s\n' $read_by_code | sort -u) <(printf '%s\n' $documented | sort -u))

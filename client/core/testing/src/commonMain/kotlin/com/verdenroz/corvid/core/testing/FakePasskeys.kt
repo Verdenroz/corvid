@@ -9,19 +9,20 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
-/** One passkey the fake sentinel holds; [role] is the wire spelling. */
+/** One passkey the fake sentinel holds. */
 data class FakePasskey(
     val id: String,
-    val role: String,
+    val approves: Boolean = false,
     val backupEligible: Boolean = false,
     val createdAt: String = "2030-01-01T00:00:00Z",
 )
 
-/** `/corvid/auth` behind the session gate: the passkey list, and the removals and codes only a master token allows. */
+/** `/corvid/auth` behind the session gate: the passkey list, and the removals and codes only an admin token allows. */
 class FakePasskeys {
     /** The only `X-Corvid-Master` value a removal or a code accepts. */
     var masterToken: String = "master-token"
@@ -34,10 +35,10 @@ class FakePasskeys {
 
     val passkeys: MutableList<FakePasskey> = mutableListOf()
 
-    /** The role each minted code was for, in order. */
-    val minted: MutableList<String> = mutableListOf()
+    /** Whether each minted code enrolls an approver, in order. */
+    val minted: MutableList<Boolean> = mutableListOf()
 
-    /** The master header each removal or code carried, null where there was none. */
+    /** The admin header each removal or code carried, null where there was none. */
     val masters: MutableList<String?> = mutableListOf()
 
     internal fun handle(
@@ -60,7 +61,7 @@ class FakePasskeys {
                 passkeys.map {
                     buildJsonObject {
                         put("id", it.id)
-                        put("role", it.role)
+                        put("approves", it.approves)
                         put("backupEligible", it.backupEligible)
                         put("createdAt", it.createdAt)
                     }
@@ -78,7 +79,8 @@ class FakePasskeys {
         masters += request.headers["X-Corvid-Master"]
         if (request.headers["X-Corvid-Master"] != masterToken) return scope.respond("", HttpStatusCode.Unauthorized)
         val found = passkeys.firstOrNull { it.id == id } ?: return scope.respond("", HttpStatusCode.NotFound)
-        if (passkeys.count { it.role == found.role } == 1) return scope.respond("", HttpStatusCode.Conflict)
+        val lastApprover = found.approves && passkeys.count { it.approves } == 1
+        if (passkeys.size == 1 || lastApprover) return scope.respond("", HttpStatusCode.Conflict)
         passkeys.remove(found)
         return scope.respond("", HttpStatusCode.NoContent)
     }
@@ -90,7 +92,7 @@ class FakePasskeys {
         masters += request.headers["X-Corvid-Master"]
         if (request.headers["X-Corvid-Master"] != masterToken) return scope.respond("", HttpStatusCode.Unauthorized)
         val body = body(request)
-        minted += body.getValue("role").jsonPrimitive.content
+        minted += body.getValue("approves").jsonPrimitive.boolean
         return json(
             scope,
             HttpStatusCode.OK,

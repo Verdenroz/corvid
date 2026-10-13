@@ -10,10 +10,10 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlin.time.Instant
 
-/** A passkey the server holds. [backupEligible] says the authenticator may sync it to other devices. */
+/** A passkey the server holds. [approves] says it can approve devices; [backupEligible] says the authenticator may sync it. */
 data class Passkey(
     val id: String,
-    val role: PasskeyRole,
+    val approves: Boolean,
     val backupEligible: Boolean,
     val createdAt: Instant,
 )
@@ -29,7 +29,7 @@ sealed interface CodeOutcome {
     /** The code is shown once and never stored by the server in the clear. */
     data class Minted(val code: String) : CodeOutcome
 
-    /** The master token proved nothing, or is not the master's. */
+    /** The admin token proved nothing, or is not an approver's. */
     data object NotAccepted : CodeOutcome
 
     /** The server has passkey sign-in switched off. */
@@ -42,7 +42,7 @@ enum class RemoveOutcome {
     /** The server holds no such passkey. */
     Gone,
 
-    /** It is the last passkey of its user, which the server keeps. */
+    /** It is the last passkey, or the last that approves devices, which the server keeps. */
     Last,
     NotAccepted,
 }
@@ -53,7 +53,7 @@ private val PASS_THROUGH = setOf(HttpStatusCode.Unauthorized, HttpStatusCode.For
 
 /**
  * The passkey routes behind the web tier's session gate. Minting a code and removing a passkey need
- * a fresh master token, which rides one header on one request and is not kept.
+ * a fresh admin token, which rides one header on one request and is not kept.
  */
 class PasskeyRepository(private val jmapClient: JmapClient) {
     suspend fun list(): PasskeyListing {
@@ -62,10 +62,9 @@ class PasskeyRepository(private val jmapClient: JmapClient) {
         return PasskeyListing.Listed(
             reply.array.orEmpty().map { entry ->
                 val fields = entry.jsonObject
-                val role = fields.getValue("role").jsonPrimitive.content
                 Passkey(
                     id = fields.getValue("id").jsonPrimitive.content,
-                    role = PasskeyRole.entries.first { it.wire == role },
+                    approves = fields.getValue("approves").jsonPrimitive.booleanOrNull == true,
                     backupEligible = fields.getValue("backupEligible").jsonPrimitive.booleanOrNull == true,
                     createdAt = Instant.parse(fields.getValue("createdAt").jsonPrimitive.content),
                 )
@@ -74,15 +73,15 @@ class PasskeyRepository(private val jmapClient: JmapClient) {
     }
 
     suspend fun mintCode(
-        role: PasskeyRole,
-        masterToken: String,
+        approves: Boolean,
+        adminToken: String,
     ): CodeOutcome {
         val reply =
             jmapClient.webSend(
                 HttpMethod.Post,
                 "$AUTH_PATH/enroll-codes",
-                buildJsonObject { put("role", role.wire) },
-                headers = mapOf(MASTER_HEADER to masterToken),
+                buildJsonObject { put("approves", approves) },
+                headers = mapOf(MASTER_HEADER to adminToken),
                 passThrough = PASS_THROUGH,
             )
         return when (reply.status) {
@@ -94,13 +93,13 @@ class PasskeyRepository(private val jmapClient: JmapClient) {
 
     suspend fun remove(
         id: String,
-        masterToken: String,
+        adminToken: String,
     ): RemoveOutcome {
         val reply =
             jmapClient.webSend(
                 HttpMethod.Delete,
                 "$AUTH_PATH/passkeys/$id",
-                headers = mapOf(MASTER_HEADER to masterToken),
+                headers = mapOf(MASTER_HEADER to adminToken),
                 passThrough = PASS_THROUGH + HttpStatusCode.NotFound + HttpStatusCode.Conflict,
             )
         return when (reply.status) {

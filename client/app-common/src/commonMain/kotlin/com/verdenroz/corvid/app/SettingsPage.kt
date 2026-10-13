@@ -5,8 +5,8 @@ import com.verdenroz.corvid.core.auth.AuthState
 import com.verdenroz.corvid.core.auth.PasskeyRepository
 import com.verdenroz.corvid.core.auth.TokenSource
 import com.verdenroz.corvid.core.data.UpdateRepository
+import com.verdenroz.corvid.core.domain.ApproveWithKey
 import com.verdenroz.corvid.core.domain.EnrollPasskey
-import com.verdenroz.corvid.core.domain.MasterSignIn
 import com.verdenroz.corvid.core.keyring.DeviceApprovalRepository
 import com.verdenroz.corvid.core.keyring.PushEndpointRepository
 import com.verdenroz.corvid.core.model.Identity
@@ -82,10 +82,10 @@ internal fun ApproveDevicePage(
     navigator: Navigator,
     models: EntryModels,
     entryKey: String,
-    masterSignIn: MasterSignIn = koinInject(),
+    approveWithKey: ApproveWithKey = koinInject(),
 ) {
     val viewModel =
-        models.of(entryKey, ApproveDeviceViewModel::class) { ApproveDeviceViewModel(scope.get<DeviceApprovalRepository>(), masterSignIn) }
+        models.of(entryKey, ApproveDeviceViewModel::class) { ApproveDeviceViewModel(scope.get<DeviceApprovalRepository>(), approveWithKey) }
     ApproveDeviceScreen(viewModel, onBack = navigator::back)
 }
 
@@ -95,14 +95,14 @@ internal fun PasskeysPage(
     navigator: Navigator,
     models: EntryModels,
     entryKey: String,
-    masterSignIn: MasterSignIn = koinInject(),
+    approveWithKey: ApproveWithKey = koinInject(),
     enrollPasskey: EnrollPasskey = koinInject(),
     tokenSource: TokenSource = koinInject(),
 ) {
     val viewModel =
         models.of(entryKey, PasskeysViewModel::class) {
             val server = checkNotNull((tokenSource.state.value as? AuthState.SignedIn)?.server) { "not signed in" }
-            PasskeysViewModel(scope.get<PasskeyRepository>(), masterSignIn, enrollPasskey, server)
+            PasskeysViewModel(scope.get<PasskeyRepository>(), approveWithKey, enrollPasskey, server)
         }
     PasskeysScreen(viewModel, onBack = navigator::back)
 }

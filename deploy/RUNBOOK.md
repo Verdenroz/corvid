@@ -88,8 +88,7 @@ phone is lost: it needs only shell access to the host, not the authenticator.
 TOTP-gated sign-in at all; they simply lose access to the account password and must move to an
 app password (`device.sh add`), same as they would for passkeys. The only protocol that can
 complete one is Stalwart's own OAuth login (`POST /api/auth`), used by its web UI and any OAuth
-client; the Corvid client itself signs in through Pocket-ID once OIDC lands, so this TOTP does
-not guard it either. What it buys today: a leaked account password alone opens nothing, on any
+client; the Corvid client itself signs in with a passkey, so this TOTP does not guard it either. What it buys today: a leaked account password alone opens nothing, on any
 protocol, without the code.
 
 ## Sign-in alerts
@@ -128,9 +127,9 @@ and not a broken mailbox.
 
 The web tier answers on `server.web_port`, 4443 by default, leaving 443 to anything else the
 host runs. Everything that names it is generated from `server.hostname` and `server.web_port`:
-the pod's published port, Caddy's site address, Stalwart's hostname and Pocket-ID's `APP_URL`
-(in `/opt/corvid/server.env`, rewritten on every run and never edited by hand), the OIDC
-issuer, and the milter's proxy base unless `milter.proxy_base` states one. To change
+the pod's published port, Caddy's site address and Stalwart's hostname (in
+`/opt/corvid/server.env`, rewritten on every run and never edited by hand), and the milter's proxy
+base unless `milter.proxy_base` states one. To change
 either, rerun `install.sh`, which also opens the new port in the firewall. Changing the hostname or
 port after mail has arrived is the expensive case: the milter mints proxy URLs into the body at
 delivery and the rewrite is what gets archived, so images in mail already delivered point
@@ -164,14 +163,13 @@ TLS handshake to a listed MX drop the message rather than deliver it unencrypted
 
 ### Signing in from an email address
 
-The app takes an address such as `mailuser@example.com` and finds the server and identity provider
-from its domain. `install.sh` publishes what that needs, in the mail domain's zone:
+The app takes an address such as `mailuser@example.com` and finds the server from its domain. `install.sh` publishes what that needs, in the mail domain's zone:
 
 - an SRV record, `_corvid._tcp.<domain>` at `<server.hostname>` port `<server.web_port>`. Stalwart
   publishes its own `_jmap._tcp` on 443 and manages it; this is a different name, and nothing
   edits Stalwart's.
 - `/.well-known/corvid` on the web tier, served by Caddy with no credential:
-  `{"version":1,"server":"https://<hostname>:<web_port>","issuer":"https://<idp_hostname>:<web_port>"}`.
+  `{"version":2,"server":"https://<hostname>:<web_port>"}`.
 
 A changed `server.web_port` updates the record's port on the next install. Without the SRV record the app tries `https://<domain>/.well-known/corvid` on 443, which only
 works when the web tier is there. A record that already points elsewhere stops `install.sh` before
@@ -211,21 +209,6 @@ deadline bounds that, not the budget: a call that answers slowly never fails, so
 messages would hold the loop for as long as they took. It is checked between messages, so a pass
 can overrun it by one message.
 
-### Pocket-ID
-
-`idp.env` holds Pocket-ID's `ENCRYPTION_KEY`, which has no default and encrypts its stored
-private keys. `APP_URL` must equal the OIDC `issuerUrl` exactly, port included, because an issuer
-is compared as a string and a mismatch fails only at the first login. So it is generated into
-`server.env` from the same values as the issuer, and `deploy.sh` refuses an `idp.env` that also
-sets it. `TRUST_PROXY` and `PORT` are set in the unit.
-
-**Pocket-ID serves on its own hostname, not a path.** v1.6.2 refuses to start with `APP_URL must
-not contain a path`, measured on the mail host, so it cannot sit behind `/idp` on Stalwart's own
-web tier hostname. It gets `server.idp_hostname`, defaulting to `idp.<domain>`, on the same
-`server.web_port`: its own Caddy site, its own DNS record (`install.sh` publishes it), and
-`APP_URL` and the OIDC `issuerUrl` both `https://<idp_hostname>:<web_port>`, no path. Decide the
-hostname before the first passkey login, since the issuer is baked into the client registration.
-
 ## Proving the spam loop learns
 
 Stalwart trains its classifier from messages marked spam or ham, so Corvid configures the
@@ -250,55 +233,64 @@ and is the argument for raising the hold or lowering the floor.
 
 ## Passkeys come with the deploy
 
+Every passkey signs in to mail, and a key that was set up as an approver can also approve devices
+and change passkeys. Whoever makes a setup code chooses which kind of key it enrolls. The first key
+on a server is always an approver, so while none exists every code is an approver code.
+
 `Authentication.directoryId` selects the "external directory used for authentication, or null to
-use the internal directory". Pointing it at the OIDC directory stops Stalwart authenticating
-against its own account store and starts it asking Pocket-ID. So `stalwart.plan.ndjson` does not
-set it, and `deploy.sh` applies `oidc.plan.ndjson` only after provisioning has created the users.
+use the internal directory". Pointing it at the sentinel stops Stalwart authenticating against its
+own account store. So `stalwart.plan.ndjson` does not set it, and `deploy.sh` applies
+`auth.plan.ndjson` only once a passkey that approves devices exists. Until then Stalwart keeps the
+directory it has.
 
-`deploy.sh` brings Pocket-ID up and configures it with no web UI, through its REST API and the
-`STATIC_API_KEY` in `idp.env` (`install.sh` generates it). `deploy/idp.sh provision` creates:
+A fresh install:
 
-- `<mail_user>-admin`, a Pocket-ID admin, and `<mail_user>`, the mailbox owner. Both get an
-  address at the mail domain; the admin's has no mailbox and nothing mails it.
-- a `mail` group holding only the mail user, and the `corvid` client (public, PKCE) restricted to
-  that group, so the admin and any other Pocket-ID user get no sign-in code for the client.
-- an `admins` group holding only the admin user, and the `corvid-admin` client restricted to it,
-  which demands a fresh passkey on every authorization. It approves new devices (below).
+1. `install.sh` runs `deploy.sh`, which prints one setup code and the line "Enter it in the Corvid
+   app: Set up this device." It is valid 24 hours. A later interactive deploy prints another only
+   while no approver exists and no approver code is waiting; the nightly update never prints one,
+   since its output lands in the journal.
+2. In the app, choose Set up this device, enter the code, and add the passkey. Registering signs
+   in, so there is no second prompt. A security key is the better first key, since it cannot be
+   synced off the device; a phone passkey also works.
+3. The sentinel notices the first approver and writes `deploy` to `/opt/corvid/update/request`.
+   `corvid-update.path` runs `update.sh`, which runs the deploy files already on the host against
+   the running image (no pull). That applies `auth.plan.ndjson` and restarts Stalwart, a minute or
+   two. The app shows "Finishing setup" until Stalwart accepts the token.
 
-It checks what exists before creating anything, so a rerun changes nothing and prints no links. A
-`corvid` client registered by hand is restricted in place. Pocket-ID's setup routes
-(`/setup`, `/api/signup/setup`) answer 404 at Caddy, so nobody can claim the first admin account.
-`idp.sh` reaches the API from inside the `corvid-idp` container's network namespace, so it needs
-neither a certificate nor a published port.
+If that deploy fails, the update status and the app's notice feed say "deploying <tag> failed; the
+host needs attention". Run `/opt/corvid/deploy/deploy.sh` by hand and read
+`journalctl -u corvid-update`; the passkey is already enrolled, so nothing needs enrolling again.
 
-The deploy prints one enrollment link per user it created, valid 24 hours. Open each, register a
-passkey, and confirm a sign-in; the Corvid app signs in as
-the mail user. The deploy scripts authenticate with an admin API key (`STALWART_TOKEN` in
+More codes, from the host or from the app:
+
+    /opt/corvid/deploy/passkey.sh code              a code for a key that signs in only
+    /opt/corvid/deploy/passkey.sh code --approver   a code for a key that also approves devices
+    /opt/corvid/deploy/passkey.sh status            passkeys, approvers and codes waiting
+    /opt/corvid/deploy/passkey.sh list              every passkey and whether it approves devices
+    /opt/corvid/deploy/passkey.sh remove ID         remove one
+
+In the app, Settings, Passkeys adds a passkey on this device or shows a code for another one. Both
+ask for a key that approves devices. The last passkey and the last approver cannot be removed, so
+no removal can lock the server out.
+
+A lost key needs only shell access: mint a code with `passkey.sh code --approver` and set up the
+replacement. The deploy scripts authenticate with an admin API key (`STALWART_TOKEN` in
 `corvid.env`, created on the first deploy that finds a working password), because Stalwart
-refuses the admin password once the OIDC directory is active. App passwords for IMAP and SMTP are
+refuses the admin password once the sentinel is the directory. App passwords for IMAP and SMTP are
 unaffected.
 
-New devices sign in with the phone's passkey through the browser's own cross-device prompt;
-Pocket-ID's own device login is closed at Caddy.
+### Hosts that ran Pocket-ID
 
-A lost or broken key, or an expired link, needs a new link, minted on the host:
-
-    /opt/corvid/deploy/idp.sh link <mail_user>
-
-If `idp.sh` itself is unusable, Pocket-ID's own CLI mints one inside the container (the binary
-path and `--help` are checked against the pinned image; the command itself was not run):
-
-    podman exec corvid-idp /app/pocket-id one-time-access-token <username>
-
-and the link is `https://<idp_hostname>:<web_port>/lc/<token>`. A host that already has Pocket-ID
-data from the setup page keeps its users: `provision` finds them by username and prints no link
-for them, so use `idp.sh link` for each. A half-finished setup that left a stray user is cleared
-by stopping `corvid-idp` and removing `/opt/corvid/idp/pocket-id.db*` before the deploy.
+Earlier releases used Pocket-ID as the identity provider. An update removes its quadlet and stops
+`corvid-idp`, so it cannot start at the next boot. Its data in `/opt/corvid/idp` and its
+`idp.env` stay on disk; delete them when you no longer want them. `install.sh` removes the
+`idp.<domain>` A record, but only while it still points at this server. The first passkey that
+approves devices switches Stalwart's directory to the sentinel and removes the Pocket-ID directory.
 
 ## Approving a new device
 
-A Corvid device's storage key is made only by a request the admin approves with a passkey, so a
-stolen daily session cannot enroll a device. The key is a file in the `corvid-keys` account, which
+A Corvid device's storage key is made only by a request an approver key approves, so a stolen
+mail session cannot enroll a device. The key is a file in the `corvid-keys` account, which
 has its own disabled `keys.<domain>` domain, takes no mail and cannot sign in. The mailbox account
 holds a read share on the folder, so it can read a key and not replace or remove one.
 
@@ -307,37 +299,29 @@ The flow, over the web tier and all behind the same credential check as `/corvid
 1. The new device, signed in as the mail user, posts `{"name": ...}` to
    `/corvid/devices/requests` and shows the `id` and six digit `code` it gets back. A name is
    `[a-z0-9-]{1,32}`, and `requests` is refused.
-2. A master device signs in to the `corvid-admin` client with the admin's passkey and posts
-   `{"code": ...}` to `/corvid/devices/requests/<id>/approve` with its access token in
-   `X-Corvid-Master`. The sentinel checks the token's signature, issuer, audience, expiry and that
-   it was issued in the last five minutes, then asks Pocket-ID's userinfo that it names
-   `<mail_user>-admin`. A request lives ten minutes, is spent by the first correct code, and dies
+2. An approver device signs in for approval with a passkey that approves devices and posts
+   `{"code": ...}` to `/corvid/devices/requests/<id>/approve` with the admin token it gets (audience
+   `corvid-admin`, five minutes, no refresh token) in `X-Corvid-Master`. The sentinel checks the
+   token's signature, issuer, audience and expiry, that it names `<mail_user>-admin`, and that this
+   token has not been used before. A request lives ten minutes, is spent by the first correct code, and dies
    after five wrong ones.
 3. The new device polls `/corvid/devices/requests/<id>` for `approved`, then reads
    `/corvid/devices/<name>`, which names the key's `accountId`, `nodeId` and `blobId`. It downloads
    that blob from the keys account and never looks a key up by name.
 
-A master device finds a waiting request without the id: `GET /corvid/devices/requests` lists the
+An approver device finds a waiting request without the id: `GET /corvid/devices/requests` lists the
 open ones as `{id, name, expiresAt}`, newest first, and never the code. The app's "Approve a
 device" screen shows that list; the approver picks the device by name and types the code from its
 screen. Typing the id or scanning the QR code remains as a fallback.
 
-The master device may be the new device itself. The app's enrollment screen has an "Approve with
-the admin passkey" action that runs step 2 on its own request, so the first device of an account
+The approver device may be the new device itself. The app's enrollment screen has an "Approve with
+a passkey" action that runs step 2 on its own request, so the first device of an account
 unlocks without another one. The server never checks that the approver is unlocked.
 
-Pocket-ID holds one signed-in account per browser and refuses `corvid-admin` to a browser still
-signed in as the mail user. Ending that session would revoke the tokens it issued, including the
-app's own. So step 2 opens the admin sign-in in a private browser context with its own cookies: an
-ephemeral Custom Tab on Android (Chrome 136 or later; other browsers open a normal tab, which
-shares the daily session) and the default browser's private window on Linux desktop (a browser
-with no private-window action in its `.desktop` file opens a normal window, with the same
-limit).
-
 An approve answers 401 for a token that proves nothing, 403 for a wrong code or a token that is not
-the admin's, 410 for a request that is gone, spent or expired, and 502 when Pocket-ID or Stalwart
-could not be reached or the key could not be written. After a 502 the request is spent and the
-device must ask again.
+the admin's, 410 for a request that is gone, spent or expired, and 502 when Stalwart could not be
+reached or the key could not be written. After a 502 the request is spent and the device must ask
+again.
 
 Needs `sentinel.devices` in `config.yaml` and `CORVID_STALWART_TOKEN` in
 `/opt/corvid/sentinel-devices.env`, which `deploy.sh` creates as a second admin API key. A host
@@ -351,12 +335,10 @@ migrated: the app no longer reads them, so each device asks once through this fl
 
 In the app, a device with no key shows a QR code (`corvid-approve:<id>?code=<code>`, which names no
 server), the request id and the code, and polls every three seconds while it is on screen. A
-master device opens Settings, Approve a device, scans the code (Android with a camera) or types the
-id and code, and signs in to `corvid-admin` with the admin passkey. That sign-in happens for every
-approval and its token is spent on the one request. The master device sends its own daily bearer
-too, so it must be signed in as the mail user. `corvid-admin` needs the same callbacks as
-`corvid`, `http://127.0.0.1/callback` for desktop and `com.verdenroz.corvid:/oauth2redirect` for
-Android.
+approver device opens Settings, Approve a device, scans the code (Android with a camera) or types
+the id and code, and touches a passkey that approves devices. That sign-in happens for every
+approval and its token is spent on the one request. The approver device sends its own mail bearer
+too, so it must be signed in as the mail user.
 
 ## `server.mail_user` is a local part, not an address
 
@@ -419,6 +401,13 @@ To roll back by hand, on the host:
 
 Set `update.auto: false` first, or the next night's run takes the release again.
 
+The sentinel's `auth.json` changed format (schema 2) in the release that introduced approver keys.
+The first start on it keeps the old file as `auth.json.schema1.bak` beside it, once. Rolling back
+past that release is automatic while nobody has signed in or enrolled since the update, because the
+file is rewritten on the first change. After that the older image refuses the file and exits 1, so
+restore the copy first: `cp /opt/corvid/sentinel/auth.json.schema1.bak /opt/corvid/sentinel/auth.json`
+(passkeys enrolled since then are lost and need new setup codes).
+
 ## Android release signing
 
 Release APKs are signed by CI with a key supplied through four repository secrets:
@@ -458,8 +447,8 @@ mounted at the same path on both sides. The SDK is mounted read-only. The regist
 reaches the container's environment and is used once; the runner's credentials live in the
 `corvid-ci-home` volume.
 
-The container shares the host's network namespace, because `caddy.test.sh` and `oidc.test.sh`
-start containers with `--network host` and reach them on `127.0.0.1`. They bind 8080, 11333, 1411
+The container shares the host's network namespace, because `caddy.test.sh` and `auth.test.sh`
+start containers with `--network host` and reach them on `127.0.0.1`. They bind 8080, 11333
 and 18443 plus Stalwart's own listeners, so the deploy job fails with a bind error if the laptop
 already holds one of those ports. `TMPDIR` points under the work directory so `mktemp -d` paths
 can be bind-mounted by the host daemon.
@@ -601,6 +590,6 @@ had, confirming restore's ledger cannot pin on the account id alone (see `CLAUDE
 
 ## Checking it
 
-    passkey login on the web       succeeds through the identity provider
+    passkey login in the app       succeeds and opens the mailbox
     app password over IMAP         still authenticates
     revoke one app password        the others and the account password keep working

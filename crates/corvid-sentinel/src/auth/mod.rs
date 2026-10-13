@@ -3,6 +3,7 @@
 
 mod codes;
 mod cose;
+pub mod legacy;
 mod limits;
 mod manage;
 mod routes;
@@ -21,7 +22,7 @@ use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::http::StatusCode;
 use axum::routing::any;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crate::dates;
 use crate::http::AppState;
@@ -31,11 +32,9 @@ use crate::state::NoticeKind;
 use limits::{Challenges, Failures};
 use state::save;
 
-pub use state::{Auth, Code, Credential, Family, Role, open};
+pub use state::{Auth, Code, Credential, Family, Purpose, open};
 pub use token::{Audience, Claims, Invalid, Issuer, MasterRefusal};
-pub use webauthn::{
-    AssertionResponse, Policy, Refusal, Registration, RegistrationResponse, RelyingParty,
-};
+pub use webauthn::{AssertionResponse, Refusal, Registration, RegistrationResponse, RelyingParty};
 
 /// The issuer for `url`, signing with the key at `key_path`, which is made on first use.
 pub fn issuer(key_path: &Path, url: String) -> io::Result<Issuer> {
@@ -66,21 +65,28 @@ struct AuthState {
     challenges: Challenges,
     failures: Failures,
     app: Arc<AppState>,
+    update_dir: PathBuf,
 }
 
 type Shared = Arc<AuthState>;
 
-#[derive(Deserialize)]
-struct Which {
-    role: Role,
+impl AuthState {
+    fn username(&self, audience: Audience) -> &str {
+        match audience {
+            Audience::Daily => &self.daily_user,
+            Audience::Master => &self.master_user,
+        }
+    }
 }
 
-impl AuthState {
-    fn username(&self, role: Role) -> &str {
-        match role {
-            Role::Daily => &self.daily_user,
-            Role::Master => &self.master_user,
+/// A token that proves nothing is 401; a genuine one from someone other than the admin is 403.
+pub(crate) fn master_status(refusal: MasterRefusal) -> StatusCode {
+    match refusal {
+        MasterRefusal::Invalid(Invalid(reason)) => {
+            tracing::info!(reason, "an admin token was refused");
+            StatusCode::UNAUTHORIZED
         }
+        MasterRefusal::NotMaster => StatusCode::FORBIDDEN,
     }
 }
 
@@ -122,7 +128,7 @@ async fn notify(state: &Shared, title: &'static str, detail: String) {
     }
 }
 
-pub(crate) fn routes(config: Config, app: Arc<AppState>) -> Router {
+pub(crate) fn routes(config: Config, app: Arc<AppState>, update_dir: PathBuf) -> Router {
     let state = Arc::new(AuthState {
         secret: config.secret,
         auth: Persisted::new(config.state_path, config.auth, save),
@@ -134,6 +140,7 @@ pub(crate) fn routes(config: Config, app: Arc<AppState>) -> Router {
         challenges: Challenges::default(),
         failures: Failures::default(),
         app,
+        update_dir,
     });
     Router::new()
         .merge(routes::routes())

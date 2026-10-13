@@ -15,7 +15,7 @@ import com.verdenroz.corvid.appcommon.resources.unreachable_session
 import com.verdenroz.corvid.core.auth.AuthState
 import com.verdenroz.corvid.core.auth.TokenSource
 import com.verdenroz.corvid.core.data.catchingSignIn
-import com.verdenroz.corvid.core.domain.MasterSignIn
+import com.verdenroz.corvid.core.domain.ApproveWithKey
 import com.verdenroz.corvid.core.jmap.AuthLatch
 import com.verdenroz.corvid.core.jmap.Invocation
 import com.verdenroz.corvid.core.jmap.JmapClient
@@ -62,7 +62,7 @@ class AppLockViewModel(
     private val authLatch: AuthLatch,
     private val httpClient: HttpClient,
     private val unlockedScopeHolder: UnlockedScopeHolder,
-    private val masterSignIn: MasterSignIn,
+    private val approveWithKey: ApproveWithKey,
     private val devicePreferences: DevicePreferences,
 ) : ViewModel() {
     private val _state = MutableStateFlow<AppLockState>(AppLockState.SignedOut)
@@ -231,7 +231,7 @@ class AppLockViewModel(
         viewModelScope.launch {
             val ended =
                 catchingSignIn({ open.failed(it) }) {
-                    masterSignIn.withAdminToken { token ->
+                    approveWithKey.withAdminToken { token ->
                         when (repository.approve(open.request.id, open.request.code, token)) {
                             ApproveOutcome.Approved -> null
                             ApproveOutcome.Gone -> EnrollmentRequest.Expired

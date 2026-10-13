@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.core.data.catchingSignIn
 import com.verdenroz.corvid.core.data.userMessage
-import com.verdenroz.corvid.core.domain.MasterSignIn
+import com.verdenroz.corvid.core.domain.ApproveWithKey
 import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.keyring.ApproveOutcome
 import com.verdenroz.corvid.core.keyring.DeviceApprovalRepository
@@ -66,7 +66,7 @@ data class ApproveDeviceState(
  */
 class ApproveDeviceViewModel(
     private val repository: DeviceApprovalRepository,
-    private val masterSignIn: MasterSignIn,
+    private val approveWithKey: ApproveWithKey,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ApproveDeviceState())
     val state: StateFlow<ApproveDeviceState> = _state
@@ -125,7 +125,7 @@ class ApproveDeviceViewModel(
         code: String,
     ): ApproveStep {
         return catchingSignIn(ApproveStep::Failed) {
-            masterSignIn.withAdminToken { token ->
+            approveWithKey.withAdminToken { token ->
                 _state.value = _state.value.copy(step = ApproveStep.Sending)
                 when (repository.approve(id, code, token)) {
                     ApproveOutcome.Approved -> ApproveStep.Approved(id.take(SHORT_ID_LENGTH))

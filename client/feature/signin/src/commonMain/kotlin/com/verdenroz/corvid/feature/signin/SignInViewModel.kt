@@ -2,8 +2,10 @@ package com.verdenroz.corvid.feature.signin
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.verdenroz.corvid.core.auth.PasskeyRole
+import com.verdenroz.corvid.core.auth.AuthFailure
+import com.verdenroz.corvid.core.auth.PasskeyException
 import com.verdenroz.corvid.core.data.catchingSignIn
+import com.verdenroz.corvid.core.data.userMessage
 import com.verdenroz.corvid.core.domain.DiscoverAccount
 import com.verdenroz.corvid.core.domain.Discovery
 import com.verdenroz.corvid.core.domain.DiscoveryFailure
@@ -37,12 +39,23 @@ sealed interface SignInUiState {
 
     data class SigningIn(val discovery: Discovery?) : SignInUiState
 
+    /** The passkey is made and the server is still switching passkeys on. */
+    data object FinishingSetup : SignInUiState
+
     data class DiscoveryFailed(val message: UiText) : SignInUiState
 
-    data class Failed(val message: UiText) : SignInUiState
+    data class Failed(val message: UiText, val hint: FailureHint = FailureHint.None) : SignInUiState
+}
 
-    /** A code made a master passkey, which signs nobody in: the daily passkey does that. */
-    data object MasterEnrolled : SignInUiState
+/** What the screen should do about a failure beyond saying it. */
+enum class FailureHint {
+    None,
+
+    /** This device has no passkey for the account, so setting it up is the way forward. */
+    SetUp,
+
+    /** The setup code was used or has expired, so the field should not keep it. */
+    NewCode,
 }
 
 val SignInUiState.discovery: Discovery?
@@ -81,24 +94,22 @@ class SignInViewModel(
         _state.value = SignInUiState.Idle
     }
 
-    /** Signs in to a server entered by address, adding a passkey first when [code] is given. */
-    fun signIn(
-        server: String,
-        code: String = "",
-    ) {
+    /** Signs in to a server entered by address. */
+    fun signIn(server: String) {
         val discovery = (_state.value as? SignInUiState.Discovered)?.discovery
-        signIn(RememberedAccount(server.trimEnd('/')), discovery, code)
+        signIn(RememberedAccount(server.trimEnd('/')), discovery, code = "")
     }
 
-    fun confirm(
-        discovery: Discovery,
-        code: String = "",
+    fun confirm(discovery: Discovery) {
+        signIn(RememberedAccount(discovery.server.baseUrl, discovery.email), discovery, code = "")
+    }
+
+    /** Makes a passkey on this device from a setup code, which signs in; a blank code signs in with a passkey it has. */
+    fun setUp(
+        account: RememberedAccount,
+        code: String,
     ) {
-        signIn(RememberedAccount(discovery.server.baseUrl, discovery.email), discovery, code)
-    }
-
-    fun signInAs(account: RememberedAccount) {
-        signIn(account, discovery = null, code = "")
+        signIn(account, discovery = null, code = code)
     }
 
     private fun signIn(
@@ -115,13 +126,23 @@ class SignInViewModel(
             val server = ServerAddress(account.server)
             _state.value =
                 catchingSignIn(SignInUiState::Failed) {
-                    val enrolled = if (code.isBlank()) null else enrollPasskey(server, code.trim())
-                    if (enrolled == PasskeyRole.Master) {
-                        SignInUiState.MasterEnrolled
-                    } else {
-                        signInUseCase(server)
+                    try {
+                        if (code.isBlank()) {
+                            signInUseCase(server)
+                        } else {
+                            enrollPasskey(server, code.trim()) { _state.value = SignInUiState.FinishingSetup }
+                        }
                         preferences.rememberAccount(account)
                         SignInUiState.Idle
+                    } catch (e: PasskeyException.NoCredential) {
+                        SignInUiState.Failed(e.userMessage(), FailureHint.SetUp)
+                    } catch (e: AuthFailure.NotEnrolled) {
+                        SignInUiState.Failed(e.userMessage(), FailureHint.SetUp)
+                    } catch (e: AuthFailure.SetupPending) {
+                        preferences.rememberAccount(account)
+                        SignInUiState.Failed(e.userMessage())
+                    } catch (e: AuthFailure.BadCode) {
+                        SignInUiState.Failed(e.userMessage(), FailureHint.NewCode)
                     }
                 }
         }
