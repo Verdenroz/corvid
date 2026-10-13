@@ -1361,11 +1361,7 @@ fn credential_of(soft: &Soft, user: &str) -> (String, legacy::Credential) {
 fn schema_one(master: &Soft) -> legacy::Auth {
     let (id, credential) = credential_of(master, MASTER_HANDLE);
     legacy::Auth {
-        users: [
-            (MASTER_HANDLE.to_owned(), legacy::Role::Master),
-            (DAILY_HANDLE.to_owned(), legacy::Role::Daily),
-        ]
-        .into(),
+        users: [(MASTER_HANDLE.to_owned(), legacy::Role::Master)].into(),
         credentials: [(id, credential)].into(),
         codes: [(
             legacy::Role::Daily,
@@ -1418,9 +1414,11 @@ async fn a_schema_one_master_credential_migrates_to_an_approver_that_signs_in() 
 }
 
 #[test]
-fn a_schema_one_master_credential_keeps_the_master_user_handle() {
+fn a_schema_one_state_with_both_handles_keeps_the_master_one() {
     let master = enrolled_master();
-    let old = schema_one(&master);
+    let mut old = schema_one(&master);
+    old.users
+        .insert(DAILY_HANDLE.to_owned(), legacy::Role::Daily);
 
     let migrated = legacy::migrate(old);
 
@@ -1487,4 +1485,32 @@ fn a_daily_only_schema_one_state_keeps_its_handle_and_has_no_approver() {
 
     assert_eq!(migrated.user.as_deref(), Some(DAILY_HANDLE));
     assert_eq!(migrated.approvers(), 0);
+}
+
+#[tokio::test]
+async fn redeeming_a_migrated_plain_code_on_a_server_with_no_approver_enrolls_an_approver() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut old = legacy::Auth::default();
+    old.codes.insert(
+        legacy::Role::Daily,
+        legacy::Code {
+            hash: code_hash("AAAABBBBCCCCDDDD"),
+            expires_at: now_secs() + 3600,
+        },
+    );
+    write_schema_one(dir.path(), &old);
+    let state = auth::open(&dir.path().join("auth.json")).unwrap();
+    let issuer = Arc::new(Issuer::new(signing_key(), ISSUER.to_owned()));
+    let url = start(dir.path(), state, issuer.clone()).await;
+    let rig = Rig { url, issuer, dir };
+
+    let tokens: Value = rig
+        .enroll(&mut Soft::new(RP_ID, ORIGIN), "AAAA-BBBB-CCCC-DDDD")
+        .await
+        .json()
+        .await
+        .unwrap();
+
+    assert_eq!(tokens["approves"], true);
+    assert_eq!(rig.host_status().await["approvers"], 1);
 }

@@ -178,6 +178,7 @@ async fn register_finish(
         if auth.credentials.contains_key(&id) {
             return (None, Registration::Duplicate);
         }
+        let approves = approves || auth.approvers() == 0;
         let mut next = auth.clone();
         next.codes.retain(|spent| spent.hash != code);
         let user = next.user.get_or_insert(handle).clone();
