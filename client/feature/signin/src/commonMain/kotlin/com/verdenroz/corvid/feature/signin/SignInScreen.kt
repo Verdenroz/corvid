@@ -36,6 +36,7 @@ import com.verdenroz.corvid.feature.signin.resources.signin_in_progress
 import com.verdenroz.corvid.feature.signin.resources.signin_remembered
 import com.verdenroz.corvid.feature.signin.resources.signin_remembered_detail
 import com.verdenroz.corvid.feature.signin.resources.signin_server
+import com.verdenroz.corvid.feature.signin.resources.signin_server_detail
 import com.verdenroz.corvid.feature.signin.resources.signin_set_up
 import com.verdenroz.corvid.feature.signin.resources.signin_set_up_back
 import com.verdenroz.corvid.feature.signin.resources.signin_set_up_code
@@ -163,7 +164,8 @@ private fun AccountEntry(
         }
     }
 
-    StatePane(stringResource(Res.string.signin_title), detail = stringResource(Res.string.signin_detail)) {
+    val detail = if (advanced) Res.string.signin_server_detail else Res.string.signin_detail
+    StatePane(stringResource(Res.string.signin_title), detail = stringResource(detail)) {
         val discovery = state.discovery
         when {
             advanced -> {

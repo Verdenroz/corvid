@@ -21,6 +21,7 @@
     <string name="signin_server_not_https">The server must be an https:// address.</string>
     <string name="signin_title">Sign in</string>
     <string name="signin_detail">Your email address. Corvid finds the server from it.</string>
+    <string name="signin_server_detail">The address of your Corvid server, starting with https://.</string>
     <string name="signin_remembered">Last signed in as %1$s</string>
     <string name="signin_remembered_detail">Your passkey opens it.</string>
     <string name="signin_another">Use another account</string>

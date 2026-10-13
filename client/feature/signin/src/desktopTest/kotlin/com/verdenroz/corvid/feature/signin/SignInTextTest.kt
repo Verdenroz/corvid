@@ -22,13 +22,9 @@ class SignInTextTest {
         }
 
     @Test
-    fun `a code the server refuses says where a new one comes from`() =
+    fun `a code the server refuses says it was used or has expired`() =
         runTest {
-            assertEquals(
-                "That code was used or has expired. Get a new one from a device that's already signed in " +
-                    "(Settings, Passkeys, Set up another device), or from your server (passkey.sh code).",
-                AuthFailure.BadCode.userMessage().resolve(environment),
-            )
+            assertEquals("That code was used or has expired.", AuthFailure.BadCode.userMessage().resolve(environment))
         }
 
     @Test
