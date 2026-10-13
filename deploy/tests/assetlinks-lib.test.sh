@@ -64,7 +64,7 @@ check "a Worker route this script already holds keeps its way" \
   '[[ "$(assetlinks_mode route "r1 A $ip dns-only" 443 $ip)" == worker-route ]]'
 
 echo "== the Worker script"
-document='[{"relation":["delegate_permission/common.get_login_creds"],"target":{"namespace":"android_app","package_name":"org.example","sha256_cert_fingerprints":["AB:CD"]}}]'
+document='[{"relation":["delegate_permission/common.handle_all_urls","delegate_permission/common.get_login_creds"],"target":{"namespace":"android_app","package_name":"org.example","sha256_cert_fingerprints":["AB:CD"]}}]'
 script="$(static_worker_script "$ASSETLINKS_PATH" application/json "$document")"
 check "it embeds the document" '[[ "$script" == *"org.example"* ]]'
 check "it serves JSON" '[[ "$script" == *"application/json"* ]]'
