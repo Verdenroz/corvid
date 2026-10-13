@@ -52,9 +52,9 @@ print(base64.b64encode(hmac.new(secret.encode(), sys.argv[2].encode(), hashlib.s
 }
 
 # What deploy.sh should do about sign-in, from the sentinel's own count of passkeys. Prints
-# "SIGN_IN PASSKEYS APPROVERS WAITING": SIGN_IN is `passkeys` once a passkey can approve and
-# `none` until then, `off` when sentinel.auth is off, and WAITING is how many unexpired
-# approver codes are still to be used.
+# "SIGN_IN WAITING": SIGN_IN is `passkeys` once a passkey can approve and `none` until then,
+# `off` when sentinel.auth is off, and WAITING is how many unexpired approver codes are still
+# to be used.
 # Fails, printing nothing, when the sentinel never answers: no answer is not "nobody enrolled",
 # and acting on it would move a host that already switched back to the old directory.
 auth_decision() {
@@ -67,10 +67,10 @@ auth_decision() {
 import json, sys
 s = json.load(sys.stdin)
 waiting = sum(code["approves"] for code in s["codes"])
-print("passkeys" if s["approvers"] > 0 else "none", len(s["passkeys"]), s["approvers"], waiting)' <<<"${reply#*$'\n'}"
+print("passkeys" if s["approvers"] > 0 else "none", waiting)' <<<"${reply#*$'\n'}"
         return
         ;;
-      503) echo "off 0 0 0"; return ;;
+      503) echo "off 0"; return ;;
     esac
     sleep "${AUTH_STATUS_WAIT:-2}"
   done
@@ -271,7 +271,7 @@ corvid_config() {
 }
 
 # Sets and exports MAIL_DOMAIN, MAIL_HOSTNAME, MAIL_USER, ACME_CONTACT, WEB_PORT, HOST_ZONE,
-# SENTINEL_URL, ISSUER_URL, ADMIN_USER, PUBLISH_MTA_STS, PUBLISH_TLSA,
+# SENTINEL_URL, ISSUER_URL, PUBLISH_MTA_STS, PUBLISH_TLSA,
 # PUBLISH_ASSETLINKS, ASSETLINKS, MTA_STS_MODE, CLIENT_SOURCES and UPDATE_AUTO from config.yaml.
 # Tests set CORVID_CONFIG_CMD to run it without the container.
 load_server() {
@@ -279,7 +279,7 @@ load_server() {
   out="$(corvid_config shell)" || exit 78
   while IFS='=' read -r key value; do
     case "$key" in
-      MAIL_DOMAIN|MAIL_HOSTNAME|MAIL_USER|ACME_CONTACT|WEB_PORT|HOST_ZONE|SENTINEL_URL|ISSUER_URL|ADMIN_USER|PUBLISH_MTA_STS|PUBLISH_TLSA|PUBLISH_ASSETLINKS|ASSETLINKS|MTA_STS_MODE|CLIENT_SOURCES|UPDATE_AUTO)
+      MAIL_DOMAIN|MAIL_HOSTNAME|MAIL_USER|ACME_CONTACT|WEB_PORT|HOST_ZONE|SENTINEL_URL|ISSUER_URL|PUBLISH_MTA_STS|PUBLISH_TLSA|PUBLISH_ASSETLINKS|ASSETLINKS|MTA_STS_MODE|CLIENT_SOURCES|UPDATE_AUTO)
         printf -v "$key" '%s' "$value"
         export "${key?}"
         ;;

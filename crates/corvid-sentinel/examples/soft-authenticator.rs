@@ -1,16 +1,20 @@
 //! A passkey that lives in a file, for the deploy rig. It speaks the sentinel's public auth routes
-//! the way the apps do and prints the final response body.
+//! the way the apps do and prints the final response body. `schema1` rewrites a sentinel's auth
+//! state file in the schema-1 shape, approvers under one handle and the rest under another.
 //!
 //! ```text
 //! soft-authenticator STATE URL RP_ID ORIGIN enroll CODE [backup-eligible]
 //! soft-authenticator STATE URL RP_ID ORIGIN login PURPOSE
+//! soft-authenticator schema1 AUTH_STATE
 //! ```
 
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::process::ExitCode;
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use corvid_sentinel::auth::legacy::{self, Role};
 use corvid_sentinel::auth::soft::{BACKUP_ELIGIBLE, Soft};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -68,9 +72,50 @@ async fn login(soft: &mut Soft, url: &str, purpose: &str) -> (u16, Value) {
     .await
 }
 
+fn write_schema1(path: &Path) {
+    let auth = corvid_sentinel::auth::open(path).expect("a current auth state");
+    let user = |approves: bool| {
+        if approves {
+            ("master-handle".to_owned(), Role::Master)
+        } else {
+            ("daily-handle".to_owned(), Role::Daily)
+        }
+    };
+    let old = legacy::Auth {
+        users: auth
+            .credentials
+            .values()
+            .map(|credential| user(credential.approves))
+            .collect(),
+        credentials: auth
+            .credentials
+            .into_iter()
+            .map(|(id, credential)| {
+                let migrated = legacy::Credential {
+                    user: user(credential.approves).0,
+                    public_key: credential.public_key,
+                    sign_count: credential.sign_count,
+                    backup_eligible: credential.backup_eligible,
+                    created_at: credential.created_at,
+                };
+                (id, migrated)
+            })
+            .collect(),
+        codes: BTreeMap::new(),
+        families: auth.families,
+    };
+    corvid_store::save(path, legacy::SCHEMA, &old).expect("the auth state is writable");
+}
+
 #[tokio::main]
 async fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if let [command, path] = args.as_slice()
+        && command == "schema1"
+    {
+        write_schema1(Path::new(path));
+        return ExitCode::SUCCESS;
+    }
     let [state, url, rp_id, origin, command, argument, rest @ ..] = args.as_slice() else {
         eprintln!("usage: soft-authenticator STATE URL RP_ID ORIGIN enroll CODE | login PURPOSE");
         return ExitCode::from(64);

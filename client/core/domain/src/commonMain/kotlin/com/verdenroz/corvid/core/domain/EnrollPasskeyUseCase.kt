@@ -33,8 +33,9 @@ class EnrollPasskeyUseCase(
     private val authenticator: Authenticator,
     private val tokenSource: TokenSource,
     private val authLatch: AuthLatch,
-    private val interval: Duration = 5.seconds,
-    private val attempts: Int = 36,
+    // Every refused poll counts toward Stalwart's auth-failure ban, so the polls are few.
+    private val interval: Duration = 15.seconds,
+    private val attempts: Int = 12,
 ) : EnrollPasskey {
     override suspend operator fun invoke(
         server: ServerAddress,
@@ -50,7 +51,7 @@ class EnrollPasskeyUseCase(
                 return registered.approves
             }
             if (attempt == 0) onWaiting()
-            delay(interval)
+            if (attempt < attempts - 1) delay(interval)
         }
         throw AuthFailure.SetupPending
     }

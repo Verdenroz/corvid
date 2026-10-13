@@ -172,9 +172,9 @@ private fun Actions(
             Text(stringResource(Res.string.passkeys_can_approve), style = CorvidTheme.type.name)
         }
         HorizontalDivider(color = CorvidTheme.colors.line)
-        ActionRow(Res.string.passkeys_add_here, Res.string.passkeys_add_here_asks, !state.busy) { viewModel.addHere(state.newApproves) }
+        ActionRow(Res.string.passkeys_add_here, Res.string.passkeys_add_here_asks, !state.busy) { viewModel.addHere() }
         HorizontalDivider(color = CorvidTheme.colors.line)
-        ActionRow(Res.string.passkeys_add_other, Res.string.passkeys_add_other_asks, !state.busy) { viewModel.makeCode(state.newApproves) }
+        ActionRow(Res.string.passkeys_add_other, Res.string.passkeys_add_other_asks, !state.busy) { viewModel.makeCode() }
         HorizontalDivider(color = CorvidTheme.colors.line)
     }
 }

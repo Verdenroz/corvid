@@ -27,7 +27,7 @@ sealed interface PasskeyListing {
 
 sealed interface CodeOutcome {
     /** The code is shown once and never stored by the server in the clear. */
-    data class Minted(val code: String, val expiresAt: Instant) : CodeOutcome
+    data class Minted(val code: String) : CodeOutcome
 
     /** The admin token proved nothing, or is not an approver's. */
     data object NotAccepted : CodeOutcome
@@ -87,13 +87,7 @@ class PasskeyRepository(private val jmapClient: JmapClient) {
         return when (reply.status) {
             HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden -> CodeOutcome.NotAccepted
             HttpStatusCode.ServiceUnavailable -> CodeOutcome.NotServed
-            else -> {
-                val minted = reply.body.orEmpty()
-                CodeOutcome.Minted(
-                    minted.getValue("code").jsonPrimitive.content,
-                    Instant.parse(minted.getValue("expiresAt").jsonPrimitive.content),
-                )
-            }
+            else -> CodeOutcome.Minted(reply.body.orEmpty().getValue("code").jsonPrimitive.content)
         }
     }
 

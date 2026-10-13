@@ -29,7 +29,9 @@ pub fn open<T: DeserializeOwned + Default>(path: &Path, schema: u32) -> io::Resu
 /// refused. Any other mismatch, or a corrupt file, still fails with the current schema's error.
 ///
 /// The converted state is written back by the caller's next `save`, which is when the file moves
-/// to the new schema.
+/// to the new schema. Before converting, the untouched file is copied once to
+/// `<name>.schema<previous>.bak` beside it, since that save overwrites it and the build that wrote
+/// it refuses the new schema. An existing copy is never overwritten.
 pub fn open_migrating<T, Old>(
     path: &Path,
     schema: u32,
@@ -43,11 +45,26 @@ where
     match load(path, schema) {
         Ok(state) => Ok(state.unwrap_or_default()),
         Err(error) if error.kind() == io::ErrorKind::InvalidData => match load(path, previous) {
-            Ok(Some(old)) => Ok(migrate(old)),
+            Ok(Some(old)) => {
+                keep_previous(path, previous)?;
+                Ok(migrate(old))
+            }
             _ => Err(error),
         },
         Err(error) => Err(error),
     }
+}
+
+fn keep_previous(path: &Path, previous: u32) -> io::Result<()> {
+    let name = path
+        .file_name()
+        .expect("a state file has a name")
+        .to_string_lossy();
+    let backup = path.with_file_name(format!("{name}.schema{previous}.bak"));
+    if !backup.exists() {
+        fs::copy(path, backup)?;
+    }
+    Ok(())
 }
 
 /// Reads saved state, rejecting a file that does not match its own checksum or was written by
@@ -253,6 +270,42 @@ mod tests {
         fs::write(&path, &whole[..whole.len() - 5]).unwrap();
 
         assert!(open_migrating::<Grown, Held>(&path, 2, 1, grow).is_err());
+    }
+
+    #[test]
+    fn a_migrated_file_is_copied_once_and_the_copy_is_never_overwritten() {
+        let (dir, path) = scratch();
+        let backup = dir.path().join("state.schema1.bak");
+        save(&path, 1, &Held::default()).unwrap();
+        let original = fs::read_to_string(&path).unwrap();
+
+        let _: Grown = open_migrating(&path, 2, 1, grow).unwrap();
+        assert_eq!(fs::read_to_string(&backup).unwrap(), original);
+
+        save(
+            &path,
+            1,
+            &Held {
+                cursor: None,
+                count: 4,
+            },
+        )
+        .unwrap();
+        let _: Grown = open_migrating(&path, 2, 1, grow).unwrap();
+        assert_eq!(fs::read_to_string(&backup).unwrap(), original);
+    }
+
+    #[test]
+    fn no_copy_is_made_for_a_missing_or_current_file() {
+        let (dir, path) = scratch();
+        let backup = dir.path().join("state.schema1.bak");
+
+        let _: Grown = open_migrating(&path, 2, 1, grow).unwrap();
+        assert!(!backup.exists(), "a missing file leaves nothing to copy");
+
+        save(&path, 2, &Grown::default()).unwrap();
+        let _: Grown = open_migrating(&path, 2, 1, grow).unwrap();
+        assert!(!backup.exists(), "a current file needs no copy");
     }
 
     #[test]

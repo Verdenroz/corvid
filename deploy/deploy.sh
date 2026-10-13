@@ -140,14 +140,14 @@ fi
 # Asked before any plan is applied: a sentinel that is down says nothing about who is enrolled.
 step "checking passkey enrollment"
 if unit_masked corvid-sentinel.service; then
-  summary="off 0 0 0"
+  summary="off 0"
 else
   summary="$(auth_decision)" || {
     echo "the sentinel did not answer /internal/auth/status; sign-in is left as it is, check: journalctl -u corvid-sentinel" >&2
     exit 1
   }
 fi
-read -r sign_in _ _ waiting_approver_codes <<<"$summary"
+read -r sign_in waiting_approver_codes <<<"$summary"
 
 step "applying configuration"
 CORVID_SKIP_RELOAD=1 "$HERE/apply-plan.sh"
@@ -177,11 +177,9 @@ fi
 # Until a passkey approves devices there is no way to make a second code, so a deploy leaves one
 # approver code waiting. An unattended update never does: its output lands in the journal.
 if [[ -z "${CORVID_UPDATING:-}" && "$sign_in" == none && "$waiting_approver_codes" == 0 ]]; then
-  code="$(sentinel_signed POST /internal/auth/codes "code approver" '{"approves":true}' | sed -n 's/.*"code":"\([^"]*\)".*/\1/p')"
-  if [[ -n "$code" ]]; then
-    step "passkey setup code"
-    echo "$code"
-    echo "Enter it in the Corvid app: Set up this device. Valid for 24 hours; deploy/passkey.sh code mints another."
+  step "passkey setup code"
+  if "$HERE/passkey.sh" code --approver; then
+    echo "Enter it in the Corvid app: Set up this device. deploy/passkey.sh code mints another."
   fi
 fi
 

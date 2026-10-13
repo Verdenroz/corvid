@@ -93,17 +93,21 @@ class PasskeysViewModel(
         }
     }
 
-    /** Makes a code for another device; the passkey it sets up approves devices when [approves]. */
-    fun makeCode(approves: Boolean) =
+    /** Makes a code for another device; the passkey it sets up approves devices when [PasskeysState.newApproves]. */
+    fun makeCode() {
+        val approves = _state.value.newApproves
         withApprover { token -> withCode(approves, token) { minted -> PasskeyStep.Code(approves, minted.code) } }
+    }
 
     /** Makes a passkey on this device, through a code an approver makes for it. */
-    fun addHere(approves: Boolean) =
+    fun addHere() {
+        val approves = _state.value.newApproves
         withApprover { token ->
             withCode(approves, token) { minted ->
                 PasskeyStep.Added(enrollPasskey(server, minted.code) {})
             }
         }
+    }
 
     private suspend fun withCode(
         approves: Boolean,

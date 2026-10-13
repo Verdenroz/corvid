@@ -115,6 +115,12 @@ impl Credential {
     }
 }
 
+impl Code {
+    pub fn is_live(&self, now: i64) -> bool {
+        self.expires_at > now
+    }
+}
+
 impl Family {
     /// Whether `hash` is the token this family replaced, presented inside the grace.
     pub fn is_retry(&self, hash: &str, now: i64) -> bool {
@@ -140,8 +146,13 @@ impl Auth {
         self.credentials.values().filter(|c| c.approves).count()
     }
 
+    /// While nobody can approve, every new key approves, so the first key on a server is one.
+    pub fn grants_approval(&self, requested: bool) -> bool {
+        requested || self.approvers() == 0
+    }
+
     pub fn live_codes(&self, now: i64) -> impl Iterator<Item = &Code> {
-        self.codes.iter().filter(move |code| code.expires_at > now)
+        self.codes.iter().filter(move |code| code.is_live(now))
     }
 
     pub fn live_code(&self, hash: &str, now: i64) -> Option<&Code> {
@@ -149,22 +160,7 @@ impl Auth {
     }
 }
 
-/// A schema-1 file is copied once to `<name>.schema1.bak` before it is migrated, since the first
-/// save overwrites it and the image that wrote it refuses schema 2.
 pub fn open(path: &Path) -> io::Result<Auth> {
-    if matches!(
-        corvid_store::load::<legacy::Auth>(path, legacy::SCHEMA),
-        Ok(Some(_))
-    ) {
-        let name = path
-            .file_name()
-            .expect("a state file has a name")
-            .to_string_lossy();
-        let backup = path.with_file_name(format!("{name}.schema1.bak"));
-        if !backup.exists() {
-            std::fs::copy(path, backup)?;
-        }
-    }
     corvid_store::open_migrating(path, SCHEMA, legacy::SCHEMA, legacy::migrate)
 }
 

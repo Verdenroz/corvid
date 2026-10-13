@@ -65,13 +65,13 @@ decide() {
 }
 export REPLY_FROM_SENTINEL
 REPLY_FROM_SENTINEL='200\n{"approvers":1,"codes":[],"passkeys":[{"id":"a"},{"id":"b"}]}\n'
-check "an approver switches to passkeys" '[[ "$(decide)" == "passkeys 2 1 0" ]]'
+check "an approver switches to passkeys" '[[ "$(decide)" == "passkeys 0" ]]'
 REPLY_FROM_SENTINEL='200\n{"approvers":0,"codes":[{"approves":true,"expiresAt":"x"},{"approves":false,"expiresAt":"x"}],"passkeys":[{"id":"a"}]}\n'
-check "passkeys without an approver are not the sign-in yet, and the approver codes waiting are counted" '[[ "$(decide)" == "none 1 0 1" ]]'
+check "passkeys without an approver are not the sign-in yet, and the approver codes waiting are counted" '[[ "$(decide)" == "none 1" ]]'
 REPLY_FROM_SENTINEL='200\n{"approvers":0,"codes":[],"passkeys":[]}\n'
-check "a fresh sentinel has no sign-in and no code waiting" '[[ "$(decide)" == "none 0 0 0" ]]'
+check "a fresh sentinel has no sign-in and no code waiting" '[[ "$(decide)" == "none 0" ]]'
 REPLY_FROM_SENTINEL='503\n{"error":"auth_off"}\n'
-check "passkeys switched off in the sentinel is off, not an error" '[[ "$(decide)" == "off 0 0 0" ]]'
+check "passkeys switched off in the sentinel is off, not an error" '[[ "$(decide)" == "off 0" ]]'
 REPLY_FROM_SENTINEL='000\n\n'
 check "no answer from the sentinel is a failure that prints nothing" 'out="$(decide)"; [[ $? -ne 0 && -z "$out" ]]'
 REPLY_FROM_SENTINEL='502\nbad gateway\n'

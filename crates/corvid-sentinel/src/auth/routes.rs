@@ -93,18 +93,18 @@ async fn register_options(
         return Err(StatusCode::TOO_MANY_REQUESTS);
     }
     let code = codes::hash(&redemption.code);
-    if state.auth.read(|auth| auth.live_code(&code, now).is_none()) {
-        state.failures.record(&address, now);
-        return Err(StatusCode::UNAUTHORIZED);
-    }
-    let (handle, enrolled) = state.auth.read(|auth| {
+    let Some((handle, enrolled)) = state.auth.read(|auth| {
+        auth.live_code(&code, now)?;
         let ids: Vec<_> = auth
             .credential_ids(Purpose::SignIn)
             .into_iter()
             .cloned()
             .collect();
-        (auth.user.clone(), ids)
-    });
+        Some((auth.user.clone(), ids))
+    }) else {
+        state.failures.record(&address, now);
+        return Err(StatusCode::UNAUTHORIZED);
+    };
     let handle = handle.unwrap_or_else(|| hex::encode(random_bytes::<16>()));
     let challenge = state
         .challenges
@@ -183,7 +183,7 @@ async fn register_finish(
             return (None, Registration::Duplicate);
         }
         let first_approver = auth.approvers() == 0;
-        let approves = approves || first_approver;
+        let approves = auth.grants_approval(approves);
         let mut next = auth.clone();
         next.codes.retain(|spent| spent.hash != code);
         let user = next.user.get_or_insert(handle).clone();

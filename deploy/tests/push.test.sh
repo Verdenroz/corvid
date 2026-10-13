@@ -87,7 +87,7 @@ wait_for http://127.0.0.1:8080/healthz/live || { echo "Stalwart never came up" >
 
 cat > "$work/shell" <<'SH'
 #!/bin/sh
-printf 'MAIL_DOMAIN=rig.test\nMAIL_HOSTNAME=mail.rig.test\nMAIL_USER=mailuser\nACME_CONTACT=ops@rig.test\nWEB_PORT=4443\nADMIN_USER=mailuser-admin\n'
+printf 'MAIL_DOMAIN=rig.test\nMAIL_HOSTNAME=mail.rig.test\nMAIL_USER=mailuser\nACME_CONTACT=ops@rig.test\nWEB_PORT=4443\n'
 SH
 chmod +x "$work/shell"
 export CORVID_DIR="$work"; . "$here/lib.sh"

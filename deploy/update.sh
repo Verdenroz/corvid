@@ -94,12 +94,6 @@ detail="stopped before finishing"
 trap write_status EXIT
 write_status true
 
-if ! registry_ref "$ref"; then
-  result=skipped
-  detail="image.ref is $ref, which is not a registry image; this host does not update itself"
-  echo "$detail"
-  exit 0
-fi
 if unit_masked corvid-pod.service; then
   result=skipped
   detail="corvid-pod is masked (a container replacement is in progress); not updating"
@@ -115,6 +109,12 @@ if [[ "$mode" == deploy ]]; then
   detail="deploying $running failed; the host needs attention"
   echo "$detail" >&2
   exit 1
+fi
+if ! registry_ref "$ref"; then
+  result=skipped
+  detail="image.ref is $ref, which is not a registry image; this host does not update itself"
+  echo "$detail"
+  exit 0
 fi
 if [[ "$mode" == timer && "$UPDATE_AUTO" != true ]]; then
   result=skipped

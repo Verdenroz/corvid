@@ -9,6 +9,7 @@ use std::sync::Arc;
 use corvid_sentinel::auth::soft::signing_key;
 use corvid_sentinel::auth::{Audience, Issuer};
 use corvid_sentinel::devices::{self, Approved, Devices, Request, Stage};
+use corvid_sentinel::now_secs;
 use serde_json::{Value, json};
 use stalwart::{KEYS_ACCOUNT, MAIL_ACCOUNT, Stalwart, TOKEN};
 
@@ -33,13 +34,6 @@ async fn rig_with(devices: Devices) -> Rig {
 }
 
 const AUTH_URL: &str = "http://127.0.0.1:11333/internal/issuer";
-
-fn now() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64
-}
 
 async fn rig_full(devices: Devices, fcm_origin: Option<&str>) -> Rig {
     let dir = tempfile::tempdir().unwrap();
@@ -73,7 +67,8 @@ async fn rig_full(devices: Devices, fcm_origin: Option<&str>) -> Rig {
 
 impl Rig {
     fn token(&self) -> String {
-        self.issuer.mint(Audience::Master, "handle", ADMIN, now())
+        self.issuer
+            .mint(Audience::Master, "handle", ADMIN, now_secs())
     }
 
     async fn open(&self, name: &str) -> reqwest::Response {
@@ -154,7 +149,7 @@ fn expired_request(name: &str, code: &str) -> Devices {
         Request {
             name: name.to_owned(),
             code: code.to_owned(),
-            expires_at: now() - 1,
+            expires_at: now_secs() - 1,
             attempts: 0,
             stage: Stage::Open,
         },
@@ -233,17 +228,20 @@ fn request_in(name: &str, expires_at: i64, attempts: u8, stage: Stage) -> Reques
 async fn the_list_holds_only_open_live_requests_newest_first() {
     let mut devices = Devices::default();
     for (id, request) in [
-        ("old", request_in("older", now() + 100, 0, Stage::Open)),
-        ("new", request_in("newer", now() + 500, 4, Stage::Open)),
-        ("gone", request_in("expired", now() - 1, 0, Stage::Open)),
-        ("dead", request_in("dead", now() + 500, 5, Stage::Open)),
+        ("old", request_in("older", now_secs() + 100, 0, Stage::Open)),
+        ("new", request_in("newer", now_secs() + 500, 4, Stage::Open)),
+        (
+            "gone",
+            request_in("expired", now_secs() - 1, 0, Stage::Open),
+        ),
+        ("dead", request_in("dead", now_secs() + 500, 5, Stage::Open)),
         (
             "done",
-            request_in("approved", now() + 500, 0, Stage::Approved),
+            request_in("approved", now_secs() + 500, 0, Stage::Approved),
         ),
         (
             "held",
-            request_in("claimed", now() + 500, 0, Stage::Claimed),
+            request_in("claimed", now_secs() + 500, 0, Stage::Claimed),
         ),
     ] {
         devices.requests.insert(id.to_owned(), request);
@@ -473,18 +471,19 @@ async fn a_token_that_does_not_prove_a_fresh_admin_sign_in_is_refused() {
         let good = rig.token();
         let (head, rest) = good.split_once('.').unwrap();
         let (_, signature) = rest.split_once('.').unwrap();
-        let forged = json!({"aud": "corvid-admin", "exp": now() + 86400});
+        let forged = json!({"aud": "corvid-admin", "exp": now_secs() + 86400});
         format!("{head}.{}.{signature}", base64_url(&forged.to_string()))
     };
     let refused = [
         (
             "the mail audience",
-            rig.issuer.mint(Audience::Daily, "handle", ADMIN, now()),
+            rig.issuer
+                .mint(Audience::Daily, "handle", ADMIN, now_secs()),
         ),
         (
             "an expired token",
             rig.issuer
-                .mint(Audience::Master, "handle", ADMIN, now() - 600),
+                .mint(Audience::Master, "handle", ADMIN, now_secs() - 600),
         ),
         ("altered claims", tampered),
         ("not a token", "garbage".to_owned()),
@@ -640,7 +639,9 @@ async fn an_admin_token_approves_one_request_and_no_second() {
 async fn a_mail_token_cannot_approve_a_device() {
     let rig = rig().await;
     let (id, code) = rig.request("phone").await;
-    let token = rig.issuer.mint(Audience::Daily, "handle", ADMIN, now());
+    let token = rig
+        .issuer
+        .mint(Audience::Daily, "handle", ADMIN, now_secs());
 
     assert_eq!(rig.approve(&id, &code, Some(&token)).await.status(), 401);
 }
@@ -651,7 +652,7 @@ async fn an_admin_token_for_another_user_is_refused() {
     let (id, code) = rig.request("phone").await;
     let token = rig
         .issuer
-        .mint(Audience::Master, "handle", "someone-else", now());
+        .mint(Audience::Master, "handle", "someone-else", now_secs());
 
     assert_eq!(rig.approve(&id, &code, Some(&token)).await.status(), 403);
     assert_eq!(rig.status(&id).await, "pending");
@@ -662,7 +663,7 @@ async fn an_admin_token_from_another_key_is_refused() {
     let rig = rig().await;
     let (id, code) = rig.request("phone").await;
     let other = Issuer::new(signing_key(), AUTH_URL.to_owned());
-    let token = other.mint(Audience::Master, "handle", ADMIN, now());
+    let token = other.mint(Audience::Master, "handle", ADMIN, now_secs());
 
     assert_eq!(rig.approve(&id, &code, Some(&token)).await.status(), 401);
 }

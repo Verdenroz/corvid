@@ -92,7 +92,8 @@ class PasskeysViewModelTest {
         runViewModelTest {
             val r = rig()
 
-            r.viewModel.makeCode(true)
+            r.viewModel.setNewApproves(true)
+            r.viewModel.makeCode()
             val done = r.viewModel.settled()
 
             assertEquals(PasskeyStep.Code(true, "ABCD-EFGH-IJKL-MNOP"), done.step)
@@ -106,7 +107,7 @@ class PasskeysViewModelTest {
         runViewModelTest {
             val r = rig(signIn = { throw PasskeyException.Cancelled })
 
-            r.viewModel.makeCode(false)
+            r.viewModel.makeCode()
             val done = r.viewModel.settled()
 
             assertEquals(PasskeyStep.Failed(PasskeyException.Cancelled.userMessage()), done.step)
@@ -118,7 +119,7 @@ class PasskeysViewModelTest {
         runViewModelTest {
             val r = rig(token = "stale")
 
-            r.viewModel.makeCode(false)
+            r.viewModel.makeCode()
 
             assertEquals(PasskeyStep.Failed(uiText(Res.string.passkeys_failed_not_accepted)), r.viewModel.settled().step)
         }
@@ -128,7 +129,7 @@ class PasskeysViewModelTest {
         runViewModelTest {
             val r = rig()
 
-            r.viewModel.addHere(false)
+            r.viewModel.addHere()
             val done = r.viewModel.settled()
 
             assertEquals(PasskeyStep.Added(false), done.step)
@@ -142,7 +143,7 @@ class PasskeysViewModelTest {
         runViewModelTest {
             val r = rig(enroll = { throw PasskeyException.Cancelled })
 
-            r.viewModel.addHere(false)
+            r.viewModel.addHere()
 
             assertEquals(PasskeyStep.Failed(PasskeyException.Cancelled.userMessage()), r.viewModel.settled().step)
         }
@@ -152,7 +153,7 @@ class PasskeysViewModelTest {
         runViewModelTest {
             val r = rig(enroll = { throw AuthFailure.AlreadyEnrolled })
 
-            r.viewModel.addHere(false)
+            r.viewModel.addHere()
 
             assertEquals(PasskeyStep.Failed(AuthFailure.AlreadyEnrolled.userMessage()), r.viewModel.settled().step)
         }

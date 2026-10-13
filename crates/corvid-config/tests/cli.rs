@@ -32,7 +32,6 @@ fn shell_prints_the_server_section_of_the_template() {
             "ACME_CONTACT",
             "WEB_PORT",
             "HOST_ZONE",
-            "ADMIN_USER",
             "SENTINEL_URL",
             "ISSUER_URL",
             "PUBLISH_MTA_STS",

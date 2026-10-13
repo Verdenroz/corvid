@@ -135,10 +135,12 @@ class HttpAuthApi(
         server: ServerAddress,
         credential: String,
     ): Registered {
-        val body =
-            post(server, "register/finish", credential)
-                .ok(HttpStatusCode.Unauthorized to AuthFailure.BadCode, HttpStatusCode.Conflict to AuthFailure.AlreadyEnrolled)
-        return Registered(tokens(body), parse(body).getValue("approves").jsonPrimitive.boolean)
+        val fields =
+            parse(
+                post(server, "register/finish", credential)
+                    .ok(HttpStatusCode.Unauthorized to AuthFailure.BadCode, HttpStatusCode.Conflict to AuthFailure.AlreadyEnrolled),
+            )
+        return Registered(tokens(fields), fields.getValue("approves").jsonPrimitive.boolean)
     }
 
     override suspend fun loginOptions(
@@ -151,7 +153,7 @@ class HttpAuthApi(
     override suspend fun loginFinish(
         server: ServerAddress,
         credential: String,
-    ): AuthTokens = tokens(post(server, "login/finish", credential).ok(HttpStatusCode.Unauthorized to AuthFailure.Refused))
+    ): AuthTokens = tokens(parse(post(server, "login/finish", credential).ok(HttpStatusCode.Unauthorized to AuthFailure.Refused)))
 
     override suspend fun refresh(
         server: ServerAddress,
@@ -160,30 +162,24 @@ class HttpAuthApi(
         val reply = post(server, "token", buildJsonObject { put("refresh_token", refreshToken) }.toString())
         if (reply.status == HttpStatusCode.ServiceUnavailable) throw JmapException(JmapError.Server(reply.status.value))
         if (reply.status == HttpStatusCode.BadRequest && reply.error() == "invalid_grant") return Refreshed.InvalidGrant
-        return Refreshed.Tokens(tokens(reply.ok()))
+        return Refreshed.Tokens(tokens(parse(reply.ok())))
     }
 
     override suspend fun mailAccepts(
         server: ServerAddress,
         accessToken: String,
     ): Boolean =
-        try {
+        transport {
             httpClient.get("${server.baseUrl}/jmap/session") { header(HttpHeaders.Authorization, "Bearer $accessToken") }.status ==
                 HttpStatusCode.OK
-        } catch (e: SSLException) {
-            throw JmapException(JmapError.TlsFailure(e))
-        } catch (e: IOException) {
-            throw JmapException(JmapError.Unreachable(e))
         }
 
-    private fun tokens(body: String): AuthTokens {
-        val fields = parse(body)
-        return AuthTokens(
+    private fun tokens(fields: JsonObject): AuthTokens =
+        AuthTokens(
             accessToken = fields.getValue("access_token").jsonPrimitive.content,
             refreshToken = fields["refresh_token"]?.jsonPrimitive?.contentOrNull,
             expiresAt = clock.now() + fields.getValue("expires_in").jsonPrimitive.content.toLong().seconds,
         )
-    }
 
     private fun parse(body: String): JsonObject =
         parseOrNull(body) ?: throw JmapException(JmapError.Request("malformed", "the server's answer was not a JSON object"))
@@ -193,10 +189,15 @@ class HttpAuthApi(
         path: String,
         body: String,
     ): Reply =
-        try {
+        transport {
             val response: HttpResponse =
                 httpClient.post("${server.baseUrl}$AUTH_PATH/$path") { setBody(TextContent(body, ContentType.Application.Json)) }
             Reply(response.status, response.bodyAsText(), response.headers[HttpHeaders.RetryAfter]?.toLongOrNull())
+        }
+
+    private inline fun <T> transport(call: () -> T): T =
+        try {
+            call()
         } catch (e: SSLException) {
             throw JmapException(JmapError.TlsFailure(e))
         } catch (e: IOException) {

@@ -3,7 +3,6 @@
 //! approval recorded.
 
 mod keys;
-mod master;
 mod push;
 mod state;
 mod stream;
@@ -20,12 +19,11 @@ use axum::routing::{delete, get, post, put};
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
 
-use crate::auth::Issuer;
+use crate::auth::{Invalid, Issuer, MasterRefusal, master_status};
 use crate::dates;
 use crate::persisted::Persisted;
 use crate::webpush::random_bytes;
 use keys::Keys;
-use master::{Master, Refusal};
 pub use push::{Config as PushConfig, FCM_ORIGIN};
 pub use state::{Approved, Device, Devices, Push, Request, Stage, Target, open};
 use state::{LIFETIME_SECONDS, MAX_OPEN, save};
@@ -52,7 +50,8 @@ pub struct Config {
 struct DeviceState {
     secret: Vec<u8>,
     devices: Persisted<Devices>,
-    master: Master,
+    issuer: Option<Arc<Issuer>>,
+    admin_user: String,
     keys: Keys,
     streams: Streams,
 }
@@ -74,7 +73,8 @@ pub fn routes(config: Config) -> Router {
     let state = Arc::new(DeviceState {
         secret: config.secret,
         devices: Persisted::new(config.state_path, config.devices, save),
-        master: Master::new(config.admin_user, config.local),
+        issuer: config.local,
+        admin_user: config.admin_user,
         keys: Keys::new(
             config.stalwart_url,
             config.stalwart_token,
@@ -274,16 +274,13 @@ async fn approve(
     if !live {
         return Err(StatusCode::GONE);
     }
-    state
-        .master
-        .verify(token, dates::now_secs())
-        .map_err(|refusal| match refusal {
-            Refusal::Invalid(reason) => {
-                tracing::info!(reason, "an admin token was refused");
-                StatusCode::UNAUTHORIZED
-            }
-            Refusal::NotMaster => StatusCode::FORBIDDEN,
-        })?;
+    let issuer = state
+        .issuer
+        .as_deref()
+        .ok_or_else(|| master_status(MasterRefusal::Invalid(Invalid("passkey sign-in is off"))))?;
+    issuer
+        .verify_master(token, &state.admin_user, dates::now_secs())
+        .map_err(master_status)?;
 
     let claim = claim(state.clone(), id.clone(), approval.code).await?;
     let request = match claim {

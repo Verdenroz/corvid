@@ -195,7 +195,7 @@ class SignInViewModelTest {
                     ),
                 )
 
-            viewModel.signInAs(REMEMBERED)
+            viewModel.setUp(REMEMBERED, "")
 
             assertEquals(SignInUiState.SigningIn(null), viewModel.state.value)
             gate.complete(Unit)
@@ -284,7 +284,7 @@ class SignInViewModelTest {
                     ),
                 )
 
-            viewModel.signIn("https://mail.example.com", " ABCD-EFGH ")
+            viewModel.setUp(RememberedAccount("https://mail.example.com"), " ABCD-EFGH ")
 
             assertEquals(listOf("enroll ABCD-EFGH"), steps)
             assertEquals(SignInUiState.Idle, viewModel.state.value)
@@ -295,7 +295,7 @@ class SignInViewModelTest {
         runViewModelTest {
             val viewModel = track(viewModel(SignIn { error("enrolling already signed in") }, EnrollPasskey { _, _, _ -> true }))
 
-            viewModel.signIn("https://mail.example.com/", "ABCD-EFGH")
+            viewModel.setUp(RememberedAccount("https://mail.example.com"), "ABCD-EFGH")
 
             assertEquals("https://mail.example.com", viewModel.remembered.value?.server)
         }
@@ -306,7 +306,7 @@ class SignInViewModelTest {
             val viewModel =
                 track(viewModel(SignIn { error("must not sign in") }, EnrollPasskey { _, _, _ -> throw AuthFailure.BadCode }))
 
-            viewModel.signIn("https://mail.example.com", "nope")
+            viewModel.setUp(RememberedAccount("https://mail.example.com"), "nope")
 
             assertEquals(SignInUiState.Failed(AuthFailure.BadCode.userMessage(), FailureHint.NewCode), viewModel.state.value)
         }
@@ -337,7 +337,7 @@ class SignInViewModelTest {
         runViewModelTest {
             val viewModel = track(viewModel())
 
-            viewModel.signIn("https://mail.example.com", "   ")
+            viewModel.setUp(RememberedAccount("https://mail.example.com"), "   ")
 
             assertIs<SignInUiState.Idle>(viewModel.state.value)
         }
@@ -359,7 +359,7 @@ class SignInViewModelTest {
                     ),
                 )
 
-            viewModel.signIn("https://mail.example.com", "ABCD-EFGH")
+            viewModel.setUp(RememberedAccount("https://mail.example.com"), "ABCD-EFGH")
 
             assertEquals(listOf<SignInUiState>(SignInUiState.FinishingSetup), seen)
             assertEquals(SignInUiState.Idle, viewModel.state.value)
@@ -376,7 +376,7 @@ class SignInViewModelTest {
                     ),
                 )
 
-            viewModel.signIn("https://mail.example.com", "ABCD-EFGH")
+            viewModel.setUp(RememberedAccount("https://mail.example.com"), "ABCD-EFGH")
 
             assertEquals(SignInUiState.Failed(AuthFailure.SetupPending.userMessage()), viewModel.state.value)
             assertEquals("https://mail.example.com", viewModel.remembered.value?.server)

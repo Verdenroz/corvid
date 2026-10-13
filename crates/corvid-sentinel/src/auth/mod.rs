@@ -79,6 +79,17 @@ impl AuthState {
     }
 }
 
+/// A token that proves nothing is 401; a genuine one from someone other than the admin is 403.
+pub(crate) fn master_status(refusal: MasterRefusal) -> StatusCode {
+    match refusal {
+        MasterRefusal::Invalid(Invalid(reason)) => {
+            tracing::info!(reason, "an admin token was refused");
+            StatusCode::UNAUTHORIZED
+        }
+        MasterRefusal::NotMaster => StatusCode::FORBIDDEN,
+    }
+}
+
 /// Runs a state change off the async threads, since it writes the state file.
 async fn commit<T: Send + 'static>(
     state: &Shared,

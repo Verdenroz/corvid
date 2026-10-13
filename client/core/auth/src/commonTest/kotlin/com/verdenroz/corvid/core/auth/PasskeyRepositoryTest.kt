@@ -51,7 +51,7 @@ class PasskeyRepositoryTest {
         runTest {
             val outcome = repository().mintCode(approves = false, "master-token")
 
-            assertEquals(CodeOutcome.Minted("ABCD-EFGH-IJKL-MNOP", Instant.parse("2030-01-02T00:00:00Z")), outcome)
+            assertEquals(CodeOutcome.Minted("ABCD-EFGH-IJKL-MNOP"), outcome)
             assertEquals(listOf(false), fake.passkeys.minted)
             assertEquals(listOf<String?>("master-token"), fake.passkeys.masters)
         }

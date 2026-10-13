@@ -9,6 +9,7 @@ import com.verdenroz.corvid.core.model.ServerAddress
 import com.verdenroz.corvid.core.testing.FakeAuthApi
 import com.verdenroz.corvid.core.testing.FakeAuthenticator
 import com.verdenroz.corvid.core.testing.authTokens
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -100,8 +101,9 @@ class EnrollPasskeyUseCaseTest {
             assertEquals(AuthState.SignedIn("at-from-register", SERVER), tokenSource.state.value)
         }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     @Test
-    fun `a session the mail server never accepts is not adopted and says setup is pending`() =
+    fun `a session the mail server never accepts is polled twelve times 15 seconds apart, not adopted, and says setup is pending`() =
         runTest {
             api.mailAccepts = { false }
             val tokenSource = TokenSource(latch, backgroundScope, api)
@@ -109,7 +111,8 @@ class EnrollPasskeyUseCaseTest {
             assertFailsWith<AuthFailure.SetupPending> { enroll(tokenSource)(SERVER, "ABCD-EFGH") {} }
 
             assertEquals(AuthState.SignedOut, tokenSource.state.value)
-            assertEquals(36, api.calls.count { it.startsWith("mailAccepts") })
+            assertEquals(12, api.calls.count { it.startsWith("mailAccepts") })
+            assertEquals(11 * 15_000L, testScheduler.currentTime)
         }
 
     @Test

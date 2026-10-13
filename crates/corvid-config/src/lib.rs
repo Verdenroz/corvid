@@ -58,7 +58,7 @@ pub struct Server {
     pub host_zone: Option<Name>,
     /// Retired, and still accepted: an unattended update must not leave a service exiting 78 on a
     /// `config.yaml` that carries it.
-    pub idp_hostname: Option<String>,
+    pub idp_hostname: Option<serde::de::IgnoredAny>,
     /// The Android apps that may sign in with a passkey, which `/.well-known/assetlinks.json`
     /// lists and the sentinel accepts as WebAuthn origins. Defaults to the official release.
     #[serde(default = "official_apps")]
@@ -526,8 +526,8 @@ pub struct Push {}
 pub struct Devices {
     pub state: PathBuf,
     /// Retired, and both stay accepted, like `server.idp_hostname`.
-    pub issuer: Option<String>,
-    pub idp_url: Option<String>,
+    pub issuer: Option<serde::de::IgnoredAny>,
+    pub idp_url: Option<serde::de::IgnoredAny>,
     #[serde(default = "stalwart_url")]
     pub stalwart_url: String,
 }
@@ -627,7 +627,7 @@ impl Config {
         let sentinel_addr = sentinel.map_or_else(sentinel_bind, |sentinel| sentinel.bind.clone());
         Ok(format!(
             "MAIL_DOMAIN={}\nMAIL_HOSTNAME={}\nMAIL_USER={}\nACME_CONTACT={}\nWEB_PORT={}\nHOST_ZONE={}\n\
-             ADMIN_USER={}\nSENTINEL_URL=http://{}\nISSUER_URL={}\nPUBLISH_MTA_STS={}\n\
+             SENTINEL_URL=http://{}\nISSUER_URL={}\nPUBLISH_MTA_STS={}\n\
              PUBLISH_TLSA={}\nPUBLISH_ASSETLINKS={}\nASSETLINKS={}\nMTA_STS_MODE={}\nMTA_STS_ID={}\nCLIENT_SOURCES={}\nUPDATE_AUTO={}\n",
             server.domain.0,
             server.hostname.0,
@@ -635,7 +635,6 @@ impl Config {
             server.acme_contact.0,
             server.web_port.0,
             server.host_zone.as_ref().map_or("", |zone| zone.as_str()),
-            server.admin_user(),
             sentinel_addr,
             issuer_url(&sentinel_addr),
             server.web_port.0 == 443,
@@ -830,7 +829,7 @@ mod server_tests {
             format!(
                 "MAIL_DOMAIN=example.com\nMAIL_HOSTNAME=mail.example.com\nMAIL_USER=alice\n\
                  ACME_CONTACT=you@elsewhere.example\nWEB_PORT=4443\nHOST_ZONE=\n\
-                 ADMIN_USER=alice-admin\nSENTINEL_URL=http://127.0.0.1:11333\n\
+                 SENTINEL_URL=http://127.0.0.1:11333\n\
                  ISSUER_URL=http://127.0.0.1:11333/internal/issuer\nPUBLISH_MTA_STS=false\nPUBLISH_TLSA=true\nPUBLISH_ASSETLINKS=false\nASSETLINKS={}\nMTA_STS_MODE=testing\nMTA_STS_ID={id}\nCLIENT_SOURCES=any\nUPDATE_AUTO=true\n",
                 links.trim_end()
             )

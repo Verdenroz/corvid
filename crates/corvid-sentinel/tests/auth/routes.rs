@@ -6,7 +6,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use corvid_sentinel::auth::soft::{BACKUP_ELIGIBLE, Soft, signing_key};
 use corvid_sentinel::auth::{self, Audience, Auth, Credential, Family, Issuer, legacy};
 use corvid_sentinel::now_secs;
-use reqwest::Response;
+use reqwest::{Method, Response};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
@@ -87,15 +87,33 @@ impl Rig {
         reqwest::get(format!("{}{path}", self.url)).await.unwrap()
     }
 
+    async fn signed(
+        &self,
+        method: Method,
+        path: &str,
+        message: &str,
+        body: Option<Value>,
+    ) -> Response {
+        let request = reqwest::Client::new()
+            .request(method, format!("{}{path}", self.url))
+            .header("X-Signature", common::signature(SECRET, message.as_bytes()));
+        let request = match body {
+            Some(body) => request.json(&body),
+            None => request,
+        };
+        request.send().await.unwrap()
+    }
+
     async fn host_minted(&self, approves: bool) -> Value {
         let message = if approves { "code approver" } else { "code" };
-        let response = reqwest::Client::new()
-            .post(format!("{}/internal/auth/codes", self.url))
-            .header("X-Signature", common::signature(SECRET, message.as_bytes()))
-            .json(&json!({"approves": approves}))
-            .send()
-            .await
-            .unwrap();
+        let response = self
+            .signed(
+                Method::POST,
+                "/internal/auth/codes",
+                message,
+                Some(json!({"approves": approves})),
+            )
+            .await;
         assert_eq!(response.status(), 200);
         response.json().await.unwrap()
     }
@@ -108,12 +126,8 @@ impl Rig {
     }
 
     async fn host_status(&self) -> Value {
-        reqwest::Client::new()
-            .get(format!("{}/internal/auth/status", self.url))
-            .header("X-Signature", common::signature(SECRET, b"status"))
-            .send()
+        self.signed(Method::GET, "/internal/auth/status", "status", None)
             .await
-            .unwrap()
             .json()
             .await
             .unwrap()
@@ -571,17 +585,6 @@ async fn a_passkey_that_can_be_backed_up_can_be_an_approver() {
     assert_eq!(rig.enroll(&mut soft, &code).await.status(), 200);
 
     assert_eq!(rig.login(&mut soft, "approve").await.status(), 200);
-}
-
-#[tokio::test]
-async fn a_passkey_that_can_be_backed_up_is_accepted_as_a_plain_one() {
-    let rig = rig().await;
-    rig.enrolled().await;
-    let code = rig.host_code(false).await;
-    let mut soft = Soft::new(RP_ID, ORIGIN);
-    soft.flags |= BACKUP_ELIGIBLE;
-
-    assert_eq!(rig.enroll(&mut soft, &code).await.status(), 200);
 }
 
 #[tokio::test]
@@ -1125,20 +1128,16 @@ async fn the_host_status_counts_approvers_among_the_passkeys() {
 #[tokio::test]
 async fn the_host_routes_refuse_an_unsigned_or_wrongly_signed_call() {
     let rig = rig().await;
-    let client = reqwest::Client::new();
 
-    let unsigned = client
-        .get(format!("{}/internal/auth/status", rig.url))
-        .send()
-        .await
-        .unwrap();
-    let wrong = client
-        .post(format!("{}/internal/auth/codes", rig.url))
-        .header("X-Signature", common::signature(SECRET, b"code"))
-        .json(&json!({"approves": true}))
-        .send()
-        .await
-        .unwrap();
+    let unsigned = rig.get("/internal/auth/status").await;
+    let wrong = rig
+        .signed(
+            Method::POST,
+            "/internal/auth/codes",
+            "code",
+            Some(json!({"approves": true})),
+        )
+        .await;
 
     assert_eq!(unsigned.status(), 401);
     assert_eq!(wrong.status(), 401);
@@ -1151,15 +1150,14 @@ async fn the_host_removes_a_second_passkey_by_id() {
     let second = rig.enrolled().await;
     let id = encode(&second.credential_id);
 
-    let response = reqwest::Client::new()
-        .delete(format!("{}/internal/auth/passkeys/{id}", rig.url))
-        .header(
-            "X-Signature",
-            common::signature(SECRET, format!("remove-passkey {id}").as_bytes()),
+    let response = rig
+        .signed(
+            Method::DELETE,
+            &format!("/internal/auth/passkeys/{id}"),
+            &format!("remove-passkey {id}"),
+            None,
         )
-        .send()
-        .await
-        .unwrap();
+        .await;
 
     assert_eq!(response.status(), 204);
 }
@@ -1564,23 +1562,19 @@ async fn a_second_key_asks_the_host_for_nothing() {
 }
 
 #[tokio::test]
-async fn a_deploy_request_does_not_replace_a_held_apply_and_a_check_does_not_replace_a_deploy() {
+async fn a_deploy_request_replaces_a_held_apply_and_neither_apply_nor_check_replaces_a_deploy() {
     let rig = rig_with_updater().await;
     let held = rig.dir.path().join("update").join("request");
     std::fs::write(&held, "apply").unwrap();
     rig.enrolled().await;
-    assert_eq!(request_word(rig.dir.path()).as_deref(), Some("apply"));
-
-    std::fs::write(&held, "deploy").unwrap();
-    let update = reqwest::Client::new()
-        .post(format!("{}/corvid/update", rig.url))
-        .json(&json!({"action": "check"}))
-        .send()
-        .await
-        .unwrap();
-
-    assert_eq!(update.status(), 202);
     assert_eq!(request_word(rig.dir.path()).as_deref(), Some("deploy"));
+
+    for action in ["apply", "check"] {
+        let update = rig.post("/corvid/update", json!({"action": action})).await;
+
+        assert_eq!(update.status(), 202);
+        assert_eq!(request_word(rig.dir.path()).as_deref(), Some("deploy"));
+    }
 }
 
 #[test]

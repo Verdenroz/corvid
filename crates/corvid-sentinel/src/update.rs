@@ -33,9 +33,9 @@ enum Action {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Word {
     Check,
+    Apply,
     /// Run the deploy files already on the host, with no pull.
     Deploy,
-    Apply,
 }
 
 impl Word {
@@ -48,7 +48,7 @@ impl Word {
     }
 
     fn read(text: &str) -> Option<Self> {
-        [Self::Check, Self::Deploy, Self::Apply]
+        [Self::Check, Self::Apply, Self::Deploy]
             .into_iter()
             .find(|word| word.text() == text)
     }

@@ -44,7 +44,7 @@ pub fn build(config: Config) -> (Router, impl Future<Output = ()> + Send + 'stat
         seen: Persisted::new(config.state_path, config.seen, save),
     });
     let update_dir = config.update_dir.clone();
-    let watcher = watch::updates(state.clone(), config.update_dir.clone(), config.update_poll);
+    let watcher = watch::updates(state.clone(), update_dir.clone(), config.update_poll);
     let router = Router::new()
         .route("/webhook", post(webhook))
         .route("/corvid/notices", get(notices))

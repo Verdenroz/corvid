@@ -60,7 +60,7 @@ account_of() { stalwart_id Account emailAddress "$1"; }
 export CORVID_DIR="$work"; . "$here/lib.sh"
 cat > "$work/shell" <<SH
 #!/bin/sh
-printf 'MAIL_DOMAIN=rig.test\nMAIL_HOSTNAME=mail.rig.test\nMAIL_USER=mailuser\nACME_CONTACT=ops@rig.test\nWEB_PORT=4443\nADMIN_USER=mailuser-admin\nSENTINEL_URL=http://127.0.0.1:$sentinel_port\nISSUER_URL=http://127.0.0.1:$sentinel_port/internal/issuer\n'
+printf 'MAIL_DOMAIN=rig.test\nMAIL_HOSTNAME=mail.rig.test\nMAIL_USER=mailuser\nACME_CONTACT=ops@rig.test\nWEB_PORT=4443\nSENTINEL_URL=http://127.0.0.1:$sentinel_port\nISSUER_URL=http://127.0.0.1:$sentinel_port/internal/issuer\n'
 SH
 chmod +x "$work/shell"
 printf 'STALWART_URL=http://127.0.0.1:8080\nRECOVERY_ADMIN_USER=recovery\nRECOVERY_ADMIN_PASSWORD=%s\n' \
@@ -247,26 +247,7 @@ check "a key set up from it signs in at once and does not approve" \
 
 echo "== a schema-1 state file on startup"
 stop_sentinel
-python3 - "$work/auth.json" <<'PY'
-import hashlib, json, sys
-
-path = sys.argv[1]
-_, body = open(path).read().split("\n", 1)
-_, payload = body.split("\n", 1)
-new = json.loads(payload)
-users = {}
-credentials = {}
-for key, credential in new["credentials"].items():
-    handle = "master-handle" if credential["approves"] else "daily-handle"
-    users[handle] = "master" if credential["approves"] else "daily"
-    credentials[key] = {
-        "user": handle,
-        **{k: credential[k] for k in ("public_key", "sign_count", "backup_eligible", "created_at")},
-    }
-old = json.dumps({"users": users, "credentials": credentials, "codes": {}, "families": new["families"]})
-body = "1\n" + old
-open(path, "w").write(hashlib.sha256(body.encode()).hexdigest() + "\n" + body)
-PY
+"$soft_bin" schema1 "$work/auth.json" || { echo "the schema-1 file was not written" >&2; exit 1; }
 start_sentinel
 check "the first key still signs in after the migration" "$(session "$(soft first login sign-in | access_token)")" 200
 check "and still approves" "$(soft_status first login approve)" 0

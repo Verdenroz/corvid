@@ -8,6 +8,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -53,8 +54,7 @@ import org.koin.compose.viewmodel.koinViewModel
 @Composable
 fun SignInScreen(viewModel: SignInViewModel = koinViewModel()) {
     var another by rememberSaveable { mutableStateOf(false) }
-    var settingUp by rememberSaveable { mutableStateOf<String?>(null) }
-    var settingUpEmail by rememberSaveable { mutableStateOf<String?>(null) }
+    var settingUp by rememberSaveable(stateSaver = AccountSaver) { mutableStateOf<RememberedAccount?>(null) }
     val remembered by viewModel.remembered.collectAsState()
     val account = remembered.takeUnless { another }
     val toggle = {
@@ -63,10 +63,9 @@ fun SignInScreen(viewModel: SignInViewModel = koinViewModel()) {
     }
     val setUp = { target: RememberedAccount ->
         viewModel.reset()
-        settingUp = target.server
-        settingUpEmail = target.email
+        settingUp = target
     }
-    val target = settingUp?.let { RememberedAccount(it, settingUpEmail) }
+    val target = settingUp
     when {
         target != null ->
             SetUp(viewModel, target) {
@@ -100,7 +99,7 @@ private fun RememberedSignIn(
         } else {
             PrimaryButton(
                 stringResource(if (signingIn) Res.string.signin_in_progress else Res.string.signin_submit),
-                onClick = { viewModel.signInAs(account) },
+                onClick = { viewModel.setUp(account, "") },
                 enabled = !signingIn,
             )
             QuietLink(stringResource(Res.string.signin_set_up), onClick = { onSetUp(account) })
@@ -202,14 +201,23 @@ private fun AccountEntry(
                 viewModel.reset()
             })
         } else {
-            if (discovery != null) QuietLink(stringResource(Res.string.signin_change), onClick = viewModel::reset)
-            if (discovery == null) QuietLink(stringResource(Res.string.signin_advanced), onClick = { advanced = true })
+            if (discovery != null) {
+                QuietLink(stringResource(Res.string.signin_change), onClick = viewModel::reset)
+            } else {
+                QuietLink(stringResource(Res.string.signin_advanced), onClick = { advanced = true })
+            }
         }
         remembered?.let { QuietLink(stringResource(Res.string.signin_as, it.label), onClick = onRemembered) }
     }
 }
 
 private val RememberedAccount.label: String get() = email ?: hostOf(server)
+
+private val AccountSaver: Saver<RememberedAccount?, List<String>> =
+    Saver(
+        save = { account -> account?.let { listOf(it.server, it.email.orEmpty()) } },
+        restore = { (server, email) -> RememberedAccount(server, email.ifEmpty { null }) },
+    )
 
 @Composable
 private fun Confirmation(discovery: Discovery) {

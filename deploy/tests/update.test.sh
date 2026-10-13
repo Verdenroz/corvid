@@ -177,8 +177,8 @@ rm "$work/cp-fails"
 run
 check "the next run deploys instead of reporting current" '[[ $status -eq 0 ]] && deployed && [[ "$(field result)" == updated ]]'
 
-echo "== a masked pod blocks every mode"
-for mode in "" check apply; do
+echo "== a masked pod blocks the timer, a check, an apply and a deploy"
+for mode in "" check apply deploy; do
   fresh; echo new > "$work/registry-id"; touch "$work/masked"
   run $mode
   check "${mode:-timer}: exits 0 without pulling or deploying" '[[ $status -eq 0 ]] && ! pulled && [[ ! -s "$work/log" ]]'
@@ -211,15 +211,21 @@ fresh; echo new > "$work/registry-id"; echo new > "$corvid/.update-failed"
 run apply
 check "deploys it" '[[ $status -eq 0 ]] && deployed'
 
-echo "== a deploy request runs the deploy files on the host and pulls nothing"
+echo "== a deploy request runs the deploy files on the host and pulls nothing, even with a release waiting"
 fresh; echo new > "$work/registry-id"
 run deploy
 check "deploys the running release" '[[ $status -eq 0 ]] && grep -q "^deploy old" "$work/log"'
-check "pulls nothing" '! pulled'
+check "pulls nothing and leaves the new release to the next apply" '! pulled && [[ "$(tag ghcr.io/example/corvid:stable)" == old ]]'
 check "marks the deploy as an update, so it prints no setup code" 'grep -qx "deploy 1" "$work/updating"'
 check "consumes the request" '[[ ! -e "$corvid/update/request" ]]'
 check "leaves the running release as it was" '[[ "$(field result)" == current && "$(field running)" == 1.0.0 ]]'
 check "is not left busy" '[[ "$(field busy)" == False ]]'
+
+echo "== a deploy request on a host running a local image still deploys"
+fresh; echo localhost/corvid:0.1.0 > "$corvid/image.ref"; echo old > "$work/tags/localhost_corvid_0.1.0"
+run deploy
+check "deploys the running release and pulls nothing" '[[ $status -eq 0 ]] && grep -q "^deploy old" "$work/log" && ! pulled'
+check "records current" '[[ "$(field result)" == current ]]'
 
 echo "== a deploy request that fails says so and exits 1"
 fresh; touch "$work/old-deploy-fails"

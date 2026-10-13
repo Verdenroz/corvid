@@ -94,27 +94,17 @@ class SignInViewModel(
         _state.value = SignInUiState.Idle
     }
 
-    /** Signs in to a server entered by address; a [code] makes a passkey, which signs in. */
-    fun signIn(
-        server: String,
-        code: String = "",
-    ) {
+    /** Signs in to a server entered by address. */
+    fun signIn(server: String) {
         val discovery = (_state.value as? SignInUiState.Discovered)?.discovery
-        signIn(RememberedAccount(server.trimEnd('/')), discovery, code)
+        signIn(RememberedAccount(server.trimEnd('/')), discovery, code = "")
     }
 
-    fun confirm(
-        discovery: Discovery,
-        code: String = "",
-    ) {
-        signIn(RememberedAccount(discovery.server.baseUrl, discovery.email), discovery, code)
+    fun confirm(discovery: Discovery) {
+        signIn(RememberedAccount(discovery.server.baseUrl, discovery.email), discovery, code = "")
     }
 
-    fun signInAs(account: RememberedAccount) {
-        signIn(account, discovery = null, code = "")
-    }
-
-    /** Makes a passkey on this device from a setup code, which signs in. */
+    /** Makes a passkey on this device from a setup code, which signs in; a blank code signs in with a passkey it has. */
     fun setUp(
         account: RememberedAccount,
         code: String,

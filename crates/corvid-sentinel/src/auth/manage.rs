@@ -7,8 +7,8 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{delete, get, post};
 use serde::{Deserialize, Serialize};
 
-use super::state::{CODE_LIFETIME_SECONDS, Code};
-use super::{MasterRefusal, Shared, codes, commit};
+use super::state::{Auth, CODE_LIFETIME_SECONDS, Code};
+use super::{Shared, codes, commit, master_status};
 use crate::dates;
 
 pub fn routes() -> Router<Shared> {
@@ -30,27 +30,26 @@ struct Passkey {
     created_at: String,
 }
 
-fn passkeys(state: &Shared) -> Vec<Passkey> {
-    let mut listed: Vec<(i64, Passkey)> = state.auth.read(|auth| {
-        auth.credentials
-            .iter()
-            .map(|(id, credential)| {
-                let passkey = Passkey {
-                    id: id.clone(),
-                    approves: credential.approves,
-                    backup_eligible: credential.backup_eligible,
-                    created_at: dates::rfc3339(credential.created_at),
-                };
-                (credential.created_at, passkey)
-            })
-            .collect()
-    });
+fn passkeys(auth: &Auth) -> Vec<Passkey> {
+    let mut listed: Vec<(i64, Passkey)> = auth
+        .credentials
+        .iter()
+        .map(|(id, credential)| {
+            let passkey = Passkey {
+                id: id.clone(),
+                approves: credential.approves,
+                backup_eligible: credential.backup_eligible,
+                created_at: dates::rfc3339(credential.created_at),
+            };
+            (credential.created_at, passkey)
+        })
+        .collect();
     listed.sort_by_key(|(created_at, _)| *created_at);
     listed.into_iter().map(|(_, passkey)| passkey).collect()
 }
 
 async fn list(State(state): State<Shared>) -> Json<Vec<Passkey>> {
-    Json(passkeys(&state))
+    Json(state.auth.read(passkeys))
 }
 
 /// Accepts an admin token in `X-Corvid-Master`, which is spent by this one request.
@@ -62,13 +61,7 @@ fn require_master(state: &Shared, headers: &HeaderMap) -> Result<(), StatusCode>
     state
         .issuer
         .verify_master(token, &state.master_user, dates::now_secs())
-        .map_err(|refusal| match refusal {
-            MasterRefusal::Invalid(reason) => {
-                tracing::info!(?reason, "an admin token was refused");
-                StatusCode::UNAUTHORIZED
-            }
-            MasterRefusal::NotMaster => StatusCode::FORBIDDEN,
-        })
+        .map_err(master_status)
 }
 
 /// How the host proves itself: the webhook secret signs what it asks for.
@@ -96,16 +89,15 @@ struct Minting {
     approves: bool,
 }
 
-/// While nobody can approve, every code enrolls an approver, so the first key on a server is one.
 async fn mint(state: &Shared, approves: bool) -> Result<Json<Minted>, StatusCode> {
     let now = dates::now_secs();
     let code = codes::generate();
     let hash = codes::hash(&code);
     let expires_at = now + CODE_LIFETIME_SECONDS;
     let approves = commit(state, move |auth| {
-        let approves = approves || auth.approvers() == 0;
+        let approves = auth.grants_approval(approves);
         let mut next = auth.clone();
-        next.codes.retain(|code| code.expires_at > now);
+        next.codes.retain(|code| code.is_live(now));
         next.codes.push(Code {
             hash,
             expires_at,
@@ -212,19 +204,17 @@ async fn status(
 ) -> Result<Json<Status>, StatusCode> {
     require_host(&state, &headers, "status")?;
     let now = dates::now_secs();
-    let (approvers, codes) = state.auth.read(|auth| {
-        let codes = auth
-            .live_codes(now)
-            .map(|code| WaitingCode {
-                approves: code.approves,
-                expires_at: dates::rfc3339(code.expires_at),
-            })
-            .collect();
-        (auth.approvers(), codes)
-    });
-    Ok(Json(Status {
-        approvers,
-        codes,
-        passkeys: passkeys(&state),
-    }))
+    Ok(Json(state.auth.read(|auth| {
+        Status {
+            approvers: auth.approvers(),
+            codes: auth
+                .live_codes(now)
+                .map(|code| WaitingCode {
+                    approves: code.approves,
+                    expires_at: dates::rfc3339(code.expires_at),
+                })
+                .collect(),
+            passkeys: passkeys(auth),
+        }
+    })))
 }
