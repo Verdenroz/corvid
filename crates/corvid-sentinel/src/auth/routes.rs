@@ -15,8 +15,8 @@ use super::limits::Pending;
 use super::state::{Auth, Credential, Family, Purpose};
 use super::webauthn::{AssertionResponse, Refusal, RegistrationResponse};
 use super::{Audience, Shared, codes, commit, notify};
-use crate::dates;
 use crate::webpush::random_bytes;
+use crate::{dates, update};
 
 const CEREMONY_TIMEOUT_MS: u32 = 300_000;
 
@@ -144,7 +144,11 @@ struct AttestationBody {
 }
 
 enum Registration {
-    Done { approves: bool, user: String },
+    Done {
+        approves: bool,
+        user: String,
+        first_approver: bool,
+    },
     CodeGone,
     Duplicate,
 }
@@ -178,7 +182,8 @@ async fn register_finish(
         if auth.credentials.contains_key(&id) {
             return (None, Registration::Duplicate);
         }
-        let approves = approves || auth.approvers() == 0;
+        let first_approver = auth.approvers() == 0;
+        let approves = approves || first_approver;
         let mut next = auth.clone();
         next.codes.retain(|spent| spent.hash != code);
         let user = next.user.get_or_insert(handle).clone();
@@ -193,11 +198,25 @@ async fn register_finish(
             },
         );
         open_family(&mut next, family, &secret, id, now);
-        (Some(next), Registration::Done { approves, user })
+        (
+            Some(next),
+            Registration::Done {
+                approves,
+                user,
+                first_approver,
+            },
+        )
     })
     .await?;
     match outcome {
-        Registration::Done { approves, user } => {
+        Registration::Done {
+            approves,
+            user,
+            first_approver,
+        } => {
+            if first_approver {
+                update::request_deploy(&state.update_dir).await;
+            }
             let mut body = tokens(&state, Purpose::SignIn, &user, now, Some(refresh));
             body.approves = Some(approves);
             Ok(Json(body))

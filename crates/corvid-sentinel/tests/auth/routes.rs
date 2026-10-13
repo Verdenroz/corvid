@@ -1514,3 +1514,71 @@ async fn redeeming_a_migrated_plain_code_on_a_server_with_no_approver_enrolls_an
     assert_eq!(tokens["approves"], true);
     assert_eq!(rig.host_status().await["approvers"], 1);
 }
+
+fn request_word(dir: &Path) -> Option<String> {
+    std::fs::read_to_string(dir.join("update").join("request")).ok()
+}
+
+async fn rig_with_updater() -> Rig {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir.path().join("update")).unwrap();
+    let issuer = Arc::new(Issuer::new(signing_key(), ISSUER.to_owned()));
+    let mut config = common::config(
+        &dir.path().join("sentinel.json"),
+        &dir.path().join("update"),
+    );
+    config.auth = Some(auth::Config {
+        secret: SECRET.to_vec(),
+        state_path: dir.path().join("auth.json"),
+        auth: Auth::default(),
+        issuer: issuer.clone(),
+        rp_id: RP_ID.to_owned(),
+        origins: vec![ORIGIN.to_owned()],
+        daily_user: DAILY.to_owned(),
+        master_user: MASTER.to_owned(),
+    });
+    let url = common::serve(config).await;
+    Rig { url, issuer, dir }
+}
+
+#[tokio::test]
+async fn the_first_approver_registering_asks_the_host_to_deploy() {
+    let rig = rig_with_updater().await;
+    assert_eq!(request_word(rig.dir.path()), None);
+
+    rig.enrolled().await;
+
+    assert_eq!(request_word(rig.dir.path()).as_deref(), Some("deploy"));
+}
+
+#[tokio::test]
+async fn a_second_key_asks_the_host_for_nothing() {
+    let rig = rig_with_updater().await;
+    rig.enrolled().await;
+    std::fs::remove_file(rig.dir.path().join("update").join("request")).unwrap();
+
+    rig.enrolled_plain().await;
+    rig.enrolled().await;
+
+    assert_eq!(request_word(rig.dir.path()), None);
+}
+
+#[tokio::test]
+async fn a_deploy_request_does_not_replace_a_held_apply_and_a_check_does_not_replace_a_deploy() {
+    let rig = rig_with_updater().await;
+    let held = rig.dir.path().join("update").join("request");
+    std::fs::write(&held, "apply").unwrap();
+    rig.enrolled().await;
+    assert_eq!(request_word(rig.dir.path()).as_deref(), Some("apply"));
+
+    std::fs::write(&held, "deploy").unwrap();
+    let update = reqwest::Client::new()
+        .post(format!("{}/corvid/update", rig.url))
+        .json(&json!({"action": "check"}))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(update.status(), 202);
+    assert_eq!(request_word(rig.dir.path()).as_deref(), Some("deploy"));
+}

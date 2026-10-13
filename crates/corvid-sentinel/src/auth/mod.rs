@@ -65,6 +65,7 @@ struct AuthState {
     challenges: Challenges,
     failures: Failures,
     app: Arc<AppState>,
+    update_dir: PathBuf,
 }
 
 type Shared = Arc<AuthState>;
@@ -116,7 +117,7 @@ async fn notify(state: &Shared, title: &'static str, detail: String) {
     }
 }
 
-pub(crate) fn routes(config: Config, app: Arc<AppState>) -> Router {
+pub(crate) fn routes(config: Config, app: Arc<AppState>, update_dir: PathBuf) -> Router {
     let state = Arc::new(AuthState {
         secret: config.secret,
         auth: Persisted::new(config.state_path, config.auth, save),
@@ -128,6 +129,7 @@ pub(crate) fn routes(config: Config, app: Arc<AppState>) -> Router {
         challenges: Challenges::default(),
         failures: Failures::default(),
         app,
+        update_dir,
     });
     Router::new()
         .merge(routes::routes())
