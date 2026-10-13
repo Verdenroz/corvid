@@ -2,7 +2,10 @@ package com.verdenroz.corvid.feature.signin
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.verdenroz.corvid.core.auth.AuthFailure
+import com.verdenroz.corvid.core.auth.PasskeyException
 import com.verdenroz.corvid.core.data.catchingSignIn
+import com.verdenroz.corvid.core.data.userMessage
 import com.verdenroz.corvid.core.domain.DiscoverAccount
 import com.verdenroz.corvid.core.domain.Discovery
 import com.verdenroz.corvid.core.domain.DiscoveryFailure
@@ -38,7 +41,18 @@ sealed interface SignInUiState {
 
     data class DiscoveryFailed(val message: UiText) : SignInUiState
 
-    data class Failed(val message: UiText) : SignInUiState
+    data class Failed(val message: UiText, val hint: FailureHint = FailureHint.None) : SignInUiState
+}
+
+/** What the screen should do about a failure beyond saying it. */
+enum class FailureHint {
+    None,
+
+    /** This device has no passkey for the account, so setting it up is the way forward. */
+    SetUp,
+
+    /** The setup code was used or has expired, so the field should not keep it. */
+    NewCode,
 }
 
 val SignInUiState.discovery: Discovery?
@@ -97,6 +111,14 @@ class SignInViewModel(
         signIn(account, discovery = null, code = "")
     }
 
+    /** Makes a passkey on this device from a setup code, which signs in. */
+    fun setUp(
+        account: RememberedAccount,
+        code: String,
+    ) {
+        signIn(account, discovery = null, code = code)
+    }
+
     private fun signIn(
         account: RememberedAccount,
         discovery: Discovery?,
@@ -111,9 +133,17 @@ class SignInViewModel(
             val server = ServerAddress(account.server)
             _state.value =
                 catchingSignIn(SignInUiState::Failed) {
-                    if (code.isBlank()) signInUseCase(server) else enrollPasskey(server, code.trim())
-                    preferences.rememberAccount(account)
-                    SignInUiState.Idle
+                    try {
+                        if (code.isBlank()) signInUseCase(server) else enrollPasskey(server, code.trim())
+                        preferences.rememberAccount(account)
+                        SignInUiState.Idle
+                    } catch (e: PasskeyException.NoCredential) {
+                        SignInUiState.Failed(e.userMessage(), FailureHint.SetUp)
+                    } catch (e: AuthFailure.NotEnrolled) {
+                        SignInUiState.Failed(e.userMessage(), FailureHint.SetUp)
+                    } catch (e: AuthFailure.BadCode) {
+                        SignInUiState.Failed(e.userMessage(), FailureHint.NewCode)
+                    }
                 }
         }
     }

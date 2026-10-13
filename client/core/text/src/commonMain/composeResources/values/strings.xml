@@ -2,12 +2,12 @@
 <resources>
     <string name="server_unreachable">Could not reach the server.</string>
     <string name="passkey_cancelled">The passkey prompt was dismissed.</string>
-    <string name="passkey_none">This device holds no passkey for the server. Enter an enrollment code to add one.</string>
+    <string name="passkey_none">No passkey for this account on this device.</string>
     <string name="passkey_not_associated">The server does not list this build of Corvid for passkeys. Its assetlinks.json must name the app\'s package and signing key.</string>
     <string name="passkey_unsupported">This device cannot make or use passkeys here.</string>
     <string name="passkey_refused">The passkey prompt was refused: %1$s</string>
-    <string name="passkey_code_bad">That enrollment code is not valid, or it has expired.</string>
-    <string name="passkey_not_enrolled">No passkey is enrolled for this yet. Enter an enrollment code from your server.</string>
+    <string name="passkey_code_bad">That code was used or has expired. Get a new one from a device that's already signed in (Settings, Passkeys, Set up another device), or from your server (passkey.sh code).</string>
+    <string name="passkey_not_enrolled">This server has no passkey yet. Set up this device with a code from your server (passkey.sh code).</string>
     <string name="passkey_server_refused">The server did not accept that passkey.</string>
     <string name="passkey_off">This server has passkey sign-in switched off.</string>
     <string name="passkey_already_enrolled">That passkey is already enrolled.</string>

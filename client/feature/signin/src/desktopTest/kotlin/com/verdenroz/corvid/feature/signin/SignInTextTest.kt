@@ -22,11 +22,21 @@ class SignInTextTest {
         }
 
     @Test
-    fun `a code the server refuses says it is not valid or has expired`() =
+    fun `a code the server refuses says where a new one comes from`() =
         runTest {
             assertEquals(
-                "That enrollment code is not valid, or it has expired.",
+                "That code was used or has expired. Get a new one from a device that's already signed in " +
+                    "(Settings, Passkeys, Set up another device), or from your server (passkey.sh code).",
                 AuthFailure.BadCode.userMessage().resolve(environment),
+            )
+        }
+
+    @Test
+    fun `a device with no passkey for the account says so`() =
+        runTest {
+            assertEquals(
+                "No passkey for this account on this device.",
+                PasskeyException.NoCredential.userMessage().resolve(environment),
             )
         }
 }

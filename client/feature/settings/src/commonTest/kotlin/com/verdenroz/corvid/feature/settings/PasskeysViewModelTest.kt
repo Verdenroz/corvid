@@ -198,4 +198,15 @@ class PasskeysViewModelTest {
             assertEquals(PasskeyStep.Failed(uiText(Res.string.passkeys_failed_last)), r.viewModel.settled().step)
             assertEquals(3, r.fake.passkeys.passkeys.size)
         }
+
+    @Test
+    fun `the new passkey does not approve devices until asked`() =
+        runViewModelTest {
+            val r = rig()
+
+            assertEquals(false, r.viewModel.state.value.newApproves)
+            r.viewModel.setNewApproves(true)
+
+            assertEquals(true, r.viewModel.state.value.newApproves)
+        }
 }

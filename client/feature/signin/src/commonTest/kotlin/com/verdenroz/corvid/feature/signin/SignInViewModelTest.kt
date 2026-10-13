@@ -222,7 +222,6 @@ class SignInViewModelTest {
         runViewModelTest {
             val failures =
                 listOf(
-                    PasskeyException.NoCredential,
                     PasskeyException.NotAssociated,
                     PasskeyException.Unsupported,
                     PasskeyException.Refused("blocked"),
@@ -237,13 +236,26 @@ class SignInViewModelTest {
         }
 
     @Test
-    fun `a server that says no daily passkey is enrolled says so`() =
+    fun `a device with no passkey for the account offers setting it up`() =
+        runViewModelTest {
+            val viewModel = track(viewModel(SignIn { throw PasskeyException.NoCredential }))
+
+            viewModel.signIn("https://mail.example.org")
+
+            assertEquals(
+                SignInUiState.Failed(PasskeyException.NoCredential.userMessage(), FailureHint.SetUp),
+                viewModel.state.value,
+            )
+        }
+
+    @Test
+    fun `a server with no passkey enrolled offers setting this device up`() =
         runViewModelTest {
             val viewModel = track(viewModel(SignIn { throw AuthFailure.NotEnrolled }))
 
             viewModel.signIn("https://mail.example.org")
 
-            assertEquals(SignInUiState.Failed(AuthFailure.NotEnrolled.userMessage()), viewModel.state.value)
+            assertEquals(SignInUiState.Failed(AuthFailure.NotEnrolled.userMessage(), FailureHint.SetUp), viewModel.state.value)
         }
 
     @Test
@@ -289,14 +301,35 @@ class SignInViewModelTest {
         }
 
     @Test
-    fun `a code the server refuses stops before sign-in`() =
+    fun `a code the server refuses stops before sign-in and asks for a new one`() =
         runViewModelTest {
             val viewModel =
                 track(viewModel(SignIn { error("must not sign in") }, EnrollPasskey { _, _ -> throw AuthFailure.BadCode }))
 
             viewModel.signIn("https://mail.example.com", "nope")
 
-            assertEquals(SignInUiState.Failed(AuthFailure.BadCode.userMessage()), viewModel.state.value)
+            assertEquals(SignInUiState.Failed(AuthFailure.BadCode.userMessage(), FailureHint.NewCode), viewModel.state.value)
+        }
+
+    @Test
+    fun `setting up a remembered account enrolls at its server and keeps it remembered`() =
+        runViewModelTest {
+            val enrolled = mutableListOf<Pair<ServerAddress, String>>()
+            val viewModel =
+                track(
+                    viewModel(
+                        SignIn { error("enrolling already signed in") },
+                        EnrollPasskey { server, code ->
+                            enrolled += server to code
+                            false
+                        },
+                    ),
+                )
+
+            viewModel.setUp(REMEMBERED, "ABCD-EFGH")
+
+            assertEquals(listOf(ServerAddress(REMEMBERED.server) to "ABCD-EFGH"), enrolled)
+            assertEquals(REMEMBERED, viewModel.remembered.value)
         }
 
     @Test

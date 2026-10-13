@@ -55,6 +55,8 @@ data class PasskeysState(
     val list: PasskeyList = PasskeyList.Loading,
     val step: PasskeyStep = PasskeyStep.Idle,
     val removing: String? = null,
+    /** Whether the passkey the next code or "here" adds approves devices. */
+    val newApproves: Boolean = false,
 ) {
     val busy: Boolean get() = step is PasskeyStep.SigningIn || step is PasskeyStep.Working
 }
@@ -114,6 +116,10 @@ class PasskeysViewModel(
             CodeOutcome.NotAccepted -> PasskeyStep.Failed(uiText(Res.string.passkeys_failed_not_accepted))
             CodeOutcome.NotServed -> PasskeyStep.Failed(AuthFailure.Off.userMessage())
         }
+
+    fun setNewApproves(approves: Boolean) {
+        _state.value = _state.value.copy(newApproves = approves)
+    }
 
     fun askRemove(id: String) {
         if (!_state.value.busy) _state.value = _state.value.copy(removing = id, step = PasskeyStep.Idle)

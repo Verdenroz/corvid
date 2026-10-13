@@ -1,9 +1,10 @@
 package com.verdenroz.corvid.feature.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,30 +13,41 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.auth.Passkey
+import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.PillButton
+import com.verdenroz.corvid.core.designsystem.component.QuietLink
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.DiscardQuestion
 import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.core.ui.PageHeader
 import com.verdenroz.corvid.feature.settings.resources.Res
-import com.verdenroz.corvid.feature.settings.resources.passkeys_add_daily
-import com.verdenroz.corvid.feature.settings.resources.passkeys_add_master
+import com.verdenroz.corvid.feature.settings.resources.passkeys_add_heading
+import com.verdenroz.corvid.feature.settings.resources.passkeys_add_here
+import com.verdenroz.corvid.feature.settings.resources.passkeys_add_here_asks
+import com.verdenroz.corvid.feature.settings.resources.passkeys_add_other
+import com.verdenroz.corvid.feature.settings.resources.passkeys_add_other_asks
 import com.verdenroz.corvid.feature.settings.resources.passkeys_added
+import com.verdenroz.corvid.feature.settings.resources.passkeys_added_approver
 import com.verdenroz.corvid.feature.settings.resources.passkeys_added_on
+import com.verdenroz.corvid.feature.settings.resources.passkeys_approves
+import com.verdenroz.corvid.feature.settings.resources.passkeys_can_approve
 import com.verdenroz.corvid.feature.settings.resources.passkeys_cancel
-import com.verdenroz.corvid.feature.settings.resources.passkeys_code_daily
-import com.verdenroz.corvid.feature.settings.resources.passkeys_code_made
-import com.verdenroz.corvid.feature.settings.resources.passkeys_code_master
+import com.verdenroz.corvid.feature.settings.resources.passkeys_code_approves
+import com.verdenroz.corvid.feature.settings.resources.passkeys_code_expiry
+import com.verdenroz.corvid.feature.settings.resources.passkeys_code_plain
 import com.verdenroz.corvid.feature.settings.resources.passkeys_detail
 import com.verdenroz.corvid.feature.settings.resources.passkeys_device_bound
 import com.verdenroz.corvid.feature.settings.resources.passkeys_loading
@@ -44,14 +56,15 @@ import com.verdenroz.corvid.feature.settings.resources.passkeys_refresh
 import com.verdenroz.corvid.feature.settings.resources.passkeys_remove
 import com.verdenroz.corvid.feature.settings.resources.passkeys_remove_question
 import com.verdenroz.corvid.feature.settings.resources.passkeys_removed
-import com.verdenroz.corvid.feature.settings.resources.passkeys_role_daily
-import com.verdenroz.corvid.feature.settings.resources.passkeys_role_master
+import com.verdenroz.corvid.feature.settings.resources.passkeys_row
 import com.verdenroz.corvid.feature.settings.resources.passkeys_signing_in
 import com.verdenroz.corvid.feature.settings.resources.passkeys_synced
 import com.verdenroz.corvid.feature.settings.resources.passkeys_title
 import com.verdenroz.corvid.feature.settings.resources.passkeys_working
 import com.verdenroz.corvid.feature.settings.resources.settings_back
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
+import kotlin.time.Instant
 
 @Composable
 fun PasskeysScreen(
@@ -69,8 +82,10 @@ fun PasskeysScreen(
             Column(Modifier.widthIn(max = 640.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text(stringResource(Res.string.passkeys_detail), style = CorvidTheme.type.body, color = CorvidTheme.colors.inkMuted)
                 Passkeys(state, viewModel)
-                Actions(viewModel)
-                StepText(state.step)
+                if (state.list is PasskeyList.Listed) {
+                    Actions(state, viewModel)
+                    StepText(state.step)
+                }
             }
         }
     }
@@ -108,17 +123,16 @@ private fun PasskeyRow(
     Column(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(stringResource(passkey.label()), style = CorvidTheme.type.name)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val added = stringResource(Res.string.passkeys_added_on, passkey.createdAt.toString().substringBefore('T'))
+                    Text(stringResource(Res.string.passkeys_row, added), style = CorvidTheme.type.name)
+                    if (passkey.approves) ApprovesTag()
+                }
                 val kind = if (passkey.backupEligible) Res.string.passkeys_synced else Res.string.passkeys_device_bound
-                val added = stringResource(Res.string.passkeys_added_on, passkey.createdAt.toString().substringBefore('T'))
-                Text(
-                    stringResource(kind) + " · " + added,
-                    style = CorvidTheme.type.meta,
-                    color = CorvidTheme.colors.inkMuted,
-                )
+                Text(stringResource(kind), style = CorvidTheme.type.meta, color = CorvidTheme.colors.inkMuted)
             }
             if (!confirming) {
-                PillButton(stringResource(Res.string.passkeys_remove), null, onClick = { viewModel.askRemove(passkey.id) })
+                QuietLink(stringResource(Res.string.passkeys_remove), onClick = { viewModel.askRemove(passkey.id) })
             }
         }
         if (confirming) {
@@ -134,30 +148,88 @@ private fun PasskeyRow(
 }
 
 @Composable
-private fun Actions(viewModel: PasskeysViewModel) {
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        PillButton(stringResource(Res.string.passkeys_add_daily), null, onClick = { viewModel.addHere(false) })
-        PillButton(stringResource(Res.string.passkeys_add_master), null, onClick = { viewModel.addHere(true) })
-        PillButton(stringResource(Res.string.passkeys_code_daily), null, onClick = { viewModel.makeCode(false) })
-        PillButton(stringResource(Res.string.passkeys_code_master), null, onClick = { viewModel.makeCode(true) })
+private fun ApprovesTag() {
+    Text(
+        stringResource(Res.string.passkeys_approves),
+        style = CorvidTheme.type.chip,
+        color = CorvidTheme.colors.inkMuted,
+        modifier = Modifier.border(1.dp, CorvidTheme.colors.line, CorvidShape.pill).padding(horizontal = 8.dp, vertical = 2.dp),
+    )
+}
+
+@Composable
+private fun Actions(
+    state: PasskeysState,
+    viewModel: PasskeysViewModel,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(stringResource(Res.string.passkeys_add_heading), style = CorvidTheme.type.dayHeader, color = CorvidTheme.colors.ink)
+        Row(
+            Modifier.padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Switch(checked = state.newApproves, onCheckedChange = viewModel::setNewApproves, enabled = !state.busy)
+            Text(stringResource(Res.string.passkeys_can_approve), style = CorvidTheme.type.name)
+        }
+        HorizontalDivider(color = CorvidTheme.colors.line)
+        ActionRow(Res.string.passkeys_add_here, Res.string.passkeys_add_here_asks, !state.busy) { viewModel.addHere(state.newApproves) }
+        HorizontalDivider(color = CorvidTheme.colors.line)
+        ActionRow(Res.string.passkeys_add_other, Res.string.passkeys_add_other_asks, !state.busy) { viewModel.makeCode(state.newApproves) }
+        HorizontalDivider(color = CorvidTheme.colors.line)
+    }
+}
+
+@Composable
+private fun ActionRow(
+    title: StringResource,
+    asks: StringResource,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Column(
+        Modifier.fillMaxWidth().clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text(stringResource(title), style = CorvidTheme.type.name, fontWeight = FontWeight.SemiBold, color = CorvidTheme.colors.ink)
+        Text(stringResource(asks), style = CorvidTheme.type.meta, color = CorvidTheme.colors.inkMuted)
     }
 }
 
 @Composable
 private fun StepText(step: PasskeyStep) {
-    val text =
-        when (step) {
-            PasskeyStep.Idle -> return
-            PasskeyStep.SigningIn -> stringResource(Res.string.passkeys_signing_in)
-            PasskeyStep.Working -> stringResource(Res.string.passkeys_working)
-            is PasskeyStep.Code -> stringResource(Res.string.passkeys_code_made, stringResource(approvesLabel(step.approves)), step.code)
-            is PasskeyStep.Added -> stringResource(Res.string.passkeys_added, stringResource(approvesLabel(step.approves)))
-            PasskeyStep.Removed -> stringResource(Res.string.passkeys_removed)
-            is PasskeyStep.Failed -> step.message.asString()
+    when (step) {
+        PasskeyStep.Idle -> Unit
+        is PasskeyStep.Code -> IssuedCode(step)
+        else -> {
+            val text =
+                when (step) {
+                    PasskeyStep.Idle, is PasskeyStep.Code -> return
+                    PasskeyStep.SigningIn -> stringResource(Res.string.passkeys_signing_in)
+                    PasskeyStep.Working -> stringResource(Res.string.passkeys_working)
+                    is PasskeyStep.Added ->
+                        stringResource(
+                            if (step.approves) Res.string.passkeys_added_approver else Res.string.passkeys_added,
+                        )
+                    PasskeyStep.Removed -> stringResource(Res.string.passkeys_removed)
+                    is PasskeyStep.Failed -> step.message.asString()
+                }
+            Text(text, style = CorvidTheme.type.body, color = CorvidTheme.colors.ink)
         }
-    Text(text, style = CorvidTheme.type.body, color = CorvidTheme.colors.ink)
+    }
 }
 
-private fun Passkey.label() = approvesLabel(approves)
+@Composable
+private fun IssuedCode(step: PasskeyStep.Code) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(step.code, style = CorvidTheme.type.headline, color = CorvidTheme.colors.ink)
+        val approves = stringResource(if (step.approves) Res.string.passkeys_code_approves else Res.string.passkeys_code_plain)
+        Text(
+            stringResource(Res.string.passkeys_code_expiry, step.expiresAt.stamp(), approves),
+            style = CorvidTheme.type.meta,
+            color = CorvidTheme.colors.inkMuted,
+        )
+    }
+}
 
-private fun approvesLabel(approves: Boolean) = if (approves) Res.string.passkeys_role_master else Res.string.passkeys_role_daily
+private fun Instant.stamp() = toString().substringBefore('Z').substringBeforeLast(':').replace('T', ' ') + " UTC"
