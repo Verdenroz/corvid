@@ -149,7 +149,22 @@ impl Auth {
     }
 }
 
+/// A schema-1 file is copied once to `<name>.schema1.bak` before it is migrated, since the first
+/// save overwrites it and the image that wrote it refuses schema 2.
 pub fn open(path: &Path) -> io::Result<Auth> {
+    if matches!(
+        corvid_store::load::<legacy::Auth>(path, legacy::SCHEMA),
+        Ok(Some(_))
+    ) {
+        let name = path
+            .file_name()
+            .expect("a state file has a name")
+            .to_string_lossy();
+        let backup = path.with_file_name(format!("{name}.schema1.bak"));
+        if !backup.exists() {
+            std::fs::copy(path, backup)?;
+        }
+    }
     corvid_store::open_migrating(path, SCHEMA, legacy::SCHEMA, legacy::migrate)
 }
 

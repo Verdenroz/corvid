@@ -1582,3 +1582,45 @@ async fn a_deploy_request_does_not_replace_a_held_apply_and_a_check_does_not_rep
     assert_eq!(update.status(), 202);
     assert_eq!(request_word(rig.dir.path()).as_deref(), Some("deploy"));
 }
+
+#[test]
+fn opening_a_schema_one_file_keeps_a_copy_of_it_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = dir.path().join("auth.json");
+    let master = enrolled_master();
+    write_schema_one(dir.path(), &schema_one(&master));
+    let original = std::fs::read(&state).unwrap();
+    let backup = dir.path().join("auth.json.schema1.bak");
+
+    auth::open(&state).unwrap();
+    assert_eq!(std::fs::read(&backup).unwrap(), original);
+
+    corvid_store::save(&state, 2, &Auth::default()).unwrap();
+    auth::open(&state).unwrap();
+    assert_eq!(std::fs::read(&backup).unwrap(), original);
+}
+
+#[test]
+fn an_existing_schema_one_copy_is_never_overwritten() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = dir.path().join("auth.json");
+    let backup = dir.path().join("auth.json.schema1.bak");
+    std::fs::write(&backup, "earlier").unwrap();
+    write_schema_one(dir.path(), &schema_one(&enrolled_master()));
+
+    auth::open(&state).unwrap();
+
+    assert_eq!(std::fs::read_to_string(&backup).unwrap(), "earlier");
+}
+
+#[test]
+fn opening_a_missing_or_current_file_makes_no_copy() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = dir.path().join("auth.json");
+
+    auth::open(&state).unwrap();
+    corvid_store::save(&state, 2, &Auth::default()).unwrap();
+    auth::open(&state).unwrap();
+
+    assert!(!dir.path().join("auth.json.schema1.bak").exists());
+}

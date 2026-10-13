@@ -401,6 +401,13 @@ To roll back by hand, on the host:
 
 Set `update.auto: false` first, or the next night's run takes the release again.
 
+The sentinel's `auth.json` changed format (schema 2) in the release that introduced approver keys.
+The first start on it keeps the old file as `auth.json.schema1.bak` beside it, once. Rolling back
+past that release is automatic while nobody has signed in or enrolled since the update, because the
+file is rewritten on the first change. After that the older image refuses the file and exits 1, so
+restore the copy first: `cp /opt/corvid/sentinel/auth.json.schema1.bak /opt/corvid/sentinel/auth.json`
+(passkeys enrolled since then are lost and need new setup codes).
+
 ## Android release signing
 
 Release APKs are signed by CI with a key supplied through four repository secrets:
