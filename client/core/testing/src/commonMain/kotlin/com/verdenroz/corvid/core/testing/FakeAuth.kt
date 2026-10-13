@@ -39,6 +39,9 @@ class FakeAuthApi(var tokens: AuthTokens = authTokens()) : AuthApi {
     var finishFailure: Exception? = null
     var refresh: suspend (String) -> Refreshed = { Refreshed.Tokens(tokens) }
 
+    /** Whether the mail server accepts a token, asked once per poll. */
+    var mailAccepts: suspend (String) -> Boolean = { true }
+
     override suspend fun registerOptions(
         server: ServerAddress,
         code: String,
@@ -73,6 +76,14 @@ class FakeAuthApi(var tokens: AuthTokens = authTokens()) : AuthApi {
         calls += "loginFinish $credential"
         finishFailure?.let { throw it }
         return tokens
+    }
+
+    override suspend fun mailAccepts(
+        server: ServerAddress,
+        accessToken: String,
+    ): Boolean {
+        calls += "mailAccepts $accessToken"
+        return mailAccepts(accessToken)
     }
 
     override suspend fun refresh(

@@ -31,12 +31,15 @@ class EnrollPasskeyUseCaseTest {
         runTest {
             api.registersApprover = true
 
-            val approves = enroll(TokenSource(latch, backgroundScope, api))(SERVER, "ABCD-EFGH")
+            val approves = enroll(TokenSource(latch, backgroundScope, api))(SERVER, "ABCD-EFGH") {}
 
             assertTrue(approves)
             assertEquals(listOf("create creation-options:ABCD-EFGH"), authenticator.calls)
             assertEquals(listOf(SERVER), authenticator.servers)
-            assertEquals(listOf("registerOptions ABCD-EFGH", "registerFinish created:creation-options:ABCD-EFGH"), api.calls)
+            assertEquals(
+                listOf("registerOptions ABCD-EFGH", "registerFinish created:creation-options:ABCD-EFGH", "mailAccepts at-from-register"),
+                api.calls,
+            )
         }
 
     @Test
@@ -44,7 +47,7 @@ class EnrollPasskeyUseCaseTest {
         runTest {
             val tokenSource = TokenSource(latch, backgroundScope, api)
 
-            enroll(tokenSource)(SERVER, "ABCD-EFGH")
+            enroll(tokenSource)(SERVER, "ABCD-EFGH") {}
 
             assertEquals(AuthState.SignedIn("at-from-register", SERVER), tokenSource.state.value)
             assertEquals(listOf("create creation-options:ABCD-EFGH"), authenticator.calls)
@@ -55,7 +58,7 @@ class EnrollPasskeyUseCaseTest {
         runTest {
             latch.trip()
 
-            enroll(TokenSource(latch, backgroundScope, api))(SERVER, "ABCD-EFGH")
+            enroll(TokenSource(latch, backgroundScope, api))(SERVER, "ABCD-EFGH") {}
 
             assertFalse(latch.tripped.value)
         }
@@ -65,7 +68,7 @@ class EnrollPasskeyUseCaseTest {
         runTest {
             api.optionsFailure = AuthFailure.BadCode
 
-            assertFailsWith<AuthFailure.BadCode> { enroll(TokenSource(latch, backgroundScope, api))(SERVER, "x") }
+            assertFailsWith<AuthFailure.BadCode> { enroll(TokenSource(latch, backgroundScope, api))(SERVER, "x") {} }
 
             assertEquals(emptyList(), authenticator.calls)
         }
@@ -76,9 +79,47 @@ class EnrollPasskeyUseCaseTest {
             authenticator.failure = PasskeyException.Cancelled
             val tokenSource = TokenSource(latch, backgroundScope, api)
 
-            assertFailsWith<PasskeyException.Cancelled> { enroll(tokenSource)(SERVER, "ABCD-EFGH") }
+            assertFailsWith<PasskeyException.Cancelled> { enroll(tokenSource)(SERVER, "ABCD-EFGH") {} }
 
             assertEquals(listOf("registerOptions ABCD-EFGH"), api.calls)
             assertEquals(AuthState.SignedOut, tokenSource.state.value)
+        }
+
+    @Test
+    fun `the session is adopted only once the mail server accepts its token, and waiting is announced once`() =
+        runTest {
+            var polls = 0
+            api.mailAccepts = { ++polls > 3 }
+            val tokenSource = TokenSource(latch, backgroundScope, api)
+            var announced = 0
+
+            enroll(tokenSource)(SERVER, "ABCD-EFGH") { announced++ }
+
+            assertEquals(4, polls)
+            assertEquals(1, announced)
+            assertEquals(AuthState.SignedIn("at-from-register", SERVER), tokenSource.state.value)
+        }
+
+    @Test
+    fun `a session the mail server never accepts is not adopted and says setup is pending`() =
+        runTest {
+            api.mailAccepts = { false }
+            val tokenSource = TokenSource(latch, backgroundScope, api)
+
+            assertFailsWith<AuthFailure.SetupPending> { enroll(tokenSource)(SERVER, "ABCD-EFGH") {} }
+
+            assertEquals(AuthState.SignedOut, tokenSource.state.value)
+            assertEquals(36, api.calls.count { it.startsWith("mailAccepts") })
+        }
+
+    @Test
+    fun `a server that already accepts the token is not waited for`() =
+        runTest {
+            var announced = false
+
+            enroll(TokenSource(latch, backgroundScope, api))(SERVER, "ABCD-EFGH") { announced = true }
+
+            assertFalse(announced)
+            assertEquals(1, api.calls.count { it.startsWith("mailAccepts") })
         }
 }

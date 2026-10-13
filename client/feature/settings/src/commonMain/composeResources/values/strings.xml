@@ -73,9 +73,9 @@
     <string name="settings_notices_row">Server notices</string>
     <string name="settings_notices_detail">Sign-in alerts and failed updates the server has reported.</string>
     <string name="settings_approve_row">Approve a device</string>
-    <string name="settings_approve_detail">Let a new device read its key, with your admin passkey.</string>
+    <string name="settings_approve_detail">Let a new device read its key, with a passkey that approves devices.</string>
     <string name="approve_title">Approve a device</string>
-    <string name="approve_detail">Pick the device that is waiting, then type the code it shows. You will be asked for your admin passkey.</string>
+    <string name="approve_detail">Pick the device that is waiting, then type the code it shows. You will be asked for a passkey that approves devices.</string>
     <string name="approve_waiting">Devices waiting</string>
     <string name="approve_loading">Looking for devices that asked.</string>
     <string name="approve_none">No device is waiting. On the new device, open Corvid and sign in; it shows a code and asks to be approved.</string>
@@ -87,7 +87,7 @@
     <string name="approve_id">Request id</string>
     <string name="approve_code">Code</string>
     <string name="approve_action">Approve</string>
-    <string name="approve_signing_in">Waiting for your admin passkey.</string>
+    <string name="approve_signing_in">Waiting for a passkey that approves devices.</string>
     <string name="approve_sending">Approving.</string>
     <string name="approve_approved">Approved request %1$s.</string>
     <string name="scan_hint">Point the camera at the code on the new device.</string>

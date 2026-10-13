@@ -16,6 +16,7 @@
     <string name="signin_set_up_code">Setup code</string>
     <string name="signin_set_up_submit">Add passkey</string>
     <string name="signin_set_up_progress">Adding passkey…</string>
+    <string name="signin_finishing">Finishing setup…</string>
     <string name="signin_set_up_back">Back to sign in</string>
     <string name="signin_server_not_https">The server must be an https:// address.</string>
     <string name="signin_title">Sign in</string>

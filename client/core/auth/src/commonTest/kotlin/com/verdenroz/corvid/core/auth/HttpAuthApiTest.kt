@@ -232,4 +232,25 @@ class HttpAuthApiTest {
 
             assertIs<JmapError.Request>(assertFailsWith<JmapException> { api.loginFinish(SERVER, "{}") }.error)
         }
+
+    @Test
+    fun `the mail server accepting a token is a 200 on the session carrying it as a bearer`() =
+        runTest {
+            val api = api { respond("{}", HttpStatusCode.OK, JSON) }
+
+            assertEquals(true, api.mailAccepts(SERVER, "at"))
+
+            assertEquals("https://mail.corvid.test:4443/jmap/session", requests.single().url.toString())
+            assertEquals("Bearer at", requests.single().headers["Authorization"])
+        }
+
+    @Test
+    fun `a refused token or a server still restarting is not yet accepted`() =
+        runTest {
+            for (status in listOf(HttpStatusCode.Unauthorized, HttpStatusCode.BadGateway)) {
+                val api = api { respond("", status) }
+
+                assertEquals(false, api.mailAccepts(SERVER, "at"), status.toString())
+            }
+        }
 }

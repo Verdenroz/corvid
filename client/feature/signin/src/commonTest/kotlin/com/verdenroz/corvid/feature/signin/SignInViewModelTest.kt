@@ -40,7 +40,7 @@ private fun preferences() = DevicePreferences(InMemoryPreferencesStore(), Corout
 private fun discoverAccount(documents: Map<String, String> = mapOf("https://example.com/.well-known/corvid" to DOCUMENT)) =
     DiscoverAccount(srvLookup = SrvLookup { null }, documents = DiscoveryDocumentSource { documents[it] })
 
-private val NO_ENROLL = EnrollPasskey { _, _ -> error("no enrollment was asked for") }
+private val NO_ENROLL = EnrollPasskey { _, _, _ -> error("no enrollment was asked for") }
 
 private fun viewModel(
     signIn: SignIn = SignIn { },
@@ -277,7 +277,7 @@ class SignInViewModelTest {
                 track(
                     viewModel(
                         SignIn { error("enrolling already signed in") },
-                        EnrollPasskey { _, code ->
+                        EnrollPasskey { _, code, _ ->
                             steps += "enroll $code"
                             false
                         },
@@ -293,7 +293,7 @@ class SignInViewModelTest {
     @Test
     fun `a code that signs in is remembered like any other sign-in`() =
         runViewModelTest {
-            val viewModel = track(viewModel(SignIn { error("enrolling already signed in") }, EnrollPasskey { _, _ -> true }))
+            val viewModel = track(viewModel(SignIn { error("enrolling already signed in") }, EnrollPasskey { _, _, _ -> true }))
 
             viewModel.signIn("https://mail.example.com/", "ABCD-EFGH")
 
@@ -304,7 +304,7 @@ class SignInViewModelTest {
     fun `a code the server refuses stops before sign-in and asks for a new one`() =
         runViewModelTest {
             val viewModel =
-                track(viewModel(SignIn { error("must not sign in") }, EnrollPasskey { _, _ -> throw AuthFailure.BadCode }))
+                track(viewModel(SignIn { error("must not sign in") }, EnrollPasskey { _, _, _ -> throw AuthFailure.BadCode }))
 
             viewModel.signIn("https://mail.example.com", "nope")
 
@@ -319,7 +319,7 @@ class SignInViewModelTest {
                 track(
                     viewModel(
                         SignIn { error("enrolling already signed in") },
-                        EnrollPasskey { server, code ->
+                        EnrollPasskey { server, code, _ ->
                             enrolled += server to code
                             false
                         },
@@ -340,5 +340,45 @@ class SignInViewModelTest {
             viewModel.signIn("https://mail.example.com", "   ")
 
             assertIs<SignInUiState.Idle>(viewModel.state.value)
+        }
+
+    @Test
+    fun `a server still switching passkeys on shows finishing setup until it accepts the session`() =
+        runViewModelTest {
+            val seen = mutableListOf<SignInUiState>()
+            lateinit var viewModel: SignInViewModel
+            viewModel =
+                track(
+                    viewModel(
+                        SignIn { error("enrolling already signed in") },
+                        EnrollPasskey { _, _, onWaiting ->
+                            onWaiting()
+                            seen += viewModel.state.value
+                            true
+                        },
+                    ),
+                )
+
+            viewModel.signIn("https://mail.example.com", "ABCD-EFGH")
+
+            assertEquals(listOf<SignInUiState>(SignInUiState.FinishingSetup), seen)
+            assertEquals(SignInUiState.Idle, viewModel.state.value)
+        }
+
+    @Test
+    fun `a session the server never accepts says setup is pending and still remembers the account`() =
+        runViewModelTest {
+            val viewModel =
+                track(
+                    viewModel(
+                        SignIn { error("must not sign in") },
+                        EnrollPasskey { _, _, _ -> throw AuthFailure.SetupPending },
+                    ),
+                )
+
+            viewModel.signIn("https://mail.example.com", "ABCD-EFGH")
+
+            assertEquals(SignInUiState.Failed(AuthFailure.SetupPending.userMessage()), viewModel.state.value)
+            assertEquals("https://mail.example.com", viewModel.remembered.value?.server)
         }
 }

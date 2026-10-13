@@ -39,6 +39,9 @@ sealed interface SignInUiState {
 
     data class SigningIn(val discovery: Discovery?) : SignInUiState
 
+    /** The passkey is made and the server is still switching passkeys on. */
+    data object FinishingSetup : SignInUiState
+
     data class DiscoveryFailed(val message: UiText) : SignInUiState
 
     data class Failed(val message: UiText, val hint: FailureHint = FailureHint.None) : SignInUiState
@@ -134,13 +137,20 @@ class SignInViewModel(
             _state.value =
                 catchingSignIn(SignInUiState::Failed) {
                     try {
-                        if (code.isBlank()) signInUseCase(server) else enrollPasskey(server, code.trim())
+                        if (code.isBlank()) {
+                            signInUseCase(server)
+                        } else {
+                            enrollPasskey(server, code.trim()) { _state.value = SignInUiState.FinishingSetup }
+                        }
                         preferences.rememberAccount(account)
                         SignInUiState.Idle
                     } catch (e: PasskeyException.NoCredential) {
                         SignInUiState.Failed(e.userMessage(), FailureHint.SetUp)
                     } catch (e: AuthFailure.NotEnrolled) {
                         SignInUiState.Failed(e.userMessage(), FailureHint.SetUp)
+                    } catch (e: AuthFailure.SetupPending) {
+                        preferences.rememberAccount(account)
+                        SignInUiState.Failed(e.userMessage())
                     } catch (e: AuthFailure.BadCode) {
                         SignInUiState.Failed(e.userMessage(), FailureHint.NewCode)
                     }

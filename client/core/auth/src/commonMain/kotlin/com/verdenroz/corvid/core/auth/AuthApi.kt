@@ -4,6 +4,8 @@ import com.verdenroz.corvid.core.jmap.JmapError
 import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.model.ServerAddress
 import io.ktor.client.HttpClient
+import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
@@ -68,6 +70,9 @@ sealed class AuthFailure : Exception() {
 
     /** The code was redeemed with a passkey the server already holds. */
     data object AlreadyEnrolled : AuthFailure()
+
+    /** The passkey was made, but the server had not yet started accepting its tokens when we gave up. */
+    data object SetupPending : AuthFailure()
 }
 
 /** The sentinel's public passkey routes: everything a client needs before it holds a token. */
@@ -97,6 +102,12 @@ interface AuthApi {
         server: ServerAddress,
         refreshToken: String,
     ): Refreshed
+
+    /** Whether the mail server accepts [accessToken] yet. The first passkey on a server waits for this. */
+    suspend fun mailAccepts(
+        server: ServerAddress,
+        accessToken: String,
+    ): Boolean
 }
 
 private const val AUTH_PATH = "/corvid/auth"
@@ -151,6 +162,19 @@ class HttpAuthApi(
         if (reply.status == HttpStatusCode.BadRequest && reply.error() == "invalid_grant") return Refreshed.InvalidGrant
         return Refreshed.Tokens(tokens(reply.ok()))
     }
+
+    override suspend fun mailAccepts(
+        server: ServerAddress,
+        accessToken: String,
+    ): Boolean =
+        try {
+            httpClient.get("${server.baseUrl}/jmap/session") { header(HttpHeaders.Authorization, "Bearer $accessToken") }.status ==
+                HttpStatusCode.OK
+        } catch (e: SSLException) {
+            throw JmapException(JmapError.TlsFailure(e))
+        } catch (e: IOException) {
+            throw JmapException(JmapError.Unreachable(e))
+        }
 
     private fun tokens(body: String): AuthTokens {
         val fields = parse(body)

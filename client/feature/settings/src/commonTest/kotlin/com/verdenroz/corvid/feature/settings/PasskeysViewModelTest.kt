@@ -51,7 +51,7 @@ private suspend fun ViewModelTestScope.rig(
                         return use(signIn())
                     }
                 },
-                EnrollPasskey { server, code ->
+                EnrollPasskey { server, code, _ ->
                     enrolled += server to code
                     enroll(code)
                 },

@@ -11,6 +11,7 @@
     <string name="passkey_server_refused">The server did not accept that passkey.</string>
     <string name="passkey_off">This server has passkey sign-in switched off.</string>
     <string name="passkey_already_enrolled">That passkey is already enrolled.</string>
+    <string name="passkey_setup_pending">Passkey added, but the server has not finished setup. Try Sign in with passkey in a minute. If it keeps failing, journalctl -u corvid-update on the server says why.</string>
     <string name="no_trash_folder">This account has no Trash folder.</string>
     <string name="reply_attribution">On %1$s, %2$s wrote:</string>
     <string name="forwarded_message">---------- Forwarded message ----------</string>

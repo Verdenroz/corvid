@@ -101,7 +101,7 @@ class PasskeysViewModel(
     fun addHere(approves: Boolean) =
         withApprover { token ->
             withCode(approves, token) { minted ->
-                PasskeyStep.Added(enrollPasskey(server, minted.code))
+                PasskeyStep.Added(enrollPasskey(server, minted.code) {})
             }
         }
 

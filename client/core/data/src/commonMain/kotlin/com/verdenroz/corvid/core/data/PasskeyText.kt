@@ -14,6 +14,7 @@ import com.verdenroz.corvid.core.text.resources.passkey_not_enrolled
 import com.verdenroz.corvid.core.text.resources.passkey_off
 import com.verdenroz.corvid.core.text.resources.passkey_refused
 import com.verdenroz.corvid.core.text.resources.passkey_server_refused
+import com.verdenroz.corvid.core.text.resources.passkey_setup_pending
 import com.verdenroz.corvid.core.text.resources.passkey_unsupported
 import com.verdenroz.corvid.core.text.uiText
 
@@ -48,4 +49,5 @@ fun AuthFailure.userMessage(): UiText =
         AuthFailure.NotEnrolled -> uiText(Res.string.passkey_not_enrolled)
         AuthFailure.Off -> uiText(Res.string.passkey_off)
         AuthFailure.AlreadyEnrolled -> uiText(Res.string.passkey_already_enrolled)
+        AuthFailure.SetupPending -> uiText(Res.string.passkey_setup_pending)
     }

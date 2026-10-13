@@ -31,6 +31,7 @@ import com.verdenroz.corvid.feature.signin.resources.signin_continue
 import com.verdenroz.corvid.feature.signin.resources.signin_detail
 import com.verdenroz.corvid.feature.signin.resources.signin_discovering
 import com.verdenroz.corvid.feature.signin.resources.signin_email
+import com.verdenroz.corvid.feature.signin.resources.signin_finishing
 import com.verdenroz.corvid.feature.signin.resources.signin_in_progress
 import com.verdenroz.corvid.feature.signin.resources.signin_remembered
 import com.verdenroz.corvid.feature.signin.resources.signin_remembered_detail
@@ -115,7 +116,7 @@ private fun SetUp(
 ) {
     var code by rememberSaveable { mutableStateOf("") }
     val state by viewModel.state.collectAsState()
-    val working = state is SignInUiState.SigningIn
+    val working = state is SignInUiState.SigningIn || state is SignInUiState.FinishingSetup
     val failed = state as? SignInUiState.Failed
 
     LaunchedEffect(failed) {
@@ -126,13 +127,20 @@ private fun SetUp(
         CorvidTextField(code, { code = it }, stringResource(Res.string.signin_set_up_code), Modifier.fillMaxWidth())
         failed?.let { Problem(it.message.asString()) }
         PrimaryButton(
-            stringResource(if (working) Res.string.signin_set_up_progress else Res.string.signin_set_up_submit),
+            stringResource(setUpLabel(state)),
             onClick = { viewModel.setUp(account, code) },
             enabled = !working && code.isNotBlank(),
         )
         QuietLink(stringResource(Res.string.signin_set_up_back), onClick = onBack)
     }
 }
+
+private fun setUpLabel(state: SignInUiState) =
+    when (state) {
+        is SignInUiState.SigningIn -> Res.string.signin_set_up_progress
+        SignInUiState.FinishingSetup -> Res.string.signin_finishing
+        else -> Res.string.signin_set_up_submit
+    }
 
 @Composable
 private fun AccountEntry(

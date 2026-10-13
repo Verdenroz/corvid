@@ -30,7 +30,7 @@ class EnrollmentPromptTest {
         }
 
     @Test
-    fun `an open request offers approving it with the admin passkey`() =
+    fun `an open request offers approving it with a passkey`() =
         runComposeUiTest {
             var approved = 0
             setContent {
@@ -45,7 +45,7 @@ class EnrollmentPromptTest {
                 }
             }
 
-            onNodeWithText("Approve with the admin passkey").performClick()
+            onNodeWithText("Approve with a passkey").performClick()
 
             assertEquals(1, approved)
         }
