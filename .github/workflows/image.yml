@@ -1,9 +1,11 @@
 name: image
 
+# A main push publishes only through ci.yml, once every check it ran passed. ci.yml never runs on
+# a tag, so a release tag publishes from here directly.
 on:
   push:
-    branches: [main]
     tags: ["v*"]
+  workflow_call:
 
 permissions:
   contents: read
