@@ -142,6 +142,9 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
     /** `/corvid/notices`, the sentinel's feed. */
     val notices = FakeWebEndpoint()
 
+    /** `/corvid/suggestions`, the rule suggestions mined from what is left unread. */
+    val suggestions = FakeSuggestions()
+
     /** `/corvid/app/`, the app builds and their manifest. */
     val app = FakeAppRelease()
 
@@ -174,6 +177,7 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
             path.startsWith("/corvid/devices") -> devices.handle(this, request)
             path.startsWith("/corvid/auth/") -> passkeys.handle(this, request)
             path == "/corvid/push/vapid" -> devices.vapid(this)
+            path.startsWith("/corvid/suggestions") -> suggestions.handle(this, request)
             path.startsWith("/corvid/app/") -> app.handle(this, request)
             path.startsWith("/i/") -> imageResponse(request, path)
             else -> webTier[path]?.handle(this, request) ?: respond("not found", HttpStatusCode.NotFound)
