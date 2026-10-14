@@ -21,12 +21,14 @@ stale=0
 ok()   { echo "  ok    $*"; }
 bad()  { echo "  FAIL  $*"; ((fail++)); }
 warn() { echo "  warn  $*"; }
-# Out of date somewhere this host does not serve, so no rollback fixes it; update.sh reads CORVID_DRIFT.
+# A Worker install.sh deployed serves it, so no rollback can fix it; update.sh reads CORVID_DRIFT.
 drift() {
-  echo "  stale $*"
+  local line="$*; this host does not serve it, so run install.sh again to republish it"
+  echo "  stale $line"
   ((stale++))
-  [[ -z "${CORVID_DRIFT:-}" ]] || echo "$*" >> "$CORVID_DRIFT"
+  [[ -z "${CORVID_DRIFT:-}" ]] || echo "$line" >> "$CORVID_DRIFT"
 }
+bad_if_here() { if [[ "$1" == true ]]; then bad "${*:2}"; else drift "${*:2}"; fi; }
 
 echo "== services =="
 services=(corvid-unbound corvid-mail corvid-milter corvid-imgproxy corvid-labeler corvid-sentinel corvid-caddy)
@@ -133,11 +135,7 @@ else
   case "${verdict%% *}" in
     ok) ok "${verdict#* }" ;;
     warn) warn "${verdict#* }" ;;
-    *) if [[ "$PUBLISH_ASSETLINKS" == true ]]; then
-         bad "${verdict#* }"
-       else
-         drift "${verdict#* }; this host does not serve it, so run install.sh again to republish it"
-       fi ;;
+    *) bad_if_here "$PUBLISH_ASSETLINKS" "${verdict#* }" ;;
   esac
 fi
 
@@ -250,7 +248,7 @@ nameserver=$(dig +short NS "$DOMAIN" | head -1)
 if dig +short TXT "_mta-sts.$DOMAIN" "@${nameserver:-1.1.1.1}" | grep -q 'v=STSv1'; then
   policy=$(curl -s --max-time 10 "https://mta-sts.$DOMAIN/.well-known/mta-sts.txt")
   grep -q '^version: STSv1' <<<"$policy" && ok "MTA-STS policy served at mta-sts.$DOMAIN" ||
-    bad "MTA-STS is published, but https://mta-sts.$DOMAIN/.well-known/mta-sts.txt does not serve the policy"
+    bad_if_here "$PUBLISH_MTA_STS" "MTA-STS is published, but https://mta-sts.$DOMAIN/.well-known/mta-sts.txt does not serve the policy"
 else
   ok "MTA-STS not published (Corvid publishes it only when the web tier holds 443)"
 fi

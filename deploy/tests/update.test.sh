@@ -66,6 +66,7 @@ echo 1.1.0 > "$work/ids/new.version"
 fail=0
 check() { if eval "$2"; then echo "  ok    $1"; else echo "  FAIL  $1"; sed "s/^/        /" "$work/out" 2>/dev/null; fail=1; fi; }
 field() { python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])' "$corvid/update/status.json" "$1"; }
+stale() { python3 -c 'import json, sys; print("|".join(json.load(open(sys.argv[1]))["stale"]))' "$corvid/update/status.json"; }
 tag() { cat "$work/tags/$(echo "$1" | tr '/:' '__')"; }
 
 # fresh: a host running "old" from the registry tag, the registry still serving "old"
@@ -100,6 +101,7 @@ check "exits 0" '[[ $status -eq 0 ]]'
 check "prints nothing" '[[ ! -s "$work/out" ]]'
 check "deploys nothing" '[[ ! -s "$work/log" ]]'
 check "records current" '[[ "$(field result)" == current && "$(field running)" == 1.0.0 && "$(field busy)" == False ]]'
+check "lists nothing stale" '[[ -z "$(stale)" ]]'
 
 echo "== the first run reports busy without claiming a failure"
 fresh; rm "$corvid/update/status.json" 2>/dev/null; echo new > "$work/registry-id"
@@ -163,12 +165,12 @@ echo "== an update that passes with something stale off the host says what"
 fresh; echo new > "$work/registry-id"; touch "$work/new-drift"
 run
 check "exits 0 and records updated" '[[ $status -eq 0 && "$(field result)" == updated ]]'
-check "the detail names what is stale" '[[ "$(field detail)" == "new links stale" ]]'
+check "lists what is stale and leaves the detail empty" '[[ "$(stale)" == "new links stale" && "$(field detail)" == None ]]'
 
 echo "== a rollback reports only what the restored release found stale"
 fresh; echo new > "$work/registry-id"; touch "$work/new-deploy-fails" "$work/new-drift" "$work/old-drift"
 run
-check "records rolledBack with the old release's drift alone" '[[ "$(field result)" == rolledBack && "$(field detail)" == *"verified; old links stale" ]]'
+check "records rolledBack with the old release's drift alone" '[[ "$(field result)" == rolledBack && "$(stale)" == "old links stale" ]]'
 
 echo "== a rollback that fails too is reported as failed"
 fresh; echo new > "$work/registry-id"; touch "$work/new-deploy-fails" "$work/old-deploy-fails"
@@ -236,7 +238,7 @@ check "is not left busy" '[[ "$(field busy)" == False ]]'
 echo "== a deploy request that passes with something stale says what"
 fresh; touch "$work/old-drift"
 run deploy
-check "records current with the drift" '[[ "$(field result)" == current && "$(field detail)" == "old links stale" ]]'
+check "records current with the drift" '[[ "$(field result)" == current && "$(stale)" == "old links stale" ]]'
 
 echo "== a deploy request on a host running a local image still deploys"
 fresh; echo localhost/corvid:0.1.0 > "$corvid/image.ref"; echo old > "$work/tags/localhost_corvid_0.1.0"

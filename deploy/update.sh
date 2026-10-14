@@ -48,7 +48,7 @@ version_of() {
 write_status() {
   local status
   status="$(RUNNING="$running" LATEST="$latest" RESULT="$result" DETAIL="$detail" AUTO="$UPDATE_AUTO" BUSY="${1:-false}" \
-    PRIOR="$update_dir/status.json" python3 -c '
+    PRIOR="$update_dir/status.json" STALE="$CORVID_DRIFT" python3 -c '
 import datetime, json, os
 e = os.environ
 status = {
@@ -59,6 +59,7 @@ status = {
     "detail": e["DETAIL"] or None,
     "auto": e["AUTO"] == "true",
     "busy": e["BUSY"] == "true",
+    "stale": open(e["STALE"]).read().splitlines(),
 }
 if status["busy"]:
     if os.path.exists(e["PRIOR"]):
@@ -70,8 +71,8 @@ print(json.dumps(status))')"
 }
 
 # CORVID_UPDATING keeps deploy.sh from queuing a check that would overwrite this run's status.
+# verify.sh lists in CORVID_DRIFT what is out of date off this host; only the last attempt's list counts.
 deploy_from() { : > "$CORVID_DRIFT"; bash "$1/bootstrap.sh" && CORVID_UPDATING=1 bash "$1/deploy.sh"; }
-drift() { cat "$CORVID_DRIFT"; }
 keep_old() { podman tag "$rollback_tag" "$ref"; }
 prune_images() { podman image prune -f >/dev/null; }
 
@@ -106,7 +107,7 @@ fi
 if [[ "$mode" == deploy ]]; then
   if deploy_from "$deploy_dir"; then
     result=current
-    detail="$(drift)"
+    detail=""
     exit 0
   fi
   detail="deploying $running failed; the host needs attention"
@@ -172,7 +173,7 @@ if deploy_from "$deploy_dir"; then
   prune_images
   running="$latest"
   result=updated
-  detail="$(drift)"
+  detail=""
   echo "updated to $latest"
   exit 0
 fi
@@ -185,7 +186,7 @@ mv "$deploy_dir.prev" "$deploy_dir"
 if deploy_from "$deploy_dir"; then
   prune_images
   result=rolledBack
-  detail="$latest failed to deploy; $running is running again and verified$(drift | sed 's/^/; /' | tr -d '\n')"
+  detail="$latest failed to deploy; $running is running again and verified"
 else
   result=failed
   detail="$latest failed to deploy and restoring $running failed too; the host needs attention"

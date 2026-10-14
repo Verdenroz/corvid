@@ -362,11 +362,11 @@ which ends in `verify.sh`. If any step fails it puts the old image and files bac
 again. A release that failed is not retried until a newer one is tagged. The outcome is in
 `status.json`, which the Corvid app surfaces, and the log is `journalctl -u corvid-update.service`.
 
-Some checks read things this host does not serve, such as an `assetlinks.json` a Cloudflare
-Worker publishes. When one of those is out of date, verify prints it as `stale` rather than
-`FAIL`: no release or rollback can change it, so it never fails a deploy. The run still records
-`updated` or `current`, with the stale item as its detail, and the app's notice feed shows it as
-"Out of date off this host". Run `install.sh` again to republish it.
+Two checks read files a Cloudflare Worker may serve instead of this host: `assetlinks.json` and
+the MTA-STS policy. When the Worker's copy is out of date or missing, verify prints it as `stale`
+rather than `FAIL`: no release or rollback can change it, so it never fails a deploy. The run
+lists it under `stale` in `status.json`, beside whatever result it records, and the app's notice
+feed shows it as "Out of date off this host". Run `install.sh` again to republish it.
 
 Every run writes `/opt/corvid/update/status.json`, first marking it `busy: true` while the run
 works. A busy report repeats the previous outcome; on a host's first run, with nothing to repeat, it
