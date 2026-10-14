@@ -15,10 +15,13 @@ struct Status {
     checked_at: Option<String>,
     detail: Option<String>,
     busy: bool,
+    #[serde(default)]
+    stale: Vec<String>,
 }
 
-/// Polls the updater's `status.json` forever, turning each failed or rolled-back update into a
-/// notice once. A tick that errors or panics is logged and the next one still runs.
+/// Polls the updater's `status.json` forever, turning each failed or rolled-back update, and each
+/// run that found something stale off the host, into a notice once. A tick that errors or panics
+/// is logged and the next one still runs.
 pub(crate) async fn updates(state: Arc<AppState>, dir: PathBuf, every: Duration) {
     let mut ticks = tokio::time::interval(every);
     loop {
@@ -42,14 +45,18 @@ async fn check(state: Arc<AppState>, dir: &Path) -> io::Result<()> {
     let title = match status.result.as_str() {
         "rolledBack" => "Update rolled back",
         "failed" => "Update failed",
+        _ if !status.stale.is_empty() => "Out of date off this host",
         _ => return Ok(()),
     };
     let Some(checked_at) = status.checked_at else {
         return Ok(());
     };
-    let detail = status
-        .detail
-        .unwrap_or_else(|| "The updater gave no detail.".to_owned());
+    let lines: Vec<String> = status.detail.into_iter().chain(status.stale).collect();
+    let detail = if lines.is_empty() {
+        "The updater gave no detail.".to_owned()
+    } else {
+        lines.join("\n")
+    };
     tokio::task::spawn_blocking(move || {
         state.commit(|seen| {
             if seen.update_noticed.as_deref() == Some(&checked_at) {

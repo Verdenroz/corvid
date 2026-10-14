@@ -17,9 +17,18 @@ load_server
 STALWART_CLI="${STALWART_CLI:-stalwart-cli}"
 
 fail=0
+stale=0
 ok()   { echo "  ok    $*"; }
 bad()  { echo "  FAIL  $*"; ((fail++)); }
 warn() { echo "  warn  $*"; }
+# A Worker install.sh deployed serves it, so no rollback can fix it; update.sh reads CORVID_DRIFT.
+drift() {
+  local line="$*; this host does not serve it, so run install.sh again to republish it"
+  echo "  stale $line"
+  ((stale++))
+  [[ -z "${CORVID_DRIFT:-}" ]] || echo "$line" >> "$CORVID_DRIFT"
+}
+bad_if_here() { if [[ "$1" == true ]]; then bad "${*:2}"; else drift "${*:2}"; fi; }
 
 echo "== services =="
 services=(corvid-unbound corvid-mail corvid-milter corvid-imgproxy corvid-labeler corvid-sentinel corvid-caddy)
@@ -116,7 +125,7 @@ fi
 echo "== app links =="
 # Credential Manager reads this on 443 with no redirect, so it is fetched the way a phone would,
 # through real DNS. Not served is a warning, since mail does not wait on the Android app; a
-# document that differs, a redirect or the wrong type is a failure, since it is worse than none.
+# document that differs, a redirect or the wrong type is a failure when the web tier serves it.
 links_url="https://$MAIL_DOMAIN/.well-known/assetlinks.json"
 expected="${ASSETLINKS:-}"
 if [[ -z "$expected" ]]; then
@@ -126,7 +135,7 @@ else
   case "${verdict%% *}" in
     ok) ok "${verdict#* }" ;;
     warn) warn "${verdict#* }" ;;
-    *) bad "${verdict#* }" ;;
+    *) bad_if_here "$PUBLISH_ASSETLINKS" "${verdict#* }" ;;
   esac
 fi
 
@@ -239,7 +248,7 @@ nameserver=$(dig +short NS "$DOMAIN" | head -1)
 if dig +short TXT "_mta-sts.$DOMAIN" "@${nameserver:-1.1.1.1}" | grep -q 'v=STSv1'; then
   policy=$(curl -s --max-time 10 "https://mta-sts.$DOMAIN/.well-known/mta-sts.txt")
   grep -q '^version: STSv1' <<<"$policy" && ok "MTA-STS policy served at mta-sts.$DOMAIN" ||
-    bad "MTA-STS is published, but https://mta-sts.$DOMAIN/.well-known/mta-sts.txt does not serve the policy"
+    bad_if_here "$PUBLISH_MTA_STS" "MTA-STS is published, but https://mta-sts.$DOMAIN/.well-known/mta-sts.txt does not serve the policy"
 else
   ok "MTA-STS not published (Corvid publishes it only when the web tier holds 443)"
 fi
@@ -267,4 +276,5 @@ else
 fi
 
 echo
-[[ $fail -eq 0 ]] && echo "PASS" || { echo "$fail check(s) failed"; exit 1; }
+[[ $fail -eq 0 ]] || { echo "$fail check(s) failed"; exit 1; }
+[[ $stale -eq 0 ]] && echo "PASS" || echo "PASS, but $stale thing(s) published off this host are out of date"

@@ -510,7 +510,9 @@ Caddyfile built from the same env vars as everything else. `core/discovery` hold
   `linked: true` and the right package and certificate were served, yet creating a passkey on a
   phone failed with "RP ID cannot be validated". Listing `delegate_permission/common.handle_all_urls`
   as well fixed it on the next try. `verify.sh` compares the served file byte for byte with
-  `corvid-config assetlinks`, so a hand edit to the Worker fails the next update's verify.
+  `corvid-config assetlinks`. Where the web tier serves it, a difference fails verify; where a
+  Worker does, it is reported `stale` and does not roll back, since no release changes the Worker.
+  Measured: a Worker fixed by hand ahead of the image failed an update and then its rollback.
 - **A debug build of the Android app is `com.verdenroz.corvid.debug` and does not trust the
   rig's CA.** Credential Manager only accepts a passkey for a domain whose `assetlinks.json`
   lists the exact package and signing certificate, so a rig needs its own `android_apps`

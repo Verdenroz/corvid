@@ -93,6 +93,45 @@ async fn updated_current_and_skipped_results_add_nothing() {
 }
 
 #[tokio::test]
+async fn an_update_that_passed_with_something_stale_off_the_host_becomes_a_notice() {
+    let dir = tempfile::tempdir().unwrap();
+    let stale = "https://example.com/.well-known/assetlinks.json serves a different document";
+    std::fs::write(
+        dir.path().join("status.json"),
+        format!(
+            r#"{{"running":"v2","latest":"v2","checkedAt":"2026-10-04T01:00:00Z","result":"updated","detail":null,"auto":true,"busy":false,"stale":["{stale}"]}}"#
+        ),
+    )
+    .unwrap();
+    start(dir.path()).await;
+    settle().await;
+
+    let found = notices(dir.path());
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].title, "Out of date off this host");
+    assert_eq!(found[0].detail, stale);
+}
+
+#[tokio::test]
+async fn a_rollback_notice_lists_what_the_restored_release_found_stale() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("status.json"),
+        r#"{"running":"v1","latest":"v2","checkedAt":"2026-10-04T01:00:00Z","result":"rolledBack","detail":"v2 failed to deploy","auto":true,"busy":false,"stale":["the MTA-STS policy is not served"]}"#,
+    )
+    .unwrap();
+    start(dir.path()).await;
+    settle().await;
+
+    let found = notices(dir.path());
+    assert_eq!(found[0].title, "Update rolled back");
+    assert_eq!(
+        found[0].detail,
+        "v2 failed to deploy\nthe MTA-STS policy is not served"
+    );
+}
+
+#[tokio::test]
 async fn a_busy_report_is_never_noticed_even_when_it_repeats_a_failure() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("status.json");

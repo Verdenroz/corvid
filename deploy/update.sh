@@ -48,7 +48,7 @@ version_of() {
 write_status() {
   local status
   status="$(RUNNING="$running" LATEST="$latest" RESULT="$result" DETAIL="$detail" AUTO="$UPDATE_AUTO" BUSY="${1:-false}" \
-    PRIOR="$update_dir/status.json" python3 -c '
+    PRIOR="$update_dir/status.json" STALE="$CORVID_DRIFT" python3 -c '
 import datetime, json, os
 e = os.environ
 status = {
@@ -59,6 +59,7 @@ status = {
     "detail": e["DETAIL"] or None,
     "auto": e["AUTO"] == "true",
     "busy": e["BUSY"] == "true",
+    "stale": open(e["STALE"]).read().splitlines(),
 }
 if status["busy"]:
     if os.path.exists(e["PRIOR"]):
@@ -70,7 +71,8 @@ print(json.dumps(status))')"
 }
 
 # CORVID_UPDATING keeps deploy.sh from queuing a check that would overwrite this run's status.
-deploy_from() { bash "$1/bootstrap.sh" && CORVID_UPDATING=1 bash "$1/deploy.sh"; }
+# verify.sh lists in CORVID_DRIFT what is out of date off this host; only the last attempt's list counts.
+deploy_from() { : > "$CORVID_DRIFT"; bash "$1/bootstrap.sh" && CORVID_UPDATING=1 bash "$1/deploy.sh"; }
 keep_old() { podman tag "$rollback_tag" "$ref"; }
 prune_images() { podman image prune -f >/dev/null; }
 
@@ -91,7 +93,9 @@ running="$(version_of "$deployed_id")"
 latest=""
 result=failed
 detail="stopped before finishing"
-trap write_status EXIT
+export CORVID_DRIFT
+CORVID_DRIFT="$(mktemp)"
+trap 'write_status; rm -f "$CORVID_DRIFT"' EXIT
 write_status true
 
 if unit_masked corvid-pod.service; then
