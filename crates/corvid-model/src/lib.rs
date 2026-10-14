@@ -1,5 +1,5 @@
-//! The model endpoint: OpenAI-compatible chat completions, read for the probability of each
-//! option letter rather than for generated text. The endpoint must return `logprobs`.
+//! The model endpoint: OpenAI-compatible chat completions, read either for the probability of
+//! each option letter (`Oracle`, which needs `logprobs`) or for generated text (`Model::write`).
 //!
 //! The model host is off most of the time, so an unreachable model is the ordinary case, not a
 //! fault. Nothing here retries; a pass that cannot reach it labels nothing.
@@ -32,6 +32,13 @@ pub trait Oracle {
     fn choose(&self, prompt: &str, letters: &[char]) -> io::Result<Vec<f64>>;
 }
 
+/// Generated text and whether the model ended it by itself rather than at the token limit.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Written {
+    pub text: String,
+    pub finished: bool,
+}
+
 pub struct Model {
     http: Http,
     url: String,
@@ -56,19 +63,33 @@ impl Model {
             extra,
         })
     }
+
+    pub fn write(&self, system: &str, user: &str, max_tokens: u32) -> io::Result<Written> {
+        let response = self.post(&write_request(
+            &self.name,
+            system,
+            user,
+            max_tokens,
+            &self.extra,
+        ))?;
+        written_from(&response)
+    }
+
+    fn post(&self, request: &Value) -> io::Result<Value> {
+        self.http
+            .post(&self.url)
+            .json(request)
+            .send()
+            .and_then(|response| response.error_for_status())
+            .and_then(|response| response.json())
+            .map_err(io::Error::other)
+    }
 }
 
 impl Oracle for Model {
     fn choose(&self, prompt: &str, letters: &[char]) -> io::Result<Vec<f64>> {
         let request = request(&self.name, prompt, letters, &self.extra);
-        let response: Value = self
-            .http
-            .post(&self.url)
-            .json(&request)
-            .send()
-            .and_then(|response| response.error_for_status())
-            .and_then(|response| response.json())
-            .map_err(io::Error::other)?;
+        let response = self.post(&request)?;
 
         scores_from(&response, letters)
     }
@@ -90,6 +111,43 @@ fn request(name: &str, prompt: &str, letters: &[char], extra: &Map<String, Value
     let mut request = extra.clone();
     request.extend(core);
     Value::Object(request)
+}
+
+fn write_request(
+    name: &str,
+    system: &str,
+    user: &str,
+    max_tokens: u32,
+    extra: &Map<String, Value>,
+) -> Value {
+    let Value::Object(core) = json!({
+        "model": name,
+        "temperature": 0,
+        "max_tokens": max_tokens,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+    }) else {
+        unreachable!("a json! object literal")
+    };
+    let mut request = extra.clone();
+    request.extend(core);
+    Value::Object(request)
+}
+
+/// Only `stop` counts as finished: `length` is cut off mid-thought and anything else is not an
+/// answer. Content that is not a string is an error, since the endpoint is not speaking the
+/// chat schema and no later reply would fare better.
+fn written_from(response: &Value) -> io::Result<Written> {
+    let choice = &response["choices"][0];
+    let text = choice["message"]["content"]
+        .as_str()
+        .ok_or_else(|| io::Error::other("response carries no message content string"))?;
+    Ok(Written {
+        text: text.to_owned(),
+        finished: choice["finish_reason"] == "stop",
+    })
 }
 
 /// Reads per-letter probabilities from the ranking of the first generated token.
@@ -217,6 +275,60 @@ mod tests {
                 "{response} was read"
             );
         }
+    }
+
+    fn chat(content: Value, finish_reason: &str) -> Value {
+        json!({"choices": [{"finish_reason": finish_reason, "message": {"content": content}}]})
+    }
+
+    #[test]
+    fn a_stopped_answer_is_finished() {
+        let written = written_from(&chat(json!("Two sentences."), "stop")).unwrap();
+
+        assert_eq!(
+            written,
+            Written {
+                text: "Two sentences.".into(),
+                finished: true
+            }
+        );
+    }
+
+    #[test]
+    fn an_answer_cut_at_the_token_limit_is_unfinished() {
+        let written = written_from(&chat(json!("It begins"), "length")).unwrap();
+
+        assert!(!written.finished);
+        assert_eq!(written.text, "It begins");
+    }
+
+    #[test]
+    fn content_that_is_not_a_string_is_an_error() {
+        for response in [
+            chat(Value::Null, "stop"),
+            chat(json!([{"type": "text"}]), "stop"),
+            json!({}),
+        ] {
+            assert!(written_from(&response).is_err(), "{response} was read");
+        }
+    }
+
+    #[test]
+    fn a_written_request_sends_extra_fields_but_keeps_its_own() {
+        let Value::Object(extra) = json!({
+            "chat_template_kwargs": {"enable_thinking": false},
+            "max_tokens": 1,
+            "messages": [],
+        }) else {
+            unreachable!()
+        };
+
+        let request = write_request("m", "sys", "usr", 300, &extra);
+
+        assert_eq!(request["chat_template_kwargs"]["enable_thinking"], false);
+        assert_eq!(request["max_tokens"], 300);
+        assert_eq!(request["messages"][0]["content"], "sys");
+        assert_eq!(request["messages"][1]["role"], "user");
     }
 
     fn live_extra() -> Map<String, Value> {
