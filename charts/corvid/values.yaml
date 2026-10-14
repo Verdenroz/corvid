@@ -12,12 +12,16 @@ config:
     jmap_url: http://127.0.0.1:8080
     jmap_user: alice@example.com
     state: /var/lib/corvid/labeler.json
+    # suggest:
+    #   sentinel_url: http://127.0.0.1:11333
   milter: {}
   imgproxy: {}
   sentinel:
     state: /var/lib/corvid/sentinel.json
     auth:
       state: /var/lib/corvid/auth.json
+    # scribe:
+    #   state: /var/lib/corvid/scribe.json
 
 images:
   # Built from deploy/Containerfile and pushed to a registry the cluster can pull from.

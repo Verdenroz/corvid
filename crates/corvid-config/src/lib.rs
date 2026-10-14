@@ -424,6 +424,15 @@ pub struct Labeler {
     #[serde(default = "sixty")]
     pub interval_secs: u64,
     pub model: Option<Model>,
+    /// Posts mined rule candidates to the sentinel. Needs `CORVID_SCRIBE_SECRET`; absent, nothing
+    /// is posted.
+    pub suggest: Option<Suggest>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Suggest {
+    pub sentinel_url: String,
 }
 
 /// The optional cold-start model. Any OpenAI-compatible chat endpoint that returns logprobs.
@@ -505,6 +514,15 @@ pub struct Sentinel {
     pub push: Option<Push>,
     /// Passkey sign-in, with the sentinel as the issuer Stalwart trusts. Needs `server`.
     pub auth: Option<Auth>,
+    /// Rule suggestions the labeler posts, served to the app. Needs `CORVID_SCRIBE_SECRET`; absent,
+    /// the sentinel serves no `/corvid/suggestions` routes.
+    pub scribe: Option<Scribe>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Scribe {
+    pub state: PathBuf,
 }
 
 /// The issuer identifier Stalwart is configured with: the sentinel on loopback, never routed.
@@ -740,6 +758,8 @@ mod tests {
         assert!(config.imgproxy.is_some());
         assert!(config.mirror.is_some());
         assert!(config.sentinel.is_some());
+        assert!(config.labeler.as_ref().unwrap().suggest.is_some());
+        assert!(config.sentinel.as_ref().unwrap().scribe.is_some());
         assert!(config.update.auto);
     }
 
@@ -1032,6 +1052,22 @@ mod server_tests {
                 .push
                 .is_some()
         );
+    }
+
+    #[test]
+    fn the_suggestion_sections_need_their_fields() {
+        let text = "labeler:\n  jmap_url: x\n  jmap_user: u\n  state: /s\n  suggest:\n    sentinel_url: http://s\nsentinel:\n  state: /s\n  scribe:\n    state: /c\n";
+        let config = Config::parse(text).unwrap();
+
+        assert_eq!(
+            config.labeler.unwrap().suggest.unwrap().sentinel_url,
+            "http://s"
+        );
+        assert_eq!(
+            config.sentinel.unwrap().scribe.unwrap().state,
+            PathBuf::from("/c")
+        );
+        assert!(Config::parse("sentinel:\n  state: /s\n  scribe: {}\n").is_err());
     }
 
     #[test]
