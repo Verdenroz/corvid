@@ -4,6 +4,7 @@ mod dates;
 mod jmap;
 mod mailbox;
 mod model;
+mod suggest;
 
 use std::collections::BTreeSet;
 use std::io;
@@ -16,6 +17,7 @@ pub use cold_start::{Budget, ColdStart, cold_start};
 pub use jmap::Jmap;
 pub use mailbox::{Changes, Mailbox, Message, Roles};
 pub use model::{Model, Oracle};
+pub use suggest::Suggest;
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Summary {

@@ -60,6 +60,10 @@ impl ActionLog {
         Ok(())
     }
 
+    pub fn candidates(&self) -> &[Candidate] {
+        &self.actions.candidates
+    }
+
     /// Drops history older than the window and rewrites the candidates from what remains.
     pub fn mine(&mut self, now: i64) -> io::Result<&[Candidate]> {
         self.actions.forget_before(now);

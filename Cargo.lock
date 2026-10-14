@@ -605,6 +605,7 @@ dependencies = [
 name = "corvid-labeler"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.1",
  "corvid-config",
  "corvid-ingest",
  "corvid-jmap",
@@ -612,6 +613,7 @@ dependencies = [
  "corvid-store",
  "ctrlc",
  "hex",
+ "hmac 0.13.0",
  "reqwest",
  "serde",
  "serde_json",
