@@ -1,9 +1,9 @@
 # Corvid configuration, read from /etc/corvid/config.yaml (or the path in CORVID_CONFIG).
 # bootstrap.sh installs this as /opt/corvid/config.yaml once; edit it there.
 # No secrets belong here. Each service reads its own from an environment variable:
-#   CORVID_JMAP_PASSWORD     labeler and mirror, an app password each
+#   CORVID_JMAP_PASSWORD     labeler, scribe and mirror, an app password each
 #   CORVID_IMGPROXY_SECRET   milter and image proxy, the same value in both
-#   CORVID_SCRIBE_SECRET     labeler and sentinel, the same value in both
+#   CORVID_SCRIBE_SECRET     labeler, scribe and sentinel, the same value in all three
 #   CORVID_SENTINEL_SECRET   sentinel and Stalwart's own WebHook, the same value in both
 # Unknown keys are refused, so a misspelt setting stops the service instead of being ignored.
 
@@ -69,6 +69,32 @@ labeler:
   # CORVID_SCRIBE_SECRET in both services. Delete it to post nothing.
   suggest:
     sentinel_url: http://127.0.0.1:11333
+
+# Summaries of long threads, written by a model and stored by the sentinel. Needs sentinel.scribe.
+# Delete this block to run none; the unit stays masked while it is absent.
+scribe:
+  jmap_url: http://127.0.0.1:8080
+  jmap_user: alice@example.com
+  state: /var/lib/corvid/scribe.state
+  sentinel_url: http://127.0.0.1:11333
+  interval_secs: 300
+  # Mailboxes to leave out by name or role, besides Junk and Trash.
+  exclude_mailboxes: []
+  # A thread is summarized with this many messages, or when one body passes long_body_chars.
+  min_messages: 3
+  long_body_chars: 3000
+  # Thread text sent to the model; the oldest messages are cut first.
+  max_input_chars: 12000
+  model:
+    url: http://10.0.0.2:8080/v1/chat/completions
+    name: qwen3.6:35b-a3b
+    max_tokens: 300
+    # Threads per pass.
+    budget: 10
+    deadline_secs: 300
+    request_extra:
+      chat_template_kwargs:
+        enable_thinking: false
 
 milter:
   bind: 127.0.0.1:11332
