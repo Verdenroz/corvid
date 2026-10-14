@@ -500,6 +500,7 @@ keep() {
   else sed -i "/^$2=/d" "$1" 2>/dev/null || true; printf '%s=%s\n' "$2" "$3" >> "$1"; echo "  generated $2"; fi
 }
 keep /opt/corvid/rewriter.env CORVID_IMGPROXY_SECRET "$(openssl rand -hex 32)"
+keep /opt/corvid/scribe.env CORVID_SCRIBE_SECRET "$(openssl rand -hex 32)"
 EOF
 
 step "preparing the host"

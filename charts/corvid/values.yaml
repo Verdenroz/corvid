@@ -48,6 +48,8 @@ secrets:
     CORVID_JMAP_PASSWORD: ""
     # openssl rand -hex 32. The plan's WebHook signs with it; the sentinel verifies with it.
     CORVID_SENTINEL_SECRET: ""
+    # openssl rand -hex 32. Needed only with labeler.suggest and sentinel.scribe in config.
+    CORVID_SCRIBE_SECRET: ""
 
 # Off until an app password exists for it: see the chart README.
 labeler:

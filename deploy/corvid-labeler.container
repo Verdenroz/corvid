@@ -9,6 +9,7 @@ Image=${CORVID_IMAGE}
 Pod=corvid.pod
 Exec=/usr/local/bin/corvid-labeler
 EnvironmentFile=/opt/corvid/labeler.env
+EnvironmentFile=/opt/corvid/scribe.env
 Volume=/opt/corvid/config.yaml:/etc/corvid/config.yaml:ro
 Volume=/opt/corvid/labeler:/var/lib/corvid
 
