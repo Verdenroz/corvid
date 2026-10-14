@@ -3,7 +3,6 @@ package com.verdenroz.corvid.core.data
 import com.verdenroz.corvid.core.jmap.JmapClient
 import com.verdenroz.corvid.core.model.RuleSuggestion
 import com.verdenroz.corvid.core.model.SuggestionAction
-import com.verdenroz.corvid.core.model.SuggestionActionKind
 import com.verdenroz.corvid.core.model.SuggestionSender
 import com.verdenroz.corvid.core.model.SuggestionSenderKind
 import io.ktor.http.HttpMethod
@@ -55,7 +54,15 @@ class SuggestionRepository(private val jmapClient: JmapClient) {
 }
 
 private fun WireSuggestion.toSuggestion(): RuleSuggestion? {
-    val senderKind = SuggestionSenderKind.entries.firstOrNull { it.name.lowercase() == sender.kind } ?: return null
-    val actionKind = SuggestionActionKind.entries.firstOrNull { it.name.lowercase() == action.kind } ?: return null
-    return RuleSuggestion(id, SuggestionSender(senderKind, sender.value), SuggestionAction(actionKind, action.mailboxId), settled, hits)
+    val senderKind = SuggestionSenderKind.entries.firstOrNull { it.wire == sender.kind } ?: return null
+    val filing = action.toAction() ?: return null
+    return RuleSuggestion(id, SuggestionSender(senderKind, sender.value), filing, settled, hits)
 }
+
+private fun WireAction.toAction(): SuggestionAction? =
+    when (kind) {
+        "archive" -> SuggestionAction.Archive
+        "trash" -> SuggestionAction.Trash
+        "folder" -> mailboxId?.let(SuggestionAction::Folder)
+        else -> null
+    }

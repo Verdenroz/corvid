@@ -19,6 +19,8 @@ import com.verdenroz.corvid.feature.filters.resources.filters_another_active
 import com.verdenroz.corvid.feature.filters.resources.filters_newer
 import com.verdenroz.corvid.feature.filters.resources.filters_not_saved
 import com.verdenroz.corvid.feature.filters.resources.filters_unreadable
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -84,10 +86,13 @@ class FiltersViewModel(
         persist(ready.rules, replaceForeign = true)
     }
 
-    fun dismissConfirmation() {
-        update { it.copy(confirmingSuggestion = null) }
-        fail(uiText(Res.string.filters_another_active))
-    }
+    fun dismissConfirmation() =
+        update {
+            it.copy(
+                confirmingSuggestion = null,
+                save = SaveStatus.Failed(uiText(Res.string.filters_not_saved, uiText(Res.string.filters_another_active))),
+            )
+        }
 
     fun acceptSuggestion(suggestion: RuleSuggestion) = accept(suggestion, replaceForeign = false)
 
@@ -130,14 +135,20 @@ class FiltersViewModel(
     }
 
     private suspend fun reload() {
-        val set = repository.load()
-        val pending = pending(set)
+        val (set, pending) = loadWithSuggestions()
         update { it.copy(rules = set.rules, folders = set.folders, suggestions = pending, foreignScript = null, save = SaveStatus.Idle) }
     }
 
-    private suspend fun pending(set: FilterSet): List<RuleSuggestion> =
+    private suspend fun loadWithSuggestions(): Pair<FilterSet, List<RuleSuggestion>> =
+        coroutineScope {
+            val fetched = async { noneOnFailure { suggested.fetch() } }
+            val set = repository.load()
+            set to noneOnFailure { suggested.pending(fetched.await(), set) }
+        }
+
+    private suspend fun noneOnFailure(block: suspend () -> List<RuleSuggestion>): List<RuleSuggestion> =
         try {
-            suggested.pending(set)
+            block()
         } catch (e: JmapException) {
             emptyList()
         }
@@ -151,13 +162,13 @@ class FiltersViewModel(
     private suspend fun load() {
         _state.value =
             try {
-                val set = repository.load()
+                val (set, pending) = loadWithSuggestions()
                 FiltersUiState.Ready(
                     set.rules,
                     set.folders,
                     foreignScript = set.foreignActiveScript,
                     editing = restored,
-                    suggestions = pending(set),
+                    suggestions = pending,
                 )
             } catch (e: FiltersFormatException) {
                 FiltersUiState.Failed(e.text())

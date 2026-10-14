@@ -26,6 +26,10 @@ private suspend fun suggested(fake: FakeJmapServer): Pair<SuggestedRules, Filter
     return SuggestedRules(SuggestionRepository(client), filters, MailboxRepository(client), KeyedTextResolver) to filters
 }
 
+private val ARCHIVE_REF = MailboxRef("archive", listOf("Archive"))
+
+private suspend fun SuggestedRules.pending(filters: FiltersRepository) = pending(fetch(), filters.load())
+
 private fun FakeJmapServer.scriptText(): String = blobs.getValue(sieveScripts.single { it.name == "corvid" }.blobId).decodeToString()
 
 private fun fromRule(
@@ -45,9 +49,9 @@ class SuggestedRulesTest {
     fun `accepting a from suggestion saves a demoting rule and tells the server`() =
         runTest {
             val fake = FakeJmapServer().withRoleMailboxes("inbox", "archive")
-            fake.suggestions.serve(listOf(FakeSuggestion("s1")))
+            fake.suggestions.serve(FakeSuggestion("s1"))
             val (rules, filters) = suggested(fake)
-            val suggestion = rules.pending(filters.load()).single()
+            val suggestion = rules.pending(filters).single()
 
             val result = rules.accept(suggestion, replaceForeign = false)
 
@@ -58,7 +62,7 @@ class SuggestedRulesTest {
                     true,
                     MatchMode.All,
                     listOf(FilterCondition(ConditionField.From, ConditionOperator.Is, "news@x.test")),
-                    listOf(FilterAction.MoveToFolder(MailboxRef("archive", listOf("Archive")))),
+                    listOf(FilterAction.MoveToFolder(ARCHIVE_REF)),
                     stop = false,
                 ),
                 filters.load().rules.single(),
@@ -70,10 +74,10 @@ class SuggestedRulesTest {
     fun `accepting a list suggestion compiles to a list-id contains with angle brackets`() =
         runTest {
             val fake = FakeJmapServer().withRoleMailboxes("trash")
-            fake.suggestions.serve(listOf(FakeSuggestion("s1", senderKind = "list", sender = "news.x.test", actionKind = "trash")))
+            fake.suggestions.serve(FakeSuggestion("s1", senderKind = "list", sender = "news.x.test", actionKind = "trash"))
             val (rules, filters) = suggested(fake)
 
-            rules.accept(rules.pending(filters.load()).single(), replaceForeign = false)
+            rules.accept(rules.pending(filters).single(), replaceForeign = false)
 
             assertEquals("rule_name_list[news.x.test]", filters.load().rules.single().name)
             assertTrue("header :contains \"list-id\" \"<news.x.test>\"" in fake.scriptText())
@@ -83,10 +87,10 @@ class SuggestedRulesTest {
     fun `accepting an archive suggestion makes the archive mailbox when there is none`() =
         runTest {
             val fake = FakeJmapServer().withRoleMailboxes("inbox")
-            fake.suggestions.serve(listOf(FakeSuggestion("s1")))
+            fake.suggestions.serve(FakeSuggestion("s1"))
             val (rules, filters) = suggested(fake)
 
-            val result = rules.accept(rules.pending(filters.load()).single(), replaceForeign = false)
+            val result = rules.accept(rules.pending(filters).single(), replaceForeign = false)
 
             assertEquals(SaveResult.Saved, result)
             assertTrue(fake.mailboxes.any { it.role == "archive" })
@@ -97,10 +101,10 @@ class SuggestedRulesTest {
         runTest {
             val fake = FakeJmapServer()
             fake.mailboxes += FakeMailbox(id = "m1", name = "News")
-            fake.suggestions.serve(listOf(FakeSuggestion("s1", actionKind = "folder", mailboxId = "m1")))
+            fake.suggestions.serve(FakeSuggestion("s1", actionKind = "folder", mailboxId = "m1"))
             val (rules, filters) = suggested(fake)
 
-            rules.accept(rules.pending(filters.load()).single(), replaceForeign = false)
+            rules.accept(rules.pending(filters).single(), replaceForeign = false)
 
             assertEquals(
                 listOf<FilterAction>(FilterAction.MoveToFolder(MailboxRef("m1", listOf("News")))),
@@ -112,55 +116,55 @@ class SuggestedRulesTest {
     fun `a server with suggestions off shows none`() =
         runTest {
             val fake = FakeJmapServer()
-            fake.suggestions.serve(listOf(FakeSuggestion("s1")))
+            fake.suggestions.serve(FakeSuggestion("s1"))
             fake.suggestions.off = true
             val (rules, filters) = suggested(fake)
 
-            assertEquals(emptyList(), rules.pending(filters.load()))
+            assertEquals(emptyList(), rules.pending(filters))
         }
 
     @Test
     fun `a suggestion a rule already carries out is hidden`() =
         runTest {
             val fake = FakeJmapServer().withRoleMailboxes("archive")
-            fake.suggestions.serve(listOf(FakeSuggestion("s1"), FakeSuggestion("s2", sender = "other@x.test")))
+            fake.suggestions.serve(FakeSuggestion("s1"), FakeSuggestion("s2", sender = "other@x.test"))
             val (rules, filters) = suggested(fake)
             filters.save(
-                listOf(fromRule("news@x.test", FilterAction.MoveToFolder(MailboxRef("archive", listOf("Archive"))))),
+                listOf(fromRule("news@x.test", FilterAction.MoveToFolder(ARCHIVE_REF))),
                 replaceForeign = false,
             )
 
-            assertEquals(listOf("s2"), rules.pending(filters.load()).map { it.id })
+            assertEquals(listOf("s2"), rules.pending(filters).map { it.id })
         }
 
     @Test
     fun `a rule that files the sender elsewhere does not hide the suggestion`() =
         runTest {
             val fake = FakeJmapServer().withRoleMailboxes("archive", "trash")
-            fake.suggestions.serve(listOf(FakeSuggestion("s1")))
+            fake.suggestions.serve(FakeSuggestion("s1"))
             val (rules, filters) = suggested(fake)
             filters.save(listOf(fromRule("news@x.test", FilterAction.MoveToTrash)), replaceForeign = false)
 
-            assertEquals(listOf("s1"), rules.pending(filters.load()).map { it.id })
+            assertEquals(listOf("s1"), rules.pending(filters).map { it.id })
         }
 
     @Test
     fun `a suggestion for a folder that is gone is hidden`() =
         runTest {
             val fake = FakeJmapServer()
-            fake.suggestions.serve(listOf(FakeSuggestion("s1", actionKind = "folder", mailboxId = "gone")))
+            fake.suggestions.serve(FakeSuggestion("s1", actionKind = "folder", mailboxId = "gone"))
             val (rules, filters) = suggested(fake)
 
-            assertEquals(emptyList(), rules.pending(filters.load()))
+            assertEquals(emptyList(), rules.pending(filters))
         }
 
     @Test
     fun `accepting over a foreign script posts nothing until the replacement is confirmed`() =
         runTest {
             val fake = FakeJmapServer().withRoleMailboxes("archive").withActiveScript()
-            fake.suggestions.serve(listOf(FakeSuggestion("s1")))
+            fake.suggestions.serve(FakeSuggestion("s1"))
             val (rules, filters) = suggested(fake)
-            val suggestion = rules.pending(filters.load()).single()
+            val suggestion = rules.pending(filters).single()
 
             val first = rules.accept(suggestion, replaceForeign = false)
 
@@ -178,10 +182,10 @@ class SuggestedRulesTest {
         runTest {
             val fake = FakeJmapServer().withRoleMailboxes("archive")
             fake.invalidSieve = true
-            fake.suggestions.serve(listOf(FakeSuggestion("s1")))
+            fake.suggestions.serve(FakeSuggestion("s1"))
             val (rules, filters) = suggested(fake)
 
-            val result = rules.accept(rules.pending(filters.load()).single(), replaceForeign = false)
+            val result = rules.accept(rules.pending(filters).single(), replaceForeign = false)
 
             assertIs<SaveResult.Rejected>(result)
             assertEquals(emptyList(), fake.suggestions.accepted)
@@ -191,10 +195,10 @@ class SuggestedRulesTest {
     fun `dismissing tells the server`() =
         runTest {
             val fake = FakeJmapServer()
-            fake.suggestions.serve(listOf(FakeSuggestion("s1")))
+            fake.suggestions.serve(FakeSuggestion("s1"))
             val (rules, filters) = suggested(fake)
 
-            rules.dismiss(rules.pending(filters.load()).single())
+            rules.dismiss(rules.pending(filters).single())
 
             assertEquals(listOf("s1"), fake.suggestions.dismissed)
         }
@@ -203,15 +207,31 @@ class SuggestedRulesTest {
     fun `a disabled rule or a narrower one does not hide the suggestion`() =
         runTest {
             val fake = FakeJmapServer().withRoleMailboxes("archive")
-            fake.suggestions.serve(listOf(FakeSuggestion("s1")))
+            fake.suggestions.serve(FakeSuggestion("s1"))
             val (rules, filters) = suggested(fake)
-            val archive = FilterAction.MoveToFolder(MailboxRef("archive", listOf("Archive")))
+            val archive = FilterAction.MoveToFolder(ARCHIVE_REF)
             val narrower =
                 fromRule("news@x.test", archive).let {
                     it.copy(conditions = it.conditions + FilterCondition(ConditionField.Subject, ConditionOperator.Contains, "sale"))
                 }
             filters.save(listOf(fromRule("news@x.test", archive).copy(enabled = false), narrower), replaceForeign = false)
 
-            assertEquals(listOf("s1"), rules.pending(filters.load()).map { it.id })
+            assertEquals(listOf("s1"), rules.pending(filters).map { it.id })
+        }
+
+    @Test
+    fun `a failed accept post still reports the rule as saved`() =
+        runTest {
+            val fake = FakeJmapServer().withRoleMailboxes("archive")
+            fake.suggestions.serve(FakeSuggestion("s1"))
+            val (rules, filters) = suggested(fake)
+            val suggestion = rules.pending(filters).single()
+            fake.suggestions.refusePosts = true
+
+            val result = rules.accept(suggestion, replaceForeign = false)
+
+            assertEquals(SaveResult.Saved, result)
+            assertEquals(1, filters.load().rules.size)
+            assertEquals(emptyList(), rules.pending(filters))
         }
 }

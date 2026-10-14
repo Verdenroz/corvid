@@ -10,7 +10,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
@@ -32,17 +31,15 @@ internal fun LazyListScope.suggestionCards(
     item {
         Text(
             stringResource(Res.string.suggestions_title),
-            style = CorvidTheme.type.name,
-            fontWeight = FontWeight.SemiBold,
+            style = CorvidTheme.type.dayHeader,
             modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
         )
     }
+    val enabled = state.save !is SaveStatus.Saving
     items(state.suggestions, key = { it.id }) { suggestion ->
-        val summary = suggestion.summary(state.folders) ?: return@items
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(summary.asString(), style = CorvidTheme.type.body)
+            Text(suggestion.summary(state.folders).asString(), style = CorvidTheme.type.body)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                val enabled = state.save !is SaveStatus.Saving
                 PillButton(
                     stringResource(Res.string.suggestion_add),
                     CorvidIcons.Check,

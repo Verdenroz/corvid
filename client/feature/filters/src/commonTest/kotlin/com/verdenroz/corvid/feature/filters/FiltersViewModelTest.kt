@@ -344,7 +344,7 @@ class FiltersViewModelTest {
     fun `a suggestion is listed and a server with suggestions off lists none`() =
         runViewModelTest {
             val fake = FakeJmapServer().withRoleMailboxes("archive")
-            fake.suggestions.serve(listOf(FakeSuggestion("s1")))
+            fake.suggestions.serve(FakeSuggestion("s1"))
             assertEquals(listOf("s1"), viewModel(fake).ready().suggestions.map { it.id })
 
             fake.suggestions.off = true
@@ -356,7 +356,7 @@ class FiltersViewModelTest {
     fun `accepting a suggestion adds its rule and removes the card`() =
         runViewModelTest {
             val fake = FakeJmapServer().withRoleMailboxes("archive")
-            fake.suggestions.serve(listOf(FakeSuggestion("s1")))
+            fake.suggestions.serve(FakeSuggestion("s1"))
             val vm = viewModel(fake)
 
             vm.acceptSuggestion(vm.ready().suggestions.single())
@@ -371,7 +371,7 @@ class FiltersViewModelTest {
     fun `accepting over a foreign script waits for confirmation and then posts once`() =
         runViewModelTest {
             val fake = FakeJmapServer().withRoleMailboxes("archive").withActiveScript()
-            fake.suggestions.serve(listOf(FakeSuggestion("s1")))
+            fake.suggestions.serve(FakeSuggestion("s1"))
             val vm = viewModel(fake)
 
             vm.acceptSuggestion(vm.ready().suggestions.single())
@@ -390,7 +390,7 @@ class FiltersViewModelTest {
     fun `dismissing a suggestion removes the card and tells the server`() =
         runViewModelTest {
             val fake = FakeJmapServer()
-            fake.suggestions.serve(listOf(FakeSuggestion("s1")))
+            fake.suggestions.serve(FakeSuggestion("s1"))
             val vm = viewModel(fake)
 
             vm.dismissSuggestion(vm.ready().suggestions.single())

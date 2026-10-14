@@ -4,7 +4,6 @@ import com.verdenroz.corvid.core.jmap.JmapError
 import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.model.RuleSuggestion
 import com.verdenroz.corvid.core.model.SuggestionAction
-import com.verdenroz.corvid.core.model.SuggestionActionKind
 import com.verdenroz.corvid.core.model.SuggestionSender
 import com.verdenroz.corvid.core.model.SuggestionSenderKind
 import com.verdenroz.corvid.core.testing.FakeJmapServer
@@ -24,7 +23,7 @@ class SuggestionRepositoryTest {
         runTest {
             val fake =
                 FakeJmapServer().apply {
-                    suggestions.serve(listOf(FakeSuggestion("s1", "list", "news.x.test", "folder", "m7", settled = 9, hits = 10)))
+                    suggestions.serve(FakeSuggestion("s1", "list", "news.x.test", "folder", "m7", settled = 9, hits = 10))
                 }
 
             assertEquals(
@@ -32,7 +31,7 @@ class SuggestionRepositoryTest {
                     RuleSuggestion(
                         "s1",
                         SuggestionSender(SuggestionSenderKind.List, "news.x.test"),
-                        SuggestionAction(SuggestionActionKind.Folder, "m7"),
+                        SuggestionAction.Folder("m7"),
                         9,
                         10,
                     ),
@@ -42,11 +41,11 @@ class SuggestionRepositoryTest {
         }
 
     @Test
-    fun `an archive suggestion carries no mailbox`() =
+    fun `an archive suggestion is read as archive`() =
         runTest {
-            val fake = FakeJmapServer().apply { suggestions.serve(listOf(FakeSuggestion("s1"))) }
+            val fake = FakeJmapServer().apply { suggestions.serve(FakeSuggestion("s1")) }
 
-            assertEquals(SuggestionAction(SuggestionActionKind.Archive, null), repository(fake).list().single().action)
+            assertEquals(SuggestionAction.Archive, repository(fake).list().single().action)
         }
 
     @Test
@@ -58,7 +57,7 @@ class SuggestionRepositoryTest {
     @Test
     fun `a server with suggestions off has no suggestions`() =
         runTest {
-            val fake = FakeJmapServer().apply { suggestions.serve(listOf(FakeSuggestion("s1"))) }
+            val fake = FakeJmapServer().apply { suggestions.serve(FakeSuggestion("s1")) }
             fake.suggestions.off = true
 
             assertEquals(emptyList(), repository(fake).list())
@@ -84,7 +83,7 @@ class SuggestionRepositoryTest {
     @Test
     fun `a suggestion missing its fields is refused loudly`() =
         runTest {
-            val fake = FakeJmapServer().apply { suggestions.serve(listOf(FakeSuggestion("s1"))) }
+            val fake = FakeJmapServer().apply { suggestions.serve(FakeSuggestion("s1")) }
             fake.suggestions.malformed = true
 
             val failure = assertFailsWith<JmapException> { repository(fake).list() }
@@ -95,7 +94,7 @@ class SuggestionRepositoryTest {
     @Test
     fun `accepting and dismissing post to the suggestion`() =
         runTest {
-            val fake = FakeJmapServer().apply { suggestions.serve(listOf(FakeSuggestion("s1"), FakeSuggestion("s2"))) }
+            val fake = FakeJmapServer().apply { suggestions.serve(FakeSuggestion("s1"), FakeSuggestion("s2")) }
             val repository = repository(fake)
 
             repository.accept("s1")

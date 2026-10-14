@@ -57,12 +57,18 @@ class FakeSuggestions {
     @Volatile
     var malformed: Boolean = false
 
+    /** Answers each accept and dismiss with a 500. */
+    @Volatile
+    var refusePosts: Boolean = false
+
     val accepted: MutableList<String> = CopyOnWriteArrayList()
     val dismissed: MutableList<String> = CopyOnWriteArrayList()
 
     fun serve(suggestions: List<FakeSuggestion>) {
         served = suggestions
     }
+
+    fun serve(vararg suggestions: FakeSuggestion) = serve(suggestions.toList())
 
     internal fun handle(
         scope: MockRequestHandleScope,
@@ -79,6 +85,7 @@ class FakeSuggestions {
                 }
             return scope.respond(body.toString(), HttpStatusCode.OK, JSON)
         }
+        if (refusePosts) return scope.respond("", HttpStatusCode.InternalServerError)
         val (id, verb) = request.url.encodedPath.removePrefix("/corvid/suggestions/").split("/")
         if (feed.none { it.id == id }) return scope.respond("not found", HttpStatusCode.NotFound)
         (if (verb == "accept") accepted else dismissed) += id
