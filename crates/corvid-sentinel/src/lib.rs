@@ -6,6 +6,7 @@ mod http;
 mod key_file;
 mod notice;
 mod persisted;
+pub mod scribe;
 mod service;
 mod signature;
 mod state;
