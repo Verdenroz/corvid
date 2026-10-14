@@ -177,6 +177,7 @@ class ThreadsTest {
 
             assertEquals(listOf("a1", "a2"), lookup.messages.map { it.id })
             assertEquals(listOf("first", "second"), lookup.messages.map { it.body })
+            assertEquals("a", lookup.threadId)
         }
 
     @Test
