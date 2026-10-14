@@ -60,12 +60,48 @@ fn html_text(html: &str) -> String {
 }
 
 fn decode(text: &str) -> String {
-    text.replace("&nbsp;", " ")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&#39;", "'")
-        .replace("&amp;", "&")
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find('&') {
+        out.push_str(&rest[..at]);
+        rest = &rest[at..];
+        match entity(rest) {
+            Some((decoded, len)) => {
+                out.push(decoded);
+                rest = &rest[len..];
+            }
+            None => {
+                out.push('&');
+                rest = &rest[1..];
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// The character and byte length of the entity `text` starts with, if it is a named one from
+/// the short list mail uses or a numeric one.
+fn entity(text: &str) -> Option<(char, usize)> {
+    let end = text.find(';').filter(|&end| end <= 10)?;
+    let name = &text[1..end];
+    let decoded = match name {
+        "nbsp" => ' ',
+        "lt" => '<',
+        "gt" => '>',
+        "quot" => '"',
+        "amp" => '&',
+        "apos" => '\'',
+        _ => {
+            let digits = name.strip_prefix('#')?;
+            let code = match digits.strip_prefix(['x', 'X']) {
+                Some(hex) => u32::from_str_radix(hex, 16).ok()?,
+                None => digits.parse().ok()?,
+            };
+            char::from_u32(code)?
+        }
+    };
+    Some((decoded, end + 1))
 }
 
 #[cfg(test)]
@@ -96,6 +132,16 @@ mod tests {
                     <blockquote>Original text</blockquote><script>alert(1)</script>";
 
         assert_eq!(plain("text/html", html), "Reply");
+    }
+
+    #[test]
+    fn numeric_entities_decode_and_an_escaped_ampersand_does_not_decode_twice() {
+        let html = "<p>It&#8217;s &#x2019; &amp;lt; & plain &bogus; &#xZZ;</p>";
+
+        assert_eq!(
+            plain("text/html", html),
+            "It\u{2019}s \u{2019} &lt; & plain &bogus; &#xZZ;"
+        );
     }
 
     #[test]

@@ -5,7 +5,7 @@ use corvid_jmap::{Client, ids, missing, text};
 use serde_json::{Value, json};
 
 use crate::body;
-use crate::mailbox::{Changes, Cursors, Folder, Mail, Mailbox};
+use crate::mailbox::{Changes, Cursors, Folder, Mail, Mailbox, Member};
 
 const MAX_CHANGES: u32 = 500;
 
@@ -38,34 +38,7 @@ impl Jmap {
         text(&result["state"]).ok_or_else(|| missing("a state"))
     }
 
-    fn thread_ids_of(&self, emails: &[String]) -> io::Result<Vec<String>> {
-        let mut threads = Vec::new();
-        for chunk in emails.chunks(GET_CHUNK) {
-            let result = self.client.call(
-                "Email/get",
-                json!({"accountId": self.account(), "ids": chunk, "properties": ["threadId"]}),
-            )?;
-            let list = result["list"]
-                .as_array()
-                .ok_or_else(|| missing("an email list"))?;
-            threads.extend(list.iter().filter_map(|email| text(&email["threadId"])));
-        }
-        Ok(threads)
-    }
-}
-
-impl Mailbox for Jmap {
-    fn changes(&self, since: Option<&Cursors>) -> io::Result<Changes> {
-        let Some(since) = since else {
-            return Ok(Changes {
-                threads: Vec::new(),
-                cursors: Cursors {
-                    email: self.current_state("Email/get")?,
-                    thread: self.current_state("Thread/get")?,
-                },
-            });
-        };
-
+    fn changes_since(&self, since: &Cursors) -> io::Result<Changes> {
         let emails = self.client.call(
             "Email/changes",
             json!({
@@ -78,7 +51,10 @@ impl Mailbox for Jmap {
             .into_iter()
             .chain(ids(&emails["updated"]))
             .collect();
-        let mut threads: BTreeSet<String> = self.thread_ids_of(&touched)?.into_iter().collect();
+        let mut threads = BTreeSet::new();
+        for list in self.get_each(&touched, json!({"properties": ["threadId"]}))? {
+            threads.extend(list.iter().filter_map(|email| text(&email["threadId"])));
+        }
 
         let changed = self.client.call(
             "Thread/changes",
@@ -101,6 +77,45 @@ impl Mailbox for Jmap {
         })
     }
 
+    /// `Email/get` of `wanted` in chunks, each chunk's `list`.
+    fn get_each(&self, wanted: &[String], arguments: Value) -> io::Result<Vec<Vec<Value>>> {
+        wanted
+            .chunks(GET_CHUNK)
+            .map(|chunk| {
+                let mut arguments = arguments.clone();
+                arguments["accountId"] = json!(self.account());
+                arguments["ids"] = json!(chunk);
+                let result = self.client.call("Email/get", arguments)?;
+                result["list"]
+                    .as_array()
+                    .cloned()
+                    .ok_or_else(|| missing("an email list"))
+            })
+            .collect()
+    }
+}
+
+impl Mailbox for Jmap {
+    fn changes(&self, since: Option<&Cursors>) -> io::Result<Changes> {
+        let Some(since) = since else {
+            return Ok(Changes {
+                threads: Vec::new(),
+                cursors: Cursors {
+                    email: self.current_state("Email/get")?,
+                    thread: self.current_state("Thread/get")?,
+                },
+            });
+        };
+
+        match self.changes_since(since) {
+            Err(error) if lost(&error) => {
+                tracing::warn!(%error, "the server cannot calculate changes; adopting its position");
+                self.changes(None)
+            }
+            result => result,
+        }
+    }
+
     fn folders(&self) -> io::Result<Vec<Folder>> {
         let result = self.client.call(
             "Mailbox/get",
@@ -112,32 +127,36 @@ impl Mailbox for Jmap {
         Ok(list.iter().filter_map(folder).collect())
     }
 
-    fn thread(&self, id: &str) -> io::Result<Vec<Mail>> {
+    fn members(&self, thread_id: &str) -> io::Result<Vec<Member>> {
         let thread = self.client.call(
             "Thread/get",
-            json!({"accountId": self.account(), "ids": [id]}),
+            json!({"accountId": self.account(), "ids": [thread_id]}),
         )?;
         let emails = ids(&thread["list"][0]["emailIds"]);
+        let mut members = Vec::new();
+        for list in self.get_each(&emails, json!({"properties": ["id", "mailboxIds"]}))? {
+            members.extend(list.iter().filter_map(member));
+        }
+        Ok(members)
+    }
 
+    fn mails(&self, wanted: &[String]) -> io::Result<Vec<Mail>> {
+        let arguments = json!({
+            "properties": ["id", "from", "receivedAt", "textBody", "bodyValues"],
+            "fetchTextBodyValues": true,
+            "maxBodyValueBytes": MAX_BODY_BYTES,
+        });
         let mut mails = Vec::new();
-        for chunk in emails.chunks(GET_CHUNK) {
-            let result = self.client.call(
-                "Email/get",
-                json!({
-                    "accountId": self.account(),
-                    "ids": chunk,
-                    "properties": ["id", "mailboxIds", "from", "receivedAt", "textBody", "bodyValues"],
-                    "fetchTextBodyValues": true,
-                    "maxBodyValueBytes": MAX_BODY_BYTES,
-                }),
-            )?;
-            let list = result["list"]
-                .as_array()
-                .ok_or_else(|| missing("an email list"))?;
+        for list in self.get_each(wanted, arguments)? {
             mails.extend(list.iter().filter_map(mail));
         }
         Ok(mails)
     }
+}
+
+/// The server no longer holds the changes since a cursor, as after a restore.
+fn lost(error: &io::Error) -> bool {
+    error.to_string().contains("cannotCalculateChanges")
 }
 
 fn folder(value: &Value) -> Option<Folder> {
@@ -145,6 +164,16 @@ fn folder(value: &Value) -> Option<Folder> {
         id: text(&value["id"])?,
         name: text(&value["name"])?,
         role: text(&value["role"]),
+    })
+}
+
+fn member(value: &Value) -> Option<Member> {
+    Some(Member {
+        id: text(&value["id"])?,
+        mailbox_ids: value["mailboxIds"]
+            .as_object()
+            .map(|map| map.keys().cloned().collect())
+            .unwrap_or_default(),
     })
 }
 
@@ -165,10 +194,6 @@ fn mail(value: &Value) -> Option<Mail> {
 
     Some(Mail {
         id: text(&value["id"])?,
-        mailbox_ids: value["mailboxIds"]
-            .as_object()
-            .map(|map| map.keys().cloned().collect())
-            .unwrap_or_default(),
         from: text(&value["from"][0]["email"]).unwrap_or_default(),
         received_at: text(&value["receivedAt"])?,
         body: body.join("\n").trim().to_owned(),
@@ -180,10 +205,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_plain_text_message_is_read_with_its_mailboxes() {
+    fn a_plain_text_message_is_read_without_its_quotes() {
         let email = json!({
             "id": "e1",
-            "mailboxIds": {"m1": true, "m2": true},
             "from": [{"name": "Ann", "email": "ann@x.test"}],
             "receivedAt": "2026-10-01T09:00:00Z",
             "textBody": [{"partId": "1", "type": "text/plain"}],
@@ -193,7 +217,6 @@ mod tests {
         let mail = mail(&email).unwrap();
 
         assert_eq!(mail.id, "e1");
-        assert_eq!(mail.mailbox_ids, BTreeSet::from(["m1".into(), "m2".into()]));
         assert_eq!(mail.from, "ann@x.test");
         assert_eq!(mail.body, "Hello");
     }
@@ -202,7 +225,6 @@ mod tests {
     fn an_html_only_message_is_stripped_to_text() {
         let email = json!({
             "id": "e1",
-            "mailboxIds": {"m1": true},
             "from": [{"email": "ann@x.test"}],
             "receivedAt": "2026-10-01T09:00:00Z",
             "textBody": [{"partId": "1", "type": "text/html"}],
@@ -216,7 +238,6 @@ mod tests {
     fn several_text_parts_are_joined_in_order() {
         let email = json!({
             "id": "e1",
-            "mailboxIds": {},
             "receivedAt": "2026-10-01T09:00:00Z",
             "textBody": [{"partId": "1", "type": "text/plain"}, {"partId": "2", "type": "text/plain"}],
             "bodyValues": {"1": {"value": "one"}, "2": {"value": "two"}},
@@ -231,6 +252,16 @@ mod tests {
     #[test]
     fn an_email_without_a_receipt_date_is_skipped() {
         assert!(mail(&json!({"id": "e1"})).is_none());
+    }
+
+    #[test]
+    fn a_member_carries_its_mailboxes() {
+        let member = member(&json!({"id": "e1", "mailboxIds": {"m1": true, "m2": true}})).unwrap();
+
+        assert_eq!(
+            member.mailbox_ids,
+            BTreeSet::from(["m1".into(), "m2".into()])
+        );
     }
 
     #[test]

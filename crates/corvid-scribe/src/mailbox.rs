@@ -23,9 +23,15 @@ pub struct Folder {
     pub role: Option<String>,
 }
 
-pub struct Mail {
+/// A message of a thread, known by id and folders alone so a thread can be checked for change
+/// before any body is downloaded.
+pub struct Member {
     pub id: String,
     pub mailbox_ids: BTreeSet<String>,
+}
+
+pub struct Mail {
+    pub id: String,
     pub from: String,
     /// The JMAP UTC date, which sorts as text.
     pub received_at: String,
@@ -35,11 +41,14 @@ pub struct Mail {
 
 pub trait Mailbox {
     /// What changed since `since`. A first run, with no cursors, adopts the server's current
-    /// position and reports nothing: history is not summarized.
+    /// position and reports nothing: history is not summarized. So does a cursor the server can
+    /// no longer calculate changes from; those threads are judged when they next change.
     fn changes(&self, since: Option<&Cursors>) -> io::Result<Changes>;
 
     fn folders(&self) -> io::Result<Vec<Folder>>;
 
     /// Every message of the thread, empty when the thread no longer exists.
-    fn thread(&self, id: &str) -> io::Result<Vec<Mail>>;
+    fn members(&self, thread_id: &str) -> io::Result<Vec<Member>>;
+
+    fn mails(&self, ids: &[String]) -> io::Result<Vec<Mail>>;
 }
