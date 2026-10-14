@@ -7,6 +7,7 @@ import com.verdenroz.corvid.core.data.FiltersRepository
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.data.NoticeRepository
 import com.verdenroz.corvid.core.data.SenderRepository
+import com.verdenroz.corvid.core.data.SuggestedRules
 import com.verdenroz.corvid.core.data.SuggestionRepository
 import com.verdenroz.corvid.core.data.UpdateRepository
 import org.koin.dsl.module
@@ -21,6 +22,7 @@ val dataModule =
             scoped { AppReleaseRepository(jmapClient = get()) }
             scoped { NoticeRepository(jmapClient = get()) }
             scoped { SuggestionRepository(jmapClient = get()) }
+            scoped { SuggestedRules(suggestions = get(), filters = get(), mailboxes = get()) }
             scoped { SenderRepository(jmapClient = get(), mailboxRepository = get()) }
         }
     }

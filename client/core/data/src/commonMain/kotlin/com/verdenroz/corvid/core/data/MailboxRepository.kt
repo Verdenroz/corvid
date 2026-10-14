@@ -548,8 +548,8 @@ class MailboxRepository(
         return (notUpdated + notDestroyed).toMap()
     }
 
-    /** Null when the server will not make one. */
-    private suspend fun archiveMailboxId(): String? =
+    /** The Archive mailbox, made on first use; null when the server will not make one. */
+    suspend fun archiveMailboxId(): String? =
         mailboxId(ARCHIVE) ?: rolesLock.withLock {
             roleIds?.get(ARCHIVE)?.let { return@withLock it }
             val arguments =
