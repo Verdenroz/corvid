@@ -11,7 +11,7 @@ use std::path::Path;
 
 use corvid_ingest::{is_prior_keyword, open, save, sender_key};
 
-pub use actions::{Delta, record};
+pub use actions::{Candidate, Delta, mine, record};
 pub use cold_start::{Budget, ColdStart, cold_start};
 pub use jmap::Jmap;
 pub use mailbox::{Changes, Mailbox, Message, Roles};

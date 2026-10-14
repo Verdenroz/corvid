@@ -3,6 +3,7 @@
 //! Only arrivals the labeler sees within minutes of delivery are observed, and an outcome is
 //! decided after a settle window, so one reading session cannot make a rule.
 
+mod mine;
 mod state;
 mod track;
 
@@ -12,6 +13,7 @@ use std::path::Path;
 use corvid_store::{open, save};
 
 use crate::mailbox::{Mailbox, Message};
+pub use state::Candidate;
 use state::{Actions, SCHEMA};
 
 /// What one poll saw change.
@@ -37,4 +39,12 @@ pub fn record(
     actions.observe(now, user, &roles, delta);
     actions.settle(now);
     save(path, SCHEMA, &actions)
+}
+
+/// Rewrites the candidates from the settled history and returns them.
+pub fn mine(path: &Path) -> io::Result<Vec<Candidate>> {
+    let mut actions: Actions = open(path, SCHEMA)?;
+    actions.mine();
+    save(path, SCHEMA, &actions)?;
+    Ok(actions.candidates)
 }

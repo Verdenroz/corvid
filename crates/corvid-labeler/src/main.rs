@@ -1,9 +1,11 @@
 use std::process::ExitCode;
 use std::thread::sleep;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use corvid_config::{Config, EX_TEMPFAIL, or_exit, secret, section};
-use corvid_labeler::{Budget, Jmap, Model, cold_start, poll};
+use corvid_labeler::{Budget, Jmap, Model, cold_start, mine, poll_observed, record};
+
+const MINE_EVERY: Duration = Duration::from_secs(86400);
 
 fn main() -> ExitCode {
     tracing_subscriber::fmt()
@@ -21,6 +23,7 @@ fn main() -> ExitCode {
     let labeler = or_exit(section(config.labeler, "labeler"));
     let password = or_exit(secret("CORVID_JMAP_PASSWORD"));
     let (url, state) = (labeler.jmap_url, labeler.state);
+    let actions = state.with_file_name("actions.json");
     let interval = Duration::from_secs(labeler.interval_secs);
 
     let cold = match labeler.model.map(ColdPass::new).transpose() {
@@ -47,9 +50,12 @@ fn main() -> ExitCode {
     // The cold-start pass shares this loop because it writes the same state file; a separate
     // writer's save would drop whatever the other learned in between.
     let mut due = Instant::now();
+    let mut mine_due = Instant::now();
 
     loop {
-        match poll(&state, &mailbox) {
+        match poll_observed(&state, &mailbox, |delta| {
+            record(&actions, &mailbox, &labeler.jmap_user, unix_now(), delta)
+        }) {
             Ok(summary) => tracing::info!(
                 labelled = summary.labelled,
                 written = summary.written,
@@ -89,8 +95,27 @@ fn main() -> ExitCode {
             }
         }
 
+        if Instant::now() >= mine_due {
+            mine_due = Instant::now() + MINE_EVERY;
+            match mine(&actions) {
+                Ok(candidates) => tracing::info!(candidates = candidates.len(), "mined"),
+                Err(error) if error.kind() == std::io::ErrorKind::InvalidData => {
+                    tracing::error!(%error, state = %actions.display(), "refusing to continue");
+                    return ExitCode::FAILURE;
+                }
+                Err(error) => tracing::warn!(%error, "mining did not run"),
+            }
+        }
+
         sleep(interval);
     }
+}
+
+fn unix_now() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("the clock is after 1970")
+        .as_secs() as i64
 }
 
 /// The model and what one cold-start pass may spend on it.
