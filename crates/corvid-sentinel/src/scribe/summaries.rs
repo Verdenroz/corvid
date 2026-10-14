@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use super::state::Summary;
 use super::{Shared, accept, commit};
+use crate::dates::rfc3339;
 
 const MAX_TEXT_CHARS: usize = 2000;
 
@@ -95,7 +96,7 @@ pub(super) async fn manifest(
 pub(super) struct Served {
     thread_id: String,
     text: String,
-    generated_at: i64,
+    generated_at: String,
 }
 
 pub(super) async fn serve(
@@ -109,7 +110,7 @@ pub(super) async fn serve(
             Json(Served {
                 thread_id,
                 text: summary.text,
-                generated_at: summary.generated_at,
+                generated_at: rfc3339(summary.generated_at),
             })
         })
         .ok_or(StatusCode::NOT_FOUND)
