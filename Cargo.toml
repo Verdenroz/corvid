@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/corvid-audit", "crates/corvid-imgproxy", "crates/corvid-ingest", "crates/corvid-jmap", "crates/corvid-labeler", "crates/corvid-label", "crates/corvid-milter", "crates/corvid-model", "crates/corvid-mirror", "crates/corvid-store", "crates/corvid-mime", "crates/corvid-rewrite", "crates/corvid-sentinel", "crates/corvid-sign", "crates/corvid-config"]
+members = ["crates/corvid-audit", "crates/corvid-imgproxy", "crates/corvid-ingest", "crates/corvid-jmap", "crates/corvid-labeler", "crates/corvid-label", "crates/corvid-milter", "crates/corvid-model", "crates/corvid-mirror", "crates/corvid-store", "crates/corvid-mime", "crates/corvid-rewrite", "crates/corvid-scribe", "crates/corvid-sentinel", "crates/corvid-sign", "crates/corvid-config"]
 
 [workspace.package]
 version = "0.1.0"

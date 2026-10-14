@@ -1,0 +1,28 @@
+[package]
+name = "corvid-scribe"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+corvid-config.workspace = true
+corvid-jmap = { version = "0.1.0", path = "../corvid-jmap" }
+corvid-model.workspace = true
+corvid-sign.workspace = true
+corvid-store.workspace = true
+ctrlc = { version = "3.5.2", features = ["termination"] }
+hex = "0.4.3"
+lol_html = "3.0.1"
+reqwest = { version = "0.13.4", default-features = false, features = ["rustls", "blocking", "json"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+sha2 = "0.11.0"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+
+[dev-dependencies]
+axum = "0.8.9"
+corvid-sentinel = { path = "../corvid-sentinel" }
+tempfile = "3.27.0"
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "net"] }

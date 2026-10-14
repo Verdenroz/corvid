@@ -688,6 +688,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "corvid-scribe"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "corvid-config",
+ "corvid-jmap",
+ "corvid-model",
+ "corvid-sentinel",
+ "corvid-sign",
+ "corvid-store",
+ "ctrlc",
+ "hex",
+ "lol_html",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "corvid-sentinel"
 version = "0.1.0"
 dependencies = [
