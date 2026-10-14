@@ -3,7 +3,6 @@
 mod ingest;
 mod state;
 
-use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -15,8 +14,10 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use serde::Serialize;
 
+use crate::dates::now_secs;
+use crate::http::{Off, off_json};
 use crate::persisted::Persisted;
-use crate::{now_secs, verify};
+use crate::verify;
 use ingest::{Candidate, Post, SKEW_SECONDS};
 pub use state::{Scribe, open};
 use state::{Suggestion, Verdict, save};
@@ -39,10 +40,7 @@ async fn commit<T: Send + 'static>(
     state: Shared,
     change: impl FnOnce(&Scribe) -> (Option<Scribe>, T) + Send + 'static,
 ) -> Result<T, StatusCode> {
-    tokio::task::spawn_blocking(move || state.scribe.commit(change))
-        .await
-        .expect("the blocking task panicked")
-        .map_err(|error| unrecorded(&error))
+    Persisted::commit_blocking(state, |state| &state.scribe, "suggestion", change).await
 }
 
 pub fn routes(config: Config) -> Router {
@@ -64,32 +62,17 @@ pub fn routes(config: Config) -> Router {
         .with_state(state)
 }
 
-#[derive(Serialize)]
-struct Off {
-    error: &'static str,
-}
-
 /// The suggestion routes on a host whose config has no `sentinel.scribe`. A stable 503 tells a
 /// client "switched off" from a request that never reached the sentinel, which Stalwart answers 404.
 pub fn off() -> Router {
     async fn off() -> (StatusCode, Json<Off>) {
-        (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(Off {
-                error: "suggestions_off",
-            }),
-        )
+        off_json("suggestions_off")
     }
     Router::new()
         .route("/internal/scribe/suggestions", post(off))
         .route("/corvid/suggestions", get(off))
         .route("/corvid/suggestions/{id}/dismiss", post(off))
         .route("/corvid/suggestions/{id}/accept", post(off))
-}
-
-fn unrecorded(error: &io::Error) -> StatusCode {
-    tracing::warn!(%error, "cannot save the suggestion state");
-    StatusCode::INTERNAL_SERVER_ERROR
 }
 
 async fn ingest_post(State(state): State<Shared>, headers: HeaderMap, body: Bytes) -> StatusCode {

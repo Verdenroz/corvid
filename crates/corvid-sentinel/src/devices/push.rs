@@ -24,7 +24,8 @@ use tokio::sync::Notify;
 use super::keys::{self, Keys, checked};
 use super::state::{Push, Target};
 use super::stream;
-use super::{Off, Shared, commit, valid_name};
+use super::{Shared, commit, valid_name};
+use crate::http::{Off, off_json};
 use crate::vapid::Vapid;
 use crate::webhook::Kind;
 use crate::webpush::{self, Receiver, random_bytes};
@@ -106,10 +107,7 @@ pub(super) fn routes(device: Shared, config: Config) -> Router {
 /// The push routes on a host whose config has devices but no `sentinel.push`.
 pub(super) fn off() -> Router {
     async fn off() -> (StatusCode, Json<Off>) {
-        (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(Off { error: "push_off" }),
-        )
+        off_json("push_off")
     }
     Router::new()
         .route("/corvid/devices/{name}/push", put(off).delete(off))

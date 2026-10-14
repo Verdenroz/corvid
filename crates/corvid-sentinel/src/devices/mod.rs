@@ -7,7 +7,6 @@ mod push;
 mod state;
 mod stream;
 
-use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -21,6 +20,7 @@ use subtle::ConstantTimeEq;
 
 use crate::auth::{Invalid, Issuer, MasterRefusal, master_status};
 use crate::dates;
+use crate::http::{Off, off_json};
 use crate::persisted::Persisted;
 use crate::webpush::random_bytes;
 use keys::Keys;
@@ -63,10 +63,7 @@ async fn commit<T: Send + 'static>(
     state: Shared,
     change: impl FnOnce(&Devices) -> (Option<Devices>, T) + Send + 'static,
 ) -> Result<T, StatusCode> {
-    tokio::task::spawn_blocking(move || state.devices.commit(change))
-        .await
-        .expect("the blocking task panicked")
-        .map_err(|error| unrecorded(&error))
+    Persisted::commit_blocking(state, |state| &state.devices, "device", change).await
 }
 
 pub fn routes(config: Config) -> Router {
@@ -98,21 +95,11 @@ pub fn routes(config: Config) -> Router {
         .merge(pushes)
 }
 
-#[derive(Serialize)]
-struct Off {
-    error: &'static str,
-}
-
 /// The device routes on a host whose config has no `sentinel.devices`. A stable 503 lets a client
 /// tell "switched off" from a request that never reached the sentinel, which Stalwart answers 404.
 pub fn off() -> Router {
     async fn off() -> (StatusCode, Json<Off>) {
-        (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(Off {
-                error: "devices_off",
-            }),
-        )
+        off_json("devices_off")
     }
     Router::new()
         .route("/corvid/devices/requests", post(off).get(off))
@@ -189,11 +176,6 @@ async fn create(
     created
         .map(|created| (StatusCode::CREATED, Json(created)))
         .ok_or(StatusCode::TOO_MANY_REQUESTS)
-}
-
-fn unrecorded(error: &io::Error) -> StatusCode {
-    tracing::warn!(%error, "cannot save the device state");
-    StatusCode::INTERNAL_SERVER_ERROR
 }
 
 #[derive(Serialize)]

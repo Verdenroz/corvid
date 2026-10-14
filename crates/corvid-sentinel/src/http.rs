@@ -66,6 +66,17 @@ pub fn build(config: Config) -> (Router, impl Future<Output = ()> + Send + 'stat
     (router, watcher)
 }
 
+#[derive(Serialize)]
+pub(crate) struct Off {
+    pub error: &'static str,
+}
+
+/// What a router for a switched-off feature answers on every route, so a client can tell "off"
+/// from a request that never reached the sentinel.
+pub(crate) fn off_json(error: &'static str) -> (StatusCode, Json<Off>) {
+    (StatusCode::SERVICE_UNAVAILABLE, Json(Off { error }))
+}
+
 #[derive(Deserialize)]
 struct After {
     after: Option<u64>,

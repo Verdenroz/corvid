@@ -1,6 +1,8 @@
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError};
+
+use axum::http::StatusCode;
 
 /// State kept in memory and in a file, where the file is written before the memory changes.
 pub(crate) struct Persisted<T> {
@@ -36,5 +38,27 @@ impl<T> Persisted<T> {
             *value = next;
         }
         Ok(result)
+    }
+
+    /// `commit` for the `Persisted` that `pick` finds in `state`, run off the async threads since
+    /// it writes the state file. A failed save is logged as `what` and answers 500.
+    pub(crate) async fn commit_blocking<S, R>(
+        state: Arc<S>,
+        pick: fn(&S) -> &Self,
+        what: &'static str,
+        change: impl FnOnce(&T) -> (Option<T>, R) + Send + 'static,
+    ) -> Result<R, StatusCode>
+    where
+        S: Send + Sync + 'static,
+        T: Send + 'static,
+        R: Send + 'static,
+    {
+        tokio::task::spawn_blocking(move || pick(&state).commit(change))
+            .await
+            .expect("the blocking task panicked")
+            .map_err(|error| {
+                tracing::warn!(%error, "cannot save the {what} state");
+                StatusCode::INTERNAL_SERVER_ERROR
+            })
     }
 }
