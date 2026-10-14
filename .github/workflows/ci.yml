@@ -140,7 +140,7 @@ jobs:
       - run: ./deploy/check-env.sh
       - run: ./deploy/check-sentinel-events.sh
 
-  # Release packaging (assembleRelease, createDistributable) runs once per main push in image.yml.
+  # Release packaging (assembleRelease, createDistributable) runs once per main push in the image job.
   client:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.client == 'true') }}
@@ -179,3 +179,13 @@ jobs:
             --set secrets.values.CORVID_JMAP_PASSWORD=x > rendered.yaml
           test "$(grep -c '^kind:' rendered.yaml)" -gt 0
           kubeconform -strict -summary rendered.yaml
+
+  # A skipped job is not a failure, so a push that touched one area still publishes.
+  image:
+    needs: [changes, rust, sentinel, deploy, client, chart]
+    if: ${{ github.event_name == 'push' && !cancelled() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/image.yml
+    secrets: inherit

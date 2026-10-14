@@ -453,6 +453,10 @@ and 18443 plus Stalwart's own listeners, so the deploy job fails with a bind err
 already holds one of those ports. `TMPDIR` points under the work directory so `mktemp -d` paths
 can be bind-mounted by the host daemon.
 
+A main push publishes its image from `ci.yml`'s last job, only when no other job failed or was
+cancelled; a release tag still publishes from `image.yml` directly. So a failed run, that bind
+error included, leaves the registry on the previous build: free the port and rerun the failed jobs.
+
 A user unit, `corvid-ci-runner.service`, starts the container at boot (the account has linger on).
 Docker's own restart policy is not enough: the daemon here is socket-activated and stays down
 after a reboot until something connects, and the unit's `docker start` is that connection.
