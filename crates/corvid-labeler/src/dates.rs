@@ -60,6 +60,30 @@ mod tests {
     }
 
     #[test]
+    fn seconds_include_the_time_of_day() {
+        assert_eq!(seconds("1970-01-02T01:02:03Z"), Some(86400 + 3723));
+    }
+
+    #[test]
+    fn fractional_seconds_do_not_move_it() {
+        assert_eq!(
+            seconds("2026-10-13T21:15:11.123Z"),
+            seconds("2026-10-13T21:15:11Z")
+        );
+    }
+
+    #[test]
+    fn seconds_roll_over_at_midnight() {
+        let last = seconds("2026-10-13T23:59:59Z").unwrap();
+        assert_eq!(seconds("2026-10-14T00:00:00Z"), Some(last + 1));
+    }
+
+    #[test]
+    fn a_date_without_a_time_has_no_seconds() {
+        assert_eq!(seconds("2026-10-13"), None);
+    }
+
+    #[test]
     fn rejects_something_that_is_not_a_date() {
         assert_eq!(days("not a date"), None);
         assert_eq!(days(""), None);

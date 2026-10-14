@@ -83,8 +83,7 @@ impl Mailbox for Jmap {
         )?;
         let list = result["list"]
             .as_array()
-            .map(Vec::as_slice)
-            .unwrap_or_default();
+            .ok_or_else(|| missing("a mailbox list"))?;
         let with = |role: &str| {
             list.iter()
                 .find(|mailbox| mailbox["role"] == role)
