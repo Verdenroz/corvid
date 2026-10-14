@@ -5,6 +5,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import com.verdenroz.corvid.core.data.AttachmentFiles
 import com.verdenroz.corvid.core.data.MailboxRepository
+import com.verdenroz.corvid.core.data.SummaryRepository
 import com.verdenroz.corvid.feature.mailbox.LedgerUiState
 import com.verdenroz.corvid.feature.mailbox.LedgerViewModel
 import com.verdenroz.corvid.feature.mailbox.ReaderScreen
@@ -36,12 +37,13 @@ internal fun ReaderPage(
     entryKey: String,
     models: EntryModels,
     mailbox: MailboxRepository,
+    summaries: SummaryRepository,
     files: AttachmentFiles,
     ledgers: Ledgers,
     navigator: Navigator,
 ) {
     val list = listUnder(index, navigator, models, ledgers)
-    val viewModel = models.of(entryKey, ReaderViewModel::class) { ReaderViewModel(mailbox, route.emailId, list?.source?.kind) }
+    val viewModel = models.of(entryKey, ReaderViewModel::class) { ReaderViewModel(mailbox, summaries, route.emailId, list?.source?.kind) }
     val loaded = list?.state?.collectAsState()?.value as? LedgerUiState.Loaded
     val neighbours = loaded?.neighboursOf(route.emailId)
     val atLoadedEnd = neighbours != null && neighbours.older == null && loaded.canLoadMore

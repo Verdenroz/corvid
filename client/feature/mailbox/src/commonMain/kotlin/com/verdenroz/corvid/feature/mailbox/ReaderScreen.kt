@@ -233,6 +233,7 @@ private fun ThreadColumn(
                     bottom = 16.dp,
                 ).widthIn(max = 860.dp),
         )
+        state.summary?.let { ThreadSummaryBlock(it, wide) }
         state.messages.forEach { email ->
             ThreadMessage(
                 email = email,

@@ -7,6 +7,7 @@ import com.verdenroz.corvid.core.data.INBOX
 import com.verdenroz.corvid.core.data.JUNK
 import com.verdenroz.corvid.core.data.KeywordPatch
 import com.verdenroz.corvid.core.data.MailboxRepository
+import com.verdenroz.corvid.core.data.SummaryRepository
 import com.verdenroz.corvid.core.data.TRASH
 import com.verdenroz.corvid.core.data.ThreadLookup
 import com.verdenroz.corvid.core.data.keywordPatch
@@ -31,6 +32,7 @@ import kotlinx.coroutines.launch
  */
 class ReaderViewModel(
     private val repository: MailboxRepository,
+    private val summaries: SummaryRepository,
     private val emailId: String,
     private val listKind: ListKind? = null,
 ) : ViewModel() {
@@ -123,8 +125,19 @@ class ReaderViewModel(
                 val expanded = unread.toSet() + emailId + lookup.messages.last().id
                 _state.value = ReaderUiState.Loaded(lookup.messages, expanded, kind = listKind ?: kindOf(lookup.messages))
                 if (unread.isNotEmpty()) launchToEnd { markRead(unread) }
+                viewModelScope.launch { showSummary(lookup.threadId) }
             }
         }
+    }
+
+    private suspend fun showSummary(threadId: String) {
+        val summary =
+            try {
+                summaries.get(threadId)
+            } catch (_: JmapException) {
+                null
+            }
+        _state.update { (it as? ReaderUiState.Loaded)?.copy(summary = summary) ?: it }
     }
 
     private suspend fun kindOf(messages: List<EmailDetail>): ListKind {
