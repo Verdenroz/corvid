@@ -90,7 +90,7 @@ impl Mailbox for Jmap {
                 .and_then(|mailbox| text(&mailbox["id"]))
         };
         Ok(Roles {
-            inbox: with("inbox"),
+            inbox: with("inbox").ok_or_else(|| missing("an inbox"))?,
             archive: with("archive"),
             trash: with("trash"),
             junk: with("junk"),
@@ -167,9 +167,6 @@ fn message(value: &Value) -> Option<Message> {
             .as_object()
             .map(|map| map.keys().cloned().collect())
             .unwrap_or_default(),
-        received_at_days: text(&value["receivedAt"])
-            .as_deref()
-            .and_then(dates::days)?,
         received_at_secs: text(&value["receivedAt"])
             .as_deref()
             .and_then(dates::seconds)?,

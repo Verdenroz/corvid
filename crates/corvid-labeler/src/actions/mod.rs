@@ -8,13 +8,13 @@ mod state;
 mod track;
 
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use corvid_store::{open, save};
 
 use crate::mailbox::{Mailbox, Message};
-pub use state::Candidate;
 use state::{Actions, SCHEMA};
+pub use state::{Candidate, Exit};
 
 /// What one poll saw change.
 pub struct Delta<'a> {
@@ -23,28 +23,48 @@ pub struct Delta<'a> {
     pub destroyed: &'a [String],
 }
 
-/// Folds one poll into the action log and settles whatever has waited long enough.
-pub fn record(
-    path: &Path,
-    mailbox: &impl Mailbox,
-    user: &str,
-    now: i64,
-    delta: &Delta,
-) -> io::Result<()> {
-    let mut actions: Actions = open(path, SCHEMA)?;
-    let roles = mailbox.roles()?;
-    if roles.inbox.is_none() {
-        return Err(io::Error::other("the server reports no inbox"));
-    }
-    actions.observe(now, user, &roles, delta);
-    actions.settle(now);
-    save(path, SCHEMA, &actions)
+/// The action log, held in memory and written only when a poll changed it.
+pub struct ActionLog {
+    path: PathBuf,
+    actions: Actions,
 }
 
-/// Rewrites the candidates from the settled history and returns them.
-pub fn mine(path: &Path) -> io::Result<Vec<Candidate>> {
-    let mut actions: Actions = open(path, SCHEMA)?;
-    actions.mine();
-    save(path, SCHEMA, &actions)?;
-    Ok(actions.candidates)
+impl ActionLog {
+    /// A corrupt or foreign-schema file is `InvalidData`, a refusal like the labeler's own state.
+    pub fn open(path: &Path) -> io::Result<Self> {
+        Ok(Self {
+            path: path.to_owned(),
+            actions: open(path, SCHEMA)?,
+        })
+    }
+
+    /// Folds one poll into the log and settles whatever has waited long enough.
+    pub fn record(
+        &mut self,
+        mailbox: &impl Mailbox,
+        user: &str,
+        now: i64,
+        delta: &Delta,
+    ) -> io::Result<()> {
+        let observed = if delta.messages.is_empty() {
+            false
+        } else {
+            let roles = mailbox.roles()?;
+            self.actions.observe(now, user, &roles, delta)
+        };
+        let expunged = self.actions.expunge(delta.destroyed);
+        let settled = self.actions.settle(now);
+        if observed || expunged || settled {
+            save(&self.path, SCHEMA, &self.actions)?;
+        }
+        Ok(())
+    }
+
+    /// Drops history older than the window and rewrites the candidates from what remains.
+    pub fn mine(&mut self, now: i64) -> io::Result<&[Candidate]> {
+        self.actions.forget_before(now);
+        self.actions.mine();
+        save(&self.path, SCHEMA, &self.actions)?;
+        Ok(&self.actions.candidates)
+    }
 }

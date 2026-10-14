@@ -1,11 +1,12 @@
 mod common;
 
+use std::cell::{Cell, RefCell};
 use std::fs;
 use std::io;
 use std::path::PathBuf;
 
 use common::{ARCHIVE, Fake, INBOX, JUNK, TRASH, scratch};
-use corvid_labeler::{Candidate, mine, poll_observed, record};
+use corvid_labeler::{ActionLog, Candidate, Exit, poll_observed};
 
 const USER: &str = "me@home.test";
 const SENDER: &str = "billing@acme.test";
@@ -15,17 +16,22 @@ const DAY: i64 = 86400;
 struct Rig {
     _dir: tempfile::TempDir,
     state: PathBuf,
-    actions: PathBuf,
+    actions_path: PathBuf,
+    actions: RefCell<ActionLog>,
+    clock: Cell<i64>,
     mailbox: Fake,
 }
 
 impl Rig {
     fn new() -> Self {
         let (dir, state) = scratch();
+        let actions_path = state.with_file_name("actions.json");
         let rig = Self {
             _dir: dir,
-            actions: state.with_file_name("actions.json"),
+            actions: RefCell::new(ActionLog::open(&actions_path).unwrap()),
+            actions_path,
             state,
+            clock: Cell::new(0),
             mailbox: Fake::default(),
         };
         rig.poll(T0 - DAY).unwrap();
@@ -33,14 +39,21 @@ impl Rig {
     }
 
     fn poll(&self, now: i64) -> io::Result<()> {
+        self.clock.set(now);
         poll_observed(&self.state, &self.mailbox, |delta| {
-            record(&self.actions, &self.mailbox, USER, now, delta)
+            self.actions
+                .borrow_mut()
+                .record(&self.mailbox, USER, now, delta)
         })
         .map(drop)
     }
 
     fn candidates(&self) -> Vec<Candidate> {
-        mine(&self.actions).unwrap()
+        self.actions
+            .borrow_mut()
+            .mine(self.clock.get())
+            .unwrap()
+            .to_vec()
     }
 
     /// One message a day for 21 days, each acted on by `act` a minute after it lands, then
@@ -81,7 +94,7 @@ fn three_weeks_of_unread_archives_mint_one_candidate() {
 
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].key, "from:billing@acme.test");
-    assert_eq!(found[0].outcome, "archive");
+    assert_eq!(found[0].outcome, Exit::Archive);
     assert_eq!(rig.candidates(), found, "the id is stable across runs");
 }
 
@@ -92,7 +105,7 @@ fn trashing_unread_mail_mints_a_trash_candidate() {
         mailbox.relocate(id, TRASH)
     });
 
-    assert_eq!(rig.candidates()[0].outcome, "trash");
+    assert_eq!(rig.candidates()[0].outcome, Exit::Trash);
 }
 
 #[test]
@@ -100,7 +113,7 @@ fn deleting_unread_mail_outright_counts_as_trash() {
     let rig = Rig::new();
     rig.month(SENDER, 0, own_thread, |mailbox, id| mailbox.expunge(id));
 
-    assert_eq!(rig.candidates()[0].outcome, "trash");
+    assert_eq!(rig.candidates()[0].outcome, Exit::Trash);
 }
 
 #[test]
@@ -229,13 +242,22 @@ fn a_long_thread_counts_once() {
 }
 
 #[test]
-fn a_corrupt_actions_file_stops_the_poll() {
+fn a_corrupt_actions_file_is_refused_at_open() {
     let rig = Rig::new();
-    fs::write(&rig.actions, "garbage").unwrap();
+    fs::write(&rig.actions_path, "garbage").unwrap();
 
-    let error = rig.poll(T0).unwrap_err();
+    let error = ActionLog::open(&rig.actions_path).err().unwrap();
 
     assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+}
+
+#[test]
+fn an_idle_poll_writes_nothing() {
+    let rig = Rig::new();
+
+    rig.poll(T0).unwrap();
+
+    assert!(!rig.actions_path.exists());
 }
 
 #[test]

@@ -3,7 +3,7 @@ use std::io;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use corvid_ingest::{Ingest, model_keywords, open, save, sender_key};
+use corvid_ingest::{Ingest, model_keywords, open, save};
 use corvid_label::{Ask, MAX_LABELS, SenderKey};
 
 use crate::mailbox::{Mailbox, Message};
@@ -83,12 +83,7 @@ fn spend(
 
     let mut waiting: BTreeMap<String, (Message, SenderKey)> = BTreeMap::new();
     for message in mailbox.awaiting_model(SCAN)? {
-        let results: Vec<&str> = message
-            .authentication_results
-            .iter()
-            .map(String::as_str)
-            .collect();
-        match sender_key(&message.from, message.list_id.as_deref(), &results) {
+        match message.sender_key() {
             Some(key) => {
                 waiting.insert(message.id.clone(), (message, key));
             }
@@ -135,7 +130,7 @@ fn spend(
         mailbox.apply_keywords(&id, &model_keywords(&labels), &BTreeSet::new())?;
         if confident {
             let learned: Vec<String> = labels.iter().cloned().collect();
-            ingest.learn(&id, key, &learned, message.received_at_days);
+            ingest.learn(&id, key, &learned, message.received_at_days());
             save(path, ingest)?;
         }
         match (confident, &choice.label) {

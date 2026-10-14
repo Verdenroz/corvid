@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
@@ -14,7 +15,7 @@ pub struct Actions {
 }
 
 /// An arrival waiting out its settle window.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Pending {
     pub key: String,
     pub first_seen: i64,
@@ -22,7 +23,7 @@ pub struct Pending {
     pub left: Option<Exit>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Exit {
     Archive,
     Trash,
@@ -30,13 +31,14 @@ pub enum Exit {
     Folder(String),
 }
 
-impl Exit {
-    pub fn label(&self) -> String {
+/// The outcome as the sentinel reads it: `archive`, `trash` or `folder:<mailbox id>`.
+impl fmt::Display for Exit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Archive => "archive".into(),
-            Self::Trash => "trash".into(),
-            Self::Junk => "junk".into(),
-            Self::Folder(id) => format!("folder:{id}"),
+            Self::Archive => f.write_str("archive"),
+            Self::Trash => f.write_str("trash"),
+            Self::Junk => f.write_str("junk"),
+            Self::Folder(id) => write!(f, "folder:{id}"),
         }
     }
 }
@@ -45,17 +47,16 @@ impl Exit {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Observation {
     pub day: i64,
-    pub exit: Option<String>,
+    pub exit: Option<Exit>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Candidate {
     pub id: String,
     pub key: String,
-    pub outcome: String,
+    pub outcome: Exit,
     pub settled: u32,
     pub hits: u32,
-    pub lower_bound: f64,
 }
 
 corvid_store::pin_shape!(Actions {
@@ -76,6 +77,5 @@ corvid_store::pin_shape!(Candidate {
     key,
     outcome,
     settled,
-    hits,
-    lower_bound
+    hits
 });

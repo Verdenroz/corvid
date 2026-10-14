@@ -42,7 +42,6 @@ impl Fake {
                 list_id: None,
                 authentication_results: vec![OURS.to_owned()],
                 keywords: keywords.iter().map(|k| (*k).to_owned()).collect(),
-                received_at_days: day,
                 received_at_secs: day as i64 * 86400,
                 thread_id: id.to_owned(),
                 mailbox_ids: BTreeSet::from([INBOX.to_owned()]),
@@ -124,7 +123,7 @@ impl Mailbox for Fake {
     fn roles(&self) -> io::Result<Roles> {
         let id = |name: &str| Some(name.to_owned());
         Ok(Roles {
-            inbox: id(INBOX),
+            inbox: INBOX.to_owned(),
             archive: id(ARCHIVE),
             trash: id(TRASH),
             junk: id(JUNK),
@@ -136,18 +135,7 @@ impl Mailbox for Fake {
         Ok(ids
             .iter()
             .filter_map(|id| messages.get(id))
-            .map(|m| Message {
-                id: m.id.clone(),
-                from: m.from.clone(),
-                subject: m.subject.clone(),
-                list_id: m.list_id.clone(),
-                authentication_results: m.authentication_results.clone(),
-                keywords: m.keywords.clone(),
-                received_at_days: m.received_at_days,
-                received_at_secs: m.received_at_secs,
-                thread_id: m.thread_id.clone(),
-                mailbox_ids: m.mailbox_ids.clone(),
-            })
+            .cloned()
             .collect())
     }
 

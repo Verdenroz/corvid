@@ -3,7 +3,7 @@ use std::thread::sleep;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use corvid_config::{Config, EX_TEMPFAIL, or_exit, secret, section};
-use corvid_labeler::{Budget, Jmap, Model, cold_start, mine, poll_observed, record};
+use corvid_labeler::{ActionLog, Budget, Jmap, Model, cold_start, poll_observed};
 
 const MINE_EVERY: Duration = Duration::from_secs(86400);
 
@@ -23,7 +23,14 @@ fn main() -> ExitCode {
     let labeler = or_exit(section(config.labeler, "labeler"));
     let password = or_exit(secret("CORVID_JMAP_PASSWORD"));
     let (url, state) = (labeler.jmap_url, labeler.state);
-    let actions = state.with_file_name("actions.json");
+    let actions_path = state.with_file_name("actions.json");
+    let mut actions = match ActionLog::open(&actions_path) {
+        Ok(actions) => actions,
+        Err(error) => {
+            tracing::error!(%error, state = %actions_path.display(), "refusing to continue");
+            return ExitCode::FAILURE;
+        }
+    };
     let interval = Duration::from_secs(labeler.interval_secs);
 
     let cold = match labeler.model.map(ColdPass::new).transpose() {
@@ -54,7 +61,7 @@ fn main() -> ExitCode {
 
     loop {
         match poll_observed(&state, &mailbox, |delta| {
-            record(&actions, &mailbox, &labeler.jmap_user, unix_now(), delta)
+            actions.record(&mailbox, &labeler.jmap_user, unix_now(), delta)
         }) {
             Ok(summary) => tracing::info!(
                 labelled = summary.labelled,
@@ -97,13 +104,9 @@ fn main() -> ExitCode {
 
         if Instant::now() >= mine_due {
             mine_due = Instant::now() + MINE_EVERY;
-            match mine(&actions) {
+            match actions.mine(unix_now()) {
                 Ok(candidates) => tracing::info!(candidates = candidates.len(), "mined"),
-                Err(error) if error.kind() == std::io::ErrorKind::InvalidData => {
-                    tracing::error!(%error, state = %actions.display(), "refusing to continue");
-                    return ExitCode::FAILURE;
-                }
-                Err(error) => tracing::warn!(%error, "mining did not run"),
+                Err(error) => tracing::warn!(%error, "mined candidates not saved"),
             }
         }
 

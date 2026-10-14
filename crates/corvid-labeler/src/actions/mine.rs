@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use sha2::{Digest, Sha256};
 
-use super::state::{Actions, Candidate};
+use super::state::{Actions, Candidate, Exit};
 
 const MIN_OBSERVATIONS: u32 = 20;
 const MIN_PRECISION: f64 = 0.95;
@@ -24,21 +24,19 @@ impl Actions {
             if settled < MIN_OBSERVATIONS || days.len() < MIN_DAYS || last - first < MIN_SPAN_DAYS {
                 continue;
             }
-            let mut exits: BTreeMap<&str, u32> = BTreeMap::new();
-            for outcome in history.iter().filter_map(|seen| seen.exit.as_deref()) {
+            let mut exits: BTreeMap<&Exit, u32> = BTreeMap::new();
+            for outcome in history.iter().filter_map(|seen| seen.exit.as_ref()) {
                 *exits.entry(outcome).or_default() += 1;
             }
             for (outcome, hits) in exits {
                 let precision = f64::from(hits) / f64::from(settled);
-                let lower_bound = wilson_lower(hits, settled);
-                if precision >= MIN_PRECISION && lower_bound >= MIN_LOWER_BOUND {
+                if precision >= MIN_PRECISION && wilson_lower(hits, settled) >= MIN_LOWER_BOUND {
                     found.push(Candidate {
-                        id: id_of(key, outcome),
+                        id: id_of(key, &outcome.to_string()),
                         key: key.clone(),
-                        outcome: outcome.to_owned(),
+                        outcome: outcome.clone(),
                         settled,
                         hits,
-                        lower_bound,
                     });
                 }
             }

@@ -9,9 +9,9 @@ use std::collections::BTreeSet;
 use std::io;
 use std::path::Path;
 
-use corvid_ingest::{is_prior_keyword, open, save, sender_key};
+use corvid_ingest::{is_prior_keyword, open, save};
 
-pub use actions::{Candidate, Delta, mine, record};
+pub use actions::{ActionLog, Candidate, Delta, Exit};
 pub use cold_start::{Budget, ColdStart, cold_start};
 pub use jmap::Jmap;
 pub use mailbox::{Changes, Mailbox, Message, Roles};
@@ -65,18 +65,13 @@ pub fn poll_observed(
     };
     match observe(&delta) {
         Err(error) if error.kind() == io::ErrorKind::InvalidData => return Err(error),
-        Err(error) => tracing::warn!(%error, "action log not updated"),
+        Err(error) => tracing::warn!(%error, "observer failed"),
         Ok(()) => {}
     }
 
     let mut summary = Summary::default();
     for message in messages {
-        let results: Vec<&str> = message
-            .authentication_results
-            .iter()
-            .map(String::as_str)
-            .collect();
-        let Some(key) = sender_key(&message.from, message.list_id.as_deref(), &results) else {
+        let Some(key) = message.sender_key() else {
             summary.unkeyed += 1;
             continue;
         };
@@ -86,9 +81,9 @@ pub fn poll_observed(
             &message.id,
             &key,
             &message.keywords,
-            message.received_at_days,
+            message.received_at_days(),
         );
-        let wanted = ingest.label(&message.id, &key, message.received_at_days);
+        let wanted = ingest.label(&message.id, &key, message.received_at_days());
         summary.labelled += 1;
 
         let ours: BTreeSet<String> = message
