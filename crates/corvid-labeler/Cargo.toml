@@ -10,6 +10,7 @@ corvid-config.workspace = true
 corvid-ingest.workspace = true
 corvid-jmap = { version = "0.1.0", path = "../corvid-jmap" }
 corvid-label.workspace = true
+corvid-model.workspace = true
 corvid-sign.workspace = true
 corvid-store.workspace = true
 ctrlc = { version = "3.5.2", features = ["termination"] }

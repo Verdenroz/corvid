@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/corvid-audit", "crates/corvid-imgproxy", "crates/corvid-ingest", "crates/corvid-jmap", "crates/corvid-labeler", "crates/corvid-label", "crates/corvid-milter", "crates/corvid-mirror", "crates/corvid-store", "crates/corvid-mime", "crates/corvid-rewrite", "crates/corvid-sentinel", "crates/corvid-sign", "crates/corvid-config"]
+members = ["crates/corvid-audit", "crates/corvid-imgproxy", "crates/corvid-ingest", "crates/corvid-jmap", "crates/corvid-labeler", "crates/corvid-label", "crates/corvid-milter", "crates/corvid-model", "crates/corvid-mirror", "crates/corvid-store", "crates/corvid-mime", "crates/corvid-rewrite", "crates/corvid-sentinel", "crates/corvid-sign", "crates/corvid-config"]
 
 [workspace.package]
 version = "0.1.0"
@@ -15,6 +15,7 @@ corvid-ingest = { path = "crates/corvid-ingest" }
 corvid-jmap = { path = "crates/corvid-jmap" }
 corvid-label = { path = "crates/corvid-label" }
 corvid-mime = { path = "crates/corvid-mime" }
+corvid-model = { path = "crates/corvid-model" }
 corvid-rewrite = { path = "crates/corvid-rewrite" }
 corvid-sign = { path = "crates/corvid-sign" }
 corvid-store = { path = "crates/corvid-store" }

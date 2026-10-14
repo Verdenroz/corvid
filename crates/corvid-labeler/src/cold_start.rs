@@ -5,9 +5,9 @@ use std::time::{Duration, Instant};
 
 use corvid_ingest::{Ingest, model_keywords, open, save};
 use corvid_label::{Ask, MAX_LABELS, SenderKey};
+use corvid_model::Oracle;
 
 use crate::mailbox::{Mailbox, Message};
-use crate::model::Oracle;
 
 /// How much of the queue to look at before choosing. Larger than any budget, so the choice is
 /// made across senders rather than across whatever the query returned.

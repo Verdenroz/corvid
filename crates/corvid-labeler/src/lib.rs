@@ -3,7 +3,6 @@ mod cold_start;
 mod dates;
 mod jmap;
 mod mailbox;
-mod model;
 mod suggest;
 
 use std::collections::BTreeSet;
@@ -14,9 +13,9 @@ use corvid_ingest::{is_prior_keyword, open, save};
 
 pub use actions::{ActionLog, Candidate, Delta, Exit};
 pub use cold_start::{Budget, ColdStart, cold_start};
+pub use corvid_model::{Model, Oracle};
 pub use jmap::Jmap;
 pub use mailbox::{Changes, Mailbox, Message, Roles};
-pub use model::{Model, Oracle};
 pub use suggest::Suggest;
 
 #[derive(Debug, Default, PartialEq, Eq)]
