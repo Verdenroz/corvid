@@ -75,7 +75,7 @@ labeler:
 scribe:
   jmap_url: http://127.0.0.1:8080
   jmap_user: alice@example.com
-  state: /var/lib/corvid/scribe.state
+  state: /var/lib/corvid/scribe.json
   sentinel_url: http://127.0.0.1:11333
   interval_secs: 300
   # Mailboxes to leave out by name or role, besides Junk and Trash.
