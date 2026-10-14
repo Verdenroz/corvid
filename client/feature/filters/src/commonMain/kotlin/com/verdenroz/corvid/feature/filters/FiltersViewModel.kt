@@ -2,12 +2,15 @@ package com.verdenroz.corvid.feature.filters
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.verdenroz.corvid.core.data.FilterSet
 import com.verdenroz.corvid.core.data.FiltersFormatException
 import com.verdenroz.corvid.core.data.FiltersRepository
 import com.verdenroz.corvid.core.data.SaveResult
+import com.verdenroz.corvid.core.data.SuggestedRules
 import com.verdenroz.corvid.core.data.userMessage
 import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.model.FilterRule
+import com.verdenroz.corvid.core.model.RuleSuggestion
 import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.uiText
 import com.verdenroz.corvid.core.ui.launchToEnd
@@ -23,6 +26,7 @@ import kotlinx.coroutines.launch
 
 class FiltersViewModel(
     private val repository: FiltersRepository,
+    private val suggested: SuggestedRules,
     private val restored: RuleDraft? = null,
 ) : ViewModel() {
     private val _state = MutableStateFlow<FiltersUiState>(FiltersUiState.Loading)
@@ -76,10 +80,67 @@ class FiltersViewModel(
     fun confirmReplace() {
         val ready = _state.value as? FiltersUiState.Ready ?: return
         if (ready.save is SaveStatus.Saving) return
+        ready.confirmingSuggestion?.let { return accept(it, replaceForeign = true) }
         persist(ready.rules, replaceForeign = true)
     }
 
-    fun dismissConfirmation() = fail(uiText(Res.string.filters_another_active))
+    fun dismissConfirmation() {
+        update { it.copy(confirmingSuggestion = null) }
+        fail(uiText(Res.string.filters_another_active))
+    }
+
+    fun acceptSuggestion(suggestion: RuleSuggestion) = accept(suggestion, replaceForeign = false)
+
+    fun dismissSuggestion(suggestion: RuleSuggestion) {
+        update { it.copy(suggestions = it.suggestions - suggestion) }
+        launchToEnd {
+            try {
+                suggested.dismiss(suggestion)
+            } catch (e: JmapException) {
+                fail(e.userMessage())
+            }
+        }
+    }
+
+    private fun accept(
+        suggestion: RuleSuggestion,
+        replaceForeign: Boolean,
+    ) {
+        val ready = _state.value as? FiltersUiState.Ready ?: return
+        if (ready.save is SaveStatus.Saving) return
+        update { it.copy(save = SaveStatus.Saving, confirmingSuggestion = null) }
+        launchToEnd {
+            try {
+                when (val result = suggested.accept(suggestion, replaceForeign)) {
+                    is SaveResult.Saved -> reload()
+                    is SaveResult.NeedsConfirmation ->
+                        update {
+                            it.copy(
+                                foreignScript = result.scriptName,
+                                save = SaveStatus.Confirming,
+                                confirmingSuggestion = suggestion,
+                            )
+                        }
+                    is SaveResult.Rejected -> fail(result.reason)
+                }
+            } catch (e: JmapException) {
+                fail(e.userMessage())
+            }
+        }
+    }
+
+    private suspend fun reload() {
+        val set = repository.load()
+        val pending = pending(set)
+        update { it.copy(rules = set.rules, folders = set.folders, suggestions = pending, foreignScript = null, save = SaveStatus.Idle) }
+    }
+
+    private suspend fun pending(set: FilterSet): List<RuleSuggestion> =
+        try {
+            suggested.pending(set)
+        } catch (e: JmapException) {
+            emptyList()
+        }
 
     private fun edit(change: (List<FilterRule>) -> List<FilterRule>) {
         val ready = _state.value as? FiltersUiState.Ready ?: return
@@ -91,7 +152,13 @@ class FiltersViewModel(
         _state.value =
             try {
                 val set = repository.load()
-                FiltersUiState.Ready(set.rules, set.folders, foreignScript = set.foreignActiveScript, editing = restored)
+                FiltersUiState.Ready(
+                    set.rules,
+                    set.folders,
+                    foreignScript = set.foreignActiveScript,
+                    editing = restored,
+                    suggestions = pending(set),
+                )
             } catch (e: FiltersFormatException) {
                 FiltersUiState.Failed(e.text())
             } catch (e: JmapException) {

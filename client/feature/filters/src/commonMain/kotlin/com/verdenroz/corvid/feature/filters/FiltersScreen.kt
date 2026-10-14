@@ -30,6 +30,7 @@ import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.designsystem.component.PrimaryButton
 import com.verdenroz.corvid.core.model.FilterRule
+import com.verdenroz.corvid.core.model.RuleSuggestion
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.DiscardQuestion
 import com.verdenroz.corvid.core.ui.GuardBack
@@ -91,6 +92,8 @@ fun FiltersScreen(
                         onToggle = viewModel::toggle,
                         onMove = viewModel::move,
                         onDelete = viewModel::delete,
+                        onAccept = viewModel::acceptSuggestion,
+                        onDismissSuggestion = viewModel::dismissSuggestion,
                     )
                 } else {
                     if (current.confirmingDiscard) {
@@ -117,6 +120,8 @@ private fun RuleList(
     onToggle: (Int) -> Unit,
     onMove: (index: Int, offset: Int) -> Unit,
     onDelete: (Int) -> Unit,
+    onAccept: (RuleSuggestion) -> Unit,
+    onDismissSuggestion: (RuleSuggestion) -> Unit,
 ) {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         item {
@@ -148,6 +153,7 @@ private fun RuleList(
             }
             HorizontalDivider(color = CorvidTheme.colors.line)
         }
+        suggestionCards(state, onAccept, onDismissSuggestion)
         if (state.rules.isEmpty()) {
             item {
                 Text(
