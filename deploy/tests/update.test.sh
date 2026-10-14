@@ -53,6 +53,7 @@ for which in old new; do
 #!/bin/bash
 echo "$step $which" >> "\$WORK/log"
 echo "$step \${CORVID_UPDATING:-}" >> "\$WORK/updating"
+[[ $step != deploy || ! -e "\$WORK/$which-drift" ]] || echo "$which links stale" >> "\$CORVID_DRIFT"
 [[ ! -e "\$WORK/$which-$step-fails" ]] || exit 1
 [[ $step != deploy ]] || podman image inspect -f x "\$(cat "\$CORVID_DIR/image.ref")" > "\$CORVID_DIR/.deployed-id"
 SH
@@ -70,7 +71,7 @@ tag() { cat "$work/tags/$(echo "$1" | tr '/:' '__')"; }
 # fresh: a host running "old" from the registry tag, the registry still serving "old"
 fresh() {
   rm -rf "$corvid" "$work/tags" "$work/log" "$work/updating" "$work/podman.log" \
-    "$work"/*-fails "$work/pull-fails" "$work/masked" "$work/during"
+    "$work"/*-fails "$work"/*-drift "$work/pull-fails" "$work/masked" "$work/during"
   mkdir -p "$corvid/deploy" "$corvid/update" "$work/tags"
   cp -a "$work/images/old/." "$corvid/deploy/"
   cp "$here/update.sh" "$here/lib.sh" "$corvid/deploy/"
@@ -158,6 +159,17 @@ check "exits 0 without deploying" '[[ $status -eq 0 && ! -s "$work/log" ]]'
 check "leaves the old image tagged" '[[ "$(tag ghcr.io/example/corvid:stable)" == old ]]'
 check "records skipped" '[[ "$(field result)" == skipped ]]'
 
+echo "== an update that passes with something stale off the host says what"
+fresh; echo new > "$work/registry-id"; touch "$work/new-drift"
+run
+check "exits 0 and records updated" '[[ $status -eq 0 && "$(field result)" == updated ]]'
+check "the detail names what is stale" '[[ "$(field detail)" == "new links stale" ]]'
+
+echo "== a rollback reports only what the restored release found stale"
+fresh; echo new > "$work/registry-id"; touch "$work/new-deploy-fails" "$work/new-drift" "$work/old-drift"
+run
+check "records rolledBack with the old release's drift alone" '[[ "$(field result)" == rolledBack && "$(field detail)" == *"verified; old links stale" ]]'
+
 echo "== a rollback that fails too is reported as failed"
 fresh; echo new > "$work/registry-id"; touch "$work/new-deploy-fails" "$work/old-deploy-fails"
 run
@@ -220,6 +232,11 @@ check "marks the deploy as an update, so it prints no setup code" 'grep -qx "dep
 check "consumes the request" '[[ ! -e "$corvid/update/request" ]]'
 check "leaves the running release as it was" '[[ "$(field result)" == current && "$(field running)" == 1.0.0 ]]'
 check "is not left busy" '[[ "$(field busy)" == False ]]'
+
+echo "== a deploy request that passes with something stale says what"
+fresh; touch "$work/old-drift"
+run deploy
+check "records current with the drift" '[[ "$(field result)" == current && "$(field detail)" == "old links stale" ]]'
 
 echo "== a deploy request on a host running a local image still deploys"
 fresh; echo localhost/corvid:0.1.0 > "$corvid/image.ref"; echo old > "$work/tags/localhost_corvid_0.1.0"

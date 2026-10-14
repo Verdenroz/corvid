@@ -70,7 +70,8 @@ print(json.dumps(status))')"
 }
 
 # CORVID_UPDATING keeps deploy.sh from queuing a check that would overwrite this run's status.
-deploy_from() { bash "$1/bootstrap.sh" && CORVID_UPDATING=1 bash "$1/deploy.sh"; }
+deploy_from() { : > "$CORVID_DRIFT"; bash "$1/bootstrap.sh" && CORVID_UPDATING=1 bash "$1/deploy.sh"; }
+drift() { cat "$CORVID_DRIFT"; }
 keep_old() { podman tag "$rollback_tag" "$ref"; }
 prune_images() { podman image prune -f >/dev/null; }
 
@@ -91,7 +92,9 @@ running="$(version_of "$deployed_id")"
 latest=""
 result=failed
 detail="stopped before finishing"
-trap write_status EXIT
+export CORVID_DRIFT
+CORVID_DRIFT="$(mktemp)"
+trap 'write_status; rm -f "$CORVID_DRIFT"' EXIT
 write_status true
 
 if unit_masked corvid-pod.service; then
@@ -103,7 +106,7 @@ fi
 if [[ "$mode" == deploy ]]; then
   if deploy_from "$deploy_dir"; then
     result=current
-    detail=""
+    detail="$(drift)"
     exit 0
   fi
   detail="deploying $running failed; the host needs attention"
@@ -169,7 +172,7 @@ if deploy_from "$deploy_dir"; then
   prune_images
   running="$latest"
   result=updated
-  detail=""
+  detail="$(drift)"
   echo "updated to $latest"
   exit 0
 fi
@@ -182,7 +185,7 @@ mv "$deploy_dir.prev" "$deploy_dir"
 if deploy_from "$deploy_dir"; then
   prune_images
   result=rolledBack
-  detail="$latest failed to deploy; $running is running again and verified"
+  detail="$latest failed to deploy; $running is running again and verified$(drift | sed 's/^/; /' | tr -d '\n')"
 else
   result=failed
   detail="$latest failed to deploy and restoring $running failed too; the host needs attention"

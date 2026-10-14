@@ -17,9 +17,16 @@ load_server
 STALWART_CLI="${STALWART_CLI:-stalwart-cli}"
 
 fail=0
+stale=0
 ok()   { echo "  ok    $*"; }
 bad()  { echo "  FAIL  $*"; ((fail++)); }
 warn() { echo "  warn  $*"; }
+# Out of date somewhere this host does not serve, so no rollback fixes it; update.sh reads CORVID_DRIFT.
+drift() {
+  echo "  stale $*"
+  ((stale++))
+  [[ -z "${CORVID_DRIFT:-}" ]] || echo "$*" >> "$CORVID_DRIFT"
+}
 
 echo "== services =="
 services=(corvid-unbound corvid-mail corvid-milter corvid-imgproxy corvid-labeler corvid-sentinel corvid-caddy)
@@ -116,7 +123,7 @@ fi
 echo "== app links =="
 # Credential Manager reads this on 443 with no redirect, so it is fetched the way a phone would,
 # through real DNS. Not served is a warning, since mail does not wait on the Android app; a
-# document that differs, a redirect or the wrong type is a failure, since it is worse than none.
+# document that differs, a redirect or the wrong type is a failure when the web tier serves it.
 links_url="https://$MAIL_DOMAIN/.well-known/assetlinks.json"
 expected="${ASSETLINKS:-}"
 if [[ -z "$expected" ]]; then
@@ -126,7 +133,11 @@ else
   case "${verdict%% *}" in
     ok) ok "${verdict#* }" ;;
     warn) warn "${verdict#* }" ;;
-    *) bad "${verdict#* }" ;;
+    *) if [[ "$PUBLISH_ASSETLINKS" == true ]]; then
+         bad "${verdict#* }"
+       else
+         drift "${verdict#* }; this host does not serve it, so run install.sh again to republish it"
+       fi ;;
   esac
 fi
 
@@ -267,4 +278,5 @@ else
 fi
 
 echo
-[[ $fail -eq 0 ]] && echo "PASS" || { echo "$fail check(s) failed"; exit 1; }
+[[ $fail -eq 0 ]] || { echo "$fail check(s) failed"; exit 1; }
+[[ $stale -eq 0 ]] && echo "PASS" || echo "PASS, but $stale thing(s) published off this host are out of date"

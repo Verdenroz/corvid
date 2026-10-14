@@ -93,6 +93,38 @@ async fn updated_current_and_skipped_results_add_nothing() {
 }
 
 #[tokio::test]
+async fn an_update_that_passed_with_something_stale_off_the_host_becomes_a_notice() {
+    let dir = tempfile::tempdir().unwrap();
+    let detail = "https://example.com/.well-known/assetlinks.json serves a different document";
+    std::fs::write(
+        dir.path().join("status.json"),
+        status("updated", "2026-10-04T01:00:00Z", detail),
+    )
+    .unwrap();
+    start(dir.path()).await;
+    settle().await;
+
+    let found = notices(dir.path());
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].title, "Out of date off this host");
+    assert_eq!(found[0].detail, detail);
+}
+
+#[tokio::test]
+async fn a_skipped_check_with_a_detail_adds_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("status.json"),
+        status("skipped", "2026-10-04T01:00:00Z", "v2 is available"),
+    )
+    .unwrap();
+    start(dir.path()).await;
+    settle().await;
+
+    assert!(!dir.path().join("sentinel.json").exists());
+}
+
+#[tokio::test]
 async fn a_busy_report_is_never_noticed_even_when_it_repeats_a_failure() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("status.json");
