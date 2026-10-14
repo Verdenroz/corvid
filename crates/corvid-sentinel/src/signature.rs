@@ -1,17 +1,7 @@
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD;
-use hmac::{Hmac, KeyInit, Mac};
-use sha2::Sha256;
-use subtle::ConstantTimeEq;
-
 /// Checks the `X-Signature` header Stalwart sends: standard base64 of an HMAC-SHA256 over the
 /// raw request body, verified against a real server's output rather than assumed from docs.
 pub fn verify(secret: &[u8], body: &[u8], header: Option<&str>) -> bool {
-    let Some(header) = header else { return false };
-    let mut mac = <Hmac<Sha256>>::new_from_slice(secret).expect("hmac accepts any key size");
-    mac.update(body);
-    let expected = STANDARD.encode(mac.finalize().into_bytes());
-    bool::from(expected.as_bytes().ct_eq(header.as_bytes()))
+    corvid_sign::verify_body(secret, body, header)
 }
 
 #[cfg(test)]

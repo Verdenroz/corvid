@@ -1,5 +1,8 @@
 mod common;
 
+use std::path::Path;
+use std::sync::Arc;
+
 use corvid_sentinel::now_secs;
 use corvid_sentinel::scribe::{self, Scribe};
 use serde_json::{Value, json};
@@ -8,23 +11,35 @@ const SECRET: &[u8] = b"scribe secret";
 
 struct Rig {
     url: String,
-    _dir: tempfile::TempDir,
+    dir: Arc<tempfile::TempDir>,
+}
+
+impl Rig {
+    /// A new sentinel on the same state directory, reading what the first one saved.
+    async fn restart(&self) -> Rig {
+        let scribe = scribe::open(&self.dir.path().join("scribe.json")).unwrap();
+        Rig {
+            url: serve(self.dir.path(), scribe).await,
+            dir: self.dir.clone(),
+        }
+    }
+}
+
+async fn serve(dir: &Path, scribe: Scribe) -> String {
+    let mut config = common::config(&dir.join("sentinel.json"), &dir.join("no-update"));
+    config.scribe = Some(scribe::Config {
+        secret: SECRET.to_vec(),
+        state_path: dir.join("scribe.json"),
+        scribe,
+    });
+    common::serve(config).await
 }
 
 async fn rig() -> Rig {
     let dir = tempfile::tempdir().unwrap();
-    let mut config = common::config(
-        &dir.path().join("sentinel.json"),
-        &dir.path().join("no-update"),
-    );
-    config.scribe = Some(scribe::Config {
-        secret: SECRET.to_vec(),
-        state_path: dir.path().join("scribe.json"),
-        scribe: Scribe::default(),
-    });
     Rig {
-        url: common::serve(config).await,
-        _dir: dir,
+        url: serve(dir.path(), Scribe::default()).await,
+        dir: Arc::new(dir),
     }
 }
 
@@ -32,15 +47,24 @@ fn candidate(id: &str, key: &str, outcome: &str) -> Value {
     json!({"id": id, "key": key, "outcome": outcome, "settled": 6, "hits": 6})
 }
 
-async fn post_at(rig: &Rig, sent_at: i64, candidates: Vec<Value>) -> reqwest::Response {
+async fn post_as(
+    rig: &Rig,
+    secret: &[u8],
+    sent_at: i64,
+    candidates: Vec<Value>,
+) -> reqwest::Response {
     let body = serde_json::to_vec(&json!({"sent_at": sent_at, "candidates": candidates})).unwrap();
     reqwest::Client::new()
         .post(format!("{}/internal/scribe/suggestions", rig.url))
-        .header("X-Signature", common::signature(SECRET, &body))
+        .header("X-Signature", common::signature(secret, &body))
         .body(body)
         .send()
         .await
         .unwrap()
+}
+
+async fn post_at(rig: &Rig, sent_at: i64, candidates: Vec<Value>) -> reqwest::Response {
+    post_as(rig, SECRET, sent_at, candidates).await
 }
 
 async fn post(rig: &Rig, candidates: Vec<Value>) -> reqwest::Response {
@@ -98,15 +122,8 @@ async fn a_posted_candidate_is_served_in_the_app_shape() {
 #[tokio::test]
 async fn a_bad_signature_is_refused() {
     let rig = rig().await;
-    let body = serde_json::to_vec(&json!({"sent_at": now_secs(), "candidates": []})).unwrap();
 
-    let response = reqwest::Client::new()
-        .post(format!("{}/internal/scribe/suggestions", rig.url))
-        .header("X-Signature", common::signature(b"another secret", &body))
-        .body(body)
-        .send()
-        .await
-        .unwrap();
+    let response = post_as(&rig, b"another secret", now_secs(), vec![]).await;
 
     assert_eq!(response.status(), 401);
 }
@@ -202,22 +219,7 @@ async fn an_unparseable_candidate_is_dropped() {
 
 #[tokio::test]
 async fn decisions_and_suggestions_survive_a_restart() {
-    let dir = tempfile::tempdir().unwrap();
-    let state = dir.path().join("scribe.json");
-    let serve = |scribe: Scribe| {
-        let mut config =
-            common::config(&dir.path().join("sentinel.json"), &dir.path().join("none"));
-        config.scribe = Some(scribe::Config {
-            secret: SECRET.to_vec(),
-            state_path: state.clone(),
-            scribe,
-        });
-        common::serve(config)
-    };
-    let first = Rig {
-        url: serve(Scribe::default()).await,
-        _dir: tempfile::tempdir().unwrap(),
-    };
+    let first = rig().await;
     post(
         &first,
         vec![
@@ -228,10 +230,7 @@ async fn decisions_and_suggestions_survive_a_restart() {
     .await;
     decide(&first, "a", "dismiss").await;
 
-    let second = Rig {
-        url: serve(scribe::open(&state).unwrap()).await,
-        _dir: tempfile::tempdir().unwrap(),
-    };
+    let second = first.restart().await;
 
     assert_eq!(ids(&suggestions(&second).await), ["b"]);
 }

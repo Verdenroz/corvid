@@ -1,5 +1,5 @@
 use base64::Engine;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
@@ -32,6 +32,20 @@ impl Signer {
         mac.update(payload.as_bytes());
         URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes())
     }
+}
+
+/// Standard base64 of an HMAC-SHA256 over a request body, the `X-Signature` a caller sends.
+pub fn sign_body(secret: &[u8], body: &[u8]) -> String {
+    let mut mac = <Hmac<Sha256>>::new_from_slice(secret).expect("hmac accepts any key size");
+    mac.update(body);
+    STANDARD.encode(mac.finalize().into_bytes())
+}
+
+/// Whether `header` is the signature of `body` under `secret`, compared in constant time.
+pub fn verify_body(secret: &[u8], body: &[u8], header: Option<&str>) -> bool {
+    let Some(header) = header else { return false };
+    let expected = sign_body(secret, body);
+    bool::from(expected.as_bytes().ct_eq(header.as_bytes()))
 }
 
 #[cfg(test)]

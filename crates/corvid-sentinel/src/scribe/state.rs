@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 /// Bump whenever `Scribe`'s shape changes, and keep a migration from the version it leaves.
 const SCHEMA: u32 = 1;
-pub const DECIDED_CAP: usize = 1000;
+const DECIDED_CAP: usize = 1000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

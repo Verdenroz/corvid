@@ -3,16 +3,16 @@ use serde::Deserialize;
 use super::state::{Action, Sender, SenderKind, Suggestion};
 
 /// The labeler's post may be this far from the sentinel's clock either way.
-pub const SKEW_SECONDS: i64 = 300;
+pub(super) const SKEW_SECONDS: i64 = 300;
 
 #[derive(Deserialize)]
-pub struct Post {
-    pub sent_at: i64,
-    pub candidates: Vec<Candidate>,
+pub(super) struct Post {
+    pub(super) sent_at: i64,
+    pub(super) candidates: Vec<Candidate>,
 }
 
 #[derive(Deserialize)]
-pub struct Candidate {
+pub(super) struct Candidate {
     id: String,
     key: String,
     outcome: String,
@@ -22,7 +22,7 @@ pub struct Candidate {
 
 impl Candidate {
     /// `None` for a key or outcome this build does not know how to offer.
-    pub fn parse(self) -> Option<Suggestion> {
+    pub(super) fn parse(self) -> Option<Suggestion> {
         let parsed = self.suggestion();
         if parsed.is_none() {
             tracing::warn!(key = %self.key, outcome = %self.outcome, "dropped a suggestion candidate");

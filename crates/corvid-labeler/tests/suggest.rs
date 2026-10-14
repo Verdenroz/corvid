@@ -1,61 +1,52 @@
-use std::io::{Read, Write};
 use std::net::TcpListener;
+use std::path::Path;
+use std::sync::mpsc;
 use std::thread;
+use std::time::Duration;
 
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD;
 use corvid_labeler::{Candidate, Exit, Suggest};
-use hmac::{Hmac, KeyInit, Mac};
+use corvid_sentinel::{Config, Seen, build, scribe};
 use serde_json::{Value, json};
-use sha2::Sha256;
 
 const SECRET: &str = "scribe secret";
 
-struct Received {
-    path: String,
-    signature: String,
-    body: Vec<u8>,
-}
-
-/// Answers one request with `status` and returns what it carried.
-fn stub(status: u16) -> (String, thread::JoinHandle<Received>) {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let url = format!("http://{}", listener.local_addr().unwrap());
-    let handle = thread::spawn(move || {
-        let (mut stream, _) = listener.accept().unwrap();
-        let mut raw = Vec::new();
-        let mut chunk = [0; 1024];
-        let (head, length) = loop {
-            let read = stream.read(&mut chunk).unwrap();
-            raw.extend_from_slice(&chunk[..read]);
-            let Some(end) = raw.windows(4).position(|window| window == b"\r\n\r\n") else {
-                continue;
-            };
-            let head = String::from_utf8(raw[..end].to_vec()).unwrap();
-            let length = header(&head, "content-length").parse::<usize>().unwrap();
-            if raw.len() >= end + 4 + length {
-                break (head, length);
-            }
-        };
-        let start = raw.len() - length;
-        stream
-            .write_all(format!("HTTP/1.1 {status} X\r\ncontent-length: 0\r\n\r\n").as_bytes())
-            .unwrap();
-        Received {
-            path: head.split(' ').nth(1).unwrap().to_owned(),
-            signature: header(&head, "x-signature"),
-            body: raw[start..].to_vec(),
-        }
+/// The real sentinel on a thread of its own, since the labeler posts with a blocking client.
+fn sentinel(dir: &Path) -> String {
+    let (sender, receiver) = mpsc::channel();
+    let dir = dir.to_owned();
+    thread::spawn(move || {
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(async move {
+                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                sender.send(listener.local_addr().unwrap()).unwrap();
+                let (app, watcher) = build(Config {
+                    secret: b"webhook".to_vec(),
+                    state_path: dir.join("sentinel.json"),
+                    seen: Seen::default(),
+                    update_dir: dir.join("no-update"),
+                    update_poll: Duration::from_secs(60),
+                    devices: None,
+                    auth: None,
+                    scribe: Some(scribe::Config {
+                        secret: SECRET.as_bytes().to_vec(),
+                        state_path: dir.join("scribe.json"),
+                        scribe: scribe::Scribe::default(),
+                    }),
+                });
+                tokio::spawn(watcher);
+                axum::serve(listener, app).await.unwrap();
+            });
     });
-    (url, handle)
+    format!("http://{}", receiver.recv().unwrap())
 }
 
-fn header(head: &str, name: &str) -> String {
-    head.lines()
-        .filter_map(|line| line.split_once(':'))
-        .find(|(key, _)| key.eq_ignore_ascii_case(name))
-        .map(|(_, value)| value.trim().to_owned())
+fn suggestions(url: &str) -> Vec<Value> {
+    let body: Value = reqwest::blocking::get(format!("{url}/corvid/suggestions"))
         .unwrap()
+        .json()
+        .unwrap();
+    body["suggestions"].as_array().unwrap().clone()
 }
 
 fn candidates() -> Vec<Candidate> {
@@ -78,45 +69,47 @@ fn candidates() -> Vec<Candidate> {
 }
 
 #[test]
-fn candidates_are_posted_signed_over_the_exact_body() {
-    let (url, received) = stub(204);
+fn mined_candidates_come_back_from_the_sentinel_in_the_app_shape() {
+    let dir = tempfile::tempdir().unwrap();
+    let url = sentinel(dir.path());
 
     Suggest::connect(&url, SECRET)
         .unwrap()
-        .post(1_000, &candidates())
+        .post(corvid_sentinel::now_secs(), &candidates())
         .unwrap();
 
-    let received = received.join().unwrap();
-    let mut mac = <Hmac<Sha256>>::new_from_slice(SECRET.as_bytes()).unwrap();
-    mac.update(&received.body);
-    assert_eq!(received.path, "/internal/scribe/suggestions");
     assert_eq!(
-        received.signature,
-        STANDARD.encode(mac.finalize().into_bytes())
-    );
-    let body: Value = serde_json::from_slice(&received.body).unwrap();
-    assert_eq!(
-        body,
-        json!({
-            "sent_at": 1_000,
-            "candidates": [
-                {"id": "a", "key": "list:news.example", "outcome": "folder:mb7", "settled": 6, "hits": 5},
-                {"id": "b", "key": "from:bob@x.test", "outcome": "archive", "settled": 4, "hits": 4},
-            ],
-        })
+        suggestions(&url),
+        [
+            json!({
+                "id": "a",
+                "sender": {"kind": "list", "value": "news.example"},
+                "action": {"kind": "folder", "mailboxId": "mb7"},
+                "settled": 6,
+                "hits": 5,
+            }),
+            json!({
+                "id": "b",
+                "sender": {"kind": "from", "value": "bob@x.test"},
+                "action": {"kind": "archive"},
+                "settled": 4,
+                "hits": 4,
+            }),
+        ]
     );
 }
 
 #[test]
-fn a_refusal_from_the_sentinel_is_an_error() {
-    let (url, received) = stub(401);
+fn a_wrong_secret_is_refused_and_stores_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let url = sentinel(dir.path());
 
-    let result = Suggest::connect(&url, SECRET)
+    let result = Suggest::connect(&url, "another secret")
         .unwrap()
-        .post(1_000, &candidates());
+        .post(corvid_sentinel::now_secs(), &candidates());
 
-    received.join().unwrap();
     assert!(result.is_err());
+    assert!(suggestions(&url).is_empty());
 }
 
 #[test]
