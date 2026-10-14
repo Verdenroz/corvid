@@ -51,6 +51,35 @@ impl Fake {
         self.order.borrow_mut().push(id.to_owned());
     }
 
+    pub fn arrive(&self, id: &str, from: &str, thread: &str, at: i64) {
+        self.deliver(id, from, &[], 0.0);
+        let mut messages = self.messages.borrow_mut();
+        let message = messages.get_mut(id).unwrap();
+        message.received_at_secs = at;
+        message.thread_id = thread.to_owned();
+    }
+
+    pub fn relocate(&self, id: &str, mailbox: &str) {
+        self.messages.borrow_mut().get_mut(id).unwrap().mailbox_ids =
+            BTreeSet::from([mailbox.to_owned()]);
+        self.touch(id);
+    }
+
+    pub fn read(&self, id: &str) {
+        self.messages
+            .borrow_mut()
+            .get_mut(id)
+            .unwrap()
+            .keywords
+            .insert("$seen".to_owned());
+        self.touch(id);
+    }
+
+    pub fn expunge(&self, id: &str) {
+        self.messages.borrow_mut().remove(id);
+        self.destroyed.borrow_mut().push(id.to_owned());
+    }
+
     pub fn keywords_of(&self, id: &str) -> BTreeSet<String> {
         self.messages.borrow()[id].keywords.clone()
     }
