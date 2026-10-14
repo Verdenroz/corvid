@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.model.ThreadSummary
@@ -41,8 +42,8 @@ internal fun ThreadSummaryBlock(
         Modifier.padding(start = gutter, end = gutter, bottom = 16.dp)
             .widthIn(max = 860.dp)
             .fillMaxWidth()
-            .background(CorvidTheme.colors.hover)
-            .padding(12.dp),
+            .background(CorvidTheme.colors.rail, CorvidShape.medium)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
     ) {
         Text(stringResource(Res.string.summary_label), style = CorvidTheme.type.label, color = CorvidTheme.colors.inkFaint)
         Text(stringResource(Res.string.summary_caveat), style = CorvidTheme.type.meta, color = CorvidTheme.colors.inkMuted)

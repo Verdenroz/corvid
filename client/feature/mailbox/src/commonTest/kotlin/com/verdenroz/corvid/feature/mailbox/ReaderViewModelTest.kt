@@ -8,12 +8,14 @@ import com.verdenroz.corvid.core.model.Label
 import com.verdenroz.corvid.core.testing.FakeEmail
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.FakeMailbox
+import com.verdenroz.corvid.core.testing.ViewModelTestScope
 import com.verdenroz.corvid.core.testing.client
 import com.verdenroz.corvid.core.testing.runViewModelTest
 import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.uiText
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.teach_refused
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
@@ -26,7 +28,12 @@ class ReaderViewModelTest {
         return MailboxRepository(client)
     }
 
-    private suspend fun summaries(fake: FakeJmapServer) = SummaryRepository(fake.client())
+    private suspend fun ViewModelTestScope.reader(
+        fake: FakeJmapServer,
+        emailId: String,
+        kind: ListKind? = null,
+        mailbox: MailboxRepository? = null,
+    ) = track(ReaderViewModel(mailbox ?: repository(fake), SummaryRepository(fake.client()), emailId, kind))
 
     @Test
     fun `an html-only message reaches the screen already flattened to text`() =
@@ -43,7 +50,7 @@ class ReaderViewModelTest {
                     bodyType = "text/html",
                     body = "<p>hello <b>world</b></p>",
                 )
-            val vm = track(ReaderViewModel(repository(fake), summaries(fake), "e1"))
+            val vm = reader(fake, "e1")
 
             val loaded = vm.state.first { it is ReaderUiState.Loaded } as ReaderUiState.Loaded
 
@@ -65,7 +72,7 @@ class ReaderViewModelTest {
                     body = "cut short",
                     bodyTruncated = true,
                 )
-            val vm = track(ReaderViewModel(repository(fake), summaries(fake), "e1"))
+            val vm = reader(fake, "e1")
 
             val loaded = vm.state.first { it is ReaderUiState.Loaded } as ReaderUiState.Loaded
 
@@ -76,7 +83,7 @@ class ReaderViewModelTest {
     fun `a message gone by the time it's opened reaches a distinct state`() =
         runViewModelTest {
             val fake = FakeJmapServer()
-            val vm = track(ReaderViewModel(repository(fake), summaries(fake), "gone"))
+            val vm = reader(fake, "gone")
 
             vm.state.first { it is ReaderUiState.Gone }
         }
@@ -87,7 +94,7 @@ class ReaderViewModelTest {
             val fake = FakeJmapServer()
             fake.emails += FakeEmail("e1", "t1", setOf("inbox"), "Lunch", "a@example.test", "2024-01-01T00:00:00Z", body = "noon?")
             fake.emails += FakeEmail("e2", "t1", setOf("inbox"), "RE: Re: Lunch", "b@example.test", "2024-01-02T00:00:00Z", body = "yes")
-            val vm = track(ReaderViewModel(repository(fake), summaries(fake), "e2"))
+            val vm = reader(fake, "e2")
 
             val loaded = vm.state.first { it is ReaderUiState.Loaded } as ReaderUiState.Loaded
 
@@ -112,7 +119,7 @@ class ReaderViewModelTest {
         runViewModelTest {
             val fake = FakeJmapServer()
             fake.emails += guessed()
-            val vm = track(ReaderViewModel(repository(fake), summaries(fake), "g1"))
+            val vm = reader(fake, "g1")
             vm.state.first { it is ReaderUiState.Loaded }
 
             vm.answer("g1", Correction.Right(Label.Guess("personal")))
@@ -127,7 +134,7 @@ class ReaderViewModelTest {
         runViewModelTest {
             val fake = FakeJmapServer()
             fake.emails += guessed()
-            val vm = track(ReaderViewModel(repository(fake), summaries(fake), "g1"))
+            val vm = reader(fake, "g1")
             vm.state.first { it is ReaderUiState.Loaded }
             fake.emails[0] = fake.emails[0].copy(body = "edited on the server")
 
@@ -142,7 +149,7 @@ class ReaderViewModelTest {
         runViewModelTest {
             val fake = FakeJmapServer()
             fake.emails += guessed()
-            val vm = track(ReaderViewModel(repository(fake), summaries(fake), "g1"))
+            val vm = reader(fake, "g1")
             vm.state.first { it is ReaderUiState.Loaded }
             fake.emails.clear()
 
@@ -175,7 +182,7 @@ class ReaderViewModelTest {
         runViewModelTest {
             val fake = FakeJmapServer()
             thread(fake)
-            val vm = track(ReaderViewModel(repository(fake), summaries(fake), "m5"))
+            val vm = reader(fake, "m5")
 
             val loaded = vm.state.first { it is ReaderUiState.Loaded } as ReaderUiState.Loaded
 
@@ -188,7 +195,7 @@ class ReaderViewModelTest {
         runViewModelTest {
             val fake = FakeJmapServer()
             thread(fake)
-            val vm = track(ReaderViewModel(repository(fake), summaries(fake), "m1"))
+            val vm = reader(fake, "m1")
 
             val loaded = vm.state.first { it is ReaderUiState.Loaded } as ReaderUiState.Loaded
 
@@ -200,7 +207,7 @@ class ReaderViewModelTest {
         runViewModelTest {
             val fake = FakeJmapServer()
             thread(fake)
-            val vm = track(ReaderViewModel(repository(fake), summaries(fake), "m5"))
+            val vm = reader(fake, "m5")
             vm.state.first { it is ReaderUiState.Loaded }
 
             vm.toggle("m2")
@@ -219,7 +226,7 @@ class ReaderViewModelTest {
             val repository = repository(fake)
             coroutineScope {
                 val patch = async { repository.keywordPatches.first() }
-                track(ReaderViewModel(repository, summaries(fake), "m5"))
+                reader(fake, "m5", mailbox = repository)
 
                 assertEquals("m3", patch.await().emailId)
             }
@@ -232,7 +239,7 @@ class ReaderViewModelTest {
             val fake = FakeJmapServer()
             thread(fake)
             fake.emails.replaceAll { if (it.id == "m3") it.copy(keywords = it.keywords + "corvid-llm-label-personal") else it }
-            val vm = track(ReaderViewModel(repository(fake), summaries(fake), "m5"))
+            val vm = reader(fake, "m5")
             vm.state.first { it is ReaderUiState.Loaded }
 
             vm.answer("m3", Correction.Right(Label.Guess("personal")))
@@ -248,7 +255,7 @@ class ReaderViewModelTest {
             fake.emails +=
                 FakeEmail("e1", "e1", setOf("inbox"), "hello", "a@example.test", "2024-01-01T00:00:00Z", body = "hi")
                     .copy(headers = mapOf("Received" to listOf("from relay")))
-            val vm = track(ReaderViewModel(repository(fake), summaries(fake), "e1"))
+            val vm = reader(fake, "e1")
             vm.state.first { it is ReaderUiState.Loaded }
 
             vm.toggleHeaders("e1")
@@ -269,14 +276,8 @@ class ReaderViewModelTest {
             fake.emails += FakeEmail("e2", "e2", setOf("trash"), "bye", "a@example.test", "2024-01-01T00:00:00Z", body = "hi")
             val repository = repository(fake)
 
-            val inbox =
-                track(
-                    ReaderViewModel(repository, summaries(fake), "e1"),
-                ).state.first { it is ReaderUiState.Loaded } as ReaderUiState.Loaded
-            val trash =
-                track(
-                    ReaderViewModel(repository, summaries(fake), "e2"),
-                ).state.first { it is ReaderUiState.Loaded } as ReaderUiState.Loaded
+            val inbox = reader(fake, "e1", mailbox = repository).state.first { it is ReaderUiState.Loaded } as ReaderUiState.Loaded
+            val trash = reader(fake, "e2", mailbox = repository).state.first { it is ReaderUiState.Loaded } as ReaderUiState.Loaded
 
             assertEquals(ListKind.Inbox, inbox.kind)
             assertEquals(ListKind.Trash, trash.kind)
@@ -292,11 +293,8 @@ class ReaderViewModelTest {
             fake.emails += FakeEmail("e2", "t", setOf("sent"), "Re: hello", "me@example.test", "2024-01-02T00:00:00Z", body = "hi")
             val repository = repository(fake)
 
-            val fromTrash =
-                track(
-                    ReaderViewModel(repository, summaries(fake), "e1", ListKind.Trash),
-                ).state.first { it is ReaderUiState.Loaded }
-            val fromNoList = track(ReaderViewModel(repository, summaries(fake), "e1")).state.first { it is ReaderUiState.Loaded }
+            val fromTrash = reader(fake, "e1", ListKind.Trash, repository).state.first { it is ReaderUiState.Loaded }
+            val fromNoList = reader(fake, "e1", mailbox = repository).state.first { it is ReaderUiState.Loaded }
 
             assertEquals(ListKind.Trash, (fromTrash as ReaderUiState.Loaded).kind)
             assertEquals(ListKind.Other, (fromNoList as ReaderUiState.Loaded).kind)
@@ -308,7 +306,7 @@ class ReaderViewModelTest {
             val fake = FakeJmapServer()
             fake.emails += FakeEmail("e1", "e1", setOf("inbox"), "hello", "a@example.test", "2024-01-01T00:00:00Z", body = "hi")
             val repository = repository(fake)
-            val vm = track(ReaderViewModel(repository, summaries(fake), "e1"))
+            val vm = reader(fake, "e1", mailbox = repository)
             vm.state.first { it is ReaderUiState.Loaded }
 
             repository.updateKeywords("e1", mapOf("\$flagged" to true))
@@ -319,10 +317,10 @@ class ReaderViewModelTest {
     @Test
     fun `a thread's summary appears once the thread has loaded`() =
         runViewModelTest {
-            val fake = FakeJmapServer()
+            val fake = FakeJmapServer(Dispatchers.Main)
             fake.emails += FakeEmail("e1", "t1", setOf("inbox"), "hello", "a@example.test", "2024-01-01T00:00:00Z", body = "hi")
             fake.summaries.serve("t1", "They agreed to meet.")
-            val vm = track(ReaderViewModel(repository(fake), summaries(fake), "e1"))
+            val vm = reader(fake, "e1")
 
             val shown = vm.state.first { (it as? ReaderUiState.Loaded)?.summary != null } as ReaderUiState.Loaded
 
@@ -333,10 +331,10 @@ class ReaderViewModelTest {
     @Test
     fun `a thread without a summary shows none`() =
         runViewModelTest {
-            val fake = FakeJmapServer()
+            val fake = FakeJmapServer(Dispatchers.Main)
             fake.emails += FakeEmail("e1", "t1", setOf("inbox"), "hello", "a@example.test", "2024-01-01T00:00:00Z", body = "hi")
             fake.summaries.serve("other", "Not this thread.")
-            val vm = track(ReaderViewModel(repository(fake), summaries(fake), "e1"))
+            val vm = reader(fake, "e1")
 
             val loaded = vm.state.first { it is ReaderUiState.Loaded } as ReaderUiState.Loaded
 
@@ -346,11 +344,11 @@ class ReaderViewModelTest {
     @Test
     fun `a summary the app cannot read leaves the reader loaded`() =
         runViewModelTest {
-            val fake = FakeJmapServer()
+            val fake = FakeJmapServer(Dispatchers.Main)
             fake.emails += FakeEmail("e1", "t1", setOf("inbox"), "hello", "a@example.test", "2024-01-01T00:00:00Z", body = "hi")
             fake.summaries.serve("t1", "x")
             fake.summaries.malformed = true
-            val vm = track(ReaderViewModel(repository(fake), summaries(fake), "e1"))
+            val vm = reader(fake, "e1")
 
             val loaded = vm.state.first { it is ReaderUiState.Loaded } as ReaderUiState.Loaded
 

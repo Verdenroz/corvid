@@ -6,11 +6,9 @@ import com.verdenroz.corvid.core.model.SuggestionAction
 import com.verdenroz.corvid.core.model.SuggestionSender
 import com.verdenroz.corvid.core.model.SuggestionSenderKind
 import io.ktor.http.HttpMethod
-import io.ktor.http.HttpStatusCode
 import kotlinx.serialization.Serializable
 
 private const val SUGGESTIONS_PATH = "/corvid/suggestions"
-private val ABSENT = setOf(HttpStatusCode.NotFound, HttpStatusCode.ServiceUnavailable)
 
 @Serializable
 private class WireSuggestions(val suggestions: List<WireSuggestion>)
@@ -34,8 +32,7 @@ private class WireAction(val kind: String, val mailboxId: String? = null)
 class SuggestionRepository(private val jmapClient: JmapClient) {
     /** Empty when the server lacks the route or has the feature off; a suggestion of a kind this app does not know is left out. */
     suspend fun list(): List<RuleSuggestion> {
-        val reply = jmapClient.webSend(HttpMethod.Get, SUGGESTIONS_PATH, passThrough = ABSENT)
-        val body = reply.body?.takeIf { reply.status == HttpStatusCode.OK } ?: return emptyList()
+        val body = jmapClient.webGetOrNull(SUGGESTIONS_PATH) ?: return emptyList()
         return body.decodeWeb(WireSuggestions.serializer(), "Suggestions") { wire ->
             wire.suggestions.mapNotNull { it.toSuggestion() }
         }

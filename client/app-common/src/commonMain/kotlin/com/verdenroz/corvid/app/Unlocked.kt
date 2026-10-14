@@ -67,7 +67,6 @@ import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.data.NoticeRepository
 import com.verdenroz.corvid.core.data.SenderRepository
 import com.verdenroz.corvid.core.data.SuggestedRules
-import com.verdenroz.corvid.core.data.SummaryRepository
 import com.verdenroz.corvid.core.designsystem.CorvidFloating
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
@@ -365,11 +364,9 @@ private fun Page(
     val navigator = pages.navigator
     val scope = pages.scope
     val models = pages.models
-    val mailbox = remember(scope) { scope.get<MailboxRepository>() }
-    val summaries = remember(scope) { scope.get<SummaryRepository>() }
     when (route) {
         is Route.Home -> home(route)
-        is Route.Reader -> ReaderPage(route, index, entryKey, models, mailbox, summaries, files, pages.ledgers, navigator)
+        is Route.Reader -> ReaderPage(route, index, entryKey, models, scope, files, pages.ledgers, navigator)
         is Route.Search ->
             SearchScreen(
                 viewModel = route.query.takeIf { it.isNotBlank() }?.let { pages.ledgers.search(models, entryKey, it) },
