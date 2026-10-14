@@ -13,17 +13,31 @@ pub struct Message {
     pub authentication_results: Vec<String>,
     pub keywords: BTreeSet<String>,
     pub received_at_days: f64,
+    pub received_at_secs: i64,
+    pub thread_id: String,
+    pub mailbox_ids: BTreeSet<String>,
 }
 
 pub struct Changes {
     pub created: Vec<String>,
     pub updated: Vec<String>,
+    pub destroyed: Vec<String>,
     pub new_state: String,
+}
+
+/// The ids of the mailboxes that have a role the labeler cares about.
+#[derive(Debug, Default, Clone)]
+pub struct Roles {
+    pub inbox: Option<String>,
+    pub archive: Option<String>,
+    pub trash: Option<String>,
+    pub junk: Option<String>,
 }
 
 /// What the labeler needs from a mail store, so the loop can be exercised without one.
 pub trait Mailbox {
     fn changes(&self, since: Option<&str>) -> io::Result<Changes>;
+    fn roles(&self) -> io::Result<Roles>;
     fn fetch(&self, ids: &[String]) -> io::Result<Vec<Message>>;
     /// Messages the model has not finished with, oldest first.
     ///

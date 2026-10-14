@@ -9,6 +9,14 @@ pub fn days(received_at: &str) -> Option<f64> {
     Some(civil_days(year.parse().ok()?, month.parse().ok()?, day.parse().ok()?) as f64)
 }
 
+/// Seconds since the epoch, from the same JMAP UTC date.
+pub fn seconds(received_at: &str) -> Option<i64> {
+    let time = received_at.get(11..19)?;
+    let part = |range: std::ops::Range<usize>| time.get(range)?.parse::<i64>().ok();
+    let clock = part(0..2)? * 3600 + part(3..5)? * 60 + part(6..8)?;
+    Some(days(received_at)? as i64 * 86400 + clock)
+}
+
 fn civil_days(year: i64, month: i64, day: i64) -> i64 {
     let year = if month <= 2 { year - 1 } else { year };
     let era = if year >= 0 { year } else { year - 399 } / 400;

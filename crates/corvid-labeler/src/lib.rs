@@ -12,7 +12,7 @@ use corvid_ingest::{is_prior_keyword, open, save, sender_key};
 
 pub use cold_start::{Budget, ColdStart, cold_start};
 pub use jmap::Jmap;
-pub use mailbox::{Changes, Mailbox, Message};
+pub use mailbox::{Changes, Mailbox, Message, Roles};
 pub use model::{Model, Oracle};
 
 #[derive(Debug, Default, PartialEq, Eq)]

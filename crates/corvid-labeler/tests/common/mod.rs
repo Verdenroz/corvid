@@ -8,7 +8,12 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use corvid_ingest::MODEL_DONE;
-use corvid_labeler::{Changes, Mailbox, Message, Oracle};
+use corvid_labeler::{Changes, Mailbox, Message, Oracle, Roles};
+
+pub const INBOX: &str = "inbox";
+pub const ARCHIVE: &str = "archive";
+pub const TRASH: &str = "trash";
+pub const JUNK: &str = "junk";
 
 const OURS: &str = "mail.corvid.test; dmarc=pass header.from=acme.test";
 
@@ -23,6 +28,7 @@ pub struct Fake {
     pub touched: RefCell<Vec<String>>,
     pub refuse_writes: Cell<bool>,
     pub replay: Cell<bool>,
+    pub destroyed: RefCell<Vec<String>>,
 }
 
 impl Fake {
@@ -37,6 +43,9 @@ impl Fake {
                 authentication_results: vec![OURS.to_owned()],
                 keywords: keywords.iter().map(|k| (*k).to_owned()).collect(),
                 received_at_days: day,
+                received_at_secs: day as i64 * 86400,
+                thread_id: id.to_owned(),
+                mailbox_ids: BTreeSet::from([INBOX.to_owned()]),
             },
         );
         self.order.borrow_mut().push(id.to_owned());
@@ -74,10 +83,22 @@ impl Mailbox for Fake {
             }
         };
         let updated = self.touched.borrow_mut().drain(..).collect();
+        let destroyed = self.destroyed.borrow_mut().drain(..).collect();
         Ok(Changes {
             created,
             updated,
+            destroyed,
             new_state,
+        })
+    }
+
+    fn roles(&self) -> io::Result<Roles> {
+        let id = |name: &str| Some(name.to_owned());
+        Ok(Roles {
+            inbox: id(INBOX),
+            archive: id(ARCHIVE),
+            trash: id(TRASH),
+            junk: id(JUNK),
         })
     }
 
@@ -94,6 +115,9 @@ impl Mailbox for Fake {
                 authentication_results: m.authentication_results.clone(),
                 keywords: m.keywords.clone(),
                 received_at_days: m.received_at_days,
+                received_at_secs: m.received_at_secs,
+                thread_id: m.thread_id.clone(),
+                mailbox_ids: m.mailbox_ids.clone(),
             })
             .collect())
     }

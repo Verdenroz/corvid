@@ -6,7 +6,7 @@ use corvid_jmap::{Client, ids, missing, text};
 use serde_json::{Value, json};
 
 use crate::dates;
-use crate::mailbox::{Changes, Mailbox, Message};
+use crate::mailbox::{Changes, Mailbox, Message, Roles};
 
 const MAX_CHANGES: u32 = 500;
 
@@ -15,12 +15,14 @@ const MAX_CHANGES: u32 = 500;
 const AUTHENTICATION: &str = "header:Authentication-Results:asText:all";
 const LIST_ID: &str = "header:List-Id:asText";
 
-const PROPERTIES: [&str; 7] = [
+const PROPERTIES: [&str; 9] = [
     "id",
     "from",
     "subject",
     "keywords",
     "receivedAt",
+    "threadId",
+    "mailboxIds",
     LIST_ID,
     AUTHENTICATION,
 ];
@@ -53,6 +55,7 @@ impl Mailbox for Jmap {
             return Ok(Changes {
                 created: Vec::new(),
                 updated: Vec::new(),
+                destroyed: Vec::new(),
                 new_state,
             });
         };
@@ -68,7 +71,30 @@ impl Mailbox for Jmap {
         Ok(Changes {
             created: ids(&changes["created"]),
             updated: ids(&changes["updated"]),
+            destroyed: ids(&changes["destroyed"]),
             new_state: text(&changes["newState"]).ok_or_else(|| missing("a new state"))?,
+        })
+    }
+
+    fn roles(&self) -> io::Result<Roles> {
+        let result = self.client.call(
+            "Mailbox/get",
+            json!({"accountId": self.account(), "ids": null, "properties": ["id", "role"]}),
+        )?;
+        let list = result["list"]
+            .as_array()
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+        let with = |role: &str| {
+            list.iter()
+                .find(|mailbox| mailbox["role"] == role)
+                .and_then(|mailbox| text(&mailbox["id"]))
+        };
+        Ok(Roles {
+            inbox: with("inbox"),
+            archive: with("archive"),
+            trash: with("trash"),
+            junk: with("junk"),
         })
     }
 
@@ -145,6 +171,14 @@ fn message(value: &Value) -> Option<Message> {
         received_at_days: text(&value["receivedAt"])
             .as_deref()
             .and_then(dates::days)?,
+        received_at_secs: text(&value["receivedAt"])
+            .as_deref()
+            .and_then(dates::seconds)?,
+        thread_id: text(&value["threadId"])?,
+        mailbox_ids: value["mailboxIds"]
+            .as_object()
+            .map(|map| map.keys().cloned().collect())
+            .unwrap_or_default(),
     })
 }
 
