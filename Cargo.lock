@@ -609,6 +609,7 @@ dependencies = [
  "corvid-ingest",
  "corvid-jmap",
  "corvid-label",
+ "corvid-store",
  "ctrlc",
  "reqwest",
  "serde",
