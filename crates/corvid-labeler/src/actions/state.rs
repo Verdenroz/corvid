@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
@@ -9,7 +9,7 @@ pub struct Actions {
     pub pending: BTreeMap<String, Pending>,
     /// Thread and key of every arrival seen recently, so a long thread counts once.
     pub threads: BTreeMap<String, i64>,
-    pub keys: BTreeMap<String, Tally>,
+    pub keys: BTreeMap<String, Vec<Observation>>,
     pub candidates: Vec<Candidate>,
 }
 
@@ -41,12 +41,11 @@ impl Exit {
     }
 }
 
-/// Settled observations of one key. `exits` counts the ones that left the Inbox unseen.
-#[derive(Debug, Default, Serialize, Deserialize)]
-pub struct Tally {
-    pub settled: u32,
-    pub exits: BTreeMap<String, u32>,
-    pub days: BTreeSet<i64>,
+/// One settled arrival: the day it landed and where it went if it left the Inbox unseen.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Observation {
+    pub day: i64,
+    pub exit: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -71,11 +70,7 @@ corvid_store::pin_shape!(Pending {
     seen,
     left
 });
-corvid_store::pin_shape!(Tally {
-    settled,
-    exits,
-    days
-});
+corvid_store::pin_shape!(Observation { day, exit });
 corvid_store::pin_shape!(Candidate {
     id,
     key,

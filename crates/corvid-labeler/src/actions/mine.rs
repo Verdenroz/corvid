@@ -1,3 +1,5 @@
+use std::collections::{BTreeMap, BTreeSet};
+
 use sha2::{Digest, Sha256};
 
 use super::state::{Actions, Candidate};
@@ -13,25 +15,28 @@ impl Actions {
     /// Replaces the candidates with every (key, outcome) the settled history supports.
     pub fn mine(&mut self) {
         let mut found = Vec::new();
-        for (key, tally) in &self.keys {
-            let (Some(first), Some(last)) = (tally.days.first(), tally.days.last()) else {
+        for (key, history) in &self.keys {
+            let days: BTreeSet<i64> = history.iter().map(|seen| seen.day).collect();
+            let (Some(first), Some(last)) = (days.first(), days.last()) else {
                 continue;
             };
-            if tally.settled < MIN_OBSERVATIONS
-                || tally.days.len() < MIN_DAYS
-                || last - first < MIN_SPAN_DAYS
-            {
+            let settled = history.len() as u32;
+            if settled < MIN_OBSERVATIONS || days.len() < MIN_DAYS || last - first < MIN_SPAN_DAYS {
                 continue;
             }
-            for (outcome, &hits) in &tally.exits {
-                let precision = f64::from(hits) / f64::from(tally.settled);
-                let lower_bound = wilson_lower(hits, tally.settled);
+            let mut exits: BTreeMap<&str, u32> = BTreeMap::new();
+            for outcome in history.iter().filter_map(|seen| seen.exit.as_deref()) {
+                *exits.entry(outcome).or_default() += 1;
+            }
+            for (outcome, hits) in exits {
+                let precision = f64::from(hits) / f64::from(settled);
+                let lower_bound = wilson_lower(hits, settled);
                 if precision >= MIN_PRECISION && lower_bound >= MIN_LOWER_BOUND {
                     found.push(Candidate {
                         id: id_of(key, outcome),
                         key: key.clone(),
-                        outcome: outcome.clone(),
-                        settled: tally.settled,
+                        outcome: outcome.to_owned(),
+                        settled,
                         hits,
                         lower_bound,
                     });

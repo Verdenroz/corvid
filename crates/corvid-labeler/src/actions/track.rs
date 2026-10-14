@@ -1,14 +1,15 @@
 use corvid_label::SenderKey;
 
 use super::Delta;
-use super::state::{Actions, Exit, Pending, Tally};
+use super::state::{Actions, Exit, Observation, Pending};
 use crate::mailbox::{Message, Roles};
 
 const DAY: i64 = 86400;
 const FRESH: i64 = 15 * 60;
 const SETTLE: i64 = 3 * DAY;
 const THREAD_MEMORY: i64 = 30 * DAY;
-const KEPT_DAYS: usize = 200;
+const WINDOW: i64 = 180 * DAY;
+const KEPT: usize = 200;
 
 impl Actions {
     pub fn observe(&mut self, now: i64, user: &str, roles: &Roles, delta: &Delta) {
@@ -39,19 +40,19 @@ impl Actions {
             let Some(pending) = self.pending.remove(&id) else {
                 continue;
             };
-            if pending.left == Some(Exit::Junk) {
-                continue;
-            }
-            let tally = self.keys.entry(pending.key).or_default();
-            record(tally, pending.first_seen / DAY, pending.left);
+            let history = self.keys.entry(pending.key).or_default();
+            record(history, pending.first_seen / DAY, pending.left);
         }
+        for history in self.keys.values_mut() {
+            history.retain(|seen| seen.day * DAY > now - WINDOW);
+        }
+        self.keys.retain(|_, history| !history.is_empty());
         self.threads.retain(|_, seen| now - *seen < THREAD_MEMORY);
     }
 
     fn admit(&mut self, now: i64, user: &str, roles: &Roles, message: &Message) {
         if !in_inbox(message, roles)
             || now - message.received_at_secs > FRESH
-            || message.keywords.contains("$seen")
             || message.from.eq_ignore_ascii_case(user)
         {
             return;
@@ -69,7 +70,7 @@ impl Actions {
             Pending {
                 key,
                 first_seen: now,
-                seen: false,
+                seen: message.keywords.contains("$seen"),
                 left: None,
             },
         );
@@ -106,26 +107,23 @@ fn exit_of(message: &Message, roles: &Roles) -> Exit {
         Exit::Junk
     } else if has(&roles.archive) {
         Exit::Archive
+    } else if let Some(id) = message.mailbox_ids.iter().next() {
+        Exit::Folder(id.clone())
     } else {
-        Exit::Folder(
-            message
-                .mailbox_ids
-                .iter()
-                .next()
-                .cloned()
-                .unwrap_or_default(),
-        )
+        Exit::Trash
     }
 }
 
-fn record(tally: &mut Tally, day: i64, left: Option<Exit>) {
-    tally.settled += 1;
-    if let Some(exit) = left {
-        *tally.exits.entry(exit.label()).or_default() += 1;
+fn record(history: &mut Vec<Observation>, day: i64, left: Option<Exit>) {
+    if left == Some(Exit::Junk) {
+        return;
     }
-    tally.days.insert(day);
-    while tally.days.len() > KEPT_DAYS {
-        tally.days.pop_first();
+    history.push(Observation {
+        day,
+        exit: left.map(|exit| exit.label()),
+    });
+    if history.len() > KEPT {
+        history.remove(0);
     }
 }
 
