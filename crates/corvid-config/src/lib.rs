@@ -567,6 +567,50 @@ pub struct Sentinel {
 #[serde(deny_unknown_fields)]
 pub struct Scribe {
     pub state: PathBuf,
+    /// An overnight digest of the Inbox, built each morning. Needs `sentinel.devices`, whose admin
+    /// key reads the mail; absent, no digest is built.
+    pub digest: Option<Schedule>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Schedule {
+    /// Local time of day as `HH:MM`, in `timezone`.
+    pub at: ClockTime,
+    /// An IANA name such as `Europe/Berlin`, resolved from a bundled database since the image
+    /// may ship none.
+    pub timezone: Zone,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(try_from = "String")]
+pub struct ClockTime(pub jiff::civil::Time);
+
+impl TryFrom<String> for ClockTime {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        let well_formed = value.len() == 5 && value.as_bytes()[2] == b':';
+        well_formed
+            .then(|| value.parse().ok())
+            .flatten()
+            .map(Self)
+            .ok_or_else(|| format!("{value:?} is not a time of day as HH:MM"))
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(try_from = "String")]
+pub struct Zone(pub jiff::tz::TimeZone);
+
+impl TryFrom<String> for Zone {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        jiff::tz::TimeZone::get(&value)
+            .map(Self)
+            .map_err(|_| format!("{value:?} is not an IANA time zone name"))
+    }
 }
 
 /// The issuer identifier Stalwart is configured with: the sentinel on loopback, never routed.
@@ -1161,6 +1205,25 @@ mod server_tests {
             PathBuf::from("/c")
         );
         assert!(Config::parse("sentinel:\n  state: /s\n  scribe: {}\n").is_err());
+    }
+
+    #[test]
+    fn a_digest_names_a_time_of_day_and_a_known_zone() {
+        let parse = |digest: &str| {
+            Config::parse(&format!(
+                "sentinel:\n  state: /s\n  scribe:\n    state: /c\n    digest: {digest}\n"
+            ))
+        };
+
+        let digest = parse("{ at: \"07:05\", timezone: America/Chicago }").unwrap();
+        let digest = digest.sentinel.unwrap().scribe.unwrap().digest.unwrap();
+        assert_eq!(digest.at.0.hour(), 7);
+        assert_eq!(digest.at.0.minute(), 5);
+        assert_eq!(digest.timezone.0.iana_name(), Some("America/Chicago"));
+        assert!(parse("{ at: \"7am\", timezone: UTC }").is_err());
+        assert!(parse("{ at: \"25:00\", timezone: UTC }").is_err());
+        assert!(parse("{ at: \"07:00\", timezone: Mars/Base }").is_err());
+        assert!(parse("{ at: \"07:00\" }").is_err());
     }
 
     #[test]

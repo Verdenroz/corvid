@@ -22,6 +22,9 @@ config:
       state: /var/lib/corvid/auth.json
     # scribe:
     #   state: /var/lib/corvid/scribe.json
+    #   digest:
+    #     at: "07:00"
+    #     timezone: UTC
   # Thread summaries, with scribe.enabled. Needs sentinel.scribe above.
   # scribe:
   #   jmap_url: http://127.0.0.1:8080
