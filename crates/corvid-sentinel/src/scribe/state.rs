@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 const SCHEMA: u32 = 1;
 const DECIDED_CAP: usize = 1000;
 const SUMMARY_CAP: usize = 5000;
+const DIGEST_CAP: usize = 30;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -66,6 +67,33 @@ pub struct Summary {
     pub generated_at: i64,
 }
 
+/// One morning's Inbox mail after `from` up to `to`, in epoch seconds. Its id is the local date it
+/// was built for.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Digest {
+    pub id: String,
+    pub from: i64,
+    pub to: i64,
+    pub groups: Vec<Group>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Group {
+    pub label: Option<String>,
+    pub items: Vec<Item>,
+}
+
+/// A thread's newest Inbox message in the window.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Item {
+    pub thread_id: String,
+    pub email_id: String,
+    pub from: String,
+    pub subject: String,
+    pub received_at: i64,
+    pub summary: Option<String>,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Scribe {
     /// Tonight's candidates; each post replaces them wholesale.
@@ -76,6 +104,9 @@ pub struct Scribe {
     /// file written before summaries existed still opens.
     #[serde(default)]
     pub summaries: BTreeMap<String, Summary>,
+    /// Oldest first, only the newest `DIGEST_CAP` kept.
+    #[serde(default)]
+    pub digests: Vec<Digest>,
 }
 
 impl Scribe {
@@ -110,6 +141,17 @@ impl Scribe {
         }
     }
 
+    pub fn with_digest(&self, digest: Digest) -> Self {
+        let mut digests = self.digests.clone();
+        digests.push(digest);
+        let excess = digests.len().saturating_sub(DIGEST_CAP);
+        digests.drain(..excess);
+        Self {
+            digests,
+            ..self.clone()
+        }
+    }
+
     pub fn with_decision(&self, id: &str, verdict: Verdict) -> Self {
         let mut decided = self.decided.clone();
         decided.push(Decision {
@@ -140,10 +182,26 @@ corvid_store::pin_shape!(Summary {
     model,
     generated_at
 });
+corvid_store::pin_shape!(Digest {
+    id,
+    from,
+    to,
+    groups
+});
+corvid_store::pin_shape!(Group { label, items });
+corvid_store::pin_shape!(Item {
+    thread_id,
+    email_id,
+    from,
+    subject,
+    received_at,
+    summary
+});
 corvid_store::pin_shape!(Scribe {
     suggestions,
     decided,
-    summaries
+    summaries,
+    digests
 });
 
 pub fn open(path: &Path) -> io::Result<Scribe> {

@@ -31,6 +31,7 @@ fn sentinel(dir: &Path) -> String {
                         secret: SECRET.as_bytes().to_vec(),
                         state_path: dir.join("scribe.json"),
                         scribe: scribe::Scribe::default(),
+                        digest: None,
                     }),
                 });
                 tokio::spawn(watcher);

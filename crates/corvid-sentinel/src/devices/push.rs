@@ -3,6 +3,7 @@
 //! as the admin API key and pushes each new Inbox message, encrypted to each device's own keys,
 //! to the FCM endpoint the device registered or onto its own stream.
 
+use std::collections::BTreeSet;
 use std::io;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
@@ -22,7 +23,7 @@ use serde_json::{Value, json};
 use tokio::sync::Notify;
 
 use super::keys::{self, Keys, checked};
-use super::state::{Push, Target};
+use super::state::{Device, Push, PushKind, Target};
 use super::stream;
 use super::{Shared, commit, valid_name};
 use crate::http::{Off, off_json};
@@ -64,16 +65,16 @@ impl Config {
 }
 
 /// The device state with what only a host that pushes needs. Its routes exist only then.
-struct PushState {
+pub(super) struct PushState {
     device: Shared,
     config: Config,
     http: reqwest::Client,
     arrived: Notify,
 }
 
-type Pushing = Arc<PushState>;
+pub(super) type Pushing = Arc<PushState>;
 
-pub(super) fn routes(device: Shared, config: Config) -> Router {
+pub(super) fn routes(device: Shared, config: Config) -> (Router, Pushing) {
     let state = Arc::new(PushState {
         device: device.clone(),
         config,
@@ -89,6 +90,7 @@ pub(super) fn routes(device: Shared, config: Config) -> Router {
             "/corvid/devices/{name}/push",
             put(register).delete(unregister),
         )
+        .route("/corvid/devices/{name}/push/kinds", put(set_kinds))
         .layer(DefaultBodyLimit::max(PUSH_BODY_LIMIT))
         .with_state(state.clone());
     let webhook = Router::new()
@@ -97,11 +99,12 @@ pub(super) fn routes(device: Shared, config: Config) -> Router {
         .with_state(state.clone());
     let key = Router::new()
         .route("/corvid/push/vapid", get(vapid_key))
-        .with_state(state);
+        .with_state(state.clone());
     let stream = Router::new()
         .route("/corvid/push/stream", get(stream::serve))
         .with_state(device);
-    registration.merge(webhook).merge(key).merge(stream)
+    let router = registration.merge(webhook).merge(key).merge(stream);
+    (router, state)
 }
 
 /// The push routes on a host whose config has devices but no `sentinel.push`.
@@ -111,6 +114,7 @@ pub(super) fn off() -> Router {
     }
     Router::new()
         .route("/corvid/devices/{name}/push", put(off).delete(off))
+        .route("/corvid/devices/{name}/push/kinds", put(off))
         .route("/corvid/push/vapid", get(off))
         .route("/corvid/push/stream", get(off))
         .route("/webhook/mail", post(|| async { StatusCode::NO_CONTENT }))
@@ -217,6 +221,41 @@ async fn register(
     }
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Kinds {
+    kinds: BTreeSet<PushKind>,
+}
+
+/// Replaces the kinds of push a device takes beyond new-mail previews. It never touches the
+/// device's push registration.
+pub(super) async fn set_kinds(
+    State(state): State<Pushing>,
+    Path(name): Path<String>,
+    body: Bytes,
+) -> Result<StatusCode, (StatusCode, Json<Off>)> {
+    let Kinds { kinds } = serde_json::from_slice(&body)
+        .ok()
+        .filter(|_| valid_name(&name))
+        .ok_or_else(|| refuse(StatusCode::BAD_REQUEST))?;
+    let known = commit(state.device.clone(), move |devices| {
+        let Some(device) = devices.approved.get(&name) else {
+            return (None, false);
+        };
+        if device.kinds == kinds {
+            return (None, true);
+        }
+        let mut next = devices.clone();
+        next.approved.get_mut(&name).expect("read above").kinds = kinds;
+        (Some(next), true)
+    })
+    .await
+    .map_err(refuse)?;
+    known
+        .then_some(StatusCode::NO_CONTENT)
+        .ok_or_else(|| refuse(StatusCode::NOT_FOUND))
+}
+
 async fn unregister(
     State(state): State<Pushing>,
     Path(name): Path<String>,
@@ -299,21 +338,11 @@ async fn watch(state: Pushing) {
 }
 
 async fn baseline(keys: &Keys) -> Result<Mailbox, keys::Error> {
-    let account = keys.account(keys.mail_address()).await?;
+    let (account, inbox) = keys.inbox_id().await?;
     let answers = keys
-        .batch(&[
-            (
-                "Mailbox/query",
-                json!({"accountId": account, "filter": {"role": "inbox"}}),
-            ),
-            ("Email/get", json!({"accountId": account, "ids": []})),
-        ])
+        .batch(&[("Email/get", json!({"accountId": account, "ids": []}))])
         .await?;
-    let inbox = checked("Mailbox/query", &answers[0])?["ids"][0]
-        .as_str()
-        .ok_or_else(|| keys::Error::new("the mail account has no Inbox"))?
-        .to_owned();
-    let state = checked("Email/get", &answers[1])?["state"]
+    let state = checked("Email/get", &answers[0])?["state"]
         .as_str()
         .ok_or_else(|| keys::Error::new("Email/get returned no state"))?
         .to_owned();
@@ -411,17 +440,27 @@ async fn deliver(state: &Pushing, messages: &[Value]) {
         );
     }
     let plaintexts: Vec<Vec<u8>> = messages.iter().take(MAX_PER_WAKE).map(preview).collect();
+    fan_out(state, |_| true, &plaintexts).await;
+}
+
+/// Sends `plaintexts` to each device with a push record that `wants` them.
+pub(super) async fn fan_out(
+    state: &Pushing,
+    wants: impl Fn(&Device) -> bool,
+    plaintexts: &[Vec<u8>],
+) {
     let devices: Vec<(String, Push)> = state.device.devices.read(|devices| {
         devices
             .approved
             .iter()
+            .filter(|(_, device)| wants(device))
             .filter_map(|(name, device)| Some((name.clone(), device.push.clone()?)))
             .collect()
     });
     join_all(
         devices
             .into_iter()
-            .map(|(name, push)| push_to(state, name, push, &plaintexts)),
+            .map(|(name, push)| push_to(state, name, push, plaintexts)),
     )
     .await;
 }

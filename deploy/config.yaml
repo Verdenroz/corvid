@@ -135,3 +135,8 @@ sentinel:
   # Delete it to serve none.
   scribe:
     state: /var/lib/corvid/scribe.json
+    # A digest of the night's Inbox mail, built once a day at this local time and announced to
+    # devices that ask for it. Needs devices. Delete it to build none.
+    digest:
+      at: "07:00"
+      timezone: UTC

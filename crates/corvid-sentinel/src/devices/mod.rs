@@ -2,11 +2,13 @@
 //! the admin user approves with a fresh admin token, and is read back by the node id the
 //! approval recorded.
 
-mod keys;
+mod courier;
+pub(crate) mod keys;
 mod push;
 mod state;
 mod stream;
 
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -23,9 +25,10 @@ use crate::dates;
 use crate::http::{Off, off_json};
 use crate::persisted::Persisted;
 use crate::webpush::random_bytes;
+pub use courier::Courier;
 use keys::Keys;
 pub use push::{Config as PushConfig, FCM_ORIGIN};
-pub use state::{Approved, Device, Devices, Push, Request, Stage, Target, open};
+pub use state::{Approved, Device, Devices, Push, PushKind, Request, Stage, Target, open};
 use state::{LIFETIME_SECONDS, MAX_OPEN, save};
 use stream::Streams;
 
@@ -66,7 +69,7 @@ async fn commit<T: Send + 'static>(
     Persisted::commit_blocking(state, |state| &state.devices, "device", change).await
 }
 
-pub fn routes(config: Config) -> Router {
+pub fn routes(config: Config) -> (Router, Courier) {
     let state = Arc::new(DeviceState {
         secret: config.secret,
         devices: Persisted::new(config.state_path, config.devices, save),
@@ -80,11 +83,15 @@ pub fn routes(config: Config) -> Router {
         ),
         streams: Streams::default(),
     });
-    let pushes = match config.push {
-        Some(push) => push::routes(state.clone(), push),
-        None => push::off(),
+    let (pushes, push) = match config.push {
+        Some(config) => {
+            let (routes, push) = push::routes(state.clone(), config);
+            (routes, Some(push))
+        }
+        None => (push::off(), None),
     };
-    Router::new()
+    let courier = Courier::new(state.clone(), push);
+    let router = Router::new()
         .route("/corvid/devices/requests", post(create).get(list))
         .route("/corvid/devices/requests/{id}", get(status))
         .route("/corvid/devices/requests/{id}/approve", post(approve))
@@ -92,7 +99,8 @@ pub fn routes(config: Config) -> Router {
         .route("/internal/devices/{name}", delete(revoke))
         .layer(DefaultBodyLimit::max(REQUEST_BODY_LIMIT))
         .with_state(state)
-        .merge(pushes)
+        .merge(pushes);
+    (router, courier)
 }
 
 /// The device routes on a host whose config has no `sentinel.devices`. A stable 503 lets a client
@@ -107,6 +115,7 @@ pub fn off() -> Router {
         .route("/corvid/devices/requests/{id}/approve", post(off))
         .route("/corvid/devices/{name}", get(off))
         .route("/corvid/devices/{name}/push", put(off).delete(off))
+        .route("/corvid/devices/{name}/push/kinds", put(off))
         .route("/internal/devices/{name}", delete(off))
         .route("/corvid/push/vapid", get(off))
         .route("/corvid/push/stream", get(off))
@@ -341,6 +350,7 @@ async fn record(
             Device {
                 key: approved,
                 push: None,
+                kinds: BTreeSet::new(),
             },
         );
         (Some(next), ())

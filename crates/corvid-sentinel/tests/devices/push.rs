@@ -24,23 +24,23 @@ use tokio::net::TcpListener;
 use super::stalwart::{ARCHIVE, INBOX};
 use super::{CONTACT, Rig, SECRET, rig_full};
 
-const BASE: &str = "https://fcm.googleapis.com/fcm/send";
+pub(super) const BASE: &str = "https://fcm.googleapis.com/fcm/send";
 
 /// What the fake FCM received.
-struct Posted {
-    target: String,
-    headers: HeaderMap,
-    body: Vec<u8>,
+pub(super) struct Posted {
+    pub(super) target: String,
+    pub(super) headers: HeaderMap,
+    pub(super) body: Vec<u8>,
 }
 
 #[derive(Clone)]
-struct Fcm {
-    posted: Arc<Mutex<Vec<Posted>>>,
+pub(super) struct Fcm {
+    pub(super) posted: Arc<Mutex<Vec<Posted>>>,
     status: Arc<AtomicU16>,
 }
 
 impl Fcm {
-    async fn start() -> (Self, String) {
+    pub(super) async fn start() -> (Self, String) {
         let fcm = Self {
             posted: Arc::default(),
             status: Arc::new(AtomicU16::new(200)),
@@ -52,11 +52,11 @@ impl Fcm {
         (fcm, url)
     }
 
-    fn count(&self) -> usize {
+    pub(super) fn count(&self) -> usize {
         self.posted.lock().unwrap().len()
     }
 
-    async fn wait_for(&self, count: usize) {
+    pub(super) async fn wait_for(&self, count: usize) {
         for _ in 0..100 {
             if self.count() >= count {
                 return;
@@ -77,27 +77,27 @@ async fn receive(State(fcm): State<Fcm>, uri: Uri, headers: HeaderMap, body: Byt
 }
 
 /// A device's push keys, as the UnifiedPush connector makes them.
-struct Phone {
+pub(super) struct Phone {
     secret: SecretKey,
     auth: [u8; 16],
 }
 
 impl Phone {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             secret: SecretKey::from_slice(&[7; 32]).unwrap(),
             auth: [9; 16],
         }
     }
 
-    fn other() -> Self {
+    pub(super) fn other() -> Self {
         Self {
             secret: SecretKey::from_slice(&[8; 32]).unwrap(),
             auth: [10; 16],
         }
     }
 
-    fn registration(&self, endpoint: &str) -> Value {
+    pub(super) fn registration(&self, endpoint: &str) -> Value {
         json!({
             "endpoint": endpoint,
             "p256dh": URL_SAFE_NO_PAD.encode(self.secret.public_key().to_sec1_point(false).as_bytes()),
@@ -106,7 +106,7 @@ impl Phone {
     }
 
     /// RFC 8291 from the receiving end: the sender's key and the salt come from the header.
-    fn decrypt(&self, body: &[u8]) -> Value {
+    pub(super) fn decrypt(&self, body: &[u8]) -> Value {
         let salt = &body[..16];
         let key_length = body[20] as usize;
         let sender = PublicKey::from_sec1_bytes(&body[21..21 + key_length]).unwrap();

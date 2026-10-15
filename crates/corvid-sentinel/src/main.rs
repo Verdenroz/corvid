@@ -1,18 +1,18 @@
 use std::io;
-use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Duration;
 
 use std::sync::Arc;
 
 use corvid_config::{issuer_url, or_exit, secret, section};
-use corvid_sentinel::{Config, auth, build, devices, open, scribe};
+use corvid_sentinel::{Config, auth, build, devices, now_secs, open, scribe};
 use tokio::net::TcpListener;
 use tokio::signal;
 
 /// Where the host's update directory is mounted; absent where no host updater exists.
 const UPDATE_DIR: &str = "/var/lib/corvid-update";
 const UPDATE_POLL: Duration = Duration::from_secs(60);
+const DIGEST_POLL: Duration = Duration::from_secs(60);
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -55,7 +55,9 @@ async fn main() -> ExitCode {
             local,
         )
     });
-    let scribe = settings.scribe.map(|scribe| scribe_config(scribe.state));
+    let scribe = settings
+        .scribe
+        .map(|scribe| scribe_config(scribe, devices.is_some()));
     let (app, watcher) = build(Config {
         secret: hmac_secret.into_bytes(),
         state_path: settings.state,
@@ -77,7 +79,11 @@ async fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn scribe_config(state_path: PathBuf) -> scribe::Config {
+fn scribe_config(settings: corvid_config::Scribe, devices: bool) -> scribe::Config {
+    if settings.digest.is_some() {
+        or_exit(section(devices.then_some(()), "sentinel.devices"));
+    }
+    let state_path = settings.state;
     let secret = or_exit(secret("CORVID_SCRIBE_SECRET"));
     let scribe = scribe::open(&state_path).unwrap_or_else(|error| {
         tracing::error!(%error, state = %state_path.display(), "refusing to start");
@@ -87,6 +93,12 @@ fn scribe_config(state_path: PathBuf) -> scribe::Config {
         secret: secret.into_bytes(),
         state_path,
         scribe,
+        digest: settings.digest.map(|schedule| scribe::digest::Settings {
+            at: schedule.at.0,
+            zone: schedule.timezone.0,
+            poll: DIGEST_POLL,
+            clock: Arc::new(now_secs),
+        }),
     }
 }
 

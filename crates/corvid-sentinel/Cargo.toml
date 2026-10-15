@@ -18,12 +18,14 @@ axum = "0.8.9"
 base64 = "0.23.1"
 ciborium = "0.2.2"
 corvid-config.workspace = true
+corvid-ingest.workspace = true
 corvid-sign.workspace = true
 corvid-store.workspace = true
 futures-util = { version = "0.3.34", default-features = false }
 hex = "0.4.3"
 hkdf = "0.13.0"
 hmac = "0.13.0"
+jiff = { version = "0.2.38", default-features = false, features = ["std", "tzdb-bundle-always"] }
 p256 = { version = "0.14.0", features = ["ecdh", "ecdsa"] }
 reqwest = { version = "0.13.4", default-features = false, features = ["rustls", "json"] }
 ring = "0.17.14"
