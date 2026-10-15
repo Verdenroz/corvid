@@ -1,6 +1,7 @@
 //! What the labeler and scribe post for the app: rule suggestions, kept until the app accepts or
 //! dismisses them, and thread summaries, kept until their thread changes or is deleted.
 
+mod digest;
 mod ingest;
 mod state;
 mod summaries;
