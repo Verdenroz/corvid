@@ -77,6 +77,7 @@ async fn serve_scribe(dir: &Path, scribe: Scribe) -> String {
         secret: SCRIBE_SECRET.to_vec(),
         state_path: dir.join("scribe.json"),
         scribe,
+        digest: None,
     });
     serve(config).await
 }

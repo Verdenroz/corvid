@@ -51,16 +51,20 @@ pub fn build(config: Config) -> (Router, impl Future<Output = ()> + Send + 'stat
         .route("/corvid/notices", get(notices))
         .with_state(state.clone())
         .merge(update::routes(config.update_dir));
-    let router = router.merge(match config.devices {
-        Some(devices) => devices::routes(devices),
-        None => devices::off(),
-    });
+    let (devices, courier) = match config.devices {
+        Some(devices) => {
+            let (routes, courier) = devices::routes(devices);
+            (routes, Some(courier))
+        }
+        None => (devices::off(), None),
+    };
+    let router = router.merge(devices);
     let router = router.merge(match config.auth {
         Some(auth) => auth::routes(auth, state, update_dir),
         None => auth::off(),
     });
     let router = router.merge(match config.scribe {
-        Some(scribe) => scribe::routes(scribe),
+        Some(scribe) => scribe::routes(scribe, courier),
         None => scribe::off(),
     });
     (router, watcher)

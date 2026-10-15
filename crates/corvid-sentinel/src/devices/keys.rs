@@ -159,7 +159,7 @@ impl Keys {
 
     /// Looks accounts up by address, since a mailbox user of the same name in the mail domain
     /// gets an account of its own with the same local part.
-    pub(super) async fn account(&self, address: &str) -> Result<String, Error> {
+    pub(crate) async fn account(&self, address: &str) -> Result<String, Error> {
         let local = address.split('@').next().unwrap_or_default();
         let answers = self
             .batch(&[
@@ -265,7 +265,7 @@ impl Keys {
 
     /// Method calls in one request, named `c0`, `c1`, and so on. The answers come back as sent,
     /// errors included, so a refusal is read before the answer to the call that depended on it.
-    pub(super) async fn batch(&self, calls: &[(&str, Value)]) -> Result<Vec<Value>, Error> {
+    pub(crate) async fn batch(&self, calls: &[(&str, Value)]) -> Result<Vec<Value>, Error> {
         let calls: Vec<Value> = calls
             .iter()
             .enumerate()
@@ -290,11 +290,11 @@ impl Keys {
 
 /// A reference to `path` in the answer of call `call` of the same batch. Stalwart resolves
 /// these into query results only, not into the `created` of a set.
-fn back(call: &str, method: &str, path: &str) -> Value {
+pub(crate) fn back(call: &str, method: &str, path: &str) -> Value {
     json!({"resultOf": call, "name": method, "path": path})
 }
 
-pub(super) fn checked<'a>(method: &str, answer: &'a Value) -> Result<&'a Value, Error> {
+pub(crate) fn checked<'a>(method: &str, answer: &'a Value) -> Result<&'a Value, Error> {
     if answer[0] == "error" {
         return Err(Error(format!("{method} failed: {}", answer[1])));
     }

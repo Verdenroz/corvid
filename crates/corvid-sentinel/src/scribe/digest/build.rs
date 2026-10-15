@@ -1,3 +1,4 @@
+use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
 
 use corvid_ingest::{MODEL_LABEL_NAMESPACE, NAMESPACE, RULE_NAMESPACE, is_prior_keyword};
@@ -22,7 +23,7 @@ pub(super) fn groups(
     mut messages: Vec<Message>,
     summaries: &BTreeMap<String, Summary>,
 ) -> Vec<Group> {
-    messages.sort_by(|a, b| b.received_at.cmp(&a.received_at));
+    messages.sort_by_key(|message| Reverse(message.received_at));
     let mut threads = BTreeSet::new();
     let mut grouped: BTreeMap<Option<String>, Vec<Item>> = BTreeMap::new();
     for message in messages {

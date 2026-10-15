@@ -190,6 +190,7 @@ async fn jmap(
             "FileNode/get" => get_nodes(&shared, &arguments),
             "FileNode/set" => set_nodes(&shared, &arguments),
             "Mailbox/query" => json!({"ids": [INBOX]}),
+            "Email/query" => query_emails(&shared, &arguments),
             "Email/get" => get_emails(&shared, &arguments),
             "Email/changes" => match email_changes(&shared, &arguments) {
                 Some(answer) => answer,
@@ -265,6 +266,25 @@ fn get_emails(shared: &Shared, arguments: &Value) -> Value {
         .cloned()
         .collect();
     json!({"state": mail.state.to_string(), "list": list})
+}
+
+/// The ids of the messages in a mailbox received at or after a time, newest first.
+fn query_emails(shared: &Shared, arguments: &Value) -> Value {
+    assert_eq!(arguments["accountId"], MAIL_ACCOUNT);
+    let filter = &arguments["filter"];
+    let after = filter["after"].as_str().unwrap();
+    let mail = shared.mail.lock().unwrap();
+    let mut found: Vec<&Value> = mail
+        .emails
+        .iter()
+        .map(|(_, email)| email)
+        .filter(|email| {
+            email["mailboxIds"][filter["inMailbox"].as_str().unwrap()] == true
+                && email["receivedAt"].as_str().unwrap() >= after
+        })
+        .collect();
+    found.sort_by_key(|email| std::cmp::Reverse(email["receivedAt"].as_str().unwrap()));
+    json!({"ids": found.iter().map(|email| email["id"].clone()).collect::<Vec<_>>()})
 }
 
 fn email_changes(shared: &Shared, arguments: &Value) -> Option<Value> {

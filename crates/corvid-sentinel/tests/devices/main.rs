@@ -1,5 +1,6 @@
 #[path = "../common/mod.rs"]
 mod common;
+mod digest;
 mod push;
 mod stalwart;
 
@@ -10,6 +11,7 @@ use corvid_sentinel::auth::soft::signing_key;
 use corvid_sentinel::auth::{Audience, Issuer};
 use corvid_sentinel::devices::{self, Approved, Devices, Request, Stage};
 use corvid_sentinel::now_secs;
+use corvid_sentinel::scribe::{self, Scribe};
 use serde_json::{Value, json};
 use stalwart::{KEYS_ACCOUNT, MAIL_ACCOUNT, Stalwart, TOKEN};
 
@@ -36,6 +38,14 @@ async fn rig_with(devices: Devices) -> Rig {
 const AUTH_URL: &str = "http://127.0.0.1:11333/internal/issuer";
 
 async fn rig_full(devices: Devices, fcm_origin: Option<&str>) -> Rig {
+    rig_digest(devices, fcm_origin, None).await
+}
+
+async fn rig_digest(
+    devices: Devices,
+    fcm_origin: Option<&str>,
+    digest: Option<scribe::digest::Settings>,
+) -> Rig {
     let dir = tempfile::tempdir().unwrap();
     let state = dir.path().join("devices.json");
     let issuer = Arc::new(Issuer::new(signing_key(), AUTH_URL.to_owned()));
@@ -56,6 +66,14 @@ async fn rig_full(devices: Devices, fcm_origin: Option<&str>) -> Rig {
         push: fcm_origin.map(|origin| devices::PushConfig::open(&state, CONTACT, origin).unwrap()),
         local: Some(issuer.clone()),
     });
+    if digest.is_some() {
+        config.scribe = Some(scribe::Config {
+            secret: common::SCRIBE_SECRET.to_vec(),
+            state_path: dir.path().join("scribe.json"),
+            scribe: Scribe::default(),
+            digest,
+        });
+    }
     Rig {
         url: common::serve(config).await,
         issuer,

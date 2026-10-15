@@ -1,7 +1,7 @@
 //! What the labeler and scribe post for the app: rule suggestions, kept until the app accepts or
 //! dismisses them, and thread summaries, kept until their thread changes or is deleted.
 
-mod digest;
+pub mod digest;
 mod ingest;
 mod state;
 mod summaries;
@@ -19,6 +19,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use crate::dates::now_secs;
+use crate::devices::Courier;
 use crate::http::{Off, off_json};
 use crate::persisted::Persisted;
 use crate::verify;
@@ -30,6 +31,8 @@ pub struct Config {
     pub secret: Vec<u8>,
     pub state_path: PathBuf,
     pub scribe: Scribe,
+    /// Absent, no digest is built and its routes answer 503.
+    pub digest: Option<digest::Settings>,
 }
 
 struct ScribeState {
@@ -77,11 +80,18 @@ async fn commit<T: Send + 'static>(
     Persisted::commit_blocking(state, |state| &state.scribe, what, change).await
 }
 
-pub fn routes(config: Config) -> Router {
+pub fn routes(config: Config, courier: Option<Courier>) -> Router {
     let state = Arc::new(ScribeState {
         secret: config.secret,
         scribe: Persisted::new(config.state_path, config.scribe, save),
     });
+    let digest = match (config.digest, courier) {
+        (Some(settings), Some(courier)) => {
+            tokio::spawn(digest::run(state.clone(), courier, settings));
+            digest::routes(state.clone())
+        }
+        _ => digest::off(),
+    };
     Router::new()
         .route("/internal/scribe/suggestions", post(ingest_post))
         .route("/internal/scribe/summaries", post(summaries::ingest))
@@ -97,6 +107,7 @@ pub fn routes(config: Config) -> Router {
             post(|state, id| decide(state, id, Verdict::Accepted)),
         )
         .with_state(state)
+        .merge(digest)
 }
 
 /// The scribe routes on a host whose config has no `sentinel.scribe`. A stable 503 tells a
@@ -116,6 +127,7 @@ pub fn off() -> Router {
         .route("/corvid/suggestions", get(off))
         .route("/corvid/suggestions/{id}/dismiss", post(off))
         .route("/corvid/suggestions/{id}/accept", post(off))
+        .merge(digest::off())
 }
 
 async fn ingest_post(State(state): State<Shared>, headers: HeaderMap, body: Bytes) -> StatusCode {
