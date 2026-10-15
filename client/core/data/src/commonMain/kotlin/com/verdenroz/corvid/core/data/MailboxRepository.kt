@@ -115,8 +115,8 @@ sealed interface EmailLookup {
 }
 
 sealed interface ThreadLookup {
-    /** [messages] are the whole thread, oldest first. */
-    data class Found(val messages: List<EmailDetail>) : ThreadLookup
+    /** [messages] are the whole thread, oldest first; [threadId] is its JMAP id. */
+    data class Found(val threadId: String, val messages: List<EmailDetail>) : ThreadLookup
 
     data object NotFound : ThreadLookup
 }
@@ -331,10 +331,11 @@ class MailboxRepository(
             }
         val outcomes = jmapClient.fetchThread(emailId, arguments)
         if (outcomes.email.resultOrThrow().getValue("notFound").jsonArray.isNotEmpty()) return ThreadLookup.NotFound
-        val order = outcomes.thread.resultOrThrow().getValue("list").jsonArray.single().jsonObject.idList("emailIds")
+        val thread = outcomes.thread.resultOrThrow().getValue("list").jsonArray.single().jsonObject
+        val order = thread.idList("emailIds")
         val domain = ownDomain()
         val messages = outcomes.messages.resultOrThrow().getValue("list").jsonArray.map { it.jsonObject.toEmailDetail(domain) }
-        return ThreadLookup.Found(messages.sortedBy { order.indexOf(it.id) })
+        return ThreadLookup.Found(thread.getValue("id").jsonPrimitive.content, messages.sortedBy { order.indexOf(it.id) })
     }
 
     suspend fun getEmail(id: String): EmailLookup {

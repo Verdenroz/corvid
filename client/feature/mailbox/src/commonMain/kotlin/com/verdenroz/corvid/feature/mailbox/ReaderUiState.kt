@@ -2,6 +2,7 @@ package com.verdenroz.corvid.feature.mailbox
 
 import com.verdenroz.corvid.core.model.EmailDetail
 import com.verdenroz.corvid.core.model.HeaderField
+import com.verdenroz.corvid.core.model.ThreadSummary
 import com.verdenroz.corvid.core.text.UiText
 
 /** [answering] while a correction on one message is in flight; [error] is why its last one was not taken. */
@@ -22,6 +23,7 @@ sealed interface ReaderUiState {
     /**
      * [messages] is the whole thread, oldest first; [expanded] are the ids shown in full, the rest as a summary line.
      * [kind] is where the thread sits, which decides whether it archives, deletes for good or comes out of Junk.
+     * [summary] is the server's, once fetched, and stays null when there is none.
      */
     data class Loaded(
         val messages: List<EmailDetail>,
@@ -29,6 +31,7 @@ sealed interface ReaderUiState {
         val teach: Map<String, TeachState> = emptyMap(),
         val headers: Map<String, HeadersState> = emptyMap(),
         val kind: ListKind = ListKind.Other,
+        val summary: ThreadSummary? = null,
     ) : ReaderUiState {
         val newest: EmailDetail get() = messages.last()
 

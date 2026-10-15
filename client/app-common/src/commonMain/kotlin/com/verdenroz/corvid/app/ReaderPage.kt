@@ -3,14 +3,17 @@ package com.verdenroz.corvid.app
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.remember
 import com.verdenroz.corvid.core.data.AttachmentFiles
 import com.verdenroz.corvid.core.data.MailboxRepository
+import com.verdenroz.corvid.core.data.SummaryRepository
 import com.verdenroz.corvid.feature.mailbox.LedgerUiState
 import com.verdenroz.corvid.feature.mailbox.LedgerViewModel
 import com.verdenroz.corvid.feature.mailbox.ReaderScreen
 import com.verdenroz.corvid.feature.mailbox.ReaderViewModel
 import com.verdenroz.corvid.feature.mailbox.kind
 import com.verdenroz.corvid.feature.mailbox.neighboursOf
+import org.koin.core.scope.Scope
 
 /** The list a reader at [index] was opened from: the entry under it, when that is a home ledger or a search. */
 internal fun listUnder(
@@ -35,13 +38,17 @@ internal fun ReaderPage(
     index: Int,
     entryKey: String,
     models: EntryModels,
-    mailbox: MailboxRepository,
+    scope: Scope,
     files: AttachmentFiles,
     ledgers: Ledgers,
     navigator: Navigator,
 ) {
+    val mailbox = remember(scope) { scope.get<MailboxRepository>() }
     val list = listUnder(index, navigator, models, ledgers)
-    val viewModel = models.of(entryKey, ReaderViewModel::class) { ReaderViewModel(mailbox, route.emailId, list?.source?.kind) }
+    val viewModel =
+        models.of(entryKey, ReaderViewModel::class) {
+            ReaderViewModel(mailbox, scope.get<SummaryRepository>(), route.emailId, list?.source?.kind)
+        }
     val loaded = list?.state?.collectAsState()?.value as? LedgerUiState.Loaded
     val neighbours = loaded?.neighboursOf(route.emailId)
     val atLoadedEnd = neighbours != null && neighbours.older == null && loaded.canLoadMore
