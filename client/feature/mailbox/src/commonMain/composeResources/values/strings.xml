@@ -233,4 +233,18 @@
         <item quantity="other">%1$d from lists</item>
     </plurals>
     <string name="overnight_join">%1$s; %2$s</string>
+    <string name="offer_lead_archive">You archive these unread.</string>
+    <string name="offer_lead_trash">You trash these unread.</string>
+    <string name="offer_lead_folder">You file these in %1$s unread.</string>
+    <string name="offer_counts">%1$d of the last %2$d</string>
+    <string name="offer_detail">%1$s.</string>
+    <string name="offer_detail_span">%1$s, %2$s.</string>
+    <string name="offer_not_now">Not now</string>
+    <string name="offer_do_archive">Archive them on arrival</string>
+    <string name="offer_do_trash">Trash them on arrival</string>
+    <string name="offer_do_folder">File them in %1$s on arrival</string>
+    <string name="offer_replace_body">"%1$s" is the active Sieve script. Activating Corvid's filters turns it off. It is not deleted.</string>
+    <string name="offer_replace_confirm">Activate Corvid filters</string>
+    <string name="offer_cancel">Cancel</string>
+    <string name="offer_not_saved">Not saved: another script is active</string>
 </resources>

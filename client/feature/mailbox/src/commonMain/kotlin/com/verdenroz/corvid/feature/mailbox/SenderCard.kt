@@ -22,6 +22,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -31,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.SenderRepository
+import com.verdenroz.corvid.core.data.SuggestedRules
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
@@ -51,6 +53,7 @@ import com.verdenroz.corvid.feature.mailbox.resources.card_unsubscribe
 import com.verdenroz.corvid.feature.mailbox.resources.card_write
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_no_subject
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_separator
+import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
@@ -67,6 +70,7 @@ class SenderCardActions(
 @Composable
 fun SenderCard(
     senders: SenderRepository,
+    suggested: SuggestedRules,
     address: String,
     wide: Boolean,
     actions: SenderCardActions,
@@ -74,6 +78,10 @@ fun SenderCard(
     val model = remember(address) { SenderCardModel(senders, address) }
     LaunchedEffect(model) { model.load() }
     val state by model.state.collectAsState()
+    val offers = remember(suggested) { SuggestionOfferModel(suggested) }
+    LaunchedEffect(offers) { offers.load() }
+    val offer by offers.state.collectAsState()
+    val scope = rememberCoroutineScope()
     val latest = state.recent?.firstOrNull()
     val isSource = latest?.provenance?.sender is SenderKind.Source
 
@@ -98,6 +106,16 @@ fun SenderCard(
                         CorvidTheme.colors.dangerSoft,
                     ).padding(horizontal = CorvidSpacing.gutter(wide), vertical = 10.dp),
             )
+        }
+        offer.pending.suggestions.about(address, latest?.provenance?.listId)?.let { suggestion ->
+            val offered =
+                OfferActions(
+                    accept = { scope.launch { offers.accept(it) } },
+                    dismiss = { scope.launch { offers.dismiss(it) } },
+                    confirmReplace = { scope.launch { offers.accept(it, replaceForeign = true) } },
+                    declineReplace = offers::declineReplace,
+                )
+            SuggestionCallout(suggestion, offer, wide, offered)
         }
         Facts(state, latest, isSource, wide)
         Actions(address, latest, isSource, wide, actions)

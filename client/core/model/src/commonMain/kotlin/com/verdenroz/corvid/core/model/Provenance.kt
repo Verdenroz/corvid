@@ -44,6 +44,7 @@ data class Provenance(
     val rewrite: Rewrite?,
     val sender: SenderKind,
     val unsubscribe: List<String>,
+    val listId: String? = null,
 ) {
     /** DMARC failed, so the From line is a claim nobody vouched for. */
     val suspect: Boolean get() = seal is Seal.Failed

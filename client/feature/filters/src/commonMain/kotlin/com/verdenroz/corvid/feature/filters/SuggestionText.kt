@@ -4,6 +4,7 @@ import com.verdenroz.corvid.core.model.MailboxRef
 import com.verdenroz.corvid.core.model.RuleSuggestion
 import com.verdenroz.corvid.core.model.SuggestionAction
 import com.verdenroz.corvid.core.model.SuggestionSenderKind
+import com.verdenroz.corvid.core.model.folderPath
 import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.uiText
 import com.verdenroz.corvid.core.ui.suggestion.spanClause
@@ -29,7 +30,7 @@ internal fun RuleSuggestion.sentence(folders: List<MailboxRef>): RuleSentence {
         when (val filing = action) {
             SuggestionAction.Archive -> uiText(Res.string.suggestion_act_archive)
             SuggestionAction.Trash -> uiText(Res.string.suggestion_act_trash)
-            is SuggestionAction.Folder -> uiText(Res.string.suggestion_act_folder, UiText.FromServer(filing.path(folders)))
+            is SuggestionAction.Folder -> uiText(Res.string.suggestion_act_folder, UiText.FromServer(folders.folderPath(filing.mailboxId)))
         }
     return RuleSentence(condition, action)
 }
@@ -42,9 +43,7 @@ internal fun RuleSuggestion.caption(folders: List<MailboxRef>): UiText {
             SuggestionAction.Trash -> Res.plurals.suggestion_caption_trashed
             is SuggestionAction.Folder -> Res.plurals.suggestion_caption_filed
         }
-    val folder = (action as? SuggestionAction.Folder)?.let { UiText.FromServer(it.path(folders)) }
+    val folder = (action as? SuggestionAction.Folder)?.let { UiText.FromServer(folders.folderPath(it.mailboxId)) }
     val counted = UiText.Plural(resource, hits, listOfNotNull(hits, settled, folder))
     return spanClause(spanDays)?.let { uiText(Res.string.suggestion_caption, counted, it) } ?: counted
 }
-
-private fun SuggestionAction.Folder.path(folders: List<MailboxRef>) = folders.firstOrNull { it.id == mailboxId }?.displayPath() ?: mailboxId

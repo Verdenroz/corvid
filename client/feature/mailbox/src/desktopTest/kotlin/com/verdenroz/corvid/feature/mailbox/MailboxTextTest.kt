@@ -1,5 +1,10 @@
 package com.verdenroz.corvid.feature.mailbox
 
+import com.verdenroz.corvid.core.model.MailboxRef
+import com.verdenroz.corvid.core.model.RuleSuggestion
+import com.verdenroz.corvid.core.model.SuggestionAction
+import com.verdenroz.corvid.core.model.SuggestionSender
+import com.verdenroz.corvid.core.model.SuggestionSenderKind
 import com.verdenroz.corvid.core.testing.composedResourceEnvironment
 import com.verdenroz.corvid.core.text.resolve
 import com.verdenroz.corvid.core.text.uiText
@@ -33,6 +38,34 @@ class MailboxTextTest {
             assertEquals("Marta and Ana wrote; 1 from a list", line(listOf("Marta", "Ana"), 1))
             assertEquals("Marta wrote", line(listOf("Marta"), 0))
             assertEquals("3 from lists", line(emptyList(), 3))
+        }
+
+    @Test
+    fun `the offer says what the sender's mail gets, how often and what accepting does`() =
+        runTest {
+            val folders = listOf(MailboxRef("m1", listOf("Mail", "News")))
+
+            fun offered(
+                action: SuggestionAction,
+                spanDays: Int = 20,
+            ) = RuleSuggestion(
+                "s",
+                SuggestionSender(SuggestionSenderKind.From, "a@x.test"),
+                action,
+                settled = 24,
+                hits = 23,
+                spanDays = spanDays,
+            )
+
+            val archive = offered(SuggestionAction.Archive)
+            assertEquals("You archive these unread.", archive.lead(folders).resolve(environment))
+            assertEquals("23 of the last 24, over 3 weeks.", archive.detail().resolve(environment))
+            assertEquals("23 of the last 24.", offered(SuggestionAction.Archive, spanDays = 0).detail().resolve(environment))
+            assertEquals("Archive them on arrival", archive.accepts(folders).resolve(environment))
+            assertEquals("Trash them on arrival", offered(SuggestionAction.Trash).accepts(folders).resolve(environment))
+            val filed = offered(SuggestionAction.Folder("m1"))
+            assertEquals("You file these in Mail / News unread.", filed.lead(folders).resolve(environment))
+            assertEquals("File them in Mail / News on arrival", filed.accepts(folders).resolve(environment))
         }
 
     @Test

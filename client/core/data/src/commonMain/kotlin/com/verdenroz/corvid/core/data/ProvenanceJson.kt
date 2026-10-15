@@ -20,11 +20,13 @@ internal fun JsonObject.provenance(
     ownDomain: String?,
 ): Provenance {
     val unsubscribe = texts(LIST_UNSUBSCRIBE)
+    val listId = text(LIST_ID)
     return Provenance(
         seal = readSeal(texts(AUTHENTICATION_RESULTS)),
         rewrite = readRewrite(texts(CORVID_REWRITE)),
-        sender = senderKind(from, SenderHeaders(text(LIST_ID), unsubscribe, text(AUTO_SUBMITTED)), ownDomain),
+        sender = senderKind(from, SenderHeaders(listId, unsubscribe, text(AUTO_SUBMITTED)), ownDomain),
         unsubscribe = unsubscribe,
+        listId = listId,
     )
 }
 

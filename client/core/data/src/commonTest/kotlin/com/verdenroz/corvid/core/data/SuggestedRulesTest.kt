@@ -46,6 +46,20 @@ private fun fromRule(
 
 class SuggestedRulesTest {
     @Test
+    fun `pendingNow reads the server and the saved rules itself and leaves out what a rule already does`() =
+        runTest {
+            val fake = FakeJmapServer().withRoleMailboxes("inbox", "archive")
+            fake.suggestions.serve(FakeSuggestion("s1"), FakeSuggestion("s2", sender = "other@x.test"))
+            val (rules, filters) = suggested(fake)
+            filters.save(listOf(fromRule("news@x.test", FilterAction.MoveToFolder(ARCHIVE_REF))), replaceForeign = false)
+
+            val now = rules.pendingNow()
+
+            assertEquals(listOf("s2"), now.suggestions.map { it.id })
+            assertEquals(listOf(ARCHIVE_REF), now.folders.filter { it.id == "archive" })
+        }
+
+    @Test
     fun `accepting a from suggestion saves a demoting rule and tells the server`() =
         runTest {
             val fake = FakeJmapServer().withRoleMailboxes("inbox", "archive")

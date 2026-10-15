@@ -414,6 +414,7 @@ private fun Page(
         is Route.Sender ->
             SenderCard(
                 senders = remember(scope) { scope.get<SenderRepository>() },
+                suggested = remember(scope) { scope.get<SuggestedRules>() },
                 address = route.address,
                 wide = LocalWideLayout.current,
                 actions =

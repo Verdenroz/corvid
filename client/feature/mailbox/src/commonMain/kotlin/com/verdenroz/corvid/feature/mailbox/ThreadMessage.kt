@@ -53,7 +53,7 @@ import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Clock
 
-/** One message of a thread: in full with its own custody and teach controls, or as a summary line. [summary] is the thread's, drawn with the custody strip. A suspect one is tinted alone. */
+/** One message of a thread: in full with its own custody and teach controls, or as a summary line. A suspect one is tinted alone. */
 @Composable
 internal fun ThreadMessage(
     email: EmailDetail,
