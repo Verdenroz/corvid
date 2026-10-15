@@ -30,24 +30,54 @@ class FiltersTextTest {
     private fun suggestion(
         sender: SuggestionSenderKind,
         action: SuggestionAction,
-    ) = RuleSuggestion("s1", SuggestionSender(sender, "news@x.test"), action, settled = 24, hits = 23)
+        hits: Int = 23,
+        spanDays: Int = 20,
+    ) = RuleSuggestion("s1", SuggestionSender(sender, "news@x.test"), action, settled = 24, hits = hits, spanDays = spanDays)
 
     @Test
-    fun `a suggestion says how many of the messages were handled and how`() =
+    fun `the rule sentence names the condition and where the mail goes`() =
         runTest {
+            val folders = listOf(MailboxRef("m1", listOf("Mail", "News")))
+
+            suspend fun sentence(suggestion: RuleSuggestion) =
+                suggestion.sentence(folders).let { it.condition.resolve(environment) to it.action.resolve(environment) }
+
             assertEquals(
-                "You left 23 of 24 messages from news@x.test unread and archived them.",
-                suggestion(SuggestionSenderKind.From, SuggestionAction.Archive).summary(emptyList()).resolve(environment),
+                "From is news@x.test" to "move to Archive",
+                sentence(suggestion(SuggestionSenderKind.From, SuggestionAction.Archive)),
             )
             assertEquals(
-                "You left 23 of 24 messages from the list news@x.test unread and moved them to Trash.",
-                suggestion(SuggestionSenderKind.List, SuggestionAction.Trash).summary(emptyList()).resolve(environment),
+                "List-Id contains <news@x.test>" to "move to Trash",
+                sentence(suggestion(SuggestionSenderKind.List, SuggestionAction.Trash)),
             )
             assertEquals(
-                "You left 23 of 24 messages from news@x.test unread and filed them in Mail / News.",
-                suggestion(SuggestionSenderKind.From, SuggestionAction.Folder("m1"))
-                    .summary(listOf(MailboxRef("m1", listOf("Mail", "News"))))
-                    .resolve(environment),
+                "From is news@x.test" to "move to Mail / News",
+                sentence(suggestion(SuggestionSenderKind.From, SuggestionAction.Folder("m1"))),
+            )
+        }
+
+    @Test
+    fun `the caption counts the messages by how they were handled and how long they span`() =
+        runTest {
+            val folders = listOf(MailboxRef("m1", listOf("Mail", "News")))
+
+            suspend fun caption(suggestion: RuleSuggestion) = suggestion.caption(folders).resolve(environment)
+
+            assertEquals(
+                "Archived unread 23 times out of 24, over 3 weeks",
+                caption(suggestion(SuggestionSenderKind.From, SuggestionAction.Archive)),
+            )
+            assertEquals(
+                "Moved to Trash unread 1 time out of 24, over 5 days",
+                caption(suggestion(SuggestionSenderKind.List, SuggestionAction.Trash, hits = 1, spanDays = 5)),
+            )
+            assertEquals(
+                "Filed in Mail / News unread 23 times out of 24, over 2 weeks",
+                caption(suggestion(SuggestionSenderKind.From, SuggestionAction.Folder("m1"), spanDays = 14)),
+            )
+            assertEquals(
+                "Archived unread 23 times out of 24",
+                caption(suggestion(SuggestionSenderKind.From, SuggestionAction.Archive, spanDays = 0)),
             )
         }
 }

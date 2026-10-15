@@ -34,4 +34,12 @@
     <string name="app_update_failed">Update failed</string>
     <string name="attachment_unnamed">Unnamed file</string>
     <string name="attachment_remove">Remove %1$s</string>
+    <plurals name="suggestion_over_days">
+        <item quantity="one">over %1$d day</item>
+        <item quantity="other">over %1$d days</item>
+    </plurals>
+    <plurals name="suggestion_over_weeks">
+        <item quantity="one">over %1$d week</item>
+        <item quantity="other">over %1$d weeks</item>
+    </plurals>
 </resources>
