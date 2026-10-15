@@ -1,46 +1,66 @@
 package com.verdenroz.corvid.feature.digest
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.stamp
+import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
-import com.verdenroz.corvid.core.model.Digest
 import com.verdenroz.corvid.core.model.DigestItem
+import com.verdenroz.corvid.core.model.items
+import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.asString
-import com.verdenroz.corvid.core.text.uiText
 import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.core.ui.PageHeader
 import com.verdenroz.corvid.core.ui.QuietPane
+import com.verdenroz.corvid.core.ui.provenance.initials
 import com.verdenroz.corvid.feature.digest.resources.Res
 import com.verdenroz.corvid.feature.digest.resources.digest_back
 import com.verdenroz.corvid.feature.digest.resources.digest_caveat
 import com.verdenroz.corvid.feature.digest.resources.digest_empty
-import com.verdenroz.corvid.feature.digest.resources.digest_other
+import com.verdenroz.corvid.feature.digest.resources.digest_lists
+import com.verdenroz.corvid.feature.digest.resources.digest_more
+import com.verdenroz.corvid.feature.digest.resources.digest_more_count
+import com.verdenroz.corvid.feature.digest.resources.digest_people
 import com.verdenroz.corvid.feature.digest.resources.digest_span
 import com.verdenroz.corvid.feature.digest.resources.digest_title
 import kotlinx.datetime.TimeZone
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Clock
 
-private const val SUMMARY_LINES = 4
+private const val LIST_ROWS = 6
 private val COLUMN_WIDTH = 640.dp
 
 /** The server's overnight digest; [onOpenEmail] takes the id of the message a row names. */
@@ -52,89 +72,160 @@ fun DigestScreen(
 ) {
     val state by viewModel.state.collectAsState()
     Column(modifier = Modifier.fillMaxSize().background(CorvidTheme.colors.surface)) {
-        PageHeader(stringResource(Res.string.digest_title), stringResource(Res.string.digest_back), onBack)
+        PageHeader(null, stringResource(Res.string.digest_back), onBack)
         when (val current = state) {
             is DigestState.Loading -> Unit
             is DigestState.Empty -> QuietPane(stringResource(Res.string.digest_empty))
             is DigestState.Failed -> QuietPane(current.message.asString())
-            is DigestState.Ready -> DigestList(current, onOpenEmail)
+            is DigestState.Ready -> Briefing(current, onOpenEmail)
         }
     }
 }
 
 @Composable
-private fun DigestList(
+private fun Briefing(
     ready: DigestState.Ready,
     onOpenEmail: (String) -> Unit,
 ) {
     val gutter = CorvidSpacing.gutter(LocalWideLayout.current)
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val listed = if (expanded) ready.lists else ready.lists.take(LIST_ROWS)
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = gutter, vertical = 8.dp)) {
-        item { Span(ready.digest, ready.anySummary) }
-        ready.digest.groups.forEach { group ->
+        item { Heading(ready) }
+        if (ready.people.isNotEmpty()) {
             item {
-                Text(
-                    group.label ?: stringResource(Res.string.digest_other),
-                    style = CorvidTheme.type.label,
-                    color = CorvidTheme.colors.inkFaint,
-                    modifier = Modifier.widthIn(max = COLUMN_WIDTH).padding(top = 20.dp, bottom = 4.dp),
+                Section(
+                    stringResource(Res.string.digest_people),
+                    if (ready.anySummary) stringResource(Res.string.digest_caveat) else null,
                 )
             }
-            group.items.forEach { entry ->
-                item(key = entry.emailId) { DigestRow(entry, onOpenEmail) }
-            }
+            items(ready.people, key = { it.emailId }) { Person(it) { onOpenEmail(it.emailId) } }
+        }
+        if (ready.people.isNotEmpty() && ready.lists.isNotEmpty()) {
+            item { HorizontalDivider(Modifier.widthIn(max = COLUMN_WIDTH).padding(top = 14.dp), color = CorvidTheme.colors.line) }
+        }
+        if (ready.lists.isNotEmpty()) {
+            item { Section(stringResource(Res.string.digest_lists), ready.lists.size.toString()) }
+            items(listed, key = { it.item.emailId }) { Listed(it) { onOpenEmail(it.item.emailId) } }
+            val hidden = ready.lists.size - listed.size
+            if (hidden > 0) item { More(hidden) { expanded = true } }
         }
     }
 }
 
 @Composable
-private fun Span(
-    digest: Digest,
-    anySummary: Boolean,
-) {
+private fun Heading(ready: DigestState.Ready) {
     val zone = TimeZone.currentSystemDefault()
     val now = Clock.System.now()
-    val span = uiText(Res.string.digest_span, stamp(digest.from, zone, now), stamp(digest.to, zone, now))
-    Column(Modifier.widthIn(max = COLUMN_WIDTH).padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(span.asString(), style = CorvidTheme.type.meta, color = CorvidTheme.colors.inkMuted)
-        if (anySummary) Text(stringResource(Res.string.digest_caveat), style = CorvidTheme.type.meta, color = CorvidTheme.colors.inkFaint)
+    val digest = ready.digest
+    val count = digest.items.size
+    val span = UiText.Plural(Res.plurals.digest_span, count, listOf(stamp(digest.from, zone, now), stamp(digest.to, zone, now), count))
+    Column(Modifier.widthIn(max = COLUMN_WIDTH).padding(top = 8.dp)) {
+        Text(stringResource(Res.string.digest_title), style = CorvidTheme.type.display)
+        Text(span.asString(), style = CorvidTheme.type.meta, color = CorvidTheme.colors.inkMuted, modifier = Modifier.padding(top = 6.dp))
     }
 }
 
-/** Every string here came from mail or a model, so each is a plain `Text`: no links, nothing to act on but the row. */
 @Composable
-private fun DigestRow(
-    item: DigestItem,
-    onOpenEmail: (String) -> Unit,
+private fun Section(
+    title: String,
+    aside: String?,
 ) {
-    Column(Modifier.widthIn(max = COLUMN_WIDTH)) {
-        Column(
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-            modifier = Modifier.fillMaxWidth().clickable { onOpenEmail(item.emailId) }.padding(vertical = 12.dp),
-        ) {
-            Text(
-                item.from,
-                style = CorvidTheme.type.meta,
-                color = CorvidTheme.colors.inkMuted,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                item.subject,
-                style = CorvidTheme.type.name,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            item.summary?.let {
-                Text(
-                    it,
-                    style = CorvidTheme.type.body,
-                    color = CorvidTheme.colors.inkMuted,
-                    maxLines = SUMMARY_LINES,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-        HorizontalDivider(color = CorvidTheme.colors.line)
+    Row(
+        verticalAlignment = Alignment.Bottom,
+        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier.widthIn(max = COLUMN_WIDTH).fillMaxWidth().padding(top = 20.dp, bottom = 8.dp),
+    ) {
+        Text(title, style = CorvidTheme.type.dayHeader)
+        aside?.let { Text(it, style = CorvidTheme.type.meta, color = CorvidTheme.colors.inkFaint) }
     }
+}
+
+/** The name and the summary came from mail or a model, so the paragraph is a plain `Text`: no links, only the row opens. */
+@Composable
+private fun Person(
+    item: DigestItem,
+    onOpen: () -> Unit,
+) {
+    val colors = CorvidTheme.colors
+    val paragraph =
+        buildAnnotatedString {
+            withStyle(SpanStyle(color = colors.ink, fontWeight = FontWeight.SemiBold)) { append(item.displayName) }
+            append(' ')
+            append(item.summary ?: item.subject)
+        }
+    Text(
+        paragraph,
+        style = CorvidTheme.type.body,
+        color = colors.inkMuted,
+        modifier =
+            Modifier.widthIn(
+                max = COLUMN_WIDTH,
+            ).fillMaxWidth().clickable(role = Role.Button, onClick = onOpen).padding(vertical = 10.dp),
+    )
+}
+
+@Composable
+private fun Listed(
+    row: DigestState.ListItem,
+    onOpen: () -> Unit,
+) {
+    val colors = CorvidTheme.colors
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier =
+            Modifier.widthIn(
+                max = COLUMN_WIDTH,
+            ).fillMaxWidth().heightIn(min = 44.dp).clickable(role = Role.Button, onClick = onOpen),
+    ) {
+        Tile(Modifier.background(colors.chip, CorvidShape.small)) {
+            Text(initials(row.item.displayName), style = CorvidTheme.type.chip, color = colors.ink, maxLines = 1)
+        }
+        Text(
+            row.item.subject,
+            style = CorvidTheme.type.name,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        row.label?.let {
+            Text(
+                it,
+                style = CorvidTheme.type.chip,
+                color = colors.onAccentSoft,
+                maxLines = 1,
+                modifier = Modifier.background(colors.chip, CorvidShape.small).padding(horizontal = 6.dp, vertical = 1.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun More(
+    hidden: Int,
+    onExpand: () -> Unit,
+) {
+    val colors = CorvidTheme.colors
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier =
+            Modifier.widthIn(
+                max = COLUMN_WIDTH,
+            ).fillMaxWidth().heightIn(min = 44.dp).clickable(role = Role.Button, onClick = onExpand),
+    ) {
+        Tile(Modifier.border(1.dp, colors.line, CorvidShape.small)) {
+            Text(stringResource(Res.string.digest_more_count, hidden), style = CorvidTheme.type.chip, color = colors.inkMuted, maxLines = 1)
+        }
+        Text(pluralStringResource(Res.plurals.digest_more, hidden, hidden), style = CorvidTheme.type.name, color = colors.inkMuted)
+    }
+}
+
+@Composable
+private fun Tile(
+    modifier: Modifier,
+    content: @Composable () -> Unit,
+) {
+    Box(contentAlignment = Alignment.Center, modifier = modifier.defaultMinSize(22.dp, 22.dp).padding(horizontal = 3.dp)) { content() }
 }

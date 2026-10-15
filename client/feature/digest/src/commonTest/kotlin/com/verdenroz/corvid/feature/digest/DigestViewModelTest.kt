@@ -42,6 +42,31 @@ class DigestViewModelTest {
         }
 
     @Test
+    fun `mail is regrouped by who sent it, keeping the group a list came in`() =
+        runViewModelTest {
+            val groups =
+                listOf(
+                    "Work" to listOf(FakeDigestItem(emailId = "p1", fromName = "Marta"), FakeDigestItem(emailId = "l1", isList = true)),
+                    null to listOf(FakeDigestItem(emailId = "l2", isList = true), FakeDigestItem(emailId = "p2", from = "ana@x.test")),
+                )
+            val mixed = FakeJmapServer().apply { digests.serve(FakeDigest("d1", groups = groups)) }
+
+            val ready = assertIs<DigestState.Ready>(viewModel(mixed, null).settled())
+
+            assertEquals(listOf("Marta", "ana"), ready.people.map { it.displayName })
+            assertEquals(listOf("l1" to "Work", "l2" to null), ready.lists.map { it.item.emailId to it.label })
+        }
+
+    @Test
+    fun `summaries on lists alone do not count as people summaries`() =
+        runViewModelTest {
+            val groups = listOf("News" to listOf(FakeDigestItem(emailId = "l1", isList = true, summary = "x"), item()))
+            val mixed = FakeJmapServer().apply { digests.serve(FakeDigest("d1", groups = groups)) }
+
+            assertFalse(assertIs<DigestState.Ready>(viewModel(mixed, null).settled()).anySummary)
+        }
+
+    @Test
     fun `an id shows that digest`() =
         runViewModelTest {
             val ready = assertIs<DigestState.Ready>(viewModel(fake, "d1").settled())

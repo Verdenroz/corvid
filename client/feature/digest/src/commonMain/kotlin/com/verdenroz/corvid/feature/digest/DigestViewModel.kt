@@ -6,6 +6,8 @@ import com.verdenroz.corvid.core.data.DigestRepository
 import com.verdenroz.corvid.core.data.userMessage
 import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.model.Digest
+import com.verdenroz.corvid.core.model.DigestItem
+import com.verdenroz.corvid.core.model.items
 import com.verdenroz.corvid.core.text.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,9 +21,14 @@ sealed interface DigestState {
 
     data class Failed(val message: UiText) : DigestState
 
+    /** The digest regrouped by who sent it: [people] wrote it, [lists] carry the group [ListItem.label] the server put them in. */
     data class Ready(val digest: Digest) : DigestState {
-        val anySummary: Boolean get() = digest.groups.any { group -> group.items.any { it.summary != null } }
+        val people: List<DigestItem> = digest.items.filterNot { it.isList }
+        val lists: List<ListItem> = digest.groups.flatMap { group -> group.items.filter { it.isList }.map { ListItem(it, group.label) } }
+        val anySummary: Boolean get() = people.any { it.summary != null }
     }
+
+    data class ListItem(val item: DigestItem, val label: String?)
 }
 
 /** The digest [id] names, or the latest when it is null. */
