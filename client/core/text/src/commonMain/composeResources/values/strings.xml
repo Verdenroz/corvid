@@ -13,6 +13,10 @@
     <string name="passkey_already_enrolled">That passkey is already enrolled.</string>
     <string name="passkey_setup_pending">Passkey added, but the server has not finished setup. Try Sign in with passkey in a minute. If it keeps failing, journalctl -u corvid-update on the server says why.</string>
     <string name="no_trash_folder">This account has no Trash folder.</string>
+    <string name="no_archive_folder">This account has no Archive folder and the server would not make one.</string>
+    <string name="rule_name_from">Mail from %1$s</string>
+    <string name="rule_name_list">List %1$s</string>
+    <string name="suggestion_folder_gone">That folder no longer exists.</string>
     <string name="reply_attribution">On %1$s, %2$s wrote:</string>
     <string name="forwarded_message">---------- Forwarded message ----------</string>
     <string name="day_short_monday">Mon</string>

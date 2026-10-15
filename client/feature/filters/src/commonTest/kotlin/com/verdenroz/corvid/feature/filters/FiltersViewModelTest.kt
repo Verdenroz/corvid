@@ -2,6 +2,9 @@ package com.verdenroz.corvid.feature.filters
 
 import androidx.compose.runtime.saveable.SaverScope
 import com.verdenroz.corvid.core.data.FiltersRepository
+import com.verdenroz.corvid.core.data.MailboxRepository
+import com.verdenroz.corvid.core.data.SuggestedRules
+import com.verdenroz.corvid.core.data.SuggestionRepository
 import com.verdenroz.corvid.core.model.ConditionField
 import com.verdenroz.corvid.core.model.ConditionOperator
 import com.verdenroz.corvid.core.model.FilterAction
@@ -10,17 +13,24 @@ import com.verdenroz.corvid.core.model.FilterRule
 import com.verdenroz.corvid.core.model.MatchMode
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.FakeSieveScript
+import com.verdenroz.corvid.core.testing.FakeSuggestion
+import com.verdenroz.corvid.core.testing.KeyedTextResolver
 import com.verdenroz.corvid.core.testing.ViewModelTestScope
 import com.verdenroz.corvid.core.testing.client
 import com.verdenroz.corvid.core.testing.runViewModelTest
 import com.verdenroz.corvid.core.testing.withActiveScript
+import com.verdenroz.corvid.core.testing.withRoleMailboxes
 import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.uiText
 import com.verdenroz.corvid.feature.filters.resources.Res
 import com.verdenroz.corvid.feature.filters.resources.filters_another_active
 import com.verdenroz.corvid.feature.filters.resources.filters_not_saved
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -45,10 +55,15 @@ private suspend fun repository(fake: FakeJmapServer): FiltersRepository {
     return FiltersRepository(client)
 }
 
+private suspend fun suggested(fake: FakeJmapServer): SuggestedRules {
+    val client = fake.client()
+    return SuggestedRules(SuggestionRepository(client), FiltersRepository(client), MailboxRepository(client), KeyedTextResolver)
+}
+
 private suspend fun ViewModelTestScope.viewModel(
     fake: FakeJmapServer,
     restored: RuleDraft? = null,
-): FiltersViewModel = track(FiltersViewModel(repository(fake), restored)).also { it.ready() }
+): FiltersViewModel = track(FiltersViewModel(repository(fake), suggested(fake), restored)).also { it.ready() }
 
 private fun FiltersViewModel.save(
     index: Int?,
@@ -301,7 +316,7 @@ class FiltersViewModelTest {
             fake.blobs["b0"] = "keep;\n".encodeToByteArray()
             fake.sieveScripts += FakeSieveScript(id = "s0", name = "corvid", blobId = "b0")
 
-            val vm = track(FiltersViewModel(repository(fake)))
+            val vm = track(FiltersViewModel(repository(fake), suggested(fake)))
 
             assertIs<FiltersUiState.Failed>(vm.state.first { it !is FiltersUiState.Loading })
         }
@@ -324,4 +339,64 @@ class FiltersViewModelTest {
 
         assertEquals(draft, RuleDraftSaver.restore(assertNotNull(saved)))
     }
+
+    @Test
+    fun `a suggestion is listed and a server with suggestions off lists none`() =
+        runViewModelTest {
+            val fake = FakeJmapServer().withRoleMailboxes("archive")
+            fake.suggestions.serve(FakeSuggestion("s1"))
+            assertEquals(listOf("s1"), viewModel(fake).ready().suggestions.map { it.id })
+
+            fake.suggestions.off = true
+
+            assertEquals(emptyList(), viewModel(fake).ready().suggestions)
+        }
+
+    @Test
+    fun `accepting a suggestion adds its rule and removes the card`() =
+        runViewModelTest {
+            val fake = FakeJmapServer().withRoleMailboxes("archive")
+            fake.suggestions.serve(FakeSuggestion("s1"))
+            val vm = viewModel(fake)
+
+            vm.acceptSuggestion(vm.ready().suggestions.single())
+            val ready = vm.ready()
+
+            assertEquals(listOf("rule_name_from[news@x.test]"), ready.rules.map { it.name })
+            assertEquals(emptyList(), ready.suggestions)
+            assertEquals(listOf("s1"), fake.suggestions.accepted)
+        }
+
+    @Test
+    fun `accepting over a foreign script waits for confirmation and then posts once`() =
+        runViewModelTest {
+            val fake = FakeJmapServer().withRoleMailboxes("archive").withActiveScript()
+            fake.suggestions.serve(FakeSuggestion("s1"))
+            val vm = viewModel(fake)
+
+            vm.acceptSuggestion(vm.ready().suggestions.single())
+            val waiting = vm.state.first { it is FiltersUiState.Ready && it.save == SaveStatus.Confirming } as FiltersUiState.Ready
+
+            assertEquals("vacation", waiting.foreignScript)
+            assertEquals(emptyList(), fake.suggestions.accepted)
+
+            vm.confirmReplace()
+
+            assertEquals(listOf("rule_name_from[news@x.test]"), vm.ready().rules.map { it.name })
+            assertEquals(listOf("s1"), fake.suggestions.accepted)
+        }
+
+    @Test
+    fun `dismissing a suggestion removes the card and tells the server`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.suggestions.serve(FakeSuggestion("s1"))
+            val vm = viewModel(fake)
+
+            vm.dismissSuggestion(vm.ready().suggestions.single())
+
+            assertEquals(emptyList(), vm.ready().suggestions)
+            withContext(Dispatchers.Default) { withTimeout(5_000) { while (fake.suggestions.dismissed.isEmpty()) delay(10) } }
+            assertEquals(listOf("s1"), fake.suggestions.dismissed)
+        }
 }

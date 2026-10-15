@@ -5,6 +5,7 @@ import com.verdenroz.corvid.core.data.decodeRule
 import com.verdenroz.corvid.core.data.encodeRule
 import com.verdenroz.corvid.core.model.FilterRule
 import com.verdenroz.corvid.core.model.MailboxRef
+import com.verdenroz.corvid.core.model.RuleSuggestion
 import com.verdenroz.corvid.core.text.UiText
 
 sealed interface FiltersUiState {
@@ -20,6 +21,8 @@ sealed interface FiltersUiState {
         val editing: RuleDraft? = null,
         val confirmingDiscard: Boolean = false,
         val save: SaveStatus = SaveStatus.Idle,
+        val suggestions: List<RuleSuggestion> = emptyList(),
+        val confirmingSuggestion: RuleSuggestion? = null,
     ) : FiltersUiState
 }
 

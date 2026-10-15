@@ -66,6 +66,7 @@ import com.verdenroz.corvid.core.data.FiltersRepository
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.data.NoticeRepository
 import com.verdenroz.corvid.core.data.SenderRepository
+import com.verdenroz.corvid.core.data.SuggestedRules
 import com.verdenroz.corvid.core.designsystem.CorvidFloating
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
@@ -382,7 +383,9 @@ private fun Page(
             }
         is Route.Filters ->
             FiltersScreen(onBack = navigator::back) { draft ->
-                models.of(entryKey, FiltersViewModel::class) { FiltersViewModel(scope.get<FiltersRepository>(), draft) }
+                models.of(entryKey, FiltersViewModel::class) {
+                    FiltersViewModel(scope.get<FiltersRepository>(), scope.get<SuggestedRules>(), draft)
+                }
             }
         is Route.Settings -> SettingsPage(scope, pages.session, navigator, models, entryKey)
         is Route.ApproveDevice -> ApproveDevicePage(scope, navigator, models, entryKey)

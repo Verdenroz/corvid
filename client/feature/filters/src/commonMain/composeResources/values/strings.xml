@@ -51,4 +51,12 @@
     <string name="filters_title">Filters</string>
     <string name="filters_empty">No rules yet. A rule can file, label, star or mark mail read as it arrives, before any device sees it.</string>
     <string name="filters_discard_question">Discard this rule?</string>
+    <string name="suggestions_title">Suggested</string>
+    <string name="suggestion_summary">You left %1$d of %2$d messages from %3$s unread and %4$s.</string>
+    <string name="suggestion_who_list">the list %1$s</string>
+    <string name="suggestion_archived">archived them</string>
+    <string name="suggestion_trashed">moved them to Trash</string>
+    <string name="suggestion_filed">filed them in %1$s</string>
+    <string name="suggestion_add">Add rule</string>
+    <string name="suggestion_dismiss">Dismiss</string>
 </resources>

@@ -1,0 +1,29 @@
+package com.verdenroz.corvid.feature.filters
+
+import com.verdenroz.corvid.core.model.MailboxRef
+import com.verdenroz.corvid.core.model.RuleSuggestion
+import com.verdenroz.corvid.core.model.SuggestionAction
+import com.verdenroz.corvid.core.model.SuggestionSenderKind
+import com.verdenroz.corvid.core.text.UiText
+import com.verdenroz.corvid.core.text.uiText
+import com.verdenroz.corvid.feature.filters.resources.Res
+import com.verdenroz.corvid.feature.filters.resources.suggestion_archived
+import com.verdenroz.corvid.feature.filters.resources.suggestion_filed
+import com.verdenroz.corvid.feature.filters.resources.suggestion_summary
+import com.verdenroz.corvid.feature.filters.resources.suggestion_trashed
+import com.verdenroz.corvid.feature.filters.resources.suggestion_who_list
+
+internal fun RuleSuggestion.summary(folders: List<MailboxRef>): UiText {
+    val who = UiText.FromServer(sender.value)
+    val from = if (sender.kind == SuggestionSenderKind.List) uiText(Res.string.suggestion_who_list, who) else who
+    val did =
+        when (val action = action) {
+            SuggestionAction.Archive -> uiText(Res.string.suggestion_archived)
+            SuggestionAction.Trash -> uiText(Res.string.suggestion_trashed)
+            is SuggestionAction.Folder -> {
+                val path = folders.firstOrNull { it.id == action.mailboxId }?.displayPath() ?: action.mailboxId
+                uiText(Res.string.suggestion_filed, UiText.FromServer(path))
+            }
+        }
+    return uiText(Res.string.suggestion_summary, hits, settled, from, did)
+}
