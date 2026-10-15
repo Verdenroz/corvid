@@ -210,3 +210,14 @@ async fn off_answers_503_on_every_summary_route() {
         assert_eq!(body, json!({"error": "summaries_off"}));
     }
 }
+
+#[test]
+fn a_state_file_written_before_summaries_still_opens() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("scribe.json");
+    corvid_store::save(&path, 1, &json!({"suggestions": [], "decided": []})).unwrap();
+
+    let scribe = corvid_sentinel::scribe::open(&path).unwrap();
+
+    assert!(scribe.summaries.is_empty());
+}

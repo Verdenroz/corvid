@@ -72,7 +72,9 @@ pub struct Scribe {
     pub suggestions: Vec<Suggestion>,
     /// Oldest first, only the newest `DECIDED_CAP` kept. A decided id is never served again.
     pub decided: Vec<Decision>,
-    /// By thread id. Past `SUMMARY_CAP` the oldest `generated_at` goes first.
+    /// By thread id. Past `SUMMARY_CAP` the oldest `generated_at` goes first. Defaults so a
+    /// file written before summaries existed still opens.
+    #[serde(default)]
     pub summaries: BTreeMap<String, Summary>,
 }
 
