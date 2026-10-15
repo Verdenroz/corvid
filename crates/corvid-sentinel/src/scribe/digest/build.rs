@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use corvid_ingest::{MODEL_LABEL_NAMESPACE, NAMESPACE, is_prior_keyword};
+use corvid_ingest::{MODEL_LABEL_NAMESPACE, NAMESPACE, RULE_NAMESPACE, is_prior_keyword};
 
 use crate::scribe::state::{Group, Item, Summary};
 
@@ -50,11 +50,17 @@ pub(super) fn groups(
         .collect()
 }
 
-/// The user's own labels, else the labeler's with their prefix stripped.
+/// The user's own labels, which include those their filter rules set, else the labeler's, with
+/// their prefix stripped.
 fn label(keywords: &[String]) -> Option<String> {
     let own = keywords
         .iter()
-        .filter(|keyword| !keyword.starts_with(NAMESPACE) && !keyword.starts_with('$'))
+        .filter_map(|keyword| {
+            keyword.strip_prefix(RULE_NAMESPACE).or_else(|| {
+                (!keyword.starts_with(NAMESPACE) && !keyword.starts_with('$'))
+                    .then_some(keyword.as_str())
+            })
+        })
         .min();
     let labeler = || {
         keywords
@@ -66,7 +72,7 @@ fn label(keywords: &[String]) -> Option<String> {
             })
             .min()
     };
-    own.map(String::as_str).or_else(labeler).map(str::to_owned)
+    own.or_else(labeler).map(str::to_owned)
 }
 
 #[cfg(test)]
@@ -131,13 +137,17 @@ mod tests {
                     4,
                     &["corvid-llm-label-travel", "corvid-llm-done", "corvid-news"],
                 ),
-                message("C", 3, &["corvid-rule-x", "corvid-llm-done", "$junk"]),
+                message("C", 3, &["corvid-llm-done", "$junk"]),
+                message("D", 2, &["corvid-rule-bills", "corvid-news"]),
             ],
             &BTreeMap::new(),
         );
 
-        assert_eq!(labels(&groups), [Some("banking"), Some("news"), None]);
-        assert_eq!(threads(&groups[2]), ["C"]);
+        assert_eq!(
+            labels(&groups),
+            [Some("banking"), Some("bills"), Some("news"), None]
+        );
+        assert_eq!(threads(&groups[3]), ["C"]);
     }
 
     #[test]
