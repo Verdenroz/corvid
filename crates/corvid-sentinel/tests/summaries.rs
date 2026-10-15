@@ -1,46 +1,10 @@
 mod common;
 
-use std::path::Path;
-use std::sync::Arc;
-
+use common::ScribeRig as Rig;
 use corvid_sentinel::now_secs;
-use corvid_sentinel::scribe::{self, Scribe};
 use serde_json::{Value, json};
 
-const SECRET: &[u8] = b"scribe secret";
-
-struct Rig {
-    url: String,
-    dir: Arc<tempfile::TempDir>,
-}
-
-impl Rig {
-    async fn restart(&self) -> Rig {
-        let scribe = scribe::open(&self.dir.path().join("scribe.json")).unwrap();
-        Rig {
-            url: serve(self.dir.path(), scribe).await,
-            dir: self.dir.clone(),
-        }
-    }
-}
-
-async fn serve(dir: &Path, scribe: Scribe) -> String {
-    let mut config = common::config(&dir.join("sentinel.json"), &dir.join("no-update"));
-    config.scribe = Some(scribe::Config {
-        secret: SECRET.to_vec(),
-        state_path: dir.join("scribe.json"),
-        scribe,
-    });
-    common::serve(config).await
-}
-
-async fn rig() -> Rig {
-    let dir = tempfile::tempdir().unwrap();
-    Rig {
-        url: serve(dir.path(), Scribe::default()).await,
-        dir: Arc::new(dir),
-    }
-}
+const SECRET: &[u8] = common::SCRIBE_SECRET;
 
 fn upsert(thread_id: &str, input_hash: &str, text: &str, generated_at: i64) -> Value {
     json!({
@@ -97,7 +61,7 @@ async fn get(rig: &Rig, thread_id: &str) -> reqwest::Response {
 
 #[tokio::test]
 async fn a_posted_summary_is_served_in_the_app_shape() {
-    let rig = rig().await;
+    let rig = Rig::new().await;
 
     let response = post(&rig, vec![upsert("T1", "h1", "They agreed.", 1700)], vec![]).await;
 
@@ -111,14 +75,14 @@ async fn a_posted_summary_is_served_in_the_app_shape() {
 
 #[tokio::test]
 async fn a_thread_without_a_summary_is_not_found() {
-    let rig = rig().await;
+    let rig = Rig::new().await;
 
     assert_eq!(get(&rig, "nope").await.status(), 404);
 }
 
 #[tokio::test]
 async fn the_manifest_maps_each_thread_to_its_input_hash() {
-    let rig = rig().await;
+    let rig = Rig::new().await;
     post(
         &rig,
         vec![upsert("T1", "h1", "a", 1), upsert("T2", "h2", "b", 2)],
@@ -134,7 +98,7 @@ async fn the_manifest_maps_each_thread_to_its_input_hash() {
 
 #[tokio::test]
 async fn a_second_summary_replaces_the_first_and_a_delete_removes_it() {
-    let rig = rig().await;
+    let rig = Rig::new().await;
     post(
         &rig,
         vec![upsert("T1", "h1", "old", 1), upsert("T2", "h2", "keep", 2)],
@@ -152,7 +116,7 @@ async fn a_second_summary_replaces_the_first_and_a_delete_removes_it() {
 
 #[tokio::test]
 async fn text_over_two_thousand_chars_refuses_the_whole_post() {
-    let rig = rig().await;
+    let rig = Rig::new().await;
 
     let response = post(
         &rig,
@@ -172,7 +136,7 @@ async fn text_over_two_thousand_chars_refuses_the_whole_post() {
 
 #[tokio::test]
 async fn past_the_cap_the_oldest_generated_summary_goes_first() {
-    let rig = rig().await;
+    let rig = Rig::new().await;
     let upserts: Vec<Value> = (0..5001)
         .map(|n| upsert(&format!("T{n}"), "h", "s", 1000 + (n + 1) % 5001))
         .collect();
@@ -189,7 +153,7 @@ async fn past_the_cap_the_oldest_generated_summary_goes_first() {
 
 #[tokio::test]
 async fn a_bad_signature_or_stale_clock_is_refused_on_both_posts() {
-    let rig = rig().await;
+    let rig = Rig::new().await;
     let body = json!({"upserts": [], "deletes": []});
 
     let forged = signed(&rig, "summaries", b"another", body.clone(), now_secs()).await;
@@ -205,10 +169,10 @@ async fn a_bad_signature_or_stale_clock_is_refused_on_both_posts() {
 
 #[tokio::test]
 async fn summaries_survive_a_restart() {
-    let first = rig().await;
+    let first = Rig::new().await;
     post(&first, vec![upsert("T1", "h1", "kept", 5)], vec![]).await;
 
-    let second = first.restart().await;
+    let second = first.reopen().await;
 
     let served: Value = get(&second, "T1").await.json().await.unwrap();
     assert_eq!(served["text"], "kept");

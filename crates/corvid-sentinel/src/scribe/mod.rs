@@ -1,4 +1,5 @@
-//! Rule suggestions the labeler mines and posts, kept until the app accepts or dismisses them.
+//! What the labeler and scribe post for the app: rule suggestions, kept until the app accepts or
+//! dismisses them, and thread summaries, kept until their thread changes or is deleted.
 
 mod ingest;
 mod state;
@@ -69,9 +70,10 @@ fn accept<T: DeserializeOwned>(
 /// Runs a state change off the async threads, since it writes the state file.
 async fn commit<T: Send + 'static>(
     state: Shared,
+    what: &'static str,
     change: impl FnOnce(&Scribe) -> (Option<Scribe>, T) + Send + 'static,
 ) -> Result<T, StatusCode> {
-    Persisted::commit_blocking(state, |state| &state.scribe, "suggestion", change).await
+    Persisted::commit_blocking(state, |state| &state.scribe, what, change).await
 }
 
 pub fn routes(config: Config) -> Router {
@@ -125,7 +127,7 @@ async fn ingest_post(State(state): State<Shared>, headers: HeaderMap, body: Byte
         .into_iter()
         .filter_map(Candidate::parse)
         .collect();
-    match commit(state, move |scribe| {
+    match commit(state, "suggestion", move |scribe| {
         (Some(scribe.with_suggestions(suggestions)), ())
     })
     .await
@@ -157,7 +159,7 @@ async fn decide(
     Path(id): Path<String>,
     verdict: Verdict,
 ) -> StatusCode {
-    let result = commit(state, move |scribe| {
+    let result = commit(state, "suggestion", move |scribe| {
         if scribe.is_decided(&id) {
             return (None, StatusCode::NO_CONTENT);
         }

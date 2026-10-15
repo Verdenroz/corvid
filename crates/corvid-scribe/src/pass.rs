@@ -96,16 +96,15 @@ pub fn run(
             Verdict::Current => {
                 state.waiting.remove(&id);
             }
-            verdict @ (Verdict::Gone | Verdict::Short { .. }) => {
+            Verdict::Gone => {
                 state.waiting.remove(&id);
-                match verdict {
-                    Verdict::Short { hash } => state.judged.insert(id.clone(), hash),
-                    _ => state.judged.remove(&id),
-                };
-                if held.contains_key(&id) {
-                    deletes.push(id);
-                    summary.deleted += 1;
-                }
+                state.judged.remove(&id);
+                delete_if_held(id, &held, &mut deletes);
+            }
+            Verdict::Short { hash } => {
+                state.waiting.remove(&id);
+                state.judged.insert(id.clone(), hash);
+                delete_if_held(id, &held, &mut deletes);
             }
             Verdict::Ask { hash, mails } => {
                 if asked == settings.budget || started.elapsed() >= settings.deadline {
@@ -130,7 +129,6 @@ pub fn run(
                             model: settings.model.clone(),
                             generated_at: now,
                         });
-                        summary.stored += 1;
                     }
                     None => {
                         state.judged.insert(id, hash);
@@ -145,8 +143,16 @@ pub fn run(
         sink.post(now, &upserts, &deletes)?;
     }
     save(path, &state)?;
+    summary.stored = upserts.len();
+    summary.deleted = deletes.len();
     summary.waiting = state.waiting.len();
     Ok(summary)
+}
+
+fn delete_if_held(id: String, held: &BTreeMap<String, String>, deletes: &mut Vec<String>) {
+    if held.contains_key(&id) {
+        deletes.push(id);
+    }
 }
 
 /// Bodies are fetched only for a thread whose messages differ from what is held or judged, and
@@ -181,7 +187,7 @@ fn judge(
     let mails = mailbox.mails(&kept)?;
     let long = mails
         .iter()
-        .any(|mail| mail.body.chars().count() > settings.long_body_chars);
+        .any(|mail| mail.body.chars().nth(settings.long_body_chars).is_some());
     if kept.len() < settings.min_messages && !long {
         return Ok(Verdict::Short { hash });
     }

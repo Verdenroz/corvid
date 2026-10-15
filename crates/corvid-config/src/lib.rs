@@ -746,6 +746,14 @@ pub fn or_exit<T>(result: Result<T, Error>) -> T {
     })
 }
 
+/// Seconds since the epoch, for the services that stamp what they post.
+pub fn unix_now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("the clock is after 1970")
+        .as_secs() as i64
+}
+
 fn web_port() -> WebPort {
     WebPort(4443)
 }

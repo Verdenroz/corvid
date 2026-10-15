@@ -126,8 +126,9 @@ The file holds no secrets, so it can be shared or committed. Secrets come from t
     scribe-mail.env      CORVID_JMAP_PASSWORD, from device.sh add --local corvid-scribe
     scribe.env           CORVID_SCRIBE_SECRET (openssl rand -hex 32), shared by labeler, scribe and sentinel
 
-`scribe.env` is read only when `labeler.suggest` and `sentinel.scribe` are in `config.yaml`. Add
-both to a host's file together, since each service exits 78 on its section without the secret.
+`scribe.env` is read only when `labeler.suggest`, `scribe` or `sentinel.scribe` is in `config.yaml`.
+Fill it before adding any of them, since each service exits 78 on its section without the secret.
+The scribe and the labeler's suggestions post to the sentinel, so they need `sentinel.scribe` too.
 `install.sh` generates the secret once and keeps it afterwards.
 
 The app passwords are created as in "A service's own app password". The image-proxy secret signs
@@ -223,8 +224,7 @@ can overrun it by one message.
 
 The `scribe` section turns on thread summaries, and its unit stays masked until `config.yaml`
 has the section: `bootstrap.sh` masks or unmasks `corvid-scribe` and `corvid-labeler` on every
-run, so the next update starts it. It needs `sentinel.scribe` and `scribe.env`, since the sentinel
-stores the summaries and refuses the scribe's posts without the shared secret.
+run, so the next update starts it.
 
 The scribe asks for generated text through any OpenAI-compatible chat endpoint, one thread per
 call, and reads `choices[0].message.content` and `finish_reason`. A model with a thinking mode

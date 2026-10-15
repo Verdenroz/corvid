@@ -57,7 +57,7 @@ pub(super) async fn ingest(
         })
         .collect();
     let deletes = post.deletes;
-    match commit(state, move |scribe| {
+    match commit(state, "summary", move |scribe| {
         (Some(scribe.with_summaries(upserts, &deletes)), ())
     })
     .await

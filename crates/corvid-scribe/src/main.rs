@@ -1,9 +1,9 @@
 use std::io::ErrorKind;
 use std::process::ExitCode;
 use std::thread::sleep;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
-use corvid_config::{Config, EX_TEMPFAIL, or_exit, secret, section};
+use corvid_config::{Config, EX_TEMPFAIL, or_exit, secret, section, unix_now};
 use corvid_model::Model;
 use corvid_scribe::{Jmap, Sentinel, Settings, run};
 
@@ -93,11 +93,4 @@ fn main() -> ExitCode {
         }
         sleep(interval);
     }
-}
-
-fn unix_now() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("the clock is after 1970")
-        .as_secs() as i64
 }

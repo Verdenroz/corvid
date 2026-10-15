@@ -1,47 +1,10 @@
 mod common;
 
-use std::path::Path;
-use std::sync::Arc;
-
+use common::ScribeRig as Rig;
 use corvid_sentinel::now_secs;
-use corvid_sentinel::scribe::{self, Scribe};
 use serde_json::{Value, json};
 
-const SECRET: &[u8] = b"scribe secret";
-
-struct Rig {
-    url: String,
-    dir: Arc<tempfile::TempDir>,
-}
-
-impl Rig {
-    /// A new sentinel on the same state directory, reading what the first one saved.
-    async fn restart(&self) -> Rig {
-        let scribe = scribe::open(&self.dir.path().join("scribe.json")).unwrap();
-        Rig {
-            url: serve(self.dir.path(), scribe).await,
-            dir: self.dir.clone(),
-        }
-    }
-}
-
-async fn serve(dir: &Path, scribe: Scribe) -> String {
-    let mut config = common::config(&dir.join("sentinel.json"), &dir.join("no-update"));
-    config.scribe = Some(scribe::Config {
-        secret: SECRET.to_vec(),
-        state_path: dir.join("scribe.json"),
-        scribe,
-    });
-    common::serve(config).await
-}
-
-async fn rig() -> Rig {
-    let dir = tempfile::tempdir().unwrap();
-    Rig {
-        url: serve(dir.path(), Scribe::default()).await,
-        dir: Arc::new(dir),
-    }
-}
+const SECRET: &[u8] = common::SCRIBE_SECRET;
 
 fn candidate(id: &str, key: &str, outcome: &str) -> Value {
     json!({"id": id, "key": key, "outcome": outcome, "settled": 6, "hits": 6})
@@ -98,7 +61,7 @@ fn ids(suggestions: &[Value]) -> Vec<&str> {
 
 #[tokio::test]
 async fn a_posted_candidate_is_served_in_the_app_shape() {
-    let rig = rig().await;
+    let rig = Rig::new().await;
 
     let response = post(
         &rig,
@@ -121,7 +84,7 @@ async fn a_posted_candidate_is_served_in_the_app_shape() {
 
 #[tokio::test]
 async fn a_bad_signature_is_refused() {
-    let rig = rig().await;
+    let rig = Rig::new().await;
 
     let response = post_as(&rig, b"another secret", now_secs(), vec![]).await;
 
@@ -130,7 +93,7 @@ async fn a_bad_signature_is_refused() {
 
 #[tokio::test]
 async fn a_stale_sent_at_is_refused() {
-    let rig = rig().await;
+    let rig = Rig::new().await;
 
     let old = post_at(
         &rig,
@@ -152,7 +115,7 @@ async fn a_stale_sent_at_is_refused() {
 
 #[tokio::test]
 async fn a_dismissed_id_is_never_served_again() {
-    let rig = rig().await;
+    let rig = Rig::new().await;
     post(&rig, vec![candidate("a", "from:a@x.test", "archive")]).await;
 
     assert_eq!(decide(&rig, "a", "dismiss").await.status(), 204);
@@ -163,7 +126,7 @@ async fn a_dismissed_id_is_never_served_again() {
 
 #[tokio::test]
 async fn an_accepted_id_is_hidden_and_deciding_it_again_is_idempotent() {
-    let rig = rig().await;
+    let rig = Rig::new().await;
     post(&rig, vec![candidate("a", "from:a@x.test", "archive")]).await;
 
     assert_eq!(decide(&rig, "a", "accept").await.status(), 204);
@@ -174,14 +137,14 @@ async fn an_accepted_id_is_hidden_and_deciding_it_again_is_idempotent() {
 
 #[tokio::test]
 async fn an_unknown_id_is_not_found() {
-    let rig = rig().await;
+    let rig = Rig::new().await;
 
     assert_eq!(decide(&rig, "nope", "accept").await.status(), 404);
 }
 
 #[tokio::test]
 async fn replace_all_drops_a_vanished_candidate() {
-    let rig = rig().await;
+    let rig = Rig::new().await;
     post(
         &rig,
         vec![
@@ -199,7 +162,7 @@ async fn replace_all_drops_a_vanished_candidate() {
 
 #[tokio::test]
 async fn an_unparseable_candidate_is_dropped() {
-    let rig = rig().await;
+    let rig = Rig::new().await;
 
     let response = post(
         &rig,
@@ -219,7 +182,7 @@ async fn an_unparseable_candidate_is_dropped() {
 
 #[tokio::test]
 async fn decisions_and_suggestions_survive_a_restart() {
-    let first = rig().await;
+    let first = Rig::new().await;
     post(
         &first,
         vec![
@@ -230,7 +193,7 @@ async fn decisions_and_suggestions_survive_a_restart() {
     .await;
     decide(&first, "a", "dismiss").await;
 
-    let second = first.restart().await;
+    let second = first.reopen().await;
 
     assert_eq!(ids(&suggestions(&second).await), ["b"]);
 }

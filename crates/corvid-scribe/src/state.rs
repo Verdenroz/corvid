@@ -31,6 +31,6 @@ pub fn open(path: &Path) -> io::Result<State> {
     corvid_store::open(path, SCHEMA)
 }
 
-pub fn save(path: &Path, state: &State) -> io::Result<()> {
+pub(crate) fn save(path: &Path, state: &State) -> io::Result<()> {
     corvid_store::save(path, SCHEMA, state)
 }
