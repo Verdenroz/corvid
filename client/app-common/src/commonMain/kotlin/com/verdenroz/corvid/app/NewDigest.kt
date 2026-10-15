@@ -5,7 +5,6 @@ import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.model.Digest
 import com.verdenroz.corvid.core.model.items
 import com.verdenroz.corvid.core.prefs.DevicePreferences
-import com.verdenroz.corvid.feature.mailbox.OvernightEntry
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,8 +17,8 @@ class NewDigest(
     private val repository: DigestRepository,
     private val preferences: DevicePreferences,
 ) {
-    private val _entry = MutableStateFlow<OvernightEntry?>(null)
-    val entry: StateFlow<OvernightEntry?> = _entry
+    private val _unseen = MutableStateFlow<Digest?>(null)
+    val unseen: StateFlow<Digest?> = _unseen
 
     private val opened = mutableSetOf<String?>()
 
@@ -30,18 +29,18 @@ class NewDigest(
     }
 
     suspend fun dismiss() {
-        _entry.value?.let { seen(it.id) }
+        _unseen.value?.let { seen(it.id) }
     }
 
     /** Called when the digest [id] is on screen, where null is the latest. */
     suspend fun opened(id: String?) {
         opened += id
-        val shown = _entry.value ?: return
+        val shown = _unseen.value ?: return
         if (id == null || id == shown.id) seen(shown.id)
     }
 
     private suspend fun seen(id: String) {
-        _entry.value = null
+        _unseen.value = null
         preferences.setDigestSeen(id)
     }
 
@@ -54,11 +53,6 @@ class NewDigest(
             } ?: return
         if (digest.items.isEmpty() || digest.id == preferences.settings.value.digestSeen) return
         if (null in opened || digest.id in opened) return seen(digest.id)
-        _entry.value = digest.toEntry()
+        _unseen.value = digest
     }
-}
-
-private fun Digest.toEntry(): OvernightEntry {
-    val (lists, people) = items.partition { it.isList }
-    return OvernightEntry(id, items.size, people.map { it.displayName }.distinct(), lists.size)
 }

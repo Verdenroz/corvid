@@ -42,4 +42,9 @@
         <item quantity="one">over %1$d week</item>
         <item quantity="other">over %1$d weeks</item>
     </plurals>
+    <string name="replace_title">Replace the active script?</string>
+    <string name="replace_body">"%1$s" is the active Sieve script. Activating Corvid's filters turns it off. It is not deleted.</string>
+    <string name="replace_confirm">Activate Corvid filters</string>
+    <string name="replace_cancel">Cancel</string>
+    <string name="replace_declined">Not saved: another script is active</string>
 </resources>

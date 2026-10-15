@@ -4,9 +4,9 @@ import com.verdenroz.corvid.core.model.MailboxRef
 import com.verdenroz.corvid.core.model.RuleSuggestion
 import com.verdenroz.corvid.core.model.SuggestionAction
 import com.verdenroz.corvid.core.model.SuggestionSenderKind
-import com.verdenroz.corvid.core.model.folderPath
 import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.uiText
+import com.verdenroz.corvid.core.ui.suggestion.folderText
 import com.verdenroz.corvid.core.ui.suggestion.spanClause
 import com.verdenroz.corvid.feature.filters.resources.Res
 import com.verdenroz.corvid.feature.filters.resources.suggestion_act_archive
@@ -26,13 +26,10 @@ internal fun RuleSuggestion.sentence(folders: List<MailboxRef>): RuleSentence {
     val value = UiText.FromServer(sender.value)
     val field = if (sender.kind == SuggestionSenderKind.List) Res.string.suggestion_cond_list else Res.string.suggestion_cond_from
     val condition = uiText(field, value)
-    val action =
-        when (val filing = action) {
-            SuggestionAction.Archive -> uiText(Res.string.suggestion_act_archive)
-            SuggestionAction.Trash -> uiText(Res.string.suggestion_act_trash)
-            is SuggestionAction.Folder -> uiText(Res.string.suggestion_act_folder, UiText.FromServer(folders.folderPath(filing.mailboxId)))
-        }
-    return RuleSentence(condition, action)
+    val filing =
+        action.folderText(folders)?.let { uiText(Res.string.suggestion_act_folder, it) }
+            ?: uiText(if (action == SuggestionAction.Archive) Res.string.suggestion_act_archive else Res.string.suggestion_act_trash)
+    return RuleSentence(condition, filing)
 }
 
 /** How often the messages were handled this way, and over how long when the server said. */
@@ -43,7 +40,7 @@ internal fun RuleSuggestion.caption(folders: List<MailboxRef>): UiText {
             SuggestionAction.Trash -> Res.plurals.suggestion_caption_trashed
             is SuggestionAction.Folder -> Res.plurals.suggestion_caption_filed
         }
-    val folder = (action as? SuggestionAction.Folder)?.let { UiText.FromServer(folders.folderPath(it.mailboxId)) }
+    val folder = action.folderText(folders)
     val counted = UiText.Plural(resource, hits, listOfNotNull(hits, settled, folder))
     return spanClause(spanDays)?.let { uiText(Res.string.suggestion_caption, counted, it) } ?: counted
 }

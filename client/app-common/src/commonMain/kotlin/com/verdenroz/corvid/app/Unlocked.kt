@@ -339,7 +339,7 @@ internal fun Home(
     shellState: ShellState,
     navigator: Navigator,
     ledgers: Ledgers,
-    overnight: OvernightOffer? = null,
+    overnight: OvernightOffer?,
     onQuery: (String) -> Unit,
     onMenu: () -> Unit,
 ) {

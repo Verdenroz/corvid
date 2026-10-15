@@ -1,6 +1,8 @@
 package com.verdenroz.corvid.feature.digest
 
 import com.verdenroz.corvid.core.data.DigestRepository
+import com.verdenroz.corvid.core.model.lists
+import com.verdenroz.corvid.core.model.people
 import com.verdenroz.corvid.core.testing.FakeDigest
 import com.verdenroz.corvid.core.testing.FakeDigestItem
 import com.verdenroz.corvid.core.testing.FakeJmapServer
@@ -53,8 +55,8 @@ class DigestViewModelTest {
 
             val ready = assertIs<DigestState.Ready>(viewModel(mixed, null).settled())
 
-            assertEquals(listOf("Marta", "ana"), ready.people.map { it.displayName })
-            assertEquals(listOf("l1" to "Work", "l2" to null), ready.lists.map { it.item.emailId to it.label })
+            assertEquals(listOf("Marta", "ana"), ready.digest.people.map { it.displayName })
+            assertEquals(listOf("l1" to "Work", "l2" to null), ready.digest.lists.map { it.item.emailId to it.label })
         }
 
     @Test

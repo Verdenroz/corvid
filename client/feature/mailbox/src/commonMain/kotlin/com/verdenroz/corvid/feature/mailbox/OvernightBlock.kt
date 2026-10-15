@@ -22,6 +22,10 @@ import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.ActionIcon
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
+import com.verdenroz.corvid.core.model.Digest
+import com.verdenroz.corvid.core.model.items
+import com.verdenroz.corvid.core.model.lists
+import com.verdenroz.corvid.core.model.people
 import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.text.uiPlural
@@ -65,6 +69,8 @@ data class OvernightEntry(
         }
 }
 
+fun Digest.overnight() = OvernightEntry(id, items.size, people.map { it.displayName }.distinct(), lists.size)
+
 class OvernightOffer(
     val entry: OvernightEntry,
     val onOpen: () -> Unit,
@@ -73,11 +79,8 @@ class OvernightOffer(
 
 /** The whole block opens the digest; the × beside it hides it. The names come from mail, so they are plain text. */
 @Composable
-internal fun OvernightBlock(
-    entry: OvernightEntry,
-    onOpen: () -> Unit,
-    onHide: () -> Unit,
-) {
+internal fun OvernightBlock(offer: OvernightOffer) {
+    val entry = offer.entry
     val colors = CorvidTheme.colors
     val gutter = CorvidSpacing.gutter(LocalWideLayout.current)
     Row(
@@ -95,7 +98,7 @@ internal fun OvernightBlock(
             modifier =
                 Modifier.weight(
                     1f,
-                ).clickable(role = Role.Button, onClick = onOpen).padding(start = 14.dp, top = 12.dp, end = 4.dp, bottom = 12.dp),
+                ).clickable(role = Role.Button, onClick = offer.onOpen).padding(start = 14.dp, top = 12.dp, end = 4.dp, bottom = 12.dp),
         ) {
             Column(Modifier.weight(1f)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Bottom) {
@@ -115,7 +118,7 @@ internal fun OvernightBlock(
         ActionIcon(
             stringResource(Res.string.overnight_hide),
             CorvidIcons.Close,
-            onHide,
+            offer.onHide,
             tint = colors.inkFaint,
             size = 44.dp,
             iconSize = 16.dp,

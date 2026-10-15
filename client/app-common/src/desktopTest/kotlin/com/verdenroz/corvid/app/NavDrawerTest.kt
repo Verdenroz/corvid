@@ -101,6 +101,7 @@ class NavDrawerTest {
                             ShellState(),
                             navigator,
                             ledgers,
+                            overnight = null,
                             onQuery = {},
                         ) { scope.launch { drawer.open() } }
                     }

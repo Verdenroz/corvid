@@ -22,4 +22,13 @@ data class DigestItem(
     val displayName: String get() = fromName ?: from.substringBefore('@')
 }
 
+/** A list's item with the group label the server put it under. */
+data class ListedItem(val item: DigestItem, val label: String?)
+
 val Digest.items: List<DigestItem> get() = groups.flatMap { it.items }
+
+/** The items that people wrote, which carry no `List-Id`. */
+val Digest.people: List<DigestItem> get() = items.filterNot { it.isList }
+
+/** The items that lists and services sent. */
+val Digest.lists: List<ListedItem> get() = groups.flatMap { group -> group.items.filter { it.isList }.map { ListedItem(it, group.label) } }

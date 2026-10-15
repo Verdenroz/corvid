@@ -32,6 +32,7 @@ import com.verdenroz.corvid.core.designsystem.component.PrimaryButton
 import com.verdenroz.corvid.core.model.FilterRule
 import com.verdenroz.corvid.core.model.RuleSuggestion
 import com.verdenroz.corvid.core.text.asString
+import com.verdenroz.corvid.core.ui.ConfirmReplace
 import com.verdenroz.corvid.core.ui.DiscardQuestion
 import com.verdenroz.corvid.core.ui.GuardBack
 import com.verdenroz.corvid.core.ui.PageHeader
@@ -39,7 +40,6 @@ import com.verdenroz.corvid.core.ui.QuietPane
 import com.verdenroz.corvid.feature.filters.resources.Res
 import com.verdenroz.corvid.feature.filters.resources.filters_add_rule
 import com.verdenroz.corvid.feature.filters.resources.filters_back
-import com.verdenroz.corvid.feature.filters.resources.filters_cancel
 import com.verdenroz.corvid.feature.filters.resources.filters_delete
 import com.verdenroz.corvid.feature.filters.resources.filters_discard_question
 import com.verdenroz.corvid.feature.filters.resources.filters_down
@@ -47,9 +47,6 @@ import com.verdenroz.corvid.feature.filters.resources.filters_edit
 import com.verdenroz.corvid.feature.filters.resources.filters_empty
 import com.verdenroz.corvid.feature.filters.resources.filters_foreign_active
 import com.verdenroz.corvid.feature.filters.resources.filters_intro
-import com.verdenroz.corvid.feature.filters.resources.filters_replace_body
-import com.verdenroz.corvid.feature.filters.resources.filters_replace_confirm
-import com.verdenroz.corvid.feature.filters.resources.filters_replace_title
 import com.verdenroz.corvid.feature.filters.resources.filters_title
 import com.verdenroz.corvid.feature.filters.resources.filters_up
 import org.jetbrains.compose.resources.stringResource
@@ -202,26 +199,6 @@ private fun RuleRow(
                 PillButton(stringResource(Res.string.filters_down), null, onDown, height = 28.dp)
                 PillButton(stringResource(Res.string.filters_delete), null, onDelete, height = 28.dp)
             }
-        }
-    }
-}
-
-@Composable
-private fun ConfirmReplace(
-    scriptName: String,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val colors = CorvidTheme.colors
-    Column(
-        Modifier.fillMaxWidth().background(colors.dangerSoft).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text(stringResource(Res.string.filters_replace_title), style = CorvidTheme.type.metaStrong, color = colors.onDangerSoft)
-        Text(stringResource(Res.string.filters_replace_body, scriptName), style = CorvidTheme.type.meta, color = colors.onDangerSoft)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            PrimaryButton(stringResource(Res.string.filters_replace_confirm), onClick = onConfirm)
-            PillButton(stringResource(Res.string.filters_cancel), null, onDismiss)
         }
     }
 }

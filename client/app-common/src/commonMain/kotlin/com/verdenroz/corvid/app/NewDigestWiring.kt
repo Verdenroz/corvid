@@ -9,6 +9,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import com.verdenroz.corvid.core.data.DigestRepository
 import com.verdenroz.corvid.core.prefs.DevicePreferences
 import com.verdenroz.corvid.feature.mailbox.OvernightOffer
+import com.verdenroz.corvid.feature.mailbox.overnight
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
@@ -35,13 +36,15 @@ internal fun rememberOvernightOffer(
     newDigest: NewDigest,
     navigator: Navigator,
 ): OvernightOffer? {
-    val entry by newDigest.entry.collectAsState()
+    val unseen by newDigest.unseen.collectAsState()
     val scope = rememberCoroutineScope()
-    return entry?.let { current ->
-        OvernightOffer(
-            current,
-            onOpen = { navigator.open(Route.Digest(current.id)) },
-            onHide = { scope.launch { newDigest.dismiss() } },
-        )
+    return remember(unseen, newDigest, navigator) {
+        unseen?.let { digest ->
+            OvernightOffer(
+                digest.overnight(),
+                onOpen = { navigator.open(Route.Digest(digest.id)) },
+                onHide = { scope.launch { newDigest.dismiss() } },
+            )
+        }
     }
 }

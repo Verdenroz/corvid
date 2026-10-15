@@ -22,8 +22,8 @@ import com.verdenroz.corvid.core.testing.withActiveScript
 import com.verdenroz.corvid.core.testing.withRoleMailboxes
 import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.uiText
+import com.verdenroz.corvid.core.ui.replaceDeclined
 import com.verdenroz.corvid.feature.filters.resources.Res
-import com.verdenroz.corvid.feature.filters.resources.filters_another_active
 import com.verdenroz.corvid.feature.filters.resources.filters_not_saved
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -136,7 +136,7 @@ class FiltersViewModelTest {
             vm.dismissConfirmation()
 
             val ready = vm.ready()
-            assertEquals(SaveStatus.Failed(uiText(Res.string.filters_not_saved, uiText(Res.string.filters_another_active))), ready.save)
+            assertEquals(SaveStatus.Failed(replaceDeclined()), ready.save)
             assertEquals(listOf("first"), ready.rules.map { it.name })
             assertEquals(listOf("vacation" to true), fake.sieveScripts.map { it.name to it.isActive })
         }

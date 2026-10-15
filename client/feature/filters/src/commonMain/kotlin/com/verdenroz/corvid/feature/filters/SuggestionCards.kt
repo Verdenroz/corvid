@@ -1,15 +1,10 @@
 package com.verdenroz.corvid.feature.filters
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
@@ -17,7 +12,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -28,8 +22,8 @@ import com.verdenroz.corvid.core.model.MailboxRef
 import com.verdenroz.corvid.core.model.RuleSuggestion
 import com.verdenroz.corvid.core.model.SuggestionSenderKind
 import com.verdenroz.corvid.core.text.asString
-import com.verdenroz.corvid.core.ui.provenance.initials
-import com.verdenroz.corvid.core.ui.suggestion.HistoryStrip
+import com.verdenroz.corvid.core.ui.provenance.InitialsTile
+import com.verdenroz.corvid.core.ui.suggestion.SuggestionButton
 import com.verdenroz.corvid.feature.filters.resources.Res
 import com.verdenroz.corvid.feature.filters.resources.suggestion_add
 import com.verdenroz.corvid.feature.filters.resources.suggestion_dismiss
@@ -74,8 +68,6 @@ private fun SuggestionCard(
     val colors = CorvidTheme.colors
     val caption = suggestion.caption(folders).asString()
     val frame = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp).fillMaxWidth()
-    val quiet = Modifier.defaultMinSize(minHeight = 36.dp).clickable(role = Role.Button, onClick = onDismiss)
-    val filled = Modifier.height(36.dp).background(colors.ink, CorvidShape.small).clickable(role = Role.Button, onClick = onAccept)
     Column(
         verticalArrangement = Arrangement.spacedBy(12.dp),
         modifier = frame.border(1.dp, colors.line, CorvidShape.medium).padding(14.dp),
@@ -89,12 +81,8 @@ private fun SuggestionCard(
             horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(quiet.padding(horizontal = 10.dp), contentAlignment = Alignment.Center) {
-                Text(stringResource(Res.string.suggestion_dismiss), style = CorvidTheme.type.action, color = colors.inkMuted)
-            }
-            Box(filled.padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
-                Text(stringResource(Res.string.suggestion_add), style = CorvidTheme.type.action, color = colors.surface)
-            }
+            SuggestionButton(stringResource(Res.string.suggestion_dismiss), onDismiss, ink = colors.inkMuted)
+            SuggestionButton(stringResource(Res.string.suggestion_add), onAccept, ink = colors.surface, fill = colors.ink)
         }
     }
 }
@@ -103,12 +91,7 @@ private fun SuggestionCard(
 private fun Sender(suggestion: RuleSuggestion) {
     val colors = CorvidTheme.colors
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Box(
-            Modifier.height(28.dp).defaultMinSize(minWidth = 28.dp).background(colors.chip, CorvidShape.small),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(initials(suggestion.sender.value), style = CorvidTheme.type.chip, color = colors.ink)
-        }
+        InitialsTile(suggestion.sender.value, 28.dp)
         Text(suggestion.sender.value, style = CorvidTheme.type.name, maxLines = 1, modifier = Modifier.weight(1f))
         if (suggestion.sender.kind == SuggestionSenderKind.List) {
             Text(stringResource(Res.string.suggestion_list_tag), style = CorvidTheme.type.meta, color = colors.inkFaint)

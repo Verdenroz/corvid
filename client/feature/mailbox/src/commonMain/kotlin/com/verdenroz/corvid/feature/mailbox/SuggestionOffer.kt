@@ -1,7 +1,6 @@
 package com.verdenroz.corvid.feature.mailbox
 
 import com.verdenroz.corvid.core.data.FiltersFormatException
-import com.verdenroz.corvid.core.data.PendingSuggestions
 import com.verdenroz.corvid.core.data.SaveResult
 import com.verdenroz.corvid.core.data.SuggestedRules
 import com.verdenroz.corvid.core.data.userMessage
@@ -10,9 +9,10 @@ import com.verdenroz.corvid.core.model.MailboxRef
 import com.verdenroz.corvid.core.model.RuleSuggestion
 import com.verdenroz.corvid.core.model.SuggestionAction
 import com.verdenroz.corvid.core.model.SuggestionSenderKind
-import com.verdenroz.corvid.core.model.folderPath
 import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.uiText
+import com.verdenroz.corvid.core.ui.replaceDeclined
+import com.verdenroz.corvid.core.ui.suggestion.folderText
 import com.verdenroz.corvid.core.ui.suggestion.spanClause
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.offer_counts
@@ -24,7 +24,6 @@ import com.verdenroz.corvid.feature.mailbox.resources.offer_do_trash
 import com.verdenroz.corvid.feature.mailbox.resources.offer_lead_archive
 import com.verdenroz.corvid.feature.mailbox.resources.offer_lead_folder
 import com.verdenroz.corvid.feature.mailbox.resources.offer_lead_trash
-import com.verdenroz.corvid.feature.mailbox.resources.offer_not_saved
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -32,8 +31,11 @@ import kotlinx.coroutines.flow.update
 /** A rule that needs the user's say-so before it replaces the Sieve script another client has active. */
 internal data class Confirmation(val suggestion: RuleSuggestion, val scriptName: String)
 
+/** [checked] is the suggestion whose rules were looked up, and only then are [folders] known. */
 internal data class SuggestionOfferState(
-    val pending: PendingSuggestions = PendingSuggestions(emptyList(), emptyList()),
+    val suggestions: List<RuleSuggestion> = emptyList(),
+    val folders: List<MailboxRef> = emptyList(),
+    val checked: String? = null,
     val working: Boolean = false,
     val confirming: Confirmation? = null,
     val failed: UiText? = null,
@@ -47,16 +49,33 @@ internal class SuggestionOfferModel(private val suggested: SuggestedRules) {
     private val _state = MutableStateFlow(SuggestionOfferState())
     val state: StateFlow<SuggestionOfferState> = _state
 
-    suspend fun load() {
-        val pending =
+    suspend fun fetch() {
+        val fetched =
             try {
-                suggested.pendingNow()
+                suggested.fetch()
+            } catch (e: JmapException) {
+                return
+            }
+        _state.update { it.copy(suggestions = fetched) }
+    }
+
+    /** Reads the saved rules, which is the one download the card makes, only once a suggestion is about the sender. */
+    suspend fun check(candidate: RuleSuggestion) {
+        val set =
+            try {
+                suggested.current()
             } catch (e: JmapException) {
                 return
             } catch (e: FiltersFormatException) {
                 return
             }
-        _state.update { it.copy(pending = pending) }
+        if (suggested.pending(listOf(candidate), set).isEmpty()) {
+            settle(candidate)
+        } else {
+            _state.update {
+                it.copy(folders = set.folders, checked = candidate.id)
+            }
+        }
     }
 
     suspend fun accept(
@@ -85,10 +104,9 @@ internal class SuggestionOfferModel(private val suggested: SuggestedRules) {
         }
     }
 
-    fun declineReplace() = _state.update { it.copy(confirming = null, failed = uiText(Res.string.offer_not_saved)) }
+    fun declineReplace() = _state.update { it.copy(confirming = null, failed = replaceDeclined()) }
 
-    private fun settle(suggestion: RuleSuggestion) =
-        _state.update { it.copy(pending = PendingSuggestions(it.pending.suggestions - suggestion, it.pending.folders), working = false) }
+    private fun settle(suggestion: RuleSuggestion) = _state.update { it.copy(suggestions = it.suggestions - suggestion, working = false) }
 }
 
 /** The suggestion that is about this sender: the same address, or the same list when the card has a [listId] it can trust. */
@@ -105,11 +123,8 @@ internal fun List<RuleSuggestion>.about(
     }
 
 internal fun RuleSuggestion.lead(folders: List<MailboxRef>): UiText =
-    when (val filing = action) {
-        SuggestionAction.Archive -> uiText(Res.string.offer_lead_archive)
-        SuggestionAction.Trash -> uiText(Res.string.offer_lead_trash)
-        is SuggestionAction.Folder -> uiText(Res.string.offer_lead_folder, UiText.FromServer(folders.folderPath(filing.mailboxId)))
-    }
+    action.folderText(folders)?.let { uiText(Res.string.offer_lead_folder, it) }
+        ?: uiText(if (action == SuggestionAction.Archive) Res.string.offer_lead_archive else Res.string.offer_lead_trash)
 
 internal fun RuleSuggestion.detail(): UiText {
     val counts = uiText(Res.string.offer_counts, hits, settled)
@@ -117,8 +132,5 @@ internal fun RuleSuggestion.detail(): UiText {
 }
 
 internal fun RuleSuggestion.accepts(folders: List<MailboxRef>): UiText =
-    when (val filing = action) {
-        SuggestionAction.Archive -> uiText(Res.string.offer_do_archive)
-        SuggestionAction.Trash -> uiText(Res.string.offer_do_trash)
-        is SuggestionAction.Folder -> uiText(Res.string.offer_do_folder, UiText.FromServer(folders.folderPath(filing.mailboxId)))
-    }
+    action.folderText(folders)?.let { uiText(Res.string.offer_do_folder, it) }
+        ?: uiText(if (action == SuggestionAction.Archive) Res.string.offer_do_archive else Res.string.offer_do_trash)

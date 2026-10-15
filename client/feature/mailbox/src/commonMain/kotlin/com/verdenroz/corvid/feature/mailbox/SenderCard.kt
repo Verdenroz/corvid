@@ -42,6 +42,7 @@ import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.core.model.SenderKind
 import com.verdenroz.corvid.core.text.asString
+import com.verdenroz.corvid.core.ui.ConfirmReplace
 import com.verdenroz.corvid.core.ui.provenance.SenderAvatar
 import com.verdenroz.corvid.core.ui.provenance.openUntrusted
 import com.verdenroz.corvid.feature.mailbox.resources.Res
@@ -79,7 +80,7 @@ fun SenderCard(
     LaunchedEffect(model) { model.load() }
     val state by model.state.collectAsState()
     val offers = remember(suggested) { SuggestionOfferModel(suggested) }
-    LaunchedEffect(offers) { offers.load() }
+    LaunchedEffect(offers) { offers.fetch() }
     val offer by offers.state.collectAsState()
     val scope = rememberCoroutineScope()
     val latest = state.recent?.firstOrNull()
@@ -107,15 +108,22 @@ fun SenderCard(
                     ).padding(horizontal = CorvidSpacing.gutter(wide), vertical = 10.dp),
             )
         }
-        offer.pending.suggestions.about(address, latest?.provenance?.trustedListId)?.let { suggestion ->
-            val offered =
-                OfferActions(
-                    accept = { scope.launch { offers.accept(it) } },
-                    dismiss = { scope.launch { offers.dismiss(it) } },
-                    confirmReplace = { scope.launch { offers.accept(it, replaceForeign = true) } },
-                    declineReplace = offers::declineReplace,
-                )
-            SuggestionCallout(suggestion, offer, wide, offered)
+        val about = offer.suggestions.about(address, latest?.provenance?.trustedListId)
+        LaunchedEffect(about?.id) { about?.let { offers.check(it) } }
+        val confirming = offer.confirming
+        if (confirming != null) {
+            ConfirmReplace(
+                confirming.scriptName,
+                onConfirm = { scope.launch { offers.accept(confirming.suggestion, replaceForeign = true) } },
+                onDismiss = offers::declineReplace,
+            )
+        } else if (about != null && offer.checked == about.id) {
+            SuggestionCallout(
+                about,
+                offer,
+                wide,
+                OfferActions(accept = { scope.launch { offers.accept(it) } }, dismiss = { scope.launch { offers.dismiss(it) } }),
+            )
         }
         Facts(state, latest, isSource, wide)
         Actions(address, latest, isSource, wide, actions)

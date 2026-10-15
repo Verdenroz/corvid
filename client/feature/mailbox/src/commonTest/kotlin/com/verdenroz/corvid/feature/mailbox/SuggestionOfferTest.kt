@@ -75,12 +75,12 @@ class SuggestionOfferTest {
             val fake = FakeJmapServer().withRoleMailboxes("inbox", "archive")
             fake.suggestions.serve(FakeSuggestion("s1"), FakeSuggestion("s2", sender = "other@x.test"))
             val model = model(fake)
-            model.load()
+            model.fetch()
 
-            model.accept(model.state.value.pending.suggestions.first())
+            model.accept(model.state.value.suggestions.first())
 
             assertEquals(listOf("s1"), fake.suggestions.accepted)
-            assertEquals(listOf("s2"), model.state.value.pending.suggestions.map { it.id })
+            assertEquals(listOf("s2"), model.state.value.suggestions.map { it.id })
             assertEquals(false, model.state.value.working)
         }
 
@@ -90,12 +90,12 @@ class SuggestionOfferTest {
             val fake = FakeJmapServer().withRoleMailboxes("inbox", "archive")
             fake.suggestions.serve(FakeSuggestion("s1"))
             val model = model(fake)
-            model.load()
+            model.fetch()
 
-            model.dismiss(model.state.value.pending.suggestions.single())
+            model.dismiss(model.state.value.suggestions.single())
 
             assertEquals(listOf("s1"), fake.suggestions.dismissed)
-            assertEquals(emptyList(), model.state.value.pending.suggestions)
+            assertEquals(emptyList(), model.state.value.suggestions)
         }
 
     @Test
@@ -104,8 +104,8 @@ class SuggestionOfferTest {
             val fake = FakeJmapServer().withRoleMailboxes("inbox", "archive").withActiveScript()
             fake.suggestions.serve(FakeSuggestion("s1"))
             val model = model(fake)
-            model.load()
-            val suggestion = model.state.value.pending.suggestions.single()
+            model.fetch()
+            val suggestion = model.state.value.suggestions.single()
 
             model.accept(suggestion)
 
@@ -116,7 +116,7 @@ class SuggestionOfferTest {
 
             assertNull(model.state.value.confirming)
             assertEquals(listOf("s1"), fake.suggestions.accepted)
-            assertEquals(emptyList(), model.state.value.pending.suggestions)
+            assertEquals(emptyList(), model.state.value.suggestions)
         }
 
     @Test
@@ -125,14 +125,31 @@ class SuggestionOfferTest {
             val fake = FakeJmapServer().withRoleMailboxes("inbox", "archive").withActiveScript()
             fake.suggestions.serve(FakeSuggestion("s1"))
             val model = model(fake)
-            model.load()
-            model.accept(model.state.value.pending.suggestions.single())
+            model.fetch()
+            model.accept(model.state.value.suggestions.single())
 
             model.declineReplace()
 
             assertNull(model.state.value.confirming)
             assertNotNull(model.state.value.failed)
-            assertEquals(1, model.state.value.pending.suggestions.size)
+            assertEquals(1, model.state.value.suggestions.size)
+        }
+
+    @Test
+    fun `checking reads the saved rules and drops a suggestion one of them already does`() =
+        runTest {
+            val fake = FakeJmapServer().withRoleMailboxes("inbox", "archive")
+            fake.suggestions.serve(FakeSuggestion("s1"), FakeSuggestion("s2", sender = "other@x.test"))
+            val model = model(fake)
+            model.fetch()
+            val (covered, open) = model.state.value.suggestions
+            model.accept(covered)
+            fake.suggestions.accepted.clear()
+
+            model.check(open)
+
+            assertEquals(open.id, model.state.value.checked)
+            assertEquals(true, model.state.value.folders.any { it.id == "archive" })
         }
 
     @Test
@@ -140,8 +157,8 @@ class SuggestionOfferTest {
         runTest {
             val model = model(FakeJmapServer().withRoleMailboxes("inbox"))
 
-            model.load()
+            model.fetch()
 
-            assertEquals(emptyList(), model.state.value.pending.suggestions)
+            assertEquals(emptyList(), model.state.value.suggestions)
         }
 }

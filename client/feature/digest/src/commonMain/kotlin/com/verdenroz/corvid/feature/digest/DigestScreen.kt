@@ -38,13 +38,16 @@ import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.model.DigestItem
+import com.verdenroz.corvid.core.model.ListedItem
 import com.verdenroz.corvid.core.model.items
+import com.verdenroz.corvid.core.model.lists
+import com.verdenroz.corvid.core.model.people
 import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.core.ui.PageHeader
 import com.verdenroz.corvid.core.ui.QuietPane
-import com.verdenroz.corvid.core.ui.provenance.initials
+import com.verdenroz.corvid.core.ui.provenance.InitialsTile
 import com.verdenroz.corvid.feature.digest.resources.Res
 import com.verdenroz.corvid.feature.digest.resources.digest_back
 import com.verdenroz.corvid.feature.digest.resources.digest_caveat
@@ -89,25 +92,27 @@ private fun Briefing(
 ) {
     val gutter = CorvidSpacing.gutter(LocalWideLayout.current)
     var expanded by rememberSaveable { mutableStateOf(false) }
-    val listed = if (expanded) ready.lists else ready.lists.take(LIST_ROWS)
+    val people = ready.digest.people
+    val lists = ready.digest.lists
+    val listed = if (expanded) lists else lists.take(LIST_ROWS)
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = gutter, vertical = 8.dp)) {
         item { Heading(ready) }
-        if (ready.people.isNotEmpty()) {
+        if (people.isNotEmpty()) {
             item {
                 Section(
                     stringResource(Res.string.digest_people),
                     if (ready.anySummary) stringResource(Res.string.digest_caveat) else null,
                 )
             }
-            items(ready.people, key = { it.emailId }) { Person(it) { onOpenEmail(it.emailId) } }
+            items(people, key = { it.emailId }) { Person(it) { onOpenEmail(it.emailId) } }
         }
-        if (ready.people.isNotEmpty() && ready.lists.isNotEmpty()) {
+        if (people.isNotEmpty() && lists.isNotEmpty()) {
             item { HorizontalDivider(Modifier.widthIn(max = COLUMN_WIDTH).padding(top = 14.dp), color = CorvidTheme.colors.line) }
         }
-        if (ready.lists.isNotEmpty()) {
-            item { Section(stringResource(Res.string.digest_lists), ready.lists.size.toString()) }
+        if (lists.isNotEmpty()) {
+            item { Section(stringResource(Res.string.digest_lists), lists.size.toString()) }
             items(listed, key = { it.item.emailId }) { Listed(it) { onOpenEmail(it.item.emailId) } }
-            val hidden = ready.lists.size - listed.size
+            val hidden = lists.size - listed.size
             if (hidden > 0) item { More(hidden) { expanded = true } }
         }
     }
@@ -167,7 +172,7 @@ private fun Person(
 
 @Composable
 private fun Listed(
-    row: DigestState.ListItem,
+    row: ListedItem,
     onOpen: () -> Unit,
 ) {
     val colors = CorvidTheme.colors
@@ -179,9 +184,7 @@ private fun Listed(
                 max = COLUMN_WIDTH,
             ).fillMaxWidth().heightIn(min = 44.dp).clickable(role = Role.Button, onClick = onOpen),
     ) {
-        Tile(Modifier.background(colors.chip, CorvidShape.small)) {
-            Text(initials(row.item.displayName), style = CorvidTheme.type.chip, color = colors.ink, maxLines = 1)
-        }
+        InitialsTile(row.item.displayName, 22.dp)
         Text(
             row.item.subject,
             style = CorvidTheme.type.name,
@@ -215,17 +218,12 @@ private fun More(
                 max = COLUMN_WIDTH,
             ).fillMaxWidth().heightIn(min = 44.dp).clickable(role = Role.Button, onClick = onExpand),
     ) {
-        Tile(Modifier.border(1.dp, colors.line, CorvidShape.small)) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.defaultMinSize(22.dp, 22.dp).border(1.dp, colors.line, CorvidShape.small).padding(horizontal = 3.dp),
+        ) {
             Text(stringResource(Res.string.digest_more_count, hidden), style = CorvidTheme.type.chip, color = colors.inkMuted, maxLines = 1)
         }
         Text(pluralStringResource(Res.plurals.digest_more, hidden, hidden), style = CorvidTheme.type.name, color = colors.inkMuted)
     }
-}
-
-@Composable
-private fun Tile(
-    modifier: Modifier,
-    content: @Composable () -> Unit,
-) {
-    Box(contentAlignment = Alignment.Center, modifier = modifier.defaultMinSize(22.dp, 22.dp).padding(horizontal = 3.dp)) { content() }
 }

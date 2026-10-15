@@ -8,9 +8,6 @@
     <string name="filters_up">Up</string>
     <string name="filters_down">Down</string>
     <string name="filters_delete">Delete</string>
-    <string name="filters_replace_title">Replace the active script?</string>
-    <string name="filters_replace_body">"%1$s" is the active Sieve script. Activating Corvid's filters turns it off. It is not deleted.</string>
-    <string name="filters_replace_confirm">Activate Corvid filters</string>
     <string name="filters_cancel">Cancel</string>
     <string name="filters_save">Save</string>
     <string name="filters_name">Name</string>
@@ -26,7 +23,6 @@
     <string name="filters_choose_folder">Choose a folder</string>
     <string name="filters_unreadable">The Corvid script has no rule list this client can read.</string>
     <string name="filters_newer">These filters were saved by a newer Corvid. Update the app to edit them.</string>
-    <string name="filters_another_active">another script is active</string>
     <string name="filters_not_saved">Not saved: %1$s</string>
     <string name="match_all">all</string>
     <string name="match_any">any</string>

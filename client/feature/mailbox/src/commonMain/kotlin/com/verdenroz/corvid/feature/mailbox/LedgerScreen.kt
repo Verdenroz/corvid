@@ -309,7 +309,7 @@ private fun Ledger(
     val onRowAct = remember(onAct) { { act: Act, row: Conversation -> onAct(act, listOf(row).target()) } }
     val bottom = CorvidFloating.listClearance(noticeOverWrite = noticeShown && !wide)
     LazyColumn(state = listState, contentPadding = PaddingValues(bottom = bottom), modifier = Modifier.fillMaxSize()) {
-        overnight?.let { offer -> item(key = "overnight") { OvernightBlock(offer.entry, offer.onOpen, offer.onHide) } }
+        overnight?.let { offer -> item(key = "overnight") { OvernightBlock(offer) } }
         days.forEach { day ->
             stickyHeader(key = day.date.toString()) { DayHeader(day, wide) }
             items(day.conversations, key = { it.latest.id }) { conversation ->

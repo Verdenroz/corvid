@@ -4,7 +4,6 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runDesktopComposeUiTest
-import com.verdenroz.corvid.core.data.PendingSuggestions
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.model.RuleSuggestion
 import com.verdenroz.corvid.core.model.SuggestionAction
@@ -30,8 +29,6 @@ class SuggestionCalloutTest {
         OfferActions(
             accept = { taken += "accept ${it.id}" },
             dismiss = { taken += "dismiss ${it.id}" },
-            confirmReplace = { taken += "replace ${it.id}" },
-            declineReplace = { taken += "decline" },
         )
 
     @Test
@@ -41,7 +38,7 @@ class SuggestionCalloutTest {
                 CorvidTheme(darkTheme = false) {
                     SuggestionCallout(
                         ARCHIVE,
-                        SuggestionOfferState(PendingSuggestions(listOf(ARCHIVE), emptyList())),
+                        SuggestionOfferState(suggestions = listOf(ARCHIVE)),
                         wide = false,
                         actions = actions,
                     )
@@ -53,18 +50,5 @@ class SuggestionCalloutTest {
             onNodeWithText("Archive them on arrival").performClick()
 
             assertEquals(listOf("dismiss s1", "accept s1"), taken)
-        }
-
-    @Test
-    fun `another script being active asks before replacing it`() =
-        runDesktopComposeUiTest {
-            val state =
-                SuggestionOfferState(PendingSuggestions(listOf(ARCHIVE), emptyList()), confirming = Confirmation(ARCHIVE, "vacation"))
-            setContent { CorvidTheme(darkTheme = false) { SuggestionCallout(ARCHIVE, state, wide = false, actions = actions) } }
-
-            onNodeWithText("Activate Corvid filters").performClick()
-            onNodeWithText("Cancel").performClick()
-
-            assertEquals(listOf("replace s1", "decline"), taken)
         }
 }

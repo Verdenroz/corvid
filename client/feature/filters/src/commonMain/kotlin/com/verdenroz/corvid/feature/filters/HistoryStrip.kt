@@ -1,4 +1,4 @@
-package com.verdenroz.corvid.core.ui.suggestion
+package com.verdenroz.corvid.feature.filters
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -20,7 +20,7 @@ private val SQUARE = RoundedCornerShape(2.dp)
 
 /** One square per message, oldest first: filled where it matched, outlined where it did not. Slots keep one width however few there are. */
 @Composable
-fun HistoryStrip(
+internal fun HistoryStrip(
     history: List<Boolean>,
     description: String,
     modifier: Modifier = Modifier,

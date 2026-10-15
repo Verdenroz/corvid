@@ -22,8 +22,6 @@ import com.verdenroz.corvid.core.text.resources.rule_name_list
 import com.verdenroz.corvid.core.text.resources.suggestion_folder_gone
 import com.verdenroz.corvid.core.text.uiText
 
-class PendingSuggestions(val suggestions: List<RuleSuggestion>, val folders: List<MailboxRef>)
-
 /** Turns the server's suggestions into filter rules, and tells the server what became of each. */
 class SuggestedRules(
     private val suggestions: SuggestionRepository,
@@ -33,11 +31,8 @@ class SuggestedRules(
 ) {
     suspend fun fetch(): List<RuleSuggestion> = suggestions.list()
 
-    /** What [pending] leaves of the server's suggestions against the rules saved now, with the folders they may name. */
-    suspend fun pendingNow(): PendingSuggestions {
-        val set = filters.load()
-        return PendingSuggestions(pending(fetch(), set), set.folders)
-    }
+    /** The saved rules and the folders they and the suggestions may name. */
+    suspend fun current(): FilterSet = filters.load()
 
     /** The [fetched] suggestions worth showing against [current]: none whose folder is gone or that a rule already does. */
     suspend fun pending(

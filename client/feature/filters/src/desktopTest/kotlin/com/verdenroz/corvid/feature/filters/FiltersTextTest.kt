@@ -6,26 +6,13 @@ import com.verdenroz.corvid.core.model.SuggestionAction
 import com.verdenroz.corvid.core.model.SuggestionSender
 import com.verdenroz.corvid.core.model.SuggestionSenderKind
 import com.verdenroz.corvid.core.testing.composedResourceEnvironment
-import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.resolve
-import com.verdenroz.corvid.core.text.uiText
-import com.verdenroz.corvid.feature.filters.resources.Res
-import com.verdenroz.corvid.feature.filters.resources.filters_replace_body
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class FiltersTextTest {
     private val environment = composedResourceEnvironment()
-
-    @Test
-    fun `the replace warning keeps its quotes and apostrophe`() =
-        runTest {
-            assertEquals(
-                "\"vacation\" is the active Sieve script. Activating Corvid's filters turns it off. It is not deleted.",
-                uiText(Res.string.filters_replace_body, UiText.FromServer("vacation")).resolve(environment),
-            )
-        }
 
     private fun suggestion(
         sender: SuggestionSenderKind,

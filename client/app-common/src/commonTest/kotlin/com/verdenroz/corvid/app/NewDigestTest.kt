@@ -1,6 +1,7 @@
 package com.verdenroz.corvid.app
 
 import com.verdenroz.corvid.core.data.DigestRepository
+import com.verdenroz.corvid.core.model.items
 import com.verdenroz.corvid.core.prefs.DevicePreferences
 import com.verdenroz.corvid.core.prefs.DeviceSettings
 import com.verdenroz.corvid.core.testing.FakeDigest
@@ -54,75 +55,57 @@ private suspend fun untilDigest(condition: () -> Boolean) {
 @OptIn(ExperimentalCoroutinesApi::class)
 class NewDigestTest {
     @Test
-    fun `a digest not seen yet becomes an entry with its message count`() =
+    fun `a digest not seen yet is offered with its messages`() =
         runTest {
             val rig = digestRig(FakeJmapServer().apply { digests.serve(mail(3)) })
 
-            untilDigest { rig.newDigest.entry.value != null }
+            untilDigest { rig.newDigest.unseen.value != null }
 
-            assertEquals(3, rig.newDigest.entry.value?.count)
-            assertEquals("d1", rig.newDigest.entry.value?.id)
+            assertEquals(3, rig.newDigest.unseen.value?.items?.size)
+            assertEquals("d1", rig.newDigest.unseen.value?.id)
         }
 
     @Test
-    fun `the entry names up to the people who wrote and counts the lists`() =
-        runTest {
-            val people = listOf("Ada", "Ben", "Cy", "Di").mapIndexed { i, name -> FakeDigestItem(emailId = "p$i", fromName = name) }
-            val lists = List(2) { FakeDigestItem(emailId = "l$it", fromName = "Shop", isList = true) }
-            val unnamed = FakeDigestItem(emailId = "u", from = "eve@x.test")
-            val rig =
-                digestRig(
-                    FakeJmapServer().apply { digests.serve(FakeDigest("d1", groups = listOf("Work" to people, null to lists + unnamed))) },
-                )
-
-            untilDigest { rig.newDigest.entry.value != null }
-
-            assertEquals(listOf("Ada", "Ben", "Cy", "Di", "eve"), rig.newDigest.entry.value?.people)
-            assertEquals(2, rig.newDigest.entry.value?.lists)
-            assertEquals(7, rig.newDigest.entry.value?.count)
-        }
-
-    @Test
-    fun `opening the digest clears the entry and keeps it away`() =
+    fun `opening the digest clears the offer and keeps it away`() =
         runTest {
             val rig = digestRig(FakeJmapServer().apply { digests.serve(mail(1)) })
-            untilDigest { rig.newDigest.entry.value != null }
+            untilDigest { rig.newDigest.unseen.value != null }
 
             rig.newDigest.opened("d1")
             runCurrent()
 
-            assertNull(rig.newDigest.entry.value)
+            assertNull(rig.newDigest.unseen.value)
             assertEquals("d1", rig.preferences.settings.value.digestSeen)
             rig.triggers.send(Unit)
             runCurrent()
-            assertNull(rig.newDigest.entry.value)
+            assertNull(rig.newDigest.unseen.value)
         }
 
     @Test
-    fun `dismissing the entry clears it and keeps it away`() =
+    fun `dismissing the offer clears it and keeps it away`() =
         runTest {
             val rig = digestRig(FakeJmapServer().apply { digests.serve(mail(1)) })
-            untilDigest { rig.newDigest.entry.value != null }
+            untilDigest { rig.newDigest.unseen.value != null }
 
             rig.newDigest.dismiss()
             runCurrent()
             rig.triggers.send(Unit)
             runCurrent()
 
-            assertNull(rig.newDigest.entry.value)
+            assertNull(rig.newDigest.unseen.value)
             assertEquals("d1", rig.preferences.settings.value.digestSeen)
         }
 
     @Test
-    fun `opening the latest digest without an id clears the entry too`() =
+    fun `opening the latest digest without an id clears the offer too`() =
         runTest {
             val rig = digestRig(FakeJmapServer().apply { digests.serve(mail(1)) })
-            untilDigest { rig.newDigest.entry.value != null }
+            untilDigest { rig.newDigest.unseen.value != null }
 
             rig.newDigest.opened(null)
             runCurrent()
 
-            assertNull(rig.newDigest.entry.value)
+            assertNull(rig.newDigest.unseen.value)
         }
 
     @Test
@@ -136,7 +119,7 @@ class NewDigestTest {
             untilDigest { fake.digests.reads > 0 }
             runCurrent()
 
-            assertNull(rig.newDigest.entry.value)
+            assertNull(rig.newDigest.unseen.value)
         }
 
     @Test
@@ -148,7 +131,7 @@ class NewDigestTest {
             untilDigest { fake.digests.reads > 0 }
             runCurrent()
 
-            assertNull(rig.newDigest.entry.value)
+            assertNull(rig.newDigest.unseen.value)
         }
 
     @Test
@@ -163,7 +146,7 @@ class NewDigestTest {
             untilDigest { fake.digests.reads > 0 }
             runCurrent()
 
-            assertNull(newDigest.entry.value)
+            assertNull(newDigest.unseen.value)
             assertEquals("d1", preferences.settings.value.digestSeen)
         }
 
@@ -174,12 +157,12 @@ class NewDigestTest {
             val rig = digestRig(fake)
             untilDigest { fake.digests.reads > 0 }
             runCurrent()
-            assertNull(rig.newDigest.entry.value)
+            assertNull(rig.newDigest.unseen.value)
 
             fake.digests.serve(mail(2))
             rig.triggers.send(Unit)
-            untilDigest { rig.newDigest.entry.value != null }
+            untilDigest { rig.newDigest.unseen.value != null }
 
-            assertEquals(2, rig.newDigest.entry.value?.count)
+            assertEquals(2, rig.newDigest.unseen.value?.items?.size)
         }
 }

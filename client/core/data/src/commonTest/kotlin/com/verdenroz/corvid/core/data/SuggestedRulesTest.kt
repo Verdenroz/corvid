@@ -46,17 +46,17 @@ private fun fromRule(
 
 class SuggestedRulesTest {
     @Test
-    fun `pendingNow reads the server and the saved rules itself and leaves out what a rule already does`() =
+    fun `current reads the saved rules and the folders`() =
         runTest {
             val fake = FakeJmapServer().withRoleMailboxes("inbox", "archive")
-            fake.suggestions.serve(FakeSuggestion("s1"), FakeSuggestion("s2", sender = "other@x.test"))
             val (rules, filters) = suggested(fake)
-            filters.save(listOf(fromRule("news@x.test", FilterAction.MoveToFolder(ARCHIVE_REF))), replaceForeign = false)
+            val saved = fromRule("news@x.test", FilterAction.MoveToFolder(ARCHIVE_REF))
+            filters.save(listOf(saved), replaceForeign = false)
 
-            val now = rules.pendingNow()
+            val set = rules.current()
 
-            assertEquals(listOf("s2"), now.suggestions.map { it.id })
-            assertEquals(listOf(ARCHIVE_REF), now.folders.filter { it.id == "archive" })
+            assertEquals(listOf(saved), set.rules)
+            assertEquals(listOf(ARCHIVE_REF), set.folders.filter { it.id == "archive" })
         }
 
     @Test

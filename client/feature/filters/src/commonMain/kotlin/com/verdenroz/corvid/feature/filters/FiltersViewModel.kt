@@ -14,8 +14,8 @@ import com.verdenroz.corvid.core.model.RuleSuggestion
 import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.uiText
 import com.verdenroz.corvid.core.ui.launchToEnd
+import com.verdenroz.corvid.core.ui.replaceDeclined
 import com.verdenroz.corvid.feature.filters.resources.Res
-import com.verdenroz.corvid.feature.filters.resources.filters_another_active
 import com.verdenroz.corvid.feature.filters.resources.filters_newer
 import com.verdenroz.corvid.feature.filters.resources.filters_not_saved
 import com.verdenroz.corvid.feature.filters.resources.filters_unreadable
@@ -90,7 +90,7 @@ class FiltersViewModel(
         update {
             it.copy(
                 confirmingSuggestion = null,
-                save = SaveStatus.Failed(uiText(Res.string.filters_not_saved, uiText(Res.string.filters_another_active))),
+                save = SaveStatus.Failed(replaceDeclined()),
             )
         }
 

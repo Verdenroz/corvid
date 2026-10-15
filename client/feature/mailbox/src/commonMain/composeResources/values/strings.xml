@@ -243,8 +243,4 @@
     <string name="offer_do_archive">Archive them on arrival</string>
     <string name="offer_do_trash">Trash them on arrival</string>
     <string name="offer_do_folder">File them in %1$s on arrival</string>
-    <string name="offer_replace_body">"%1$s" is the active Sieve script. Activating Corvid's filters turns it off. It is not deleted.</string>
-    <string name="offer_replace_confirm">Activate Corvid filters</string>
-    <string name="offer_cancel">Cancel</string>
-    <string name="offer_not_saved">Not saved: another script is active</string>
 </resources>
