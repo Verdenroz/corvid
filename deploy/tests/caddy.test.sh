@@ -61,7 +61,7 @@ fail=0
 check() { if [[ "$2" == "$3" ]]; then echo "  ok    $1"; else echo "  FAIL  $1 (got '$2')"; fail=1; fi; }
 url="https://localhost:$port"
 check "Caddy loads the Caddyfile" "$("$engine" inspect -f '{{.State.Running}}' "$name")" true
-for path in /corvid/update /corvid/notices /corvid/summaries/T1; do
+for path in /corvid/update /corvid/notices /corvid/summaries/T1 /corvid/digest /corvid/digest/latest /corvid/digest/2026-10-14; do
   check "$path without a credential stays with Stalwart" "$(fetch "$url$path")" "404 stalwart"
   check "$path POST without a credential stays with Stalwart" "$(fetch -X POST -d '{}' "$url$path")" "404 stalwart"
   check "$path with a refused credential gets Stalwart's 401" "$(fetch -u bad:bad "$url$path")" "401 stalwart"
@@ -75,7 +75,7 @@ done
 for path in /internal/scribe/suggestions /internal/scribe/summaries /internal/scribe/manifest; do
   check "$path is never routed to the sentinel" "$(fetch -X POST -d '{}' -u good:good "$url$path")" "404 stalwart"
 done
-for path in /corvid/devices/requests /corvid/devices/requests/abc /corvid/devices/requests/abc/approve /corvid/devices/phone; do
+for path in /corvid/devices/requests /corvid/devices/requests/abc /corvid/devices/requests/abc/approve /corvid/devices/phone /corvid/devices/phone/push/kinds; do
   check "$path without a credential stays with Stalwart" "$(fetch -X POST -d '{}' "$url$path")" "404 stalwart"
   check "$path with a refused credential gets Stalwart's 401" "$(fetch -X POST -d '{}' -u bad:bad "$url$path")" "401 stalwart"
   check "$path with an accepted credential reaches the sentinel" "$(fetch -X POST -d '{}' -u good:good "$url$path")" "200 sentinel"

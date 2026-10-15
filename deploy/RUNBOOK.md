@@ -236,6 +236,16 @@ The scribe's first run adopts the mailbox as it is, so only threads that change 
 summarized. Junk, Trash and `exclude_mailboxes` are never sent to the model. A pass that cannot
 reach the model ends quietly and the threads stay queued for the next one.
 
+### The overnight digest
+
+`sentinel.scribe.digest` (`at: "07:00"` and an IANA `timezone`) makes the sentinel build one digest
+a day from the Inbox mail since the last, using the stored thread summaries where it has them. It
+needs `sentinel.devices` and no model. The zone comes from a database inside the binary, so the
+image needs no zoneinfo. A sentinel down at `at` builds the day's digest when it next wakes, and
+the app reads it from `/corvid/digest/latest`. A device that sent `PUT /corvid/devices/<name>/push/kinds`
+with `["digest"]` also gets a push that names no mail. Add the block to a host's `config.yaml` only
+once it runs an image that parses it, or every service exits 78.
+
 ## Proving the spam loop learns
 
 Stalwart trains its classifier from messages marked spam or ham, so Corvid configures the
