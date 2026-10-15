@@ -268,7 +268,7 @@ fn get_emails(shared: &Shared, arguments: &Value) -> Value {
     json!({"state": mail.state.to_string(), "list": list})
 }
 
-/// The ids of the messages in a mailbox received from `after` up to but not including `before`,
+/// The ids of the messages in a mailbox received strictly between `after` and `before`,
 /// newest first.
 fn query_emails(shared: &Shared, arguments: &Value) -> Value {
     assert_eq!(arguments["accountId"], MAIL_ACCOUNT);
@@ -282,7 +282,7 @@ fn query_emails(shared: &Shared, arguments: &Value) -> Value {
         .map(|(_, email)| email)
         .filter(|email| {
             email["mailboxIds"][filter["inMailbox"].as_str().unwrap()] == true
-                && email["receivedAt"].as_str().unwrap() >= after
+                && email["receivedAt"].as_str().unwrap() > after
                 && email["receivedAt"].as_str().unwrap() < before
         })
         .collect();

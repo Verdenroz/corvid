@@ -25,7 +25,7 @@ pub(super) async fn inbox(keys: &Keys, from: i64, to: i64) -> Result<Vec<Message
             (
                 "Email/query",
                 json!({"accountId": account,
-                       "filter": {"inMailbox": inbox, "after": rfc3339(from + 1),
+                       "filter": {"inMailbox": inbox, "after": rfc3339(from),
                                   "before": rfc3339(to + 1)},
                        "sort": [{"property": "receivedAt", "isAscending": false}],
                        "limit": MAX_MESSAGES}),
@@ -44,6 +44,8 @@ pub(super) async fn inbox(keys: &Keys, from: i64, to: i64) -> Result<Vec<Message
         .into_iter()
         .flatten()
         .filter_map(message)
+        // Servers differ on whether `after` includes its bound.
+        .filter(|message| message.received_at > from && message.received_at <= to)
         .collect())
 }
 
