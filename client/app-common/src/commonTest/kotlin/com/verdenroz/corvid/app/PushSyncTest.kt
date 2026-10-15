@@ -1,5 +1,6 @@
 package com.verdenroz.corvid.app
 
+import com.verdenroz.corvid.core.data.DigestRepository
 import com.verdenroz.corvid.core.keyring.PushEndpointRepository
 import com.verdenroz.corvid.core.prefs.DevicePreferences
 import com.verdenroz.corvid.core.prefs.DeviceSettings
@@ -43,7 +44,7 @@ private suspend fun TestScope.follow(
     fake: FakeJmapServer,
     preferences: DevicePreferences,
 ) {
-    val sync = PushSync(PushEndpointRepository(fake.client()), preferences, "phone")
+    val sync = PushSync(PushEndpointRepository(fake.client()), DigestRepository(fake.client()), preferences, "phone")
     backgroundScope.launch { sync.run() }
     runCurrent()
 }
@@ -165,7 +166,7 @@ class PushSyncTest {
         runTest {
             val preferences = preferences()
             preferences.setPushSubscription(SUBSCRIPTION)
-            val sync = PushSync(PushEndpointRepository(fake.client()), preferences, "phone")
+            val sync = PushSync(PushEndpointRepository(fake.client()), DigestRepository(fake.client()), preferences, "phone")
             fake.unreachable = true
 
             backgroundScope.launch { sync.run() }
@@ -173,5 +174,60 @@ class PushSyncTest {
             runCurrent()
 
             assertEquals(PushSettings(PushStatus.Unsent, SUBSCRIPTION), preferences.settings.value.push)
+        }
+
+    @Test
+    fun `an accepted endpoint is followed by a request for the digest kind`() =
+        runTest {
+            val preferences = preferences()
+            preferences.setPushSubscription(SUBSCRIPTION)
+
+            follow(fake, preferences)
+            until { fake.devices.pushKinds.isNotEmpty() }
+
+            assertEquals(listOf("digest"), fake.devices.pushKinds["phone"])
+        }
+
+    @Test
+    fun `an own connection is also asked for the digest kind`() =
+        runTest {
+            val preferences = preferences()
+            preferences.setPushSubscription(PushSubscription(OWN_CONNECTION, "p256", "auth"))
+
+            follow(fake, preferences)
+            until { fake.devices.pushKinds.isNotEmpty() }
+
+            assertEquals(listOf("digest"), fake.devices.pushKinds["phone"])
+        }
+
+    @Test
+    fun `an endpoint the server refuses is not followed by a kinds request`() =
+        runTest {
+            fake.devices.pushBase = "https://other.test/"
+            val preferences = preferences()
+            preferences.setPushSubscription(SUBSCRIPTION)
+
+            follow(fake, preferences)
+            until { preferences.settings.value.push.status != PushStatus.Unsent }
+
+            assertEquals(0, fake.devices.kindsCalls)
+        }
+
+    @Test
+    fun `a server without the kinds route keeps the endpoint sent and is asked once`() =
+        runTest {
+            fake.devices.kindsUnsupported = true
+            val preferences = preferences()
+            preferences.setPushSubscription(SUBSCRIPTION)
+            val sync = PushSync(PushEndpointRepository(fake.client()), DigestRepository(fake.client()), preferences, "phone")
+            backgroundScope.launch { sync.run() }
+            until { fake.devices.kindsCalls == 1 }
+
+            preferences.setPushSubscription(SUBSCRIPTION.copy(auth = "auth2"))
+            until { fake.devices.pushCalls.size == 2 }
+            runCurrent()
+
+            assertEquals(PushStatus.Sent, preferences.settings.value.push.status)
+            assertEquals(1, fake.devices.kindsCalls)
         }
 }

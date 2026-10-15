@@ -15,6 +15,8 @@ private const val UNREADABLE_TAG = "unreadable"
 class AndroidMailPreviews(private val context: Context) {
     private val manager = context.newMailChannel()
 
+    private val digests = AndroidDigestNotices(context)
+
     /**
      * Shows one push. A body the connector could not decrypt is ignored, since anyone who can reach the push host can
      * post to the endpoint; one that decrypted but cannot be read shows a generic notice.
@@ -23,7 +25,13 @@ class AndroidMailPreviews(private val context: Context) {
         content: ByteArray,
         decrypted: Boolean,
     ) {
-        if (decrypted) post(readMailPreview(content))
+        if (!decrypted) return
+        when (val notice = readPushNotice(content)) {
+            is PushNotice.Mail -> post(notice.preview)
+            is PushNotice.Digest -> digests.post(notice.id)
+            PushNotice.Unreadable -> post(null)
+            PushNotice.Ignored -> Unit
+        }
     }
 
     private fun post(preview: MailPreview?) {

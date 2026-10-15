@@ -19,12 +19,21 @@ class AppPresence {
     /** Delivered only to an unlocked session already collecting; a locked app opens on the Inbox after unlocking anyway. */
     val inboxRequests: Flow<Unit> = requests
 
+    private val digests = MutableSharedFlow<String>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+
+    /** The ids of the digests a tapped notification asks to show, delivered like [inboxRequests]. */
+    val digestRequests: Flow<String> = digests
+
     fun shown(inView: Boolean) {
         _inView.value = inView
     }
 
     fun requestInbox() {
         requests.tryEmit(Unit)
+    }
+
+    fun requestDigest(id: String) {
+        digests.tryEmit(id)
     }
 }
 

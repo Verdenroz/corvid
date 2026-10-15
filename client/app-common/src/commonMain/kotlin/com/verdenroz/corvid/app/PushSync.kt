@@ -1,5 +1,6 @@
 package com.verdenroz.corvid.app
 
+import com.verdenroz.corvid.core.data.DigestRepository
 import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.keyring.PushEndpointRepository
 import com.verdenroz.corvid.core.prefs.DevicePreferences
@@ -12,10 +13,12 @@ import kotlinx.coroutines.flow.map
 /**
  * Hands the server this device's push endpoint while the app is unlocked: whatever is held when [run] starts, since
  * the server drops an endpoint FCM no longer knows, then each new endpoint and each removal as it happens. A server it
- * cannot reach leaves the state as it was, for the next unlock.
+ * cannot reach leaves the state as it was, for the next unlock. Each accepted endpoint is followed by a request for
+ * the digest push kind.
  */
 class PushSync(
     private val endpoints: PushEndpointRepository,
+    private val digests: DigestRepository,
     private val preferences: DevicePreferences,
     private val deviceName: String,
 ) {
@@ -35,6 +38,7 @@ class PushSync(
                     result.status,
                     result.token ?: push.streamToken.takeIf { result.status == PushStatus.Sent },
                 )
+                if (result.status == PushStatus.Sent) digests.askForDigestPush(deviceName)
             } else if (push.status == PushStatus.Removing) {
                 endpoints.remove(deviceName)
                 preferences.finishPushRemoval()
