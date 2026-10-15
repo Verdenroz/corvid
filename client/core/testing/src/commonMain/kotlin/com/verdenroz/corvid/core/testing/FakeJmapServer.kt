@@ -148,6 +148,9 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
     /** `/corvid/summaries`, the model-written thread summaries. */
     val summaries = FakeSummaries()
 
+    /** `/corvid/digest`, the server's overnight digests. */
+    val digests = FakeDigests()
+
     /** `/corvid/app/`, the app builds and their manifest. */
     val app = FakeAppRelease()
 
@@ -182,6 +185,7 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
             path == "/corvid/push/vapid" -> devices.vapid(this)
             path.startsWith("/corvid/suggestions") -> suggestions.handle(this, request)
             path.startsWith("/corvid/summaries/") -> summaries.handle(this, request)
+            path.startsWith("/corvid/digest") -> digests.handle(this, request)
             path.startsWith("/corvid/app/") -> app.handle(this, request)
             path.startsWith("/i/") -> imageResponse(request, path)
             else -> webTier[path]?.handle(this, request) ?: respond("not found", HttpStatusCode.NotFound)
