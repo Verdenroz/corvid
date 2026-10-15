@@ -75,7 +75,7 @@ pub fn run(
     now: i64,
 ) -> io::Result<Summary> {
     let mut state = open(path)?;
-    let changes = outside(mailbox.changes(state.cursors.as_ref()))?;
+    let changes = mailbox.changes(state.cursors.as_ref())?;
     state.waiting.extend(changes.threads);
     state.cursors = Some(changes.cursors);
     save(path, &state)?;
@@ -83,8 +83,8 @@ pub fn run(
         return Ok(Summary::default());
     }
 
-    let held = outside(sink.manifest(now))?;
-    let excluded = excluded_folders(&outside(mailbox.folders())?, &settings.exclude_mailboxes);
+    let held = sink.manifest(now)?;
+    let excluded = excluded_folders(&mailbox.folders()?, &settings.exclude_mailboxes);
     let started = Instant::now();
     let mut asked = 0;
     let mut summary = Summary::default();
@@ -142,7 +142,7 @@ pub fn run(
     }
 
     if !upserts.is_empty() || !deletes.is_empty() {
-        outside(sink.post(now, &upserts, &deletes))?;
+        sink.post(now, &upserts, &deletes)?;
     }
     save(path, &state)?;
     summary.waiting = state.waiting.len();
@@ -159,7 +159,8 @@ fn judge(
     excluded: &BTreeSet<String>,
     settings: &Settings,
 ) -> io::Result<Verdict> {
-    let kept: Vec<String> = outside(mailbox.members(id))?
+    let kept: Vec<String> = mailbox
+        .members(id)?
         .into_iter()
         .filter(|member| {
             !member
@@ -177,7 +178,7 @@ fn judge(
         return Ok(Verdict::Current);
     }
 
-    let mails = outside(mailbox.mails(&kept))?;
+    let mails = mailbox.mails(&kept)?;
     let long = mails
         .iter()
         .any(|mail| mail.body.chars().count() > settings.long_body_chars);
@@ -185,15 +186,6 @@ fn judge(
         return Ok(Verdict::Short { hash });
     }
     Ok(Verdict::Ask { hash, mails })
-}
-
-/// Only the state file may report `InvalidData`, which stops the service for good. A reply the
-/// mail server or sentinel got wrong is retried like any other failure.
-fn outside<T>(result: io::Result<T>) -> io::Result<T> {
-    result.map_err(|error| match error.kind() {
-        io::ErrorKind::InvalidData => io::Error::other(error),
-        _ => error,
-    })
 }
 
 fn excluded_folders(folders: &[Folder], exclude: &[String]) -> BTreeSet<String> {

@@ -80,7 +80,7 @@ impl Fake {
 impl Mailbox for Fake {
     fn changes(&self, since: Option<&Cursors>) -> io::Result<Changes> {
         if self.malformed.get() {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "no state"));
+            return Err(corvid_jmap::missing("a state"));
         }
         let threads = if since.is_none() && !self.adopted.replace(true) {
             self.touched.borrow_mut().clear();

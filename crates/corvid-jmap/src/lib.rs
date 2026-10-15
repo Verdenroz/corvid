@@ -181,16 +181,35 @@ fn transport(error: reqwest::Error) -> io::Error {
     io::Error::new(kind, error)
 }
 
+/// A reply the server got wrong. Not `InvalidData`: callers read that as corrupt local state and
+/// stop for good, while a malformed reply is worth retrying.
 pub fn missing(what: &str) -> io::Error {
-    io::Error::new(
-        io::ErrorKind::InvalidData,
-        format!("the server did not return {what}"),
-    )
+    io::Error::other(format!("the server did not return {what}"))
+}
+
+/// Whether `error` is the server saying it no longer holds the changes since a state, as after a
+/// restore. `call` carries a method error's JSON in the message, which is where the type is read.
+pub fn cannot_calculate_changes(error: &io::Error) -> bool {
+    error.to_string().contains("cannotCalculateChanges")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_missing_field_is_not_a_corrupt_state() {
+        assert_eq!(missing("a state").kind(), io::ErrorKind::Other);
+    }
+
+    #[test]
+    fn a_method_error_naming_cannot_calculate_changes_is_recognised() {
+        let lost = io::Error::other(r#"Email/changes: {"type":"cannotCalculateChanges"}"#);
+        let other = io::Error::other(r#"Email/changes: {"type":"invalidArguments"}"#);
+
+        assert!(cannot_calculate_changes(&lost));
+        assert!(!cannot_calculate_changes(&other));
+    }
 
     #[test]
     fn an_advertised_url_moves_onto_the_host_that_was_dialled() {

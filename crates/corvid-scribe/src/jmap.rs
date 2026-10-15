@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::io;
 
-use corvid_jmap::{Client, ids, missing, text};
+use corvid_jmap::{Client, cannot_calculate_changes, ids, missing, text};
 use serde_json::{Value, json};
 
 use crate::body;
@@ -108,7 +108,7 @@ impl Mailbox for Jmap {
         };
 
         match self.changes_since(since) {
-            Err(error) if lost(&error) => {
+            Err(error) if cannot_calculate_changes(&error) => {
                 tracing::warn!(%error, "the server cannot calculate changes; adopting its position");
                 self.changes(None)
             }
@@ -152,11 +152,6 @@ impl Mailbox for Jmap {
         }
         Ok(mails)
     }
-}
-
-/// The server no longer holds the changes since a cursor, as after a restore.
-fn lost(error: &io::Error) -> bool {
-    error.to_string().contains("cannotCalculateChanges")
 }
 
 fn folder(value: &Value) -> Option<Folder> {
