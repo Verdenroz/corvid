@@ -233,6 +233,7 @@ private fun ThreadColumn(
                     bottom = 16.dp,
                 ).widthIn(max = 860.dp),
         )
+        state.summary?.let { ThreadSummaryCard(it, wide) }
         state.messages.forEach { email ->
             ThreadMessage(
                 email = email,
@@ -241,7 +242,6 @@ private fun ThreadColumn(
                 newest = email.id == state.newest.id,
                 threaded = threaded,
                 wide = wide,
-                summary = state.summary.takeIf { email.id == state.newest.id },
                 teach = state.teach[email.id] ?: TeachState(),
                 headers = state.headers[email.id],
                 attachments = attachments,

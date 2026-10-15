@@ -31,61 +31,40 @@ import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.model.EmailDetail
 import com.verdenroz.corvid.core.model.Label
 import com.verdenroz.corvid.core.model.Seal
-import com.verdenroz.corvid.core.model.ThreadSummary
 import com.verdenroz.corvid.core.model.labels
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.provenance.LabelChip
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.custody_labelled
 import com.verdenroz.corvid.feature.mailbox.resources.custody_sender
-import com.verdenroz.corvid.feature.mailbox.resources.custody_summarised
 import com.verdenroz.corvid.feature.mailbox.resources.custody_way_in
-import com.verdenroz.corvid.feature.mailbox.resources.summary_caveat
 import org.jetbrains.compose.resources.stringResource
 
-/**
- * Who sent it, what happened on the way in, who labelled it and when a model summarised the thread, two to a row
- * unless [wide]. The summary reads under the cells.
- */
+/** Who sent it, what happened on the way in and who labelled it, side by side when [wide]. */
 @Composable
 internal fun Custody(
     email: EmailDetail,
     wide: Boolean,
-    summary: ThreadSummary?,
     teach: @Composable (Label.Guess) -> Unit,
 ) {
     val colors = CorvidTheme.colors
     val edge = if (email.provenance.suspect) SolidColor(colors.danger) else CorvidTheme.sheen
-    val cells = custodyCells(email.provenance, email.labels, summary)
-    Column(Modifier.fillMaxWidth().clip(CorvidShape.medium).border(1.dp, edge, CorvidShape.medium)) {
-        (if (wide) listOf(cells) else cells.chunked(2)).forEachIndexed { index, row ->
-            if (index > 0) HorizontalDivider(color = colors.line)
-            Row(Modifier.height(IntrinsicSize.Min)) {
-                row.forEachIndexed { column, cell ->
-                    if (column > 0) VerticalDivider(color = colors.line)
-                    CustodyCellView(cell, teach, Modifier.weight(1f).fillMaxHeight())
-                }
+    val cells = custodyCells(email.provenance, email.labels)
+    val frame = Modifier.fillMaxWidth().clip(CorvidShape.medium).border(1.dp, edge, CorvidShape.medium)
+    if (wide) {
+        Row(frame.height(IntrinsicSize.Min)) {
+            cells.forEachIndexed { index, cell ->
+                if (index > 0) VerticalDivider(color = colors.line)
+                CustodyCellView(cell, teach, Modifier.weight(1f).fillMaxHeight())
             }
         }
-        summary?.let {
-            HorizontalDivider(color = colors.line)
-            SummaryText(it)
+    } else {
+        Column(frame) {
+            cells.forEachIndexed { index, cell ->
+                if (index > 0) HorizontalDivider(color = colors.line)
+                CustodyCellView(cell, teach, Modifier.fillMaxWidth())
+            }
         }
-    }
-}
-
-/** The text is model output derived from the mail, so it is a plain `Text`: no links, no markdown, nothing to act on. */
-@Composable
-private fun SummaryText(summary: ThreadSummary) {
-    val colors = CorvidTheme.colors
-    Column(Modifier.fillMaxWidth().background(colors.rail).padding(horizontal = 12.dp, vertical = 10.dp)) {
-        Text(summary.text, style = CorvidTheme.type.body, color = colors.ink)
-        Text(
-            stringResource(Res.string.summary_caveat),
-            style = CorvidTheme.type.meta,
-            color = colors.inkFaint,
-            modifier = Modifier.padding(top = 6.dp),
-        )
     }
 }
 
@@ -108,8 +87,6 @@ private fun CustodyCellView(
         is CustodyCell.WayIn ->
             Cell(CorvidIcons.Eye, stringResource(Res.string.custody_way_in), cell.value.asString(), cell.detail?.asString(), modifier)
         is CustodyCell.Labelled -> LabelledCell(cell, teach, modifier)
-        is CustodyCell.Summarised ->
-            Cell(CorvidIcons.Headers, stringResource(Res.string.custody_summarised), cell.value.asString(), null, modifier)
     }
 }
 
@@ -131,7 +108,7 @@ private fun LabelledCell(
 }
 
 @Composable
-private fun Cell(
+internal fun Cell(
     icon: ImageVector,
     title: String,
     value: String,

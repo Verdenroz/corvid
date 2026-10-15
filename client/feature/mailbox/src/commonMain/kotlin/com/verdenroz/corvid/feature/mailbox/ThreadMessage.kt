@@ -35,7 +35,6 @@ import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.model.EmailAddress
 import com.verdenroz.corvid.core.model.EmailDetail
 import com.verdenroz.corvid.core.model.Seal
-import com.verdenroz.corvid.core.model.ThreadSummary
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.provenance.SenderAvatar
 import com.verdenroz.corvid.core.ui.provenance.sealDescription
@@ -62,7 +61,6 @@ internal fun ThreadMessage(
     newest: Boolean,
     threaded: Boolean,
     wide: Boolean,
-    summary: ThreadSummary?,
     teach: TeachState,
     headers: HeadersState?,
     attachments: Map<String, AttachmentState>,
@@ -88,7 +86,6 @@ internal fun ThreadMessage(
                     newest = newest,
                     threaded = threaded,
                     wide = wide,
-                    summary = summary,
                     teach = teach,
                     headers = headers,
                     attachments = attachments,
@@ -114,7 +111,6 @@ private fun ExpandedMessage(
     newest: Boolean,
     threaded: Boolean,
     wide: Boolean,
-    summary: ThreadSummary?,
     teach: TeachState,
     headers: HeadersState?,
     attachments: Map<String, AttachmentState>,
@@ -135,7 +131,7 @@ private fun ExpandedMessage(
             if (threaded) Modifier.clickable(onClick = onToggle) else Modifier,
         )
         headers?.let { HeadersPanel(it, Modifier.padding(bottom = 16.dp)) }
-        Custody(email, wide, summary) { guess -> TeachControls(guess, teach.answering, teach.error, onAnswer) }
+        Custody(email, wide) { guess -> TeachControls(guess, teach.answering, teach.error, onAnswer) }
         MessageBody(email, repository, Modifier.padding(top = 18.dp).widthIn(max = 640.dp))
         AttachmentStrip(email, attachments, onOpenAttachment, Modifier.padding(top = 20.dp))
         if (newest) Replies(email, onCompose) else QuietReplies(email, onCompose)
