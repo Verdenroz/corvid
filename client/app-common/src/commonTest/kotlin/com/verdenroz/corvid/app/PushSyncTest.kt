@@ -230,4 +230,31 @@ class PushSyncTest {
             assertEquals(PushStatus.Sent, preferences.settings.value.push.status)
             assertEquals(1, fake.devices.kindsCalls)
         }
+
+    @Test
+    fun `an endpoint the server already held still asks for the digest kind on unlock`() =
+        runTest {
+            val preferences = preferences()
+            preferences.setPushSubscription(SUBSCRIPTION)
+            preferences.recordPushAnswer(SUBSCRIPTION, PushStatus.Sent)
+
+            follow(fake, preferences)
+            until { fake.devices.pushKinds.isNotEmpty() }
+
+            assertEquals(listOf("digest"), fake.devices.pushKinds["phone"])
+        }
+
+    @Test
+    fun `a failed kinds request leaves the registration recorded as sent`() =
+        runTest {
+            fake.devices.kindsBroken = true
+            val preferences = preferences()
+            preferences.setPushSubscription(SUBSCRIPTION)
+
+            follow(fake, preferences)
+            until { fake.devices.kindsCalls == 1 }
+            runCurrent()
+
+            assertEquals(PushSettings(PushStatus.Sent, SUBSCRIPTION), preferences.settings.value.push)
+        }
 }

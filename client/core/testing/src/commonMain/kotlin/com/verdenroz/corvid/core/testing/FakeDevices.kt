@@ -70,6 +70,9 @@ class FakeDevices(private val blobs: MutableMap<String, ByteArray>) {
     /** Answers the push kinds route 404, as a server from before it does. */
     var kindsUnsupported: Boolean = false
 
+    /** Answers the push kinds route 500. */
+    var kindsBroken: Boolean = false
+
     /** The push kinds each device asked for. */
     val pushKinds: MutableMap<String, List<String>> = mutableMapOf()
 
@@ -237,6 +240,7 @@ class FakeDevices(private val blobs: MutableMap<String, ByteArray>) {
         name: String,
     ): HttpResponseData {
         kindsCalls++
+        if (kindsBroken) return scope.respond("", HttpStatusCode.InternalServerError)
         if (kindsUnsupported || name !in records) return scope.respond("", HttpStatusCode.NotFound)
         pushKinds[name] = body(request).getValue("kinds").jsonArray.map { it.jsonPrimitive.content }
         return scope.respond("", HttpStatusCode.NoContent)
