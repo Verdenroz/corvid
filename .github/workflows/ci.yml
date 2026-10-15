@@ -176,7 +176,8 @@ jobs:
                  --set-string 'secrets.values.cloudflare\.token=x'
           helm lint charts/corvid "$@"
           helm template ci charts/corvid "$@" --set labeler.enabled=true \
-            --set secrets.values.CORVID_JMAP_PASSWORD=x > rendered.yaml
+            --set secrets.values.CORVID_JMAP_PASSWORD=x --set scribe.enabled=true \
+            --set secrets.values.CORVID_SCRIBE_JMAP_PASSWORD=x > rendered.yaml
           test "$(grep -c '^kind:' rendered.yaml)" -gt 0
           kubeconform -strict -summary rendered.yaml
 

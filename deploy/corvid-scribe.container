@@ -1,0 +1,24 @@
+[Unit]
+Description=Corvid scribe
+After=network-online.target corvid-mail.service
+Wants=network-online.target
+
+[Container]
+ContainerName=corvid-scribe
+Image=${CORVID_IMAGE}
+Pod=corvid.pod
+Exec=/usr/local/bin/corvid-scribe
+EnvironmentFile=/opt/corvid/scribe-mail.env
+EnvironmentFile=/opt/corvid/scribe.env
+Volume=/opt/corvid/config.yaml:/etc/corvid/config.yaml:ro
+Volume=/opt/corvid/scribe:/var/lib/corvid
+
+[Service]
+# Off the delivery path, so a scribe that is down delays summaries and never mail. It still
+# restarts, but a refusal to read its own state is deliberate and must not be looped over.
+Restart=on-failure
+RestartSec=30
+RestartPreventExitStatus=1
+
+[Install]
+WantedBy=multi-user.target

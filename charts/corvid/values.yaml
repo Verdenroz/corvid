@@ -22,6 +22,18 @@ config:
       state: /var/lib/corvid/auth.json
     # scribe:
     #   state: /var/lib/corvid/scribe.json
+  # Thread summaries, with scribe.enabled. Needs sentinel.scribe above.
+  # scribe:
+  #   jmap_url: http://127.0.0.1:8080
+  #   jmap_user: alice@example.com
+  #   state: /var/lib/corvid/scribe.json
+  #   sentinel_url: http://127.0.0.1:11333
+  #   model:
+  #     url: http://10.0.0.2:8080/v1/chat/completions
+  #     name: qwen3.6:35b-a3b
+  #     request_extra:
+  #       chat_template_kwargs:
+  #         enable_thinking: false
 
 images:
   # Built from deploy/Containerfile and pushed to a registry the cluster can pull from.
@@ -46,6 +58,8 @@ secrets:
     STALWART_RECOVERY_ADMIN: ""
     # An app password for the labeler, created once Stalwart is running.
     CORVID_JMAP_PASSWORD: ""
+    # An app password for the scribe, created once Stalwart is running.
+    CORVID_SCRIBE_JMAP_PASSWORD: ""
     # openssl rand -hex 32. The plan's WebHook signs with it; the sentinel verifies with it.
     CORVID_SENTINEL_SECRET: ""
     # openssl rand -hex 32. Needed only with labeler.suggest and sentinel.scribe in config.
@@ -53,6 +67,10 @@ secrets:
 
 # Off until an app password exists for it: see the chart README.
 labeler:
+  enabled: false
+
+# Off until an app password exists for it, and config.scribe and sentinel.scribe are set.
+scribe:
   enabled: false
 
 # On by default, unlike the labeler: the plan's WebHook is a static, unconditional entry in
@@ -89,6 +107,9 @@ resources:
     requests: {memory: 32Mi}
     limits: {memory: 256Mi}
   labeler:
+    requests: {memory: 32Mi}
+    limits: {memory: 256Mi}
+  scribe:
     requests: {memory: 32Mi}
     limits: {memory: 256Mi}
   sentinel:

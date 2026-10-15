@@ -31,7 +31,7 @@ drift() {
 bad_if_here() { if [[ "$1" == true ]]; then bad "${*:2}"; else drift "${*:2}"; fi; }
 
 echo "== services =="
-services=(corvid-unbound corvid-mail corvid-milter corvid-imgproxy corvid-labeler corvid-sentinel corvid-caddy)
+services=(corvid-unbound corvid-mail corvid-milter corvid-imgproxy corvid-labeler corvid-scribe corvid-sentinel corvid-caddy)
 # A service that started before the mail server exits 75 and sits "activating" through RestartSec.
 deadline=$((SECONDS + 60))
 while (( SECONDS < deadline )) && systemctl is-active "${services[@]/%/.service}" | grep -qx activating; do

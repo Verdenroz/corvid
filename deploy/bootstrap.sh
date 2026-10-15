@@ -137,6 +137,8 @@ echo "[4/6] quadlet units"
 render_units "$QUADLET_DIR" "$HERE"
 install -m 644 "$HERE/corvid-update.service" "$HERE/corvid-update.timer" "$HERE/corvid-update.path" /etc/systemd/system/
 systemctl daemon-reload
+gate_on_section corvid-labeler.service labeler
+gate_on_section corvid-scribe.service scribe
 systemctl enable --now corvid-update.timer corvid-update.path >/dev/null
 ok "units installed from $CORVID_IMAGE, pod publishing web port $WEB_PORT"
 
