@@ -15,16 +15,16 @@ pub struct State {
     pub cursors: Option<Cursors>,
     /// Threads to judge again, kept until judged so a model that is off loses none.
     pub waiting: BTreeSet<String>,
-    /// Thread to the input hash whose answer came back empty or unfinished, so the same
-    /// messages are not asked about every pass.
-    pub tried: BTreeMap<String, String>,
+    /// Thread to the input hash of a judgement that kept it from being summarized: too short, or
+    /// an answer that came back empty or unfinished. The same messages are not judged again.
+    pub judged: BTreeMap<String, String>,
 }
 
 corvid_store::pin_shape!(Cursors { email, thread });
 corvid_store::pin_shape!(State {
     cursors,
     waiting,
-    tried
+    judged
 });
 
 pub fn open(path: &Path) -> io::Result<State> {

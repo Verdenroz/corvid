@@ -28,6 +28,7 @@ pub struct Fake {
     threads: RefCell<BTreeMap<String, Vec<Stored>>>,
     touched: RefCell<BTreeSet<String>>,
     adopted: Cell<bool>,
+    pub malformed: Cell<bool>,
     pub bodies_fetched: RefCell<Vec<String>>,
 }
 
@@ -78,6 +79,9 @@ impl Fake {
 
 impl Mailbox for Fake {
     fn changes(&self, since: Option<&Cursors>) -> io::Result<Changes> {
+        if self.malformed.get() {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "no state"));
+        }
         let threads = if since.is_none() && !self.adopted.replace(true) {
             self.touched.borrow_mut().clear();
             Vec::new()

@@ -47,10 +47,14 @@ pub struct Summary {
 }
 
 enum Verdict {
-    /// Already summarized or already tried for exactly these messages.
+    /// Already summarized or already judged for exactly these messages.
     Current,
-    /// No message left, or too little thread to summarize.
-    Drop,
+    /// No message left.
+    Gone,
+    /// Too little thread to summarize.
+    Short {
+        hash: String,
+    },
     Ask {
         hash: String,
         mails: Vec<Mail>,
@@ -59,7 +63,7 @@ enum Verdict {
 
 /// Collects what changed, then asks the model about the waiting threads that need a summary.
 ///
-/// A thread leaves the waiting set once it is settled: summarized, unusable, current or dropped.
+/// A thread leaves the waiting set once it is settled: summarized, unusable, current, short or gone.
 /// The model not answering ends the pass with the rest still waiting. Nothing past the cursors
 /// is saved until the sentinel has taken the results, so a failed post repeats.
 pub fn run(
@@ -71,7 +75,7 @@ pub fn run(
     now: i64,
 ) -> io::Result<Summary> {
     let mut state = open(path)?;
-    let changes = mailbox.changes(state.cursors.as_ref())?;
+    let changes = outside(mailbox.changes(state.cursors.as_ref()))?;
     state.waiting.extend(changes.threads);
     state.cursors = Some(changes.cursors);
     save(path, &state)?;
@@ -79,8 +83,8 @@ pub fn run(
         return Ok(Summary::default());
     }
 
-    let held = sink.manifest(now)?;
-    let excluded = excluded_folders(&mailbox.folders()?, &settings.exclude_mailboxes);
+    let held = outside(sink.manifest(now))?;
+    let excluded = excluded_folders(&outside(mailbox.folders())?, &settings.exclude_mailboxes);
     let started = Instant::now();
     let mut asked = 0;
     let mut summary = Summary::default();
@@ -88,13 +92,16 @@ pub fn run(
     let mut deletes = Vec::new();
 
     for id in state.waiting.clone() {
-        match judge(mailbox, &id, &held, &state.tried, &excluded, settings)? {
+        match judge(mailbox, &id, &held, &state.judged, &excluded, settings)? {
             Verdict::Current => {
                 state.waiting.remove(&id);
             }
-            Verdict::Drop => {
+            verdict @ (Verdict::Gone | Verdict::Short { .. }) => {
                 state.waiting.remove(&id);
-                state.tried.remove(&id);
+                match verdict {
+                    Verdict::Short { hash } => state.judged.insert(id.clone(), hash),
+                    _ => state.judged.remove(&id),
+                };
                 if held.contains_key(&id) {
                     deletes.push(id);
                     summary.deleted += 1;
@@ -115,7 +122,7 @@ pub fn run(
                 state.waiting.remove(&id);
                 match usable(written) {
                     Some(text) => {
-                        state.tried.remove(&id);
+                        state.judged.remove(&id);
                         upserts.push(Upsert {
                             thread_id: id,
                             input_hash: hash,
@@ -126,7 +133,7 @@ pub fn run(
                         summary.stored += 1;
                     }
                     None => {
-                        state.tried.insert(id, hash);
+                        state.judged.insert(id, hash);
                         summary.unusable += 1;
                     }
                 }
@@ -135,25 +142,24 @@ pub fn run(
     }
 
     if !upserts.is_empty() || !deletes.is_empty() {
-        sink.post(now, &upserts, &deletes)?;
+        outside(sink.post(now, &upserts, &deletes))?;
     }
     save(path, &state)?;
     summary.waiting = state.waiting.len();
     Ok(summary)
 }
 
-/// Bodies are fetched only for a thread whose messages differ from what is held or tried, and
-/// a thread under `min_messages` needs them to know whether one is long.
+/// Bodies are fetched only for a thread whose messages differ from what is held or judged, and
+/// a thread under `min_messages` needs them once to know whether one is long.
 fn judge(
     mailbox: &impl Mailbox,
     id: &str,
     held: &BTreeMap<String, String>,
-    tried: &BTreeMap<String, String>,
+    judged: &BTreeMap<String, String>,
     excluded: &BTreeSet<String>,
     settings: &Settings,
 ) -> io::Result<Verdict> {
-    let kept: Vec<String> = mailbox
-        .members(id)?
+    let kept: Vec<String> = outside(mailbox.members(id))?
         .into_iter()
         .filter(|member| {
             !member
@@ -164,21 +170,30 @@ fn judge(
         .map(|member| member.id)
         .collect();
     if kept.is_empty() {
-        return Ok(Verdict::Drop);
+        return Ok(Verdict::Gone);
     }
     let hash = prompt::input_hash(&kept);
-    if held.get(id) == Some(&hash) || tried.get(id) == Some(&hash) {
+    if held.get(id) == Some(&hash) || judged.get(id) == Some(&hash) {
         return Ok(Verdict::Current);
     }
 
-    let mails = mailbox.mails(&kept)?;
+    let mails = outside(mailbox.mails(&kept))?;
     let long = mails
         .iter()
         .any(|mail| mail.body.chars().count() > settings.long_body_chars);
     if kept.len() < settings.min_messages && !long {
-        return Ok(Verdict::Drop);
+        return Ok(Verdict::Short { hash });
     }
     Ok(Verdict::Ask { hash, mails })
+}
+
+/// Only the state file may report `InvalidData`, which stops the service for good. A reply the
+/// mail server or sentinel got wrong is retried like any other failure.
+fn outside<T>(result: io::Result<T>) -> io::Result<T> {
+    result.map_err(|error| match error.kind() {
+        io::ErrorKind::InvalidData => io::Error::other(error),
+        _ => error,
+    })
 }
 
 fn excluded_folders(folders: &[Folder], exclude: &[String]) -> BTreeSet<String> {

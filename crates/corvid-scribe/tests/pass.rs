@@ -305,3 +305,46 @@ fn a_corrupt_state_file_is_refused() {
 
     assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
 }
+
+#[test]
+fn a_malformed_reply_from_the_mail_server_is_not_reported_as_a_corrupt_state() {
+    let rig = Rig::adopted();
+    rig.mailbox.malformed.set(true);
+
+    let error = rig.try_pass().unwrap_err();
+
+    assert_ne!(error.kind(), std::io::ErrorKind::InvalidData);
+}
+
+#[test]
+fn a_short_thread_is_fetched_once_until_its_messages_change() {
+    let rig = Rig::adopted();
+    rig.mailbox.thread_of("T1", 2, INBOX);
+    rig.pass();
+    let fetched = rig.mailbox.bodies_fetched.borrow().len();
+
+    rig.mailbox.move_to("T1-0", INBOX);
+    rig.pass();
+
+    assert_eq!(rig.mailbox.bodies_fetched.borrow().len(), fetched);
+
+    rig.mailbox.deliver("T1", "T1-2", INBOX, "third");
+    rig.pass();
+
+    assert_eq!(held(&rig), ["T1"]);
+}
+
+#[test]
+fn a_summary_is_deleted_when_its_thread_falls_below_the_threshold() {
+    let rig = Rig::adopted();
+    rig.mailbox.thread_of("T1", 3, INBOX);
+    rig.pass();
+
+    rig.mailbox.move_to("T1-0", TRASH);
+    rig.pass();
+    rig.mailbox.move_to("T1-1", INBOX);
+    rig.pass();
+
+    assert!(held(&rig).is_empty());
+    assert_eq!(rig.asked(), 1);
+}
