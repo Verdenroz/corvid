@@ -67,10 +67,6 @@ impl Keys {
         }
     }
 
-    pub fn mail_address(&self) -> &str {
-        &self.mail_address
-    }
-
     /// Creates the key file for a device with fresh random content and returns where it is. A
     /// failure on remembered ids looks them up again before it counts.
     pub async fn enroll(&self, device: &str) -> Result<Approved, Error> {
@@ -157,9 +153,25 @@ impl Keys {
         })
     }
 
+    /// The mail account's id and its Inbox's.
+    pub(crate) async fn inbox_id(&self) -> Result<(String, String), Error> {
+        let account = self.account(&self.mail_address).await?;
+        let answers = self
+            .batch(&[(
+                "Mailbox/query",
+                json!({"accountId": account, "filter": {"role": "inbox"}}),
+            )])
+            .await?;
+        let inbox = checked("Mailbox/query", &answers[0])?["ids"][0]
+            .as_str()
+            .ok_or_else(|| Error::new("the mail account has no Inbox"))?
+            .to_owned();
+        Ok((account, inbox))
+    }
+
     /// Looks accounts up by address, since a mailbox user of the same name in the mail domain
     /// gets an account of its own with the same local part.
-    pub(crate) async fn account(&self, address: &str) -> Result<String, Error> {
+    async fn account(&self, address: &str) -> Result<String, Error> {
         let local = address.split('@').next().unwrap_or_default();
         let answers = self
             .batch(&[

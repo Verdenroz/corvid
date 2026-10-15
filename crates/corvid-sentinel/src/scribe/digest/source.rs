@@ -10,16 +10,7 @@ const MAX_MESSAGES: u32 = 500;
 /// The Inbox messages received after `from` up to and including `to`, newest first. Junk and
 /// Trash are other mailboxes, so they are never read.
 pub(super) async fn inbox(keys: &Keys, from: i64, to: i64) -> Result<Vec<Message>, Error> {
-    let account = keys.account(keys.mail_address()).await?;
-    let answers = keys
-        .batch(&[(
-            "Mailbox/query",
-            json!({"accountId": account, "filter": {"role": "inbox"}}),
-        )])
-        .await?;
-    let inbox = checked("Mailbox/query", &answers[0])?["ids"][0]
-        .as_str()
-        .ok_or_else(|| Error::new("the mail account has no Inbox"))?;
+    let (account, inbox) = keys.inbox_id().await?;
     let answers = keys
         .batch(&[
             (

@@ -90,13 +90,15 @@ async fn tick(state: &Shared, courier: &Courier, settings: &Settings) {
             return;
         }
     };
-    let summaries = state.scribe.read(|scribe| scribe.summaries.clone());
+    let groups = state
+        .scribe
+        .read(|scribe| build::groups(messages, &scribe.summaries));
     let announced = id.clone();
     let digest = super::state::Digest {
         id,
         from,
         to,
-        groups: build::groups(messages, &summaries),
+        groups,
     };
     let has_mail = !digest.groups.is_empty();
     let kept = commit(state.clone(), "digest", move |scribe| {
