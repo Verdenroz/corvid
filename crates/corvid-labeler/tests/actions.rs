@@ -99,6 +99,17 @@ fn three_weeks_of_unread_archives_mint_one_candidate() {
 }
 
 #[test]
+fn a_candidate_carries_its_matches_and_the_days_they_span() {
+    let rig = Rig::new();
+    rig.month(SENDER, 0, own_thread, archive_unread);
+
+    let found = rig.candidates();
+
+    assert_eq!(found[0].history, vec![true; 21]);
+    assert_eq!(found[0].span_days, 20);
+}
+
+#[test]
 fn trashing_unread_mail_mints_a_trash_candidate() {
     let rig = Rig::new();
     rig.month(SENDER, 0, own_thread, |mailbox, id| {

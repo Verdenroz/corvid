@@ -24,6 +24,8 @@ struct Wire {
     outcome: String,
     settled: u32,
     hits: u32,
+    history: Vec<bool>,
+    span_days: u32,
 }
 
 impl Suggest {
@@ -45,6 +47,8 @@ impl Suggest {
                     outcome: candidate.outcome.to_string(),
                     settled: candidate.settled,
                     hits: candidate.hits,
+                    history: candidate.history.clone(),
+                    span_days: candidate.span_days,
                 })
                 .collect(),
         };

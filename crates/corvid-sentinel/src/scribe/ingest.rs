@@ -14,6 +14,8 @@ pub(super) struct Candidate {
     outcome: String,
     settled: u32,
     hits: u32,
+    history: Vec<bool>,
+    span_days: u32,
 }
 
 impl Candidate {
@@ -50,6 +52,8 @@ impl Candidate {
             action,
             settled: self.settled,
             hits: self.hits,
+            history: self.history.clone(),
+            span_days: self.span_days,
         })
     }
 }

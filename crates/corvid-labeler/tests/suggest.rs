@@ -58,6 +58,8 @@ fn candidates() -> Vec<Candidate> {
             outcome: Exit::Folder("mb7".to_owned()),
             settled: 6,
             hits: 5,
+            history: vec![true, false, true],
+            span_days: 20,
         },
         Candidate {
             id: "b".to_owned(),
@@ -65,6 +67,8 @@ fn candidates() -> Vec<Candidate> {
             outcome: Exit::Archive,
             settled: 4,
             hits: 4,
+            history: vec![true; 4],
+            span_days: 16,
         },
     ]
 }
@@ -88,6 +92,8 @@ fn mined_candidates_come_back_from_the_sentinel_in_the_app_shape() {
                 "action": {"kind": "folder", "mailboxId": "mb7"},
                 "settled": 6,
                 "hits": 5,
+                "history": [true, false, true],
+                "spanDays": 20,
             }),
             json!({
                 "id": "b",
@@ -95,6 +101,8 @@ fn mined_candidates_come_back_from_the_sentinel_in_the_app_shape() {
                 "action": {"kind": "archive"},
                 "settled": 4,
                 "hits": 4,
+                "history": [true, true, true, true],
+                "spanDays": 16,
             }),
         ]
     );

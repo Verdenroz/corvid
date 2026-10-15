@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 const SECRET: &[u8] = common::SCRIBE_SECRET;
 
 fn candidate(id: &str, key: &str, outcome: &str) -> Value {
-    json!({"id": id, "key": key, "outcome": outcome, "settled": 6, "hits": 6})
+    json!({"id": id, "key": key, "outcome": outcome, "settled": 6, "hits": 6, "history": [true, true], "span_days": 20})
 }
 
 async fn post_as(
@@ -78,6 +78,8 @@ async fn a_posted_candidate_is_served_in_the_app_shape() {
             "action": {"kind": "folder", "mailboxId": "mb7"},
             "settled": 6,
             "hits": 6,
+            "history": [true, true],
+            "spanDays": 20,
         })]
     );
 }
@@ -196,6 +198,28 @@ async fn decisions_and_suggestions_survive_a_restart() {
     let second = first.reopen().await;
 
     assert_eq!(ids(&suggestions(&second).await), ["b"]);
+}
+
+#[test]
+fn a_file_saved_without_history_opens_with_none() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("scribe.json");
+    let saved = json!({
+        "suggestions": [{
+            "id": "a",
+            "sender": {"kind": "from", "value": "a@x.test"},
+            "action": {"kind": "archive"},
+            "settled": 6,
+            "hits": 6,
+        }],
+        "decided": [],
+    });
+    corvid_store::save(&path, 1, &saved).unwrap();
+
+    let scribe = corvid_sentinel::scribe::open(&path).unwrap();
+
+    assert!(scribe.suggestions[0].history.is_empty());
+    assert_eq!(scribe.suggestions[0].span_days, 0);
 }
 
 #[tokio::test]
