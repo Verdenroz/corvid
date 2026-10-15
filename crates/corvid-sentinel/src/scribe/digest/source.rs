@@ -24,7 +24,8 @@ pub(super) async fn inbox(keys: &Keys, from: i64, to: i64) -> Result<Vec<Message
             (
                 "Email/get",
                 json!({"accountId": account,
-                       "properties": ["id", "threadId", "from", "subject", "receivedAt", "keywords"],
+                       "properties": ["id", "threadId", "from", "subject", "receivedAt", "keywords",
+                                      "header:List-Id:asText"],
                        "#ids": back("c0", "Email/query", "/ids")}),
             ),
         ])
@@ -49,6 +50,12 @@ fn message(email: &Value) -> Option<Message> {
             .as_str()
             .unwrap_or_default()
             .to_owned(),
+        from_name: email["from"][0]["name"]
+            .as_str()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .map(str::to_owned),
+        is_list: email["header:List-Id:asText"].is_string(),
         subject: email["subject"].as_str().unwrap_or_default().to_owned(),
         received_at: seconds(email["receivedAt"].as_str()?)?,
         keywords: keywords

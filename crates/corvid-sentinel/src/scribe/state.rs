@@ -94,6 +94,10 @@ pub struct Item {
     pub thread_id: String,
     pub email_id: String,
     pub from: String,
+    #[serde(default)]
+    pub from_name: Option<String>,
+    #[serde(default)]
+    pub is_list: bool,
     pub subject: String,
     pub received_at: i64,
     pub summary: Option<String>,
@@ -200,6 +204,8 @@ corvid_store::pin_shape!(Item {
     thread_id,
     email_id,
     from,
+    from_name,
+    is_list,
     subject,
     received_at,
     summary
