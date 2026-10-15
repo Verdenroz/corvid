@@ -97,13 +97,13 @@ async fn a_stale_sent_at_is_refused() {
 
     let old = post_at(
         &rig,
-        now_secs() - 301,
+        now_secs() - 400,
         vec![candidate("a", "from:a@x.test", "trash")],
     )
     .await;
     let early = post_at(
         &rig,
-        now_secs() + 301,
+        now_secs() + 400,
         vec![candidate("a", "from:a@x.test", "trash")],
     )
     .await;

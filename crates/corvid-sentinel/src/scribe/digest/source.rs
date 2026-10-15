@@ -44,7 +44,7 @@ pub(super) async fn inbox(keys: &Keys, from: i64, to: i64) -> Result<Vec<Message
         .into_iter()
         .flatten()
         .filter_map(message)
-        // Servers differ on whether `after` includes its bound.
+        // Guards a server whose bounds differ from RFC 8621.
         .filter(|message| message.received_at > from && message.received_at <= to)
         .collect())
 }

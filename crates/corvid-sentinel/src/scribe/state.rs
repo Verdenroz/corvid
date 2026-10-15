@@ -105,6 +105,7 @@ pub struct Scribe {
     #[serde(default)]
     pub summaries: BTreeMap<String, Summary>,
     /// Oldest first, only the newest `DIGEST_CAP` kept.
+    #[serde(default)]
     pub digests: Vec<Digest>,
 }
 

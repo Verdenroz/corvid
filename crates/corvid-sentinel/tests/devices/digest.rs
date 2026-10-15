@@ -99,6 +99,18 @@ impl Digesting {
     }
 }
 
+#[test]
+fn a_state_file_written_before_digests_still_opens() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("scribe.json");
+    let old = json!({"suggestions": [], "decided": [], "summaries": {}});
+    corvid_store::save(&path, 1, &old).unwrap();
+
+    let scribe = corvid_sentinel::scribe::open(&path).unwrap();
+
+    assert!(scribe.digests.is_empty());
+}
+
 #[tokio::test]
 async fn no_digest_exists_before_the_first_is_built() {
     let sentinel = digesting("UTC", DAY + 6 * HOUR + 59 * 60).await;
