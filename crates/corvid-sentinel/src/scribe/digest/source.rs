@@ -7,9 +7,9 @@ use crate::devices::keys::{Error, Keys, back, checked};
 /// The newest messages kept when a window holds more.
 const MAX_MESSAGES: u32 = 500;
 
-/// The Inbox messages received at or after `from`, newest first. Junk and Trash are other
-/// mailboxes, so they are never read.
-pub(super) async fn inbox(keys: &Keys, from: i64) -> Result<Vec<Message>, Error> {
+/// The Inbox messages received after `from` up to and including `to`, newest first. Junk and
+/// Trash are other mailboxes, so they are never read.
+pub(super) async fn inbox(keys: &Keys, from: i64, to: i64) -> Result<Vec<Message>, Error> {
     let account = keys.account(keys.mail_address()).await?;
     let answers = keys
         .batch(&[(
@@ -25,7 +25,8 @@ pub(super) async fn inbox(keys: &Keys, from: i64) -> Result<Vec<Message>, Error>
             (
                 "Email/query",
                 json!({"accountId": account,
-                       "filter": {"inMailbox": inbox, "after": rfc3339(from)},
+                       "filter": {"inMailbox": inbox, "after": rfc3339(from + 1),
+                                  "before": rfc3339(to + 1)},
                        "sort": [{"property": "receivedAt", "isAscending": false}],
                        "limit": MAX_MESSAGES}),
             ),

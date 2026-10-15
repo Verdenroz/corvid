@@ -21,6 +21,8 @@ use crate::devices::Courier;
 use crate::http::{Off, off_json};
 
 const FIRST_WINDOW_SECONDS: i64 = 24 * 3600;
+/// A window closes this long before it is built, so mail still being delivered falls into the next.
+const SETTLE_SECONDS: i64 = 60;
 
 pub struct Settings {
     pub at: Time,
@@ -79,8 +81,9 @@ async fn tick(state: &Shared, courier: &Courier, settings: &Settings) {
     let Some(id) = due(settings, last_id.as_deref(), now) else {
         return;
     };
-    let from = last_to.unwrap_or(now - FIRST_WINDOW_SECONDS);
-    let messages = match source::inbox(courier.keys(), from + 1).await {
+    let to = now - SETTLE_SECONDS;
+    let from = last_to.unwrap_or(to - FIRST_WINDOW_SECONDS);
+    let messages = match source::inbox(courier.keys(), from, to).await {
         Ok(messages) => messages,
         Err(error) => {
             tracing::warn!(%error, "digest: cannot read the Inbox");
@@ -91,7 +94,7 @@ async fn tick(state: &Shared, courier: &Courier, settings: &Settings) {
     let digest = super::state::Digest {
         id,
         from,
-        to: now,
+        to,
         groups: build::groups(messages, &summaries),
     };
     if commit(state.clone(), "digest", move |scribe| {

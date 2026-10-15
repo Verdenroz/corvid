@@ -15,6 +15,7 @@ use super::{Rig, common, rig, rig_digest};
 /// 2026-10-14T00:00:00Z.
 const DAY: i64 = 1_791_936_000;
 const HOUR: i64 = 3600;
+const CLOSING: i64 = 60;
 const JUNK: &str = "junk-id";
 
 struct Digesting {
@@ -119,8 +120,11 @@ async fn a_digest_is_built_once_a_day_after_the_time() {
     sentinel.settle().await;
 
     assert_eq!(digest["id"], "2026-10-14");
-    assert_eq!(digest["to"], rfc3339(DAY + 7 * HOUR));
-    assert_eq!(digest["from"], rfc3339(DAY + 7 * HOUR - 24 * HOUR));
+    assert_eq!(digest["to"], rfc3339(DAY + 7 * HOUR - CLOSING));
+    assert_eq!(
+        digest["from"],
+        rfc3339(DAY + 7 * HOUR - CLOSING - 24 * HOUR)
+    );
     assert_eq!(sentinel.ids().await, ["2026-10-14"]);
     assert_eq!(
         stalwart.calls(),
@@ -190,6 +194,34 @@ async fn each_window_starts_where_the_previous_digest_ended() {
 }
 
 #[tokio::test]
+async fn a_message_on_the_edge_of_two_windows_lands_in_exactly_one() {
+    let sentinel = digesting("UTC", DAY + 7 * HOUR).await;
+    let stalwart = &sentinel.rig.stalwart;
+    let close = DAY + 7 * HOUR - CLOSING;
+    for (id, at) in [("at", close), ("after", close + 1), ("late", close + 59)] {
+        stalwart.deliver(email(id, id, INBOX, at, &[]));
+    }
+    let first = sentinel.latest_after(None).await;
+
+    sentinel.at(DAY + 24 * HOUR + 7 * HOUR);
+    let second = sentinel.latest_after(Some("2026-10-14")).await;
+
+    let emails = |digest: &Value| {
+        let mut ids: Vec<String> = digest["groups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|group| group["items"].as_array().unwrap())
+            .map(|item| item["emailId"].as_str().unwrap().to_owned())
+            .collect();
+        ids.sort();
+        ids
+    };
+    assert_eq!(emails(&first), ["at"]);
+    assert_eq!(emails(&second), ["after", "late"]);
+}
+
+#[tokio::test]
 async fn only_the_newest_thirty_digests_are_kept() {
     let sentinel = digesting("UTC", DAY + 7 * HOUR).await;
     let mut previous = sentinel.latest_after(None).await["id"]
@@ -243,7 +275,7 @@ async fn a_digest_groups_the_inbox_by_label_with_summaries_and_leaves_out_junk()
     let listed: Value = sentinel.get("").await.json().await.unwrap();
     assert_eq!(
         listed,
-        json!({"digests": [{"id": "2026-10-14", "to": rfc3339(DAY + 7 * HOUR), "count": 3}]})
+        json!({"digests": [{"id": "2026-10-14", "to": rfc3339(DAY + 7 * HOUR - CLOSING), "count": 3}]})
     );
 }
 

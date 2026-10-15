@@ -268,11 +268,13 @@ fn get_emails(shared: &Shared, arguments: &Value) -> Value {
     json!({"state": mail.state.to_string(), "list": list})
 }
 
-/// The ids of the messages in a mailbox received at or after a time, newest first.
+/// The ids of the messages in a mailbox received from `after` up to but not including `before`,
+/// newest first.
 fn query_emails(shared: &Shared, arguments: &Value) -> Value {
     assert_eq!(arguments["accountId"], MAIL_ACCOUNT);
     let filter = &arguments["filter"];
     let after = filter["after"].as_str().unwrap();
+    let before = filter["before"].as_str().unwrap();
     let mail = shared.mail.lock().unwrap();
     let mut found: Vec<&Value> = mail
         .emails
@@ -281,6 +283,7 @@ fn query_emails(shared: &Shared, arguments: &Value) -> Value {
         .filter(|email| {
             email["mailboxIds"][filter["inMailbox"].as_str().unwrap()] == true
                 && email["receivedAt"].as_str().unwrap() >= after
+                && email["receivedAt"].as_str().unwrap() < before
         })
         .collect();
     found.sort_by_key(|email| std::cmp::Reverse(email["receivedAt"].as_str().unwrap()));
