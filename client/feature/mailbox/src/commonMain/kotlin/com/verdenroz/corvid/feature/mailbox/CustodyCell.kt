@@ -1,9 +1,11 @@
 package com.verdenroz.corvid.feature.mailbox
 
+import com.verdenroz.corvid.core.data.stamp
 import com.verdenroz.corvid.core.model.Label
 import com.verdenroz.corvid.core.model.Provenance
 import com.verdenroz.corvid.core.model.Rewrite
 import com.verdenroz.corvid.core.model.Seal
+import com.verdenroz.corvid.core.model.ThreadSummary
 import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.UiText.Plural
 import com.verdenroz.corvid.core.text.uiText
@@ -24,9 +26,13 @@ import com.verdenroz.corvid.feature.mailbox.resources.custody_signed
 import com.verdenroz.corvid.feature.mailbox.resources.custody_signed_by
 import com.verdenroz.corvid.feature.mailbox.resources.custody_skipped
 import com.verdenroz.corvid.feature.mailbox.resources.custody_skipped_detail
+import com.verdenroz.corvid.feature.mailbox.resources.custody_summarised_by
 import com.verdenroz.corvid.feature.mailbox.resources.custody_trackers_removed
 import com.verdenroz.corvid.feature.mailbox.resources.custody_unsigned
 import com.verdenroz.corvid.feature.mailbox.resources.custody_unsigned_detail
+import kotlinx.datetime.TimeZone
+import kotlin.time.Clock
+import kotlin.time.Instant
 
 internal sealed interface CustodyCell {
     data class Sender(val value: UiText, val detail: UiText, val danger: Boolean) : CustodyCell
@@ -34,21 +40,37 @@ internal sealed interface CustodyCell {
     data class WayIn(val value: UiText, val detail: UiText?) : CustodyCell
 
     data class Labelled(val labels: List<Label>, val attribution: UiText?, val guess: Label.Guess?) : CustodyCell
+
+    data class Summarised(val value: UiText) : CustodyCell
 }
 
 /**
  * A message the milter never saw has no way-in cell: a missing header is not a clean message.
  * One with no label and no guess has no labelled cell, so the others take its width.
+ * The summarised cell is there only with a [summary], and names its model only when the server did.
  */
 internal fun custodyCells(
     provenance: Provenance,
     labels: List<Label>,
+    summary: ThreadSummary? = null,
+    zone: TimeZone = TimeZone.currentSystemDefault(),
+    now: Instant = Clock.System.now(),
 ): List<CustodyCell> =
     listOfNotNull(
         senderCell(provenance.seal),
         provenance.rewrite?.let { wayInCell(it, provenance.suspect) },
         labels.takeIf { it.isNotEmpty() }?.let(::labelledCell),
+        summary?.let { summarisedCell(it, zone, now) },
     )
+
+private fun summarisedCell(
+    summary: ThreadSummary,
+    zone: TimeZone,
+    now: Instant,
+): CustodyCell.Summarised {
+    val at = stamp(summary.generatedAt, zone, now)
+    return CustodyCell.Summarised(if (summary.model.isEmpty()) at else uiText(Res.string.custody_summarised_by, summary.model, at))
+}
 
 private fun senderCell(seal: Seal): CustodyCell.Sender =
     when (seal) {

@@ -35,6 +35,7 @@ import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.model.EmailAddress
 import com.verdenroz.corvid.core.model.EmailDetail
 import com.verdenroz.corvid.core.model.Seal
+import com.verdenroz.corvid.core.model.ThreadSummary
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.provenance.SenderAvatar
 import com.verdenroz.corvid.core.ui.provenance.sealDescription
@@ -52,7 +53,7 @@ import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Clock
 
-/** One message of a thread: in full with its own custody and teach controls, or as a summary line. A suspect one is tinted alone. */
+/** One message of a thread: in full with its own custody and teach controls, or as a summary line. [summary] is the thread's, drawn with the custody strip. A suspect one is tinted alone. */
 @Composable
 internal fun ThreadMessage(
     email: EmailDetail,
@@ -61,6 +62,7 @@ internal fun ThreadMessage(
     newest: Boolean,
     threaded: Boolean,
     wide: Boolean,
+    summary: ThreadSummary?,
     teach: TeachState,
     headers: HeadersState?,
     attachments: Map<String, AttachmentState>,
@@ -86,6 +88,7 @@ internal fun ThreadMessage(
                     newest = newest,
                     threaded = threaded,
                     wide = wide,
+                    summary = summary,
                     teach = teach,
                     headers = headers,
                     attachments = attachments,
@@ -111,6 +114,7 @@ private fun ExpandedMessage(
     newest: Boolean,
     threaded: Boolean,
     wide: Boolean,
+    summary: ThreadSummary?,
     teach: TeachState,
     headers: HeadersState?,
     attachments: Map<String, AttachmentState>,
@@ -131,7 +135,7 @@ private fun ExpandedMessage(
             if (threaded) Modifier.clickable(onClick = onToggle) else Modifier,
         )
         headers?.let { HeadersPanel(it, Modifier.padding(bottom = 16.dp)) }
-        Custody(email, wide) { guess -> TeachControls(guess, teach.answering, teach.error, onAnswer) }
+        Custody(email, wide, summary) { guess -> TeachControls(guess, teach.answering, teach.error, onAnswer) }
         MessageBody(email, repository, Modifier.padding(top = 18.dp).widthIn(max = 640.dp))
         AttachmentStrip(email, attachments, onOpenAttachment, Modifier.padding(top = 20.dp))
         if (newest) Replies(email, onCompose) else QuietReplies(email, onCompose)

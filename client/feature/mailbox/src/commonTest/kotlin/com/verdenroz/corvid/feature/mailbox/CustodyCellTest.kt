@@ -1,10 +1,12 @@
 package com.verdenroz.corvid.feature.mailbox
 
+import com.verdenroz.corvid.core.data.stamp
 import com.verdenroz.corvid.core.model.Label
 import com.verdenroz.corvid.core.model.Provenance
 import com.verdenroz.corvid.core.model.Rewrite
 import com.verdenroz.corvid.core.model.Seal
 import com.verdenroz.corvid.core.model.SenderKind
+import com.verdenroz.corvid.core.model.ThreadSummary
 import com.verdenroz.corvid.core.text.UiText.Plural
 import com.verdenroz.corvid.core.text.uiText
 import com.verdenroz.corvid.feature.mailbox.resources.Res
@@ -24,12 +26,15 @@ import com.verdenroz.corvid.feature.mailbox.resources.custody_signed
 import com.verdenroz.corvid.feature.mailbox.resources.custody_signed_by
 import com.verdenroz.corvid.feature.mailbox.resources.custody_skipped
 import com.verdenroz.corvid.feature.mailbox.resources.custody_skipped_detail
+import com.verdenroz.corvid.feature.mailbox.resources.custody_summarised_by
 import com.verdenroz.corvid.feature.mailbox.resources.custody_trackers_removed
 import com.verdenroz.corvid.feature.mailbox.resources.custody_unsigned
 import com.verdenroz.corvid.feature.mailbox.resources.custody_unsigned_detail
+import kotlinx.datetime.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.time.Instant
 
 private fun cells(
     seal: Seal = Seal.Unsigned,
@@ -120,6 +125,20 @@ class CustodyCellTest {
         assertEquals(listOf(CustodyCell.Sender::class), cells(rewrite = null).map { it::class })
         assertEquals(listOf(CustodyCell.Sender::class, CustodyCell.WayIn::class), cells().map { it::class })
         assertEquals(true, cells(labels = listOf(Label.Guess("bills"))).last() is CustodyCell.Labelled)
+    }
+
+    @Test
+    fun `a summarised cell comes last, names the model and the local time, and exists only with a summary`() {
+        val at = Instant.parse("2024-05-06T07:08:09Z")
+        val provenance = Provenance(Seal.Unsigned, Rewrite.Clean, SenderKind.Person, unsubscribe = emptyList())
+        val labels = listOf(Label.Yours("x"))
+
+        fun last(model: String) = custodyCells(provenance, labels, ThreadSummary("t", at, model), TimeZone.UTC, at).last()
+
+        val shown = stamp(at, TimeZone.UTC, at)
+        assertEquals(CustodyCell.Summarised(uiText(Res.string.custody_summarised_by, "qwen3", shown)), last("qwen3"))
+        assertEquals(CustodyCell.Summarised(shown), last(""))
+        assertEquals(true, cells(labels = labels).none { it is CustodyCell.Summarised })
     }
 
     @Test
