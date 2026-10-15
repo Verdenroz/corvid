@@ -4,8 +4,6 @@ import android.app.Notification
 import android.app.PendingIntent
 import android.content.Context
 
-private const val PREVIEW_ID = 3
-private const val SUMMARY_ID = 4
 private const val UNREADABLE_TAG = "unreadable"
 
 /**

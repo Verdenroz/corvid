@@ -19,7 +19,6 @@ import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
 
 private const val CONNECTION_CHANNEL = "connection"
-private const val CONNECTION_ID = 5
 
 /**
  * Holds the connection to the server for a phone that has no Google service to push through. The notification can be
