@@ -54,57 +54,75 @@ private suspend fun untilDigest(condition: () -> Boolean) {
 @OptIn(ExperimentalCoroutinesApi::class)
 class NewDigestTest {
     @Test
-    fun `a digest not seen yet becomes a banner with its message count`() =
+    fun `a digest not seen yet becomes an entry with its message count`() =
         runTest {
             val rig = digestRig(FakeJmapServer().apply { digests.serve(mail(3)) })
 
-            untilDigest { rig.newDigest.banner.value != null }
+            untilDigest { rig.newDigest.entry.value != null }
 
-            assertEquals(3, rig.newDigest.banner.value?.count)
-            assertEquals("d1", rig.newDigest.banner.value?.id)
+            assertEquals(3, rig.newDigest.entry.value?.count)
+            assertEquals("d1", rig.newDigest.entry.value?.id)
         }
 
     @Test
-    fun `opening the digest clears the banner and keeps it away`() =
+    fun `the entry names up to the people who wrote and counts the lists`() =
+        runTest {
+            val people = listOf("Ada", "Ben", "Cy", "Di").mapIndexed { i, name -> FakeDigestItem(emailId = "p$i", fromName = name) }
+            val lists = List(2) { FakeDigestItem(emailId = "l$it", fromName = "Shop", isList = true) }
+            val unnamed = FakeDigestItem(emailId = "u", from = "eve@x.test")
+            val rig =
+                digestRig(
+                    FakeJmapServer().apply { digests.serve(FakeDigest("d1", groups = listOf("Work" to people, null to lists + unnamed))) },
+                )
+
+            untilDigest { rig.newDigest.entry.value != null }
+
+            assertEquals(listOf("Ada", "Ben", "Cy", "Di", "eve"), rig.newDigest.entry.value?.people)
+            assertEquals(2, rig.newDigest.entry.value?.lists)
+            assertEquals(7, rig.newDigest.entry.value?.count)
+        }
+
+    @Test
+    fun `opening the digest clears the entry and keeps it away`() =
         runTest {
             val rig = digestRig(FakeJmapServer().apply { digests.serve(mail(1)) })
-            untilDigest { rig.newDigest.banner.value != null }
+            untilDigest { rig.newDigest.entry.value != null }
 
             rig.newDigest.opened("d1")
             runCurrent()
 
-            assertNull(rig.newDigest.banner.value)
+            assertNull(rig.newDigest.entry.value)
             assertEquals("d1", rig.preferences.settings.value.digestSeen)
             rig.triggers.send(Unit)
             runCurrent()
-            assertNull(rig.newDigest.banner.value)
+            assertNull(rig.newDigest.entry.value)
         }
 
     @Test
-    fun `dismissing the banner clears it and keeps it away`() =
+    fun `dismissing the entry clears it and keeps it away`() =
         runTest {
             val rig = digestRig(FakeJmapServer().apply { digests.serve(mail(1)) })
-            untilDigest { rig.newDigest.banner.value != null }
+            untilDigest { rig.newDigest.entry.value != null }
 
             rig.newDigest.dismiss()
             runCurrent()
             rig.triggers.send(Unit)
             runCurrent()
 
-            assertNull(rig.newDigest.banner.value)
+            assertNull(rig.newDigest.entry.value)
             assertEquals("d1", rig.preferences.settings.value.digestSeen)
         }
 
     @Test
-    fun `opening the latest digest without an id clears the banner too`() =
+    fun `opening the latest digest without an id clears the entry too`() =
         runTest {
             val rig = digestRig(FakeJmapServer().apply { digests.serve(mail(1)) })
-            untilDigest { rig.newDigest.banner.value != null }
+            untilDigest { rig.newDigest.entry.value != null }
 
             rig.newDigest.opened(null)
             runCurrent()
 
-            assertNull(rig.newDigest.banner.value)
+            assertNull(rig.newDigest.entry.value)
         }
 
     @Test
@@ -118,7 +136,7 @@ class NewDigestTest {
             untilDigest { fake.digests.reads > 0 }
             runCurrent()
 
-            assertNull(rig.newDigest.banner.value)
+            assertNull(rig.newDigest.entry.value)
         }
 
     @Test
@@ -130,7 +148,7 @@ class NewDigestTest {
             untilDigest { fake.digests.reads > 0 }
             runCurrent()
 
-            assertNull(rig.newDigest.banner.value)
+            assertNull(rig.newDigest.entry.value)
         }
 
     @Test
@@ -145,7 +163,7 @@ class NewDigestTest {
             untilDigest { fake.digests.reads > 0 }
             runCurrent()
 
-            assertNull(newDigest.banner.value)
+            assertNull(newDigest.entry.value)
             assertEquals("d1", preferences.settings.value.digestSeen)
         }
 
@@ -156,12 +174,12 @@ class NewDigestTest {
             val rig = digestRig(fake)
             untilDigest { fake.digests.reads > 0 }
             runCurrent()
-            assertNull(rig.newDigest.banner.value)
+            assertNull(rig.newDigest.entry.value)
 
             fake.digests.serve(mail(2))
             rig.triggers.send(Unit)
-            untilDigest { rig.newDigest.banner.value != null }
+            untilDigest { rig.newDigest.entry.value != null }
 
-            assertEquals(2, rig.newDigest.banner.value?.count)
+            assertEquals(2, rig.newDigest.entry.value?.count)
         }
 }

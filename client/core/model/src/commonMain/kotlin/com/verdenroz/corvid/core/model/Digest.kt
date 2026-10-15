@@ -17,4 +17,9 @@ data class DigestItem(
     val summary: String?,
     val fromName: String? = null,
     val isList: Boolean = false,
-)
+) {
+    /** The sender's name, or the part of the address before the `@` when it signed none. */
+    val displayName: String get() = fromName ?: from.substringBefore('@')
+}
+
+val Digest.items: List<DigestItem> get() = groups.flatMap { it.items }

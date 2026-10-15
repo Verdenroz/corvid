@@ -224,4 +224,14 @@
     <string name="labels_labeler">Labeler</string>
     <string name="labels_guess">Model guesses</string>
     <string name="labels_rule">Filter rules</string>
+    <string name="overnight_title">Overnight</string>
+    <string name="overnight_hide">Hide</string>
+    <string name="overnight_people_one">%1$s wrote</string>
+    <string name="overnight_people_two">%1$s and %2$s wrote</string>
+    <string name="overnight_people_three">%1$s, %2$s and %3$s wrote</string>
+    <plurals name="overnight_lists">
+        <item quantity="one">%1$d from a list</item>
+        <item quantity="other">%1$d from lists</item>
+    </plurals>
+    <string name="overnight_join">%1$s; %2$s</string>
 </resources>

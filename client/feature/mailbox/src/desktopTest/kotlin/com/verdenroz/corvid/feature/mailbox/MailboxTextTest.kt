@@ -21,6 +21,20 @@ class MailboxTextTest {
         }
 
     @Test
+    fun `the overnight line names up to three people and counts the lists`() =
+        runTest {
+            suspend fun line(
+                people: List<String>,
+                lists: Int,
+            ) = OvernightEntry("d1", people.size + lists, people, lists).line.resolve(environment)
+
+            assertEquals("Marta, Ana and Jonas wrote; 9 from lists", line(listOf("Marta", "Ana", "Jonas", "Kim"), 9))
+            assertEquals("Marta and Ana wrote; 1 from a list", line(listOf("Marta", "Ana"), 1))
+            assertEquals("Marta wrote", line(listOf("Marta"), 0))
+            assertEquals("3 from lists", line(emptyList(), 3))
+        }
+
+    @Test
     fun `the summary is labelled as model output that can be wrong`() =
         runTest {
             assertEquals("Summary", uiText(Res.string.summary_label).resolve(environment))

@@ -26,6 +26,8 @@ import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.feature.mailbox.LabelsScreen
 import com.verdenroz.corvid.feature.mailbox.LedgerScreen
+import com.verdenroz.corvid.feature.mailbox.LedgerTab
+import com.verdenroz.corvid.feature.mailbox.OvernightOffer
 import com.verdenroz.corvid.feature.mailbox.PeopleScreen
 import com.verdenroz.corvid.feature.mailbox.SourcesScreen
 import org.jetbrains.compose.resources.stringResource
@@ -35,6 +37,7 @@ import org.jetbrains.compose.resources.stringResource
 internal fun HomeContent(
     tab: HomeTab,
     ledgers: Ledgers,
+    overnight: OvernightOffer?,
     onOpenEmail: (EmailSummary) -> Unit,
     onOpenSender: (String) -> Unit,
     onSearch: (String) -> Unit,
@@ -43,7 +46,15 @@ internal fun HomeContent(
     Box(Modifier.fillMaxSize()) {
         val ledger = tab.ledger
         when {
-            ledger != null -> LedgerScreen(ledgers.of(ledger), ledgers.actions, ledger, onOpenEmail, onOpenSender)
+            ledger != null ->
+                LedgerScreen(
+                    ledgers.of(ledger),
+                    ledgers.actions,
+                    ledger,
+                    onOpenEmail,
+                    onOpenSender,
+                    overnight = overnight.takeIf { ledger == LedgerTab.Inbox },
+                )
             tab == HomeTab.People -> PeopleScreen(ledgers.directory, onOpenSender)
             tab == HomeTab.Sources -> SourcesScreen(ledgers.directory, onOpenSender)
             else -> LabelsScreen(ledgers.directory, onSearch)

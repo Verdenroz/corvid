@@ -86,6 +86,7 @@ import com.verdenroz.corvid.feature.filters.FiltersScreen
 import com.verdenroz.corvid.feature.filters.FiltersViewModel
 import com.verdenroz.corvid.feature.mailbox.ActionNoticeBar
 import com.verdenroz.corvid.feature.mailbox.MailActions
+import com.verdenroz.corvid.feature.mailbox.OvernightOffer
 import com.verdenroz.corvid.feature.mailbox.SearchScreen
 import com.verdenroz.corvid.feature.mailbox.SenderCard
 import com.verdenroz.corvid.feature.mailbox.SenderCardActions
@@ -165,10 +166,10 @@ internal fun UnlockedContent(
     ) {
         val wide = maxWidth >= WIDE_LAYOUT
         val searchInput = rememberSearchInput(navigator, wide)
-        val pages = Pages(navigator, saved, scope, models, ledgers, session, searchInput.onText)
+        val pages = Pages(navigator, saved, scope, models, ledgers, session, newDigest, searchInput.onText)
         val topKeys = remember(navigator) { navigator::handleKey }
         CompositionLocalProvider(LocalWideLayout provides wide, LocalTopEntryKeys provides topKeys) {
-            Shell(pages, shellState, key, searchInput, Banners(notices, updates, newDigest), roomForSidebar = maxWidth >= SIDEBAR_EXPANDS)
+            Shell(pages, shellState, key, searchInput, Banners(notices, updates), roomForSidebar = maxWidth >= SIDEBAR_EXPANDS)
         }
     }
 }
@@ -177,7 +178,6 @@ internal fun UnlockedContent(
 private class Banners(
     val notices: Notices,
     val updates: AppUpdates,
-    val digest: NewDigest,
 )
 
 /** What every page on the stack is built from. */
@@ -188,6 +188,7 @@ private class Pages(
     val models: EntryModels,
     val ledgers: Ledgers,
     val session: SettingsSession,
+    val digest: NewDigest,
     val onQuery: (String) -> Unit,
 )
 
@@ -228,7 +229,6 @@ private fun Shell(
         ) {
             NoticesBanner(banners.notices, navigator)
             AppUpdatesBanner(banners.updates)
-            NewDigestBanner(banners.digest, navigator)
             if (wide) {
                 WideTopBar(
                     key,
@@ -251,6 +251,7 @@ private fun Shell(
                                 shellState,
                                 navigator,
                                 pages.ledgers,
+                                rememberOvernightOffer(pages.digest, navigator),
                                 pages.onQuery,
                                 onMenu = { drawerScope.launch { drawer.open() } },
                             )
@@ -338,6 +339,7 @@ internal fun Home(
     shellState: ShellState,
     navigator: Navigator,
     ledgers: Ledgers,
+    overnight: OvernightOffer? = null,
     onQuery: (String) -> Unit,
     onMenu: () -> Unit,
 ) {
@@ -355,6 +357,7 @@ internal fun Home(
         HomeContent(
             tab = route.tab,
             ledgers = ledgers,
+            overnight = overnight,
             onOpenEmail = navigator::openEmail,
             onOpenSender = { navigator.push(Route.Sender(it)) },
             onSearch = onQuery,

@@ -6,9 +6,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import com.verdenroz.corvid.app.shell.DigestBannerBar
 import com.verdenroz.corvid.core.data.DigestRepository
 import com.verdenroz.corvid.core.prefs.DevicePreferences
+import com.verdenroz.corvid.feature.mailbox.OvernightOffer
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
@@ -31,17 +31,17 @@ internal fun rememberNewDigest(
 }
 
 @Composable
-internal fun NewDigestBanner(
+internal fun rememberOvernightOffer(
     newDigest: NewDigest,
     navigator: Navigator,
-) {
-    val banner by newDigest.banner.collectAsState()
+): OvernightOffer? {
+    val entry by newDigest.entry.collectAsState()
     val scope = rememberCoroutineScope()
-    banner?.let { current ->
-        DigestBannerBar(
+    return entry?.let { current ->
+        OvernightOffer(
             current,
             onOpen = { navigator.open(Route.Digest(current.id)) },
-            onDismiss = { scope.launch { newDigest.dismiss() } },
+            onHide = { scope.launch { newDigest.dismiss() } },
         )
     }
 }
