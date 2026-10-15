@@ -16,11 +16,16 @@ sealed interface SuggestionAction {
     data class Folder(val mailboxId: String) : SuggestionAction
 }
 
-/** A rule the server mined from what the user leaves unread: [hits] of the [settled] messages from [sender] were handled this way. */
+/**
+ * A rule the server mined from what the user leaves unread: [hits] of the [settled] messages from [sender] were handled this way.
+ * [history] is one flag per recent message, oldest first, true where it matched; [spanDays] is the time it covers.
+ */
 data class RuleSuggestion(
     val id: String,
     val sender: SuggestionSender,
     val action: SuggestionAction,
     val settled: Int,
     val hits: Int,
+    val history: List<Boolean> = emptyList(),
+    val spanDays: Int = 0,
 )

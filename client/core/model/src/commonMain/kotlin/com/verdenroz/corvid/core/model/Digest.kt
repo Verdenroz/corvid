@@ -15,4 +15,6 @@ data class DigestItem(
     val subject: String,
     val receivedAt: Instant,
     val summary: String?,
+    val fromName: String? = null,
+    val isList: Boolean = false,
 )

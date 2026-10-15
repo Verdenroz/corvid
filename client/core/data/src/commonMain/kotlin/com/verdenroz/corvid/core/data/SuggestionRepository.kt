@@ -20,6 +20,8 @@ private class WireSuggestion(
     val action: WireAction,
     val settled: Int,
     val hits: Int,
+    val history: List<Boolean> = emptyList(),
+    val spanDays: Int = 0,
 )
 
 @Serializable
@@ -53,7 +55,7 @@ class SuggestionRepository(private val jmapClient: JmapClient) {
 private fun WireSuggestion.toSuggestion(): RuleSuggestion? {
     val senderKind = SuggestionSenderKind.entries.firstOrNull { it.wire == sender.kind } ?: return null
     val filing = action.toAction() ?: return null
-    return RuleSuggestion(id, SuggestionSender(senderKind, sender.value), filing, settled, hits)
+    return RuleSuggestion(id, SuggestionSender(senderKind, sender.value), filing, settled, hits, history, spanDays)
 }
 
 private fun WireAction.toAction(): SuggestionAction? =

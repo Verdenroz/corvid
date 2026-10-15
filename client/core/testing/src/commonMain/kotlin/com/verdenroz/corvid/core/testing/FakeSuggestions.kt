@@ -18,7 +18,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 
 private val JSON = headersOf(HttpHeaders.ContentType, listOf("application/json"))
 
-/** One `/corvid/suggestions` entry; [senderKind] and [actionKind] are the wire spellings. */
+/** One `/corvid/suggestions` entry; [senderKind] and [actionKind] are the wire spellings. [history] and [spanDays] are left off the wire when empty or zero. */
 data class FakeSuggestion(
     val id: String,
     val senderKind: String = "from",
@@ -27,6 +27,8 @@ data class FakeSuggestion(
     val mailboxId: String? = null,
     val settled: Int = 23,
     val hits: Int = 24,
+    val history: List<Boolean> = emptyList(),
+    val spanDays: Int = 0,
 ) {
     internal fun toJson(): JsonObject =
         buildJsonObject {
@@ -41,6 +43,8 @@ data class FakeSuggestion(
             }
             put("settled", settled)
             put("hits", hits)
+            if (history.isNotEmpty()) putJsonArray("history") { history.forEach { add(it) } }
+            if (spanDays != 0) put("spanDays", spanDays)
         }
 }
 

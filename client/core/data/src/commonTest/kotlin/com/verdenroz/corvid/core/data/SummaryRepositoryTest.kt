@@ -28,6 +28,19 @@ class SummaryRepositoryTest {
         }
 
     @Test
+    fun `a summary names its model and an older server has none`() =
+        runTest {
+            val fake =
+                FakeJmapServer().apply {
+                    summaries.serve("t1", "x", model = "qwen")
+                    summaries.serve("t2", "y")
+                }
+
+            assertEquals("qwen", repository(fake).get("t1")?.model)
+            assertEquals("", repository(fake).get("t2")?.model)
+        }
+
+    @Test
     fun `a thread with no summary has none`() =
         runTest {
             val fake = FakeJmapServer().apply { summaries.serve("t1", "x") }

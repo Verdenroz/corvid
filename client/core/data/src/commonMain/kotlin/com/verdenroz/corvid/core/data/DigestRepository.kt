@@ -23,6 +23,8 @@ private class WireItem(
     val subject: String,
     val receivedAt: String,
     val summary: String? = null,
+    val fromName: String? = null,
+    val isList: Boolean = false,
 )
 
 /** The server's digests, behind `/corvid/digest` on the web tier. */
@@ -42,4 +44,4 @@ class DigestRepository(private val jmapClient: JmapClient) {
 private fun WireDigest.toDigest() =
     Digest(id, Instant.parse(from), Instant.parse(to), groups.map { DigestGroup(it.label, it.items.map(WireItem::toItem)) })
 
-private fun WireItem.toItem() = DigestItem(threadId, emailId, from, subject, Instant.parse(receivedAt), summary)
+private fun WireItem.toItem() = DigestItem(threadId, emailId, from, subject, Instant.parse(receivedAt), summary, fromName, isList)
