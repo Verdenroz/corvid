@@ -107,7 +107,7 @@ fun SenderCard(
                     ).padding(horizontal = CorvidSpacing.gutter(wide), vertical = 10.dp),
             )
         }
-        offer.pending.suggestions.about(address, latest?.provenance?.listId)?.let { suggestion ->
+        offer.pending.suggestions.about(address, latest?.provenance?.trustedListId)?.let { suggestion ->
             val offered =
                 OfferActions(
                     accept = { scope.launch { offers.accept(it) } },

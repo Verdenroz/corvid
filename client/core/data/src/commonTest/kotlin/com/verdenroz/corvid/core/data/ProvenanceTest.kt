@@ -50,15 +50,17 @@ class ProvenanceTest {
         }
 
     @Test
-    fun `a list message keeps its list id and any other has none`() =
+    fun `a list message keeps its bare list id, with or without a name and brackets, and any other has none`() =
         runTest {
             val fake = FakeJmapServer().withSendableAccount()
             fake.emails += email("list", "deals@ledgerly.test", mapOf("List-Id" to listOf("Deals <deals.ledgerly.test>")))
+            fake.emails += email("bare", "deals@ledgerly.test", mapOf("List-Id" to listOf(" deals.ledgerly.test ")))
             fake.emails += email("plain", "ada@analytical.test", emptyMap())
 
             val repository = repository(fake)
 
-            assertEquals("Deals <deals.ledgerly.test>", assertIs<EmailLookup.Found>(repository.getEmail("list")).detail.provenance.listId)
+            assertEquals("deals.ledgerly.test", assertIs<EmailLookup.Found>(repository.getEmail("list")).detail.provenance.listId)
+            assertEquals("deals.ledgerly.test", assertIs<EmailLookup.Found>(repository.getEmail("bare")).detail.provenance.listId)
             assertNull(assertIs<EmailLookup.Found>(repository.getEmail("plain")).detail.provenance.listId)
         }
 

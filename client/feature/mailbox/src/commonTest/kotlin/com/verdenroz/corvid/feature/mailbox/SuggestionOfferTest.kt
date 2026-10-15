@@ -4,7 +4,10 @@ import com.verdenroz.corvid.core.data.FiltersRepository
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.data.SuggestedRules
 import com.verdenroz.corvid.core.data.SuggestionRepository
+import com.verdenroz.corvid.core.model.Provenance
 import com.verdenroz.corvid.core.model.RuleSuggestion
+import com.verdenroz.corvid.core.model.Seal
+import com.verdenroz.corvid.core.model.SenderKind
 import com.verdenroz.corvid.core.model.SuggestionAction
 import com.verdenroz.corvid.core.model.SuggestionSender
 import com.verdenroz.corvid.core.model.SuggestionSenderKind
@@ -43,13 +46,27 @@ class SuggestionOfferTest {
     }
 
     @Test
-    fun `a list suggestion is about the card only when its list id matches, bare or in angle brackets`() {
+    fun `a list suggestion is about the card only when its list id matches`() {
         val offered = listOf(suggestion(SuggestionSenderKind.List, "deals.x.test"))
 
-        assertNotNull(offered.about("a@x.test", listId = "Deals <deals.x.test>"))
-        assertNotNull(offered.about("a@x.test", listId = "deals.x.test"))
-        assertNull(offered.about("a@x.test", listId = "<other.x.test>"))
+        assertNotNull(offered.about("a@x.test", listId = "Deals.X.test"))
+        assertNull(offered.about("a@x.test", listId = "other.x.test"))
         assertNull(offered.about("a@x.test", listId = null))
+    }
+
+    @Test
+    fun `a list header on unsigned or failed mail earns no list offer`() {
+        val offered = listOf(suggestion(SuggestionSenderKind.List, "deals.x.test"))
+
+        fun offer(seal: Seal) =
+            offered.about(
+                "a@x.test",
+                Provenance(seal, null, SenderKind.Person, emptyList(), listId = "deals.x.test").trustedListId,
+            )
+
+        assertNotNull(offer(Seal.Signed("x.test")))
+        assertNull(offer(Seal.Unsigned))
+        assertNull(offer(Seal.Failed("x.test", null)))
     }
 
     @Test

@@ -91,7 +91,7 @@ internal class SuggestionOfferModel(private val suggested: SuggestedRules) {
         _state.update { it.copy(pending = PendingSuggestions(it.pending.suggestions - suggestion, it.pending.folders), working = false) }
 }
 
-/** The suggestion that is about this sender: the same address, or the same list when the card knows the list's id. */
+/** The suggestion that is about this sender: the same address, or the same list when the card has a [listId] it can trust. */
 internal fun List<RuleSuggestion>.about(
     address: String,
     listId: String?,
@@ -100,11 +100,9 @@ internal fun List<RuleSuggestion>.about(
         val value = suggestion.sender.value
         when (suggestion.sender.kind) {
             SuggestionSenderKind.From -> value.equals(address, ignoreCase = true)
-            SuggestionSenderKind.List -> listId != null && value.equals(bareListId(listId), ignoreCase = true)
+            SuggestionSenderKind.List -> listId != null && value.equals(listId, ignoreCase = true)
         }
     }
-
-private fun bareListId(header: String) = header.substringAfter('<', header).substringBefore('>').trim()
 
 internal fun RuleSuggestion.lead(folders: List<MailboxRef>): UiText =
     when (val filing = action) {
