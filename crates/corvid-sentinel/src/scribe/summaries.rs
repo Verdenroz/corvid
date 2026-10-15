@@ -96,6 +96,7 @@ pub(super) async fn manifest(
 pub(super) struct Served {
     thread_id: String,
     text: String,
+    model: String,
     generated_at: String,
 }
 
@@ -110,6 +111,7 @@ pub(super) async fn serve(
             Json(Served {
                 thread_id,
                 text: summary.text,
+                model: summary.model,
                 generated_at: rfc3339(summary.generated_at),
             })
         })

@@ -69,7 +69,12 @@ async fn a_posted_summary_is_served_in_the_app_shape() {
     let served: Value = get(&rig, "T1").await.json().await.unwrap();
     assert_eq!(
         served,
-        json!({"threadId": "T1", "text": "They agreed.", "generatedAt": "1970-01-01T00:28:20Z"})
+        json!({
+            "threadId": "T1",
+            "text": "They agreed.",
+            "model": "m",
+            "generatedAt": "1970-01-01T00:28:20Z",
+        })
     );
 }
 
