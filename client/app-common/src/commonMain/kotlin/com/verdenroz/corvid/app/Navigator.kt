@@ -91,6 +91,13 @@ internal class Navigator(
         selectTab(HomeTab.Inbox)
     }
 
+    fun show(request: OpenRequest) {
+        when (request) {
+            OpenRequest.Inbox -> showInbox()
+            is OpenRequest.Digest -> open(Route.Digest(request.id))
+        }
+    }
+
     val homeTab: HomeTab get() = (stack[0] as Route.Home).tab
 
     /** Shows [tab] from anywhere, as the sidebar does: pushed screens close first, and one with unsaved work can stop it. */

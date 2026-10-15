@@ -6,7 +6,7 @@ import kotlin.test.assertNull
 
 private fun push(json: String) = json.encodeToByteArray()
 
-private fun mailPreview(content: ByteArray) = readMailPreview(content)
+private fun mailPreview(content: ByteArray) = (readPushNotice(content) as? PushNotice.Mail)?.preview
 
 class MailPreviewTest {
     @Test
@@ -57,7 +57,7 @@ class MailPreviewTest {
                 push("""{"v":2,"id":"e1","from":{"email":"ada@x.test"},"subject":"s","preview":"p"}"""),
                 push("""["v",1]"""),
             )
-        for (content in unreadable) assertNull(readMailPreview(content))
+        for (content in unreadable) assertNull(mailPreview(content))
     }
 
     @Test

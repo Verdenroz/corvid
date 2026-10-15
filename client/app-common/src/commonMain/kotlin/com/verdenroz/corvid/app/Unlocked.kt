@@ -62,6 +62,7 @@ import com.verdenroz.corvid.app.shell.sidebarPlace
 import com.verdenroz.corvid.app.shell.title
 import com.verdenroz.corvid.core.data.AttachmentFiles
 import com.verdenroz.corvid.core.data.ComposeRepository
+import com.verdenroz.corvid.core.data.DigestRepository
 import com.verdenroz.corvid.core.data.FiltersRepository
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.data.NoticeRepository
@@ -79,6 +80,8 @@ import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.core.ui.WIDE_LAYOUT
 import com.verdenroz.corvid.feature.compose.ComposeScreen
 import com.verdenroz.corvid.feature.compose.ComposeViewModel
+import com.verdenroz.corvid.feature.digest.DigestScreen
+import com.verdenroz.corvid.feature.digest.DigestViewModel
 import com.verdenroz.corvid.feature.filters.FiltersScreen
 import com.verdenroz.corvid.feature.filters.FiltersViewModel
 import com.verdenroz.corvid.feature.mailbox.ActionNoticeBar
@@ -127,6 +130,7 @@ internal fun UnlockedContent(
     val saved = rememberSaveableStateHolder()
     val navigator = remember(backStack, saved, ledgers) { Navigator(backStack, saved, onLeave = ledgers::leave) }
     val newMail = rememberNewMail(scope, navigator)
+    val newDigest = rememberNewDigest(scope, navigator)
     FollowPushEndpoint(scope, hosts)
     LaunchedEffect(scope) {
         newMail.check()
@@ -164,10 +168,17 @@ internal fun UnlockedContent(
         val pages = Pages(navigator, saved, scope, models, ledgers, session, searchInput.onText)
         val topKeys = remember(navigator) { navigator::handleKey }
         CompositionLocalProvider(LocalWideLayout provides wide, LocalTopEntryKeys provides topKeys) {
-            Shell(pages, shellState, key, searchInput, notices, updates, roomForSidebar = maxWidth >= SIDEBAR_EXPANDS)
+            Shell(pages, shellState, key, searchInput, Banners(notices, updates, newDigest), roomForSidebar = maxWidth >= SIDEBAR_EXPANDS)
         }
     }
 }
+
+/** The banners above the shell, highest priority first. */
+private class Banners(
+    val notices: Notices,
+    val updates: AppUpdates,
+    val digest: NewDigest,
+)
 
 /** What every page on the stack is built from. */
 private class Pages(
@@ -186,8 +197,7 @@ private fun Shell(
     shellState: ShellState,
     key: KeyState,
     searchInput: SearchInput,
-    notices: Notices,
-    updates: AppUpdates,
+    banners: Banners,
     roomForSidebar: Boolean,
 ) {
     val navigator = pages.navigator
@@ -216,8 +226,9 @@ private fun Shell(
                 (wide && event.isSearchShortcut()).also { if (it) searchInput.focus.requestFocus() }
             },
         ) {
-            NoticesBanner(notices, navigator)
-            AppUpdatesBanner(updates)
+            NoticesBanner(banners.notices, navigator)
+            AppUpdatesBanner(banners.updates)
+            NewDigestBanner(banners.digest, navigator)
             if (wide) {
                 WideTopBar(
                     key,
@@ -392,6 +403,10 @@ private fun Page(
         is Route.Notices -> {
             val viewModel = models.of(entryKey, NoticesViewModel::class) { NoticesViewModel(scope.get<NoticeRepository>()) }
             NoticesScreen(viewModel, onBack = navigator::back)
+        }
+        is Route.Digest -> {
+            val viewModel = models.of(entryKey, DigestViewModel::class) { DigestViewModel(scope.get<DigestRepository>(), route.id) }
+            DigestScreen(viewModel, onBack = navigator::back, onOpenEmail = { navigator.push(Route.Reader(it)) })
         }
         is Route.Sender ->
             SenderCard(

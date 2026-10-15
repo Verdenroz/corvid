@@ -9,7 +9,7 @@ import io.ktor.http.HttpStatusCode
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.JsonObject
 
-private val ABSENT = setOf(HttpStatusCode.NotFound, HttpStatusCode.ServiceUnavailable)
+internal val ABSENT = setOf(HttpStatusCode.NotFound, HttpStatusCode.ServiceUnavailable)
 
 /** The body of a GET on [path], or null when the server lacks the route or has the feature off. */
 internal suspend fun JmapClient.webGetOrNull(path: String): JsonObject? {

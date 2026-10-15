@@ -11,6 +11,7 @@ import io.ktor.http.headersOf
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlin.random.Random
@@ -65,6 +66,19 @@ class FakeDevices(private val blobs: MutableMap<String, ByteArray>) {
 
     /** Each push route call as method and device name, in order. */
     val pushCalls: MutableList<Pair<HttpMethod, String>> = mutableListOf()
+
+    /** Answers the push kinds route 404, as a server from before it does. */
+    var kindsUnsupported: Boolean = false
+
+    /** Answers the push kinds route 500. */
+    var kindsBroken: Boolean = false
+
+    /** The push kinds each device asked for. */
+    val pushKinds: MutableMap<String, List<String>> = mutableMapOf()
+
+    /** The number of push kinds requests, whatever they were answered. */
+    var kindsCalls: Int = 0
+        private set
 
     /** Ids of blobs that live in the keys account and download from no other. */
     val keyBlobIds: MutableSet<String> = mutableSetOf()
@@ -136,6 +150,8 @@ class FakeDevices(private val blobs: MutableMap<String, ByteArray>) {
             segments.size == 3 && segments[0] == "requests" && segments[2] == "approve" && request.method == HttpMethod.Post ->
                 approve(scope, request, segments[1])
             segments.size == 1 && request.method == HttpMethod.Get -> record(scope, segments[0])
+            segments.size == 3 && segments[1] == "push" && segments[2] == "kinds" && request.method == HttpMethod.Put ->
+                kinds(scope, request, segments[0])
             segments.size == 2 && segments[1] == "push" -> push(scope, request, segments[0])
             else -> scope.respond("not found", HttpStatusCode.NotFound)
         }
@@ -217,6 +233,18 @@ class FakeDevices(private val blobs: MutableMap<String, ByteArray>) {
         scope: MockRequestHandleScope,
         name: String,
     ): HttpResponseData = records[name]?.let { json(scope, HttpStatusCode.OK, it) } ?: scope.respond("not found", HttpStatusCode.NotFound)
+
+    private fun kinds(
+        scope: MockRequestHandleScope,
+        request: HttpRequestData,
+        name: String,
+    ): HttpResponseData {
+        kindsCalls++
+        if (kindsBroken) return scope.respond("", HttpStatusCode.InternalServerError)
+        if (kindsUnsupported || name !in records) return scope.respond("", HttpStatusCode.NotFound)
+        pushKinds[name] = body(request).getValue("kinds").jsonArray.map { it.jsonPrimitive.content }
+        return scope.respond("", HttpStatusCode.NoContent)
+    }
 
     private fun push(
         scope: MockRequestHandleScope,

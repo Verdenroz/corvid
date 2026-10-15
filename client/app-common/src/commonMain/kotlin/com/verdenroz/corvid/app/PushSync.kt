@@ -12,7 +12,8 @@ import kotlinx.coroutines.flow.map
 /**
  * Hands the server this device's push endpoint while the app is unlocked: whatever is held when [run] starts, since
  * the server drops an endpoint FCM no longer knows, then each new endpoint and each removal as it happens. A server it
- * cannot reach leaves the state as it was, for the next unlock.
+ * cannot reach leaves the state as it was, for the next unlock. Each accepted endpoint is followed by a request for
+ * the digest push kind.
  */
 class PushSync(
     private val endpoints: PushEndpointRepository,
@@ -35,6 +36,7 @@ class PushSync(
                     result.status,
                     result.token ?: push.streamToken.takeIf { result.status == PushStatus.Sent },
                 )
+                if (result.status == PushStatus.Sent) endpoints.askForDigestPush(deviceName)
             } else if (push.status == PushStatus.Removing) {
                 endpoints.remove(deviceName)
                 preferences.finishPushRemoval()

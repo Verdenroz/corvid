@@ -3,17 +3,21 @@ package com.verdenroz.corvid
 import android.app.Notification
 import android.app.PendingIntent
 import android.content.Context
+import com.verdenroz.corvid.app.AppPresence
 
-private const val PREVIEW_ID = 3
-private const val SUMMARY_ID = 4
 private const val UNREADABLE_TAG = "unreadable"
 
 /**
  * The pushed new-mail notifications, one per message tagged with its id, grouped under a summary on the new-mail
  * channel. Each names sender and subject and is hidden from the lock screen.
  */
-class AndroidMailPreviews(private val context: Context) {
+class AndroidMailPreviews(
+    private val context: Context,
+    private val presence: AppPresence,
+) {
     private val manager = context.newMailChannel()
+
+    private val digests = AndroidDigestNotices(context)
 
     /**
      * Shows one push. A body the connector could not decrypt is ignored, since anyone who can reach the push host can
@@ -23,7 +27,16 @@ class AndroidMailPreviews(private val context: Context) {
         content: ByteArray,
         decrypted: Boolean,
     ) {
-        if (decrypted) post(readMailPreview(content))
+        if (!decrypted) return
+        when (val notice = readPushNotice(content)) {
+            is PushNotice.Mail -> post(notice.preview)
+            is PushNotice.Digest -> {
+                digests.post(notice.id)
+                presence.digestArrived()
+            }
+            PushNotice.Unreadable -> post(null)
+            PushNotice.Ignored -> Unit
+        }
     }
 
     private fun post(preview: MailPreview?) {

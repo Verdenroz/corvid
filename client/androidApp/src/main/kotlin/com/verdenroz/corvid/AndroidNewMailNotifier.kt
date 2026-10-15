@@ -8,7 +8,6 @@ import com.verdenroz.corvid.app.NewMailNotifier
 
 internal const val NEW_MAIL_CHANNEL = "new-mail"
 internal const val PREVIEW_GROUP = "com.verdenroz.corvid.NEW_MAIL"
-private const val NOTIFICATION_ID = 2
 internal const val EXTRA_OPEN_INBOX = "com.verdenroz.corvid.OPEN_INBOX"
 
 /** The new-mail channel, which the lock screen never shows. */
@@ -23,7 +22,7 @@ class AndroidNewMailNotifier(private val context: Context) : NewMailNotifier {
         title: String,
         text: String,
     ) {
-        val open = context.openApp(NOTIFICATION_ID, PendingIntent.FLAG_UPDATE_CURRENT) { putExtra(EXTRA_OPEN_INBOX, true) }
+        val open = context.openApp(NEW_MAIL_ID, PendingIntent.FLAG_UPDATE_CURRENT) { putExtra(EXTRA_OPEN_INBOX, true) }
         val notification =
             context.notification(NEW_MAIL_CHANNEL, title, text)
                 .setVisibility(Notification.VISIBILITY_SECRET)
@@ -31,11 +30,11 @@ class AndroidNewMailNotifier(private val context: Context) : NewMailNotifier {
                 .setContentIntent(open)
                 .setAutoCancel(true)
                 .build()
-        manager.notify(NOTIFICATION_ID, notification)
+        manager.notify(NEW_MAIL_ID, notification)
     }
 
     override fun clear() {
-        manager.cancel(NOTIFICATION_ID)
+        manager.cancel(NEW_MAIL_ID)
         manager.activeNotifications.filter { it.notification.group == PREVIEW_GROUP }.forEach { manager.cancel(it.tag, it.id) }
     }
 }

@@ -32,6 +32,10 @@ sealed interface Route {
     @Serializable
     data object Notices : Route
 
+    /** The digest [id] names, or the latest when it is null. */
+    @Serializable
+    data class Digest(val id: String? = null) : Route
+
     @Serializable
     data object ApproveDevice : Route
 

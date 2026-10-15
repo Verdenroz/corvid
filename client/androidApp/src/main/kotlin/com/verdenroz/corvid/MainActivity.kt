@@ -47,6 +47,7 @@ class MainActivity : ComponentActivity() {
 
     private fun openInboxIfAsked(intent: Intent) {
         if (intent.getBooleanExtra(EXTRA_OPEN_INBOX, false)) presence.requestInbox()
+        intent.getStringExtra(EXTRA_OPEN_DIGEST)?.let(presence::requestDigest)
     }
 
     // Single-activity app, so this activity's own stop/start is the app's

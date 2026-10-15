@@ -4,6 +4,8 @@
     <string name="notice_channel">Server notices</string>
     <string name="notice_generic">A server notice</string>
     <string name="new_mail_channel">New mail</string>
+    <string name="digest_channel">Digest</string>
+    <string name="digest_ready">Your digest is ready</string>
     <string name="connection_channel">Connection</string>
     <string name="connection_text">Waiting for new mail</string>
     <string name="new_mail_no_subject">(no subject)</string>

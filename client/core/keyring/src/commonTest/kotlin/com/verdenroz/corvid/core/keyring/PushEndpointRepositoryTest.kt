@@ -119,4 +119,27 @@ class PushEndpointRepositoryTest {
 
     private suspend fun repository() =
         PushEndpointRepository(JmapClient.connect(createJmapHttpClient(fake.engine), latch, BASE_URL, bearerToken = { null }))
+
+    @Test
+    fun `asking for the digest push registers the kind for the device`() =
+        runTest {
+            fake.devices.enroll("phone")
+
+            repository().askForDigestPush("phone")
+
+            assertEquals(listOf("digest"), fake.devices.pushKinds["phone"])
+        }
+
+    @Test
+    fun `a server without the kinds route is asked once`() =
+        runTest {
+            fake.devices.enroll("phone")
+            fake.devices.kindsUnsupported = true
+            val repository = repository()
+
+            repository.askForDigestPush("phone")
+            repository.askForDigestPush("phone")
+
+            assertEquals(1, fake.devices.kindsCalls)
+        }
 }

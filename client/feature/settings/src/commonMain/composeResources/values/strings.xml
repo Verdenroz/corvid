@@ -71,6 +71,8 @@
     <string name="settings_push_failed">Corvid could not start background notifications. Try again.</string>
     <string name="settings_push_google_unavailable">Google could not register Corvid. Turn this on again to keep a connection to your server instead.</string>
     <string name="settings_notices_row">Server notices</string>
+    <string name="settings_digest_row">Digest</string>
+    <string name="settings_digest_detail">The server's overnight summary of your mail.</string>
     <string name="settings_notices_detail">Sign-in alerts and failed updates the server has reported.</string>
     <string name="settings_approve_row">Approve a device</string>
     <string name="settings_approve_detail">Let a new device read its key, with a passkey that approves devices.</string>

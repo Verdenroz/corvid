@@ -67,6 +67,19 @@ class DevicePreferencesTest {
         }
 
     @Test
+    fun `the newest digest seen starts as none and is published once set`() =
+        runTest {
+            val prefs = preferences()
+            runCurrent()
+            assertNull(prefs.settings.value.digestSeen)
+
+            prefs.setDigestSeen("d7")
+            runCurrent()
+
+            assertEquals("d7", prefs.settings.value.digestSeen)
+        }
+
+    @Test
     fun `a file written before notices existed reads as nothing seen and keeps its choices`() {
         val preferences = preferencesOf(stringPreferencesKey("theme") to "Dark", intPreferencesKey("auto_lock_minutes") to 15)
 

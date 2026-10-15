@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="digest_title">Digest</string>
+    <string name="digest_back">Back</string>
+    <string name="digest_span">Mail from %1$s to %2$s</string>
+    <string name="digest_caveat">Summary by a model; it can be wrong.</string>
+    <string name="digest_other">Other</string>
+    <string name="digest_empty">There is no digest yet.</string>
+</resources>

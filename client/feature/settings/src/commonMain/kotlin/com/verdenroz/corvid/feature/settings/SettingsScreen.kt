@@ -39,6 +39,8 @@ import com.verdenroz.corvid.feature.settings.resources.settings_auto_lock_detail
 import com.verdenroz.corvid.feature.settings.resources.settings_auto_lock_option
 import com.verdenroz.corvid.feature.settings.resources.settings_back
 import com.verdenroz.corvid.feature.settings.resources.settings_cancel
+import com.verdenroz.corvid.feature.settings.resources.settings_digest_detail
+import com.verdenroz.corvid.feature.settings.resources.settings_digest_row
 import com.verdenroz.corvid.feature.settings.resources.settings_filters_detail
 import com.verdenroz.corvid.feature.settings.resources.settings_filters_row
 import com.verdenroz.corvid.feature.settings.resources.settings_lock_now
@@ -91,6 +93,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onOpenFilters: () -> Unit,
     onOpenNotices: () -> Unit,
+    onOpenDigest: (() -> Unit)?,
     onOpenApproveDevice: () -> Unit,
     onOpenPasskeys: () -> Unit,
 ) {
@@ -168,6 +171,13 @@ fun SettingsScreen(
                         detail = stringResource(Res.string.settings_notices_detail),
                         onClick = onOpenNotices,
                     )
+                    onOpenDigest?.let {
+                        LinkRow(
+                            title = stringResource(Res.string.settings_digest_row),
+                            detail = stringResource(Res.string.settings_digest_detail),
+                            onClick = it,
+                        )
+                    }
                 }
             SettingsTopic.About -> AboutSection(appVersion, appUpdate, onUpdateApp, aboutState, about)
         }
