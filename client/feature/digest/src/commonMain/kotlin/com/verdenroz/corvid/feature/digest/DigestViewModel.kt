@@ -14,7 +14,7 @@ import kotlinx.coroutines.launch
 sealed interface DigestState {
     data object Loading : DigestState
 
-    /** No digest was made yet, or the server does not make them. */
+    /** No digest was made yet, the server does not make them, or the digest holds no mail. */
     data object Empty : DigestState
 
     data class Failed(val message: UiText) : DigestState
@@ -37,7 +37,8 @@ class DigestViewModel(
             _state.value =
                 try {
                     val digest = if (id == null) repository.latest() else repository.get(id)
-                    digest?.let { DigestState.Ready(it) } ?: DigestState.Empty
+                    val groups = digest?.groups.orEmpty().filter { it.items.isNotEmpty() }
+                    if (digest == null || groups.isEmpty()) DigestState.Empty else DigestState.Ready(digest.copy(groups = groups))
                 } catch (e: JmapException) {
                     DigestState.Failed(e.userMessage())
                 }

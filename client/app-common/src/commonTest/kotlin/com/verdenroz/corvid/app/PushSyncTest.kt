@@ -1,6 +1,5 @@
 package com.verdenroz.corvid.app
 
-import com.verdenroz.corvid.core.data.DigestRepository
 import com.verdenroz.corvid.core.keyring.PushEndpointRepository
 import com.verdenroz.corvid.core.prefs.DevicePreferences
 import com.verdenroz.corvid.core.prefs.DeviceSettings
@@ -44,7 +43,7 @@ private suspend fun TestScope.follow(
     fake: FakeJmapServer,
     preferences: DevicePreferences,
 ) {
-    val sync = PushSync(PushEndpointRepository(fake.client()), DigestRepository(fake.client()), preferences, "phone")
+    val sync = PushSync(PushEndpointRepository(fake.client()), preferences, "phone")
     backgroundScope.launch { sync.run() }
     runCurrent()
 }
@@ -166,7 +165,7 @@ class PushSyncTest {
         runTest {
             val preferences = preferences()
             preferences.setPushSubscription(SUBSCRIPTION)
-            val sync = PushSync(PushEndpointRepository(fake.client()), DigestRepository(fake.client()), preferences, "phone")
+            val sync = PushSync(PushEndpointRepository(fake.client()), preferences, "phone")
             fake.unreachable = true
 
             backgroundScope.launch { sync.run() }
@@ -219,7 +218,7 @@ class PushSyncTest {
             fake.devices.kindsUnsupported = true
             val preferences = preferences()
             preferences.setPushSubscription(SUBSCRIPTION)
-            val sync = PushSync(PushEndpointRepository(fake.client()), DigestRepository(fake.client()), preferences, "phone")
+            val sync = PushSync(PushEndpointRepository(fake.client()), preferences, "phone")
             backgroundScope.launch { sync.run() }
             until { fake.devices.kindsCalls == 1 }
 

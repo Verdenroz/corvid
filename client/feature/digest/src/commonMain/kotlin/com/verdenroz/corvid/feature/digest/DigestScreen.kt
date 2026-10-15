@@ -41,6 +41,7 @@ import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Clock
 
 private const val SUMMARY_LINES = 4
+private val COLUMN_WIDTH = 640.dp
 
 /** The server's overnight digest; [onOpenEmail] takes the id of the message a row names. */
 @Composable
@@ -56,12 +57,7 @@ fun DigestScreen(
             is DigestState.Loading -> Unit
             is DigestState.Empty -> QuietPane(stringResource(Res.string.digest_empty))
             is DigestState.Failed -> QuietPane(current.message.asString())
-            is DigestState.Ready ->
-                if (current.digest.groups.none { it.items.isNotEmpty() }) {
-                    QuietPane(stringResource(Res.string.digest_empty))
-                } else {
-                    DigestList(current, onOpenEmail)
-                }
+            is DigestState.Ready -> DigestList(current, onOpenEmail)
         }
     }
 }
@@ -74,13 +70,13 @@ private fun DigestList(
     val gutter = CorvidSpacing.gutter(LocalWideLayout.current)
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = gutter, vertical = 8.dp)) {
         item { Span(ready.digest, ready.anySummary) }
-        ready.digest.groups.filter { it.items.isNotEmpty() }.forEach { group ->
+        ready.digest.groups.forEach { group ->
             item {
                 Text(
                     group.label ?: stringResource(Res.string.digest_other),
                     style = CorvidTheme.type.label,
                     color = CorvidTheme.colors.inkFaint,
-                    modifier = Modifier.widthIn(max = 640.dp).padding(top = 20.dp, bottom = 4.dp),
+                    modifier = Modifier.widthIn(max = COLUMN_WIDTH).padding(top = 20.dp, bottom = 4.dp),
                 )
             }
             group.items.forEach { entry ->
@@ -98,7 +94,7 @@ private fun Span(
     val zone = TimeZone.currentSystemDefault()
     val now = Clock.System.now()
     val span = uiText(Res.string.digest_span, stamp(digest.from, zone, now), stamp(digest.to, zone, now))
-    Column(Modifier.widthIn(max = 640.dp).padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Column(Modifier.widthIn(max = COLUMN_WIDTH).padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(span.asString(), style = CorvidTheme.type.meta, color = CorvidTheme.colors.inkMuted)
         if (anySummary) Text(stringResource(Res.string.digest_caveat), style = CorvidTheme.type.meta, color = CorvidTheme.colors.inkFaint)
     }
@@ -110,7 +106,7 @@ private fun DigestRow(
     item: DigestItem,
     onOpenEmail: (String) -> Unit,
 ) {
-    Column(Modifier.widthIn(max = 640.dp)) {
+    Column(Modifier.widthIn(max = COLUMN_WIDTH)) {
         Column(
             verticalArrangement = Arrangement.spacedBy(2.dp),
             modifier = Modifier.fillMaxWidth().clickable { onOpenEmail(item.emailId) }.padding(vertical = 12.dp),

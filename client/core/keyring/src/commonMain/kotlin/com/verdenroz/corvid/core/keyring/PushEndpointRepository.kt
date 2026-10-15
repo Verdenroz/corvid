@@ -5,10 +5,12 @@ import com.verdenroz.corvid.core.jmap.WebReply
 import com.verdenroz.corvid.core.prefs.PushStatus
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 
 /** What the server made of a registration: [status] as it is recorded, and [token] for an own connection. */
 data class PushResult(val status: PushStatus, val token: String? = null)
@@ -19,6 +21,9 @@ private val PUSH_PASS_THROUGH = DEVICES_PASS_THROUGH + HttpStatusCode.Unprocessa
 
 /** Where the server pushes this device's new-mail previews: `/corvid/devices/<name>/push`. */
 class PushEndpointRepository(private val jmapClient: JmapClient) {
+    @Volatile
+    private var kindsUnsupported = false
+
     /**
      * [p256dh] and [auth] are base64url, as the connector gives them. The token comes only with the first
      * registration of an own connection; registering the same one again answers without it.
@@ -49,6 +54,14 @@ class PushEndpointRepository(private val jmapClient: JmapClient) {
     /** Succeeds also when the server held no endpoint for [deviceName], or pushes nothing. */
     suspend fun remove(deviceName: String) {
         jmapClient.webSend(HttpMethod.Delete, path(deviceName), passThrough = PUSH_PASS_THROUGH).approvalOff(*PUSH_OFF)
+    }
+
+    /** Registers the digest push kind for [deviceName]; once the server answers 404 it is not asked again. */
+    suspend fun askForDigestPush(deviceName: String) {
+        if (kindsUnsupported) return
+        val body = buildJsonObject { putJsonArray("kinds") { add("digest") } }
+        val reply = jmapClient.webSend(HttpMethod.Put, "${path(deviceName)}/kinds", body, passThrough = DEVICES_PASS_THROUGH)
+        if (reply.status == HttpStatusCode.NotFound) kindsUnsupported = true
     }
 
     private fun path(deviceName: String) = "$DEVICES_PATH/$deviceName/push"

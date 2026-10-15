@@ -43,8 +43,6 @@ data class FakeDigest(
     val to: String = "2024-05-06T07:00:00Z",
     val groups: List<Pair<String?, List<FakeDigestItem>>> = emptyList(),
 ) {
-    val count: Int get() = groups.sumOf { it.second.size }
-
     internal fun toJson(): JsonObject =
         buildJsonObject {
             put("id", id)
@@ -63,7 +61,7 @@ data class FakeDigest(
         }
 }
 
-/** `/corvid/digest`: a 404 until [serve] is called, as an older server answers, and a 503 while [off]. */
+/** `/corvid/digest/{id}` and `latest`: a 404 until [serve] is called, as an older server answers, and a 503 while [off]. */
 class FakeDigests {
     private val served = CopyOnWriteArrayList<FakeDigest>()
 
@@ -86,26 +84,10 @@ class FakeDigests {
     ): HttpResponseData {
         if (off) return scope.respond("""{"error":"digest_off"}""", HttpStatusCode.ServiceUnavailable, JSON)
         val tail = request.url.encodedPath.removePrefix("/corvid/digest").trim('/')
-        if (tail.isEmpty()) return scope.respond(history().toString(), HttpStatusCode.OK, JSON)
         val digest =
             (if (tail == "latest") served.lastOrNull() else served.firstOrNull { it.id == tail })
                 ?: return scope.respond("not found", HttpStatusCode.NotFound)
         val json = digest.toJson().let { if (malformed) JsonObject(it - "groups") else it }
         return scope.respond(json.toString(), HttpStatusCode.OK, JSON)
     }
-
-    private fun history() =
-        buildJsonObject {
-            putJsonArray("digests") {
-                served.asReversed().forEach {
-                    add(
-                        buildJsonObject {
-                            put("id", it.id)
-                            put("to", it.to)
-                            put("count", it.count)
-                        },
-                    )
-                }
-            }
-        }
 }

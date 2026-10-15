@@ -16,6 +16,3 @@ data class DigestItem(
     val receivedAt: Instant,
     val summary: String?,
 )
-
-/** One line of the digest history. */
-data class DigestEntry(val id: String, val to: Instant, val count: Int)

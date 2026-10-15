@@ -1,6 +1,5 @@
 package com.verdenroz.corvid.app
 
-import com.verdenroz.corvid.core.data.DigestRepository
 import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.keyring.PushEndpointRepository
 import com.verdenroz.corvid.core.prefs.DevicePreferences
@@ -18,7 +17,6 @@ import kotlinx.coroutines.flow.map
  */
 class PushSync(
     private val endpoints: PushEndpointRepository,
-    private val digests: DigestRepository,
     private val preferences: DevicePreferences,
     private val deviceName: String,
 ) {
@@ -38,7 +36,7 @@ class PushSync(
                     result.status,
                     result.token ?: push.streamToken.takeIf { result.status == PushStatus.Sent },
                 )
-                if (result.status == PushStatus.Sent) digests.askForDigestPush(deviceName)
+                if (result.status == PushStatus.Sent) endpoints.askForDigestPush(deviceName)
             } else if (push.status == PushStatus.Removing) {
                 endpoints.remove(deviceName)
                 preferences.finishPushRemoval()

@@ -2,6 +2,8 @@ package com.verdenroz.corvid
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.decodeFromJsonElement
 
 @Serializable
 private class PushedHead(val v: Int, val kind: String? = null, val id: String? = null)
@@ -22,14 +24,15 @@ sealed interface PushNotice {
 }
 
 fun readPushNotice(content: ByteArray): PushNotice {
-    val head =
+    val (head, body) =
         try {
-            noticeJson.decodeFromString<PushedHead>(content.decodeToString())
+            val body = noticeJson.decodeFromString<JsonObject>(content.decodeToString())
+            noticeJson.decodeFromJsonElement<PushedHead>(body) to body
         } catch (e: IllegalArgumentException) {
             return PushNotice.Unreadable
         }
     return when (head.v) {
-        1 -> readMailPreview(content)?.let(PushNotice::Mail) ?: PushNotice.Unreadable
+        1 -> body.toMailPreview()?.let(PushNotice::Mail) ?: PushNotice.Unreadable
         2 -> head.id?.takeIf { head.kind == "digest" }?.let(PushNotice::Digest) ?: PushNotice.Ignored
         else -> PushNotice.Unreadable
     }

@@ -2,7 +2,6 @@ package com.verdenroz.corvid.core.data
 
 import com.verdenroz.corvid.core.jmap.JmapError
 import com.verdenroz.corvid.core.jmap.JmapException
-import com.verdenroz.corvid.core.model.DigestEntry
 import com.verdenroz.corvid.core.testing.FakeDigest
 import com.verdenroz.corvid.core.testing.FakeDigestItem
 import com.verdenroz.corvid.core.testing.FakeJmapServer
@@ -53,26 +52,11 @@ class DigestRepositoryTest {
         }
 
     @Test
-    fun `the history lists the newest first`() =
-        runTest {
-            val fake = FakeJmapServer().apply { digests.serve(FakeDigest("d1"), NIGHT) }
-
-            assertEquals(
-                listOf(
-                    DigestEntry("d2", Instant.parse("2024-05-06T07:00:00Z"), 2),
-                    DigestEntry("d1", Instant.parse("2024-05-06T07:00:00Z"), 0),
-                ),
-                repository(fake).list(),
-            )
-        }
-
-    @Test
     fun `a server with no digest yet has none`() =
         runTest {
             val fake = FakeJmapServer()
 
             assertNull(repository(fake).latest())
-            assertEquals(emptyList(), repository(fake).list())
         }
 
     @Test
@@ -82,7 +66,6 @@ class DigestRepositoryTest {
             fake.digests.off = true
 
             assertNull(repository(fake).latest())
-            assertEquals(emptyList(), repository(fake).list())
         }
 
     @Test
@@ -94,28 +77,5 @@ class DigestRepositoryTest {
             val failure = assertFailsWith<JmapException> { repository(fake).latest() }
 
             assertIs<JmapError.Request>(failure.error)
-        }
-
-    @Test
-    fun `asking for the digest push registers the kind for the device`() =
-        runTest {
-            val fake = FakeJmapServer().apply { devices.enroll("phone") }
-
-            repository(fake).askForDigestPush("phone")
-
-            assertEquals(listOf("digest"), fake.devices.pushKinds["phone"])
-        }
-
-    @Test
-    fun `a server without the kinds route is asked once`() =
-        runTest {
-            val fake = FakeJmapServer().apply { devices.enroll("phone") }
-            fake.devices.kindsUnsupported = true
-            val repository = repository(fake)
-
-            repository.askForDigestPush("phone")
-            repository.askForDigestPush("phone")
-
-            assertEquals(1, fake.devices.kindsCalls)
         }
 }

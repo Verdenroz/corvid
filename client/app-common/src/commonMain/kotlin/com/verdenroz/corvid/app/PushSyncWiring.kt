@@ -2,7 +2,6 @@ package com.verdenroz.corvid.app
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import com.verdenroz.corvid.core.data.DigestRepository
 import com.verdenroz.corvid.core.keyring.PushEndpointRepository
 import com.verdenroz.corvid.core.prefs.DevicePreferences
 import org.koin.compose.koinInject
@@ -17,6 +16,6 @@ internal fun FollowPushEndpoint(
 ) {
     LaunchedEffect(scope) {
         val name = preferences.deviceName(hosts.server) ?: return@LaunchedEffect
-        PushSync(scope.get<PushEndpointRepository>(), scope.get<DigestRepository>(), preferences, name).run()
+        PushSync(scope.get<PushEndpointRepository>(), preferences, name).run()
     }
 }

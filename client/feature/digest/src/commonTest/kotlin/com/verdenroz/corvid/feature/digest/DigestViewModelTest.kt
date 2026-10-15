@@ -69,4 +69,23 @@ class DigestViewModelTest {
 
             assertIs<DigestState.Failed>(viewModel(fake, null).settled())
         }
+
+    @Test
+    fun `a digest with no mail is empty`() =
+        runViewModelTest {
+            val quiet = FakeJmapServer().apply { digests.serve(FakeDigest("d1", groups = listOf("Work" to emptyList()))) }
+
+            assertEquals(DigestState.Empty, viewModel(quiet, null).settled())
+        }
+
+    @Test
+    fun `groups with no items are dropped`() =
+        runViewModelTest {
+            val groups = listOf("Quiet" to emptyList(), "Work" to listOf(item()))
+            val mixed = FakeJmapServer().apply { digests.serve(FakeDigest("d1", groups = groups)) }
+
+            val ready = assertIs<DigestState.Ready>(viewModel(mixed, null).settled())
+
+            assertEquals(listOf("Work"), ready.digest.groups.map { it.label })
+        }
 }

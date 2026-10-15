@@ -2,6 +2,8 @@ package com.verdenroz.corvid
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.decodeFromJsonElement
 
 @Serializable
 private class PushedSender(val name: String? = null, val email: String)
@@ -29,11 +31,11 @@ data class MailPreview(
     fun bigText(noSubject: String): String = listOf(text(noSubject), preview).filter { it.isNotBlank() }.joinToString("\n")
 }
 
-/** Null for a body that is not a payload this app reads: garbage, a missing field, or a newer version. */
-fun readMailPreview(content: ByteArray): MailPreview? {
+/** Null for a body that is not a v1 payload this app reads: a missing field or another version. */
+internal fun JsonObject.toMailPreview(): MailPreview? {
     val mail =
         try {
-            pushJson.decodeFromString<PushedMail>(content.decodeToString())
+            pushJson.decodeFromJsonElement<PushedMail>(this)
         } catch (e: IllegalArgumentException) {
             return null
         }
