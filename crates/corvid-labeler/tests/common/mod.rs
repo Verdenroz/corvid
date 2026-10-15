@@ -8,7 +8,12 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use corvid_ingest::MODEL_DONE;
-use corvid_labeler::{Changes, Mailbox, Message, Oracle};
+use corvid_labeler::{Changes, Mailbox, Message, Oracle, Roles};
+
+pub const INBOX: &str = "inbox";
+pub const ARCHIVE: &str = "archive";
+pub const TRASH: &str = "trash";
+pub const JUNK: &str = "junk";
 
 const OURS: &str = "mail.corvid.test; dmarc=pass header.from=acme.test";
 
@@ -23,6 +28,7 @@ pub struct Fake {
     pub touched: RefCell<Vec<String>>,
     pub refuse_writes: Cell<bool>,
     pub replay: Cell<bool>,
+    pub destroyed: RefCell<Vec<String>>,
 }
 
 impl Fake {
@@ -36,10 +42,41 @@ impl Fake {
                 list_id: None,
                 authentication_results: vec![OURS.to_owned()],
                 keywords: keywords.iter().map(|k| (*k).to_owned()).collect(),
-                received_at_days: day,
+                received_at_secs: day as i64 * 86400,
+                thread_id: id.to_owned(),
+                mailbox_ids: BTreeSet::from([INBOX.to_owned()]),
             },
         );
         self.order.borrow_mut().push(id.to_owned());
+    }
+
+    pub fn arrive(&self, id: &str, from: &str, thread: &str, at: i64) {
+        self.deliver(id, from, &[], 0.0);
+        let mut messages = self.messages.borrow_mut();
+        let message = messages.get_mut(id).unwrap();
+        message.received_at_secs = at;
+        message.thread_id = thread.to_owned();
+    }
+
+    pub fn relocate(&self, id: &str, mailbox: &str) {
+        self.messages.borrow_mut().get_mut(id).unwrap().mailbox_ids =
+            BTreeSet::from([mailbox.to_owned()]);
+        self.touch(id);
+    }
+
+    pub fn read(&self, id: &str) {
+        self.messages
+            .borrow_mut()
+            .get_mut(id)
+            .unwrap()
+            .keywords
+            .insert("$seen".to_owned());
+        self.touch(id);
+    }
+
+    pub fn expunge(&self, id: &str) {
+        self.messages.borrow_mut().remove(id);
+        self.destroyed.borrow_mut().push(id.to_owned());
     }
 
     pub fn keywords_of(&self, id: &str) -> BTreeSet<String> {
@@ -74,10 +111,22 @@ impl Mailbox for Fake {
             }
         };
         let updated = self.touched.borrow_mut().drain(..).collect();
+        let destroyed = self.destroyed.borrow_mut().drain(..).collect();
         Ok(Changes {
             created,
             updated,
+            destroyed,
             new_state,
+        })
+    }
+
+    fn roles(&self) -> io::Result<Roles> {
+        let id = |name: &str| Some(name.to_owned());
+        Ok(Roles {
+            inbox: INBOX.to_owned(),
+            archive: id(ARCHIVE),
+            trash: id(TRASH),
+            junk: id(JUNK),
         })
     }
 
@@ -86,15 +135,7 @@ impl Mailbox for Fake {
         Ok(ids
             .iter()
             .filter_map(|id| messages.get(id))
-            .map(|m| Message {
-                id: m.id.clone(),
-                from: m.from.clone(),
-                subject: m.subject.clone(),
-                list_id: m.list_id.clone(),
-                authentication_results: m.authentication_results.clone(),
-                keywords: m.keywords.clone(),
-                received_at_days: m.received_at_days,
-            })
+            .cloned()
             .collect())
     }
 

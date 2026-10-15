@@ -1,3 +1,4 @@
+mod actions;
 mod cold_start;
 mod dates;
 mod jmap;
@@ -8,11 +9,12 @@ use std::collections::BTreeSet;
 use std::io;
 use std::path::Path;
 
-use corvid_ingest::{is_prior_keyword, open, save, sender_key};
+use corvid_ingest::{is_prior_keyword, open, save};
 
+pub use actions::{ActionLog, Candidate, Delta, Exit};
 pub use cold_start::{Budget, ColdStart, cold_start};
 pub use jmap::Jmap;
-pub use mailbox::{Changes, Mailbox, Message};
+pub use mailbox::{Changes, Mailbox, Message, Roles};
 pub use model::{Model, Oracle};
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -27,6 +29,18 @@ pub struct Summary {
 /// Every failure here stops before the cursor moves, so the poll repeats rather than skipping
 /// messages. The dedup set absorbs the repeat.
 pub fn poll(path: &Path, mailbox: &impl Mailbox) -> io::Result<Summary> {
+    poll_observed(path, mailbox, |_| Ok(()))
+}
+
+/// `poll`, handing `observe` what changed before anything is labelled.
+///
+/// Corrupt state in `observe` stops the poll like any other; any other failure there is logged
+/// and labeling goes on.
+pub fn poll_observed(
+    path: &Path,
+    mailbox: &impl Mailbox,
+    observe: impl FnOnce(&Delta) -> io::Result<()>,
+) -> io::Result<Summary> {
     let mut ingest = open(path)?;
     let changes = mailbox.changes(ingest.cursor())?;
     // A counted id reported as created means the cursor is not this server's and the feed is
@@ -38,19 +52,26 @@ pub fn poll(path: &Path, mailbox: &impl Mailbox) -> io::Result<Summary> {
         ));
     }
 
-    let mut ids = changes.created;
+    let mut ids = changes.created.clone();
     ids.extend(changes.updated);
     ids.sort();
     ids.dedup();
 
+    let messages = mailbox.fetch(&ids)?;
+    let delta = Delta {
+        messages: &messages,
+        created: &changes.created,
+        destroyed: &changes.destroyed,
+    };
+    match observe(&delta) {
+        Err(error) if error.kind() == io::ErrorKind::InvalidData => return Err(error),
+        Err(error) => tracing::warn!(%error, "observer failed"),
+        Ok(()) => {}
+    }
+
     let mut summary = Summary::default();
-    for message in mailbox.fetch(&ids)? {
-        let results: Vec<&str> = message
-            .authentication_results
-            .iter()
-            .map(String::as_str)
-            .collect();
-        let Some(key) = sender_key(&message.from, message.list_id.as_deref(), &results) else {
+    for message in messages {
+        let Some(key) = message.sender_key() else {
             summary.unkeyed += 1;
             continue;
         };
@@ -60,9 +81,9 @@ pub fn poll(path: &Path, mailbox: &impl Mailbox) -> io::Result<Summary> {
             &message.id,
             &key,
             &message.keywords,
-            message.received_at_days,
+            message.received_at_days(),
         );
-        let wanted = ingest.label(&message.id, &key, message.received_at_days);
+        let wanted = ingest.label(&message.id, &key, message.received_at_days());
         summary.labelled += 1;
 
         let ours: BTreeSet<String> = message
