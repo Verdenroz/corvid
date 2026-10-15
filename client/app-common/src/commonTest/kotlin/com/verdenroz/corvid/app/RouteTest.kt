@@ -14,6 +14,8 @@ class RouteTest {
                 Route.Filters,
                 Route.Settings,
                 Route.Notices,
+                Route.Digest(),
+                Route.Digest("d7"),
                 Route.Reader("e1"),
                 Route.Compose(ComposeIntent.New),
                 Route.Compose(ComposeIntent.To("ada@x.test")),

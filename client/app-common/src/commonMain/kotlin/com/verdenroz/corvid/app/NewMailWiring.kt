@@ -12,7 +12,8 @@ import org.koin.core.scope.Scope
 
 /**
  * The new-mail notification for as long as [scope] lives, quiet while the Inbox is on screen; the caller runs
- * [NewMail.check] on each mail change. A tapped notification brings [navigator] back to the Inbox.
+ * [NewMail.check] on each mail change. A tapped notification brings [navigator] back to the Inbox, or to the digest
+ * a digest notification names.
  */
 @Composable
 internal fun rememberNewMail(
@@ -30,5 +31,6 @@ internal fun rememberNewMail(
     LaunchedEffect(newMail, inboxInView, enabled) { newMail.attention(inboxInView, enabled) }
     LaunchedEffect(Unit) { if (enabled) permission.askOnce() }
     LaunchedEffect(navigator) { presence.inboxRequests.collect { navigator.showInbox() } }
+    LaunchedEffect(navigator) { presence.digestRequests.collect { navigator.open(Route.Digest(it)) } }
     return newMail
 }

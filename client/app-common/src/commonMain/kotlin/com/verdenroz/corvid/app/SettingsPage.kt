@@ -1,12 +1,17 @@
 package com.verdenroz.corvid.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import com.verdenroz.corvid.core.auth.AuthState
 import com.verdenroz.corvid.core.auth.PasskeyRepository
 import com.verdenroz.corvid.core.auth.TokenSource
+import com.verdenroz.corvid.core.data.DigestRepository
 import com.verdenroz.corvid.core.data.UpdateRepository
 import com.verdenroz.corvid.core.domain.ApproveWithKey
 import com.verdenroz.corvid.core.domain.EnrollPasskey
+import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.keyring.DeviceApprovalRepository
 import com.verdenroz.corvid.core.keyring.PushEndpointRepository
 import com.verdenroz.corvid.core.model.Identity
@@ -61,6 +66,15 @@ internal fun SettingsPage(
             address = session.identity?.email,
             server = session.hosts.server,
         )
+    val digests = remember(scope) { scope.get<DigestRepository>() }
+    val digestOffered by produceState(false, digests) {
+        value =
+            try {
+                digests.latest() != null
+            } catch (e: JmapException) {
+                false
+            }
+    }
     SettingsScreen(
         viewModel,
         about,
@@ -71,6 +85,7 @@ internal fun SettingsPage(
         onBack = navigator::back,
         onOpenFilters = { navigator.push(Route.Filters) },
         onOpenNotices = { navigator.push(Route.Notices) },
+        onOpenDigest = { navigator.push(Route.Digest()) }.takeIf { digestOffered },
         onOpenApproveDevice = { navigator.push(Route.ApproveDevice) },
         onOpenPasskeys = { navigator.push(Route.Passkeys) },
     )

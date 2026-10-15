@@ -62,6 +62,7 @@ import com.verdenroz.corvid.app.shell.sidebarPlace
 import com.verdenroz.corvid.app.shell.title
 import com.verdenroz.corvid.core.data.AttachmentFiles
 import com.verdenroz.corvid.core.data.ComposeRepository
+import com.verdenroz.corvid.core.data.DigestRepository
 import com.verdenroz.corvid.core.data.FiltersRepository
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.data.NoticeRepository
@@ -79,6 +80,8 @@ import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.core.ui.WIDE_LAYOUT
 import com.verdenroz.corvid.feature.compose.ComposeScreen
 import com.verdenroz.corvid.feature.compose.ComposeViewModel
+import com.verdenroz.corvid.feature.digest.DigestScreen
+import com.verdenroz.corvid.feature.digest.DigestViewModel
 import com.verdenroz.corvid.feature.filters.FiltersScreen
 import com.verdenroz.corvid.feature.filters.FiltersViewModel
 import com.verdenroz.corvid.feature.mailbox.ActionNoticeBar
@@ -392,6 +395,10 @@ private fun Page(
         is Route.Notices -> {
             val viewModel = models.of(entryKey, NoticesViewModel::class) { NoticesViewModel(scope.get<NoticeRepository>()) }
             NoticesScreen(viewModel, onBack = navigator::back)
+        }
+        is Route.Digest -> {
+            val viewModel = models.of(entryKey, DigestViewModel::class) { DigestViewModel(scope.get<DigestRepository>(), route.id) }
+            DigestScreen(viewModel, onBack = navigator::back, onOpenEmail = { navigator.push(Route.Reader(it)) })
         }
         is Route.Sender ->
             SenderCard(

@@ -49,6 +49,7 @@ kotlin {
             implementation(projects.feature.mailbox)
             implementation(projects.feature.compose)
             implementation(projects.feature.filters)
+            implementation(projects.feature.digest)
             implementation(projects.feature.settings)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
