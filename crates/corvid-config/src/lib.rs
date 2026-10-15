@@ -34,6 +34,7 @@ pub struct Config {
     pub imgproxy: Option<Imgproxy>,
     pub mirror: Option<Mirror>,
     pub sentinel: Option<Sentinel>,
+    pub scribe: Option<Summarizer>,
     #[serde(default)]
     pub update: Update,
 }
@@ -456,6 +457,49 @@ pub struct Model {
     pub request_extra: Map<String, Value>,
 }
 
+/// Thread summaries: `corvid-scribe` asks a model for them and posts them to the sentinel, which
+/// needs `sentinel.scribe` and the same `CORVID_SCRIBE_SECRET`.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Summarizer {
+    pub jmap_url: String,
+    pub jmap_user: String,
+    pub state: PathBuf,
+    pub sentinel_url: String,
+    #[serde(default = "three_hundred")]
+    pub interval_secs: u64,
+    /// Mailboxes left out of every thread, by name or role. Junk and Trash always are.
+    #[serde(default)]
+    pub exclude_mailboxes: Vec<String>,
+    /// Messages a thread needs before it is summarized, unless one body is longer than
+    /// `long_body_chars`.
+    #[serde(default = "three")]
+    pub min_messages: usize,
+    #[serde(default = "three_thousand")]
+    pub long_body_chars: usize,
+    /// Characters of thread text sent to the model; the oldest messages are cut first.
+    #[serde(default = "twelve_thousand")]
+    pub max_input_chars: usize,
+    pub model: SummaryModel,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SummaryModel {
+    pub url: String,
+    pub name: String,
+    #[serde(default = "three_hundred_tokens")]
+    pub max_tokens: u32,
+    /// Threads per pass.
+    #[serde(default = "ten")]
+    pub budget: usize,
+    #[serde(default = "three_hundred")]
+    pub deadline_secs: u64,
+    /// Server-specific fields merged into every request, such as a thinking-mode switch.
+    #[serde(default)]
+    pub request_extra: Map<String, Value>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Milter {
@@ -702,6 +746,14 @@ pub fn or_exit<T>(result: Result<T, Error>) -> T {
     })
 }
 
+/// Seconds since the epoch, for the services that stamp what they post.
+pub fn unix_now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("the clock is after 1970")
+        .as_secs() as i64
+}
+
 fn web_port() -> WebPort {
     WebPort(4443)
 }
@@ -715,6 +767,21 @@ fn twenty() -> usize {
     20
 }
 fn three_hundred() -> u64 {
+    300
+}
+fn three() -> usize {
+    3
+}
+fn ten() -> usize {
+    10
+}
+fn three_thousand() -> usize {
+    3000
+}
+fn twelve_thousand() -> usize {
+    12_000
+}
+fn three_hundred_tokens() -> u32 {
     300
 }
 fn an_hour() -> u64 {
@@ -760,7 +827,33 @@ mod tests {
         assert!(config.sentinel.is_some());
         assert!(config.labeler.as_ref().unwrap().suggest.is_some());
         assert!(config.sentinel.as_ref().unwrap().scribe.is_some());
+        assert!(config.scribe.is_some());
         assert!(config.update.auto);
+    }
+
+    #[test]
+    fn a_summarizer_takes_its_documented_defaults() {
+        let config = Config::parse(
+            "scribe:\n  jmap_url: x\n  jmap_user: u\n  state: /s\n  sentinel_url: http://s\n  model:\n    url: http://m\n    name: n\n",
+        )
+        .unwrap();
+        let scribe = config.scribe.unwrap();
+
+        assert_eq!(scribe.interval_secs, 300);
+        assert!(scribe.exclude_mailboxes.is_empty());
+        assert_eq!(scribe.min_messages, 3);
+        assert_eq!(scribe.long_body_chars, 3000);
+        assert_eq!(scribe.max_input_chars, 12_000);
+        assert_eq!(scribe.model.max_tokens, 300);
+        assert_eq!(scribe.model.budget, 10);
+        assert_eq!(scribe.model.deadline_secs, 300);
+    }
+
+    #[test]
+    fn a_summarizer_refuses_a_misspelt_setting() {
+        let text = "scribe:\n  jmap_url: x\n  jmap_user: u\n  state: /s\n  sentinel_url: http://s\n  model:\n    url: u\n    name: n\n    max_token: 5\n";
+
+        assert!(Config::parse(text).is_err());
     }
 
     #[test]

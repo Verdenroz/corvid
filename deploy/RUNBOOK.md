@@ -59,7 +59,11 @@ to loopback instead:
 
     ssh host /opt/corvid/deploy/device.sh add --local corvid-labeler
 
-Put the secret in `labeler.env`'s `CORVID_JMAP_PASSWORD`. The mirror is off-host and reaches JMAP
+Put the secret in `labeler.env`'s `CORVID_JMAP_PASSWORD`. The scribe takes its own, the same way:
+
+    ssh host /opt/corvid/deploy/device.sh add --local corvid-scribe
+
+and keeps it in `scribe-mail.env`'s `CORVID_JMAP_PASSWORD`. The mirror is off-host and reaches JMAP
 through the VPN, so it takes a plain `add`, scoped like any other device.
 
 ## Two-factor sign-in (TOTP)
@@ -119,10 +123,12 @@ The file holds no secrets, so it can be shared or committed. Secrets come from t
     labeler.env          CORVID_JMAP_PASSWORD, from device.sh add --local corvid-labeler
     mirror.env           CORVID_JMAP_PASSWORD, from device.sh add corvid-mirror, on the mirror machine
     sentinel-webhook.env CORVID_SENTINEL_SECRET (openssl rand -hex 32), shared with Stalwart
-    scribe.env           CORVID_SCRIBE_SECRET (openssl rand -hex 32), shared by labeler and sentinel
+    scribe-mail.env      CORVID_JMAP_PASSWORD, from device.sh add --local corvid-scribe
+    scribe.env           CORVID_SCRIBE_SECRET (openssl rand -hex 32), shared by labeler, scribe and sentinel
 
-`scribe.env` is read only when `labeler.suggest` and `sentinel.scribe` are in `config.yaml`. Add
-both to a host's file together, since each service exits 78 on its section without the secret.
+`scribe.env` is read only when `labeler.suggest`, `scribe` or `sentinel.scribe` is in `config.yaml`.
+Fill it before adding any of them, since each service exits 78 on its section without the secret.
+The scribe and the labeler's suggestions post to the sentinel, so they need `sentinel.scribe` too.
 `install.sh` generates the secret once and keeps it afterwards.
 
 The app passwords are created as in "A service's own app password". The image-proxy secret signs
@@ -213,6 +219,22 @@ A pass runs on the labeler's own thread, so live mail is not polled while one is
 deadline bounds that, not the budget: a call that answers slowly never fails, so twenty slow
 messages would hold the loop for as long as they took. It is checked between messages, so a pass
 can overrun it by one message.
+
+### The scribe's model
+
+The `scribe` section turns on thread summaries, and its unit stays masked until `config.yaml`
+has the section: `bootstrap.sh` masks or unmasks `corvid-scribe` and `corvid-labeler` on every
+run, so the next update starts it.
+
+The scribe asks for generated text through any OpenAI-compatible chat endpoint, one thread per
+call, and reads `choices[0].message.content` and `finish_reason`. A model with a thinking mode
+needs it turned off in `scribe.model.request_extra`; the template shows the switch for
+Qwen3-family models. A reply that starts with `<think>`, is empty or is cut at `max_tokens` is
+not stored, and the thread is not asked about again until its messages change.
+
+The scribe's first run adopts the mailbox as it is, so only threads that change afterwards are
+summarized. Junk, Trash and `exclude_mailboxes` are never sent to the model. A pass that cannot
+reach the model ends quietly and the threads stay queued for the next one.
 
 ## Proving the spam loop learns
 

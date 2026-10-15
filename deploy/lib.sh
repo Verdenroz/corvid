@@ -258,6 +258,17 @@ dkim_public_key() {
 
 unit_masked() { [[ "$(systemctl is-enabled "$1" 2>/dev/null)" == masked ]]; }
 
+# Keeps UNIT masked while config.yaml has no SECTION and unmasks it once it does, so an optional
+# service starts at the next update after its section is added and never before.
+gate_on_section() {
+  local unit="$1" section="$2"
+  if grep -q "^${section}:" "$CORVID_DIR/config.yaml"; then
+    systemctl unmask "$unit" >/dev/null
+  else
+    systemctl mask "$unit" >/dev/null
+  fi
+}
+
 # Runs corvid-config SUBCOMMAND against config.yaml. Tests set CORVID_CONFIG_CMD to run it without
 # the container.
 corvid_config() {

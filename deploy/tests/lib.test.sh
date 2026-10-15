@@ -106,6 +106,24 @@ check "not served is only a warning" '[[ "$(verdict /absent)" == warn*404* ]]'
 check "an address nothing listens on is only a warning" \
   '[[ "$(bash -c ". \"$here/lib.sh\"; assetlinks_verdict http://127.0.0.1:1/x \"\$1\"" _ "$doc")" == warn* ]]'
 
+echo "== gate_on_section"
+cat > "$work/bin/systemctl" <<'SH'
+#!/bin/sh
+echo "$@" >> "$WORK/systemctl"
+SH
+chmod +x "$work/bin/systemctl"
+printf 'server:\n  domain: example.com\nscribe:\n  state: /s\n' > "$work/config.yaml"
+gate() {
+  : > "$work/systemctl"
+  CORVID_DIR="$work" WORK="$work" PATH="$work/bin:$PATH" \
+    bash -c '. "$1/lib.sh"; gate_on_section "$2" "$3"' _ "$here" "$@"
+  cat "$work/systemctl"
+}
+check "a section that is present unmasks its unit" '[[ "$(gate corvid-scribe.service scribe)" == "unmask corvid-scribe.service" ]]'
+check "a section that is absent masks its unit" '[[ "$(gate corvid-labeler.service labeler)" == "mask corvid-labeler.service" ]]'
+check "a section name is matched at the start of a line only" \
+  '[[ "$(gate corvid-x.service domain)" == "mask corvid-x.service" ]]'
+
 echo "== no other script embeds the password in curl's argv"
 hits="$(grep -l 'curl.*-u.*STALWART_PASSWORD' "$here"/*.sh 2>/dev/null | grep -v '/lib\.sh$' || true)"
 check "grep finds no such call site" '[[ -z "$hits" ]]'

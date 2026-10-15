@@ -1,8 +1,8 @@
 use std::process::ExitCode;
 use std::thread::sleep;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
-use corvid_config::{Config, EX_TEMPFAIL, or_exit, secret, section};
+use corvid_config::{Config, EX_TEMPFAIL, or_exit, secret, section, unix_now};
 use corvid_labeler::{ActionLog, Budget, Jmap, Model, Suggest, cold_start, poll_observed};
 
 const MINE_EVERY: Duration = Duration::from_secs(86400);
@@ -136,13 +136,6 @@ fn main() -> ExitCode {
 fn suggest_client(settings: corvid_config::Suggest) -> std::io::Result<Suggest> {
     let secret = or_exit(secret("CORVID_SCRIBE_SECRET"));
     Suggest::connect(&settings.sentinel_url, &secret)
-}
-
-fn unix_now() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("the clock is after 1970")
-        .as_secs() as i64
 }
 
 /// The model and what one cold-start pass may spend on it.

@@ -10,3 +10,9 @@ base64 = "0.23.1"
 hmac = "0.13.0"
 sha2 = "0.11.0"
 subtle = "2.6.1"
+reqwest = { version = "0.13.4", default-features = false, features = ["rustls", "blocking"], optional = true }
+serde = { version = "1.0.229", optional = true }
+serde_json = { version = "1.0.151", optional = true }
+
+[features]
+client = ["dep:reqwest", "dep:serde", "dep:serde_json"]

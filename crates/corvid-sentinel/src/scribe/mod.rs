@@ -1,7 +1,9 @@
-//! Rule suggestions the labeler mines and posts, kept until the app accepts or dismisses them.
+//! What the labeler and scribe post for the app: rule suggestions, kept until the app accepts or
+//! dismisses them, and thread summaries, kept until their thread changes or is deleted.
 
 mod ingest;
 mod state;
+mod summaries;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -12,13 +14,14 @@ use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
-use serde::Serialize;
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 
 use crate::dates::now_secs;
 use crate::http::{Off, off_json};
 use crate::persisted::Persisted;
 use crate::verify;
-use ingest::{Candidate, Post, SKEW_SECONDS};
+use ingest::{Candidate, Post};
 pub use state::{Scribe, open};
 use state::{Suggestion, Verdict, save};
 
@@ -35,12 +38,42 @@ struct ScribeState {
 
 type Shared = Arc<ScribeState>;
 
+/// A post may be this far from the sentinel's clock either way.
+const SKEW_SECONDS: i64 = 300;
+
+#[derive(Deserialize)]
+struct Signed<T> {
+    sent_at: i64,
+    #[serde(flatten)]
+    body: T,
+}
+
+/// The body of a post the labeler or scribe signed, when the signature and the clock hold.
+fn accept<T: DeserializeOwned>(
+    state: &ScribeState,
+    headers: &HeaderMap,
+    body: &[u8],
+) -> Result<T, StatusCode> {
+    let signature = headers
+        .get("X-Signature")
+        .and_then(|value| value.to_str().ok());
+    if !verify(&state.secret, body, signature) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let signed: Signed<T> = serde_json::from_slice(body).map_err(|_| StatusCode::BAD_REQUEST)?;
+    if (now_secs() - signed.sent_at).abs() > SKEW_SECONDS {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    Ok(signed.body)
+}
+
 /// Runs a state change off the async threads, since it writes the state file.
 async fn commit<T: Send + 'static>(
     state: Shared,
+    what: &'static str,
     change: impl FnOnce(&Scribe) -> (Option<Scribe>, T) + Send + 'static,
 ) -> Result<T, StatusCode> {
-    Persisted::commit_blocking(state, |state| &state.scribe, "suggestion", change).await
+    Persisted::commit_blocking(state, |state| &state.scribe, what, change).await
 }
 
 pub fn routes(config: Config) -> Router {
@@ -50,6 +83,9 @@ pub fn routes(config: Config) -> Router {
     });
     Router::new()
         .route("/internal/scribe/suggestions", post(ingest_post))
+        .route("/internal/scribe/summaries", post(summaries::ingest))
+        .route("/internal/scribe/manifest", post(summaries::manifest))
+        .route("/corvid/summaries/{thread_id}", get(summaries::serve))
         .route("/corvid/suggestions", get(list))
         .route(
             "/corvid/suggestions/{id}/dismiss",
@@ -62,13 +98,19 @@ pub fn routes(config: Config) -> Router {
         .with_state(state)
 }
 
-/// The suggestion routes on a host whose config has no `sentinel.scribe`. A stable 503 tells a
+/// The scribe routes on a host whose config has no `sentinel.scribe`. A stable 503 tells a
 /// client "switched off" from a request that never reached the sentinel, which Stalwart answers 404.
 pub fn off() -> Router {
     async fn off() -> (StatusCode, Json<Off>) {
         off_json("suggestions_off")
     }
+    async fn summaries_off() -> (StatusCode, Json<Off>) {
+        off_json("summaries_off")
+    }
     Router::new()
+        .route("/internal/scribe/summaries", post(summaries_off))
+        .route("/internal/scribe/manifest", post(summaries_off))
+        .route("/corvid/summaries/{thread_id}", get(summaries_off))
         .route("/internal/scribe/suggestions", post(off))
         .route("/corvid/suggestions", get(off))
         .route("/corvid/suggestions/{id}/dismiss", post(off))
@@ -76,24 +118,16 @@ pub fn off() -> Router {
 }
 
 async fn ingest_post(State(state): State<Shared>, headers: HeaderMap, body: Bytes) -> StatusCode {
-    let signature = headers
-        .get("X-Signature")
-        .and_then(|value| value.to_str().ok());
-    if !verify(&state.secret, &body, signature) {
-        return StatusCode::UNAUTHORIZED;
-    }
-    let Ok(post) = serde_json::from_slice::<Post>(&body) else {
-        return StatusCode::BAD_REQUEST;
+    let post = match accept::<Post>(&state, &headers, &body) {
+        Ok(post) => post,
+        Err(status) => return status,
     };
-    if (now_secs() - post.sent_at).abs() > SKEW_SECONDS {
-        return StatusCode::BAD_REQUEST;
-    }
     let suggestions: Vec<Suggestion> = post
         .candidates
         .into_iter()
         .filter_map(Candidate::parse)
         .collect();
-    match commit(state, move |scribe| {
+    match commit(state, "suggestion", move |scribe| {
         (Some(scribe.with_suggestions(suggestions)), ())
     })
     .await
@@ -125,7 +159,7 @@ async fn decide(
     Path(id): Path<String>,
     verdict: Verdict,
 ) -> StatusCode {
-    let result = commit(state, move |scribe| {
+    let result = commit(state, "suggestion", move |scribe| {
         if scribe.is_decided(&id) {
             return (None, StatusCode::NO_CONTENT);
         }

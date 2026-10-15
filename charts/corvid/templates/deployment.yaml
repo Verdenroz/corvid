@@ -127,6 +127,24 @@ spec:
           resources:
             {{- toYaml .Values.resources.labeler | nindent 12 }}
         {{- end }}
+        {{- if .Values.scribe.enabled }}
+        - name: scribe
+          image: {{ include "corvid.image" . }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          command: [/usr/local/bin/corvid-scribe]
+          env:
+            - name: CORVID_JMAP_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: {{ $secret }}, key: CORVID_SCRIBE_JMAP_PASSWORD}
+            - name: CORVID_SCRIBE_SECRET
+              valueFrom:
+                secretKeyRef: {name: {{ $secret }}, key: CORVID_SCRIBE_SECRET}
+          volumeMounts:
+            - {name: config, mountPath: /etc/corvid/config.yaml, subPath: config.yaml}
+            - {name: state, mountPath: /var/lib/corvid, subPath: scribe}
+          resources:
+            {{- toYaml .Values.resources.scribe | nindent 12 }}
+        {{- end }}
         {{- if .Values.sentinel.enabled }}
         - name: sentinel
           image: {{ include "corvid.image" . }}

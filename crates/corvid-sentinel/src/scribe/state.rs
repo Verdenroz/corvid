@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::io;
 use std::path::Path;
 
@@ -6,6 +7,7 @@ use serde::{Deserialize, Serialize};
 /// Bump whenever `Scribe`'s shape changes, and keep a migration from the version it leaves.
 const SCHEMA: u32 = 1;
 const DECIDED_CAP: usize = 1000;
+const SUMMARY_CAP: usize = 5000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -55,12 +57,25 @@ pub struct Decision {
     pub verdict: Verdict,
 }
 
+/// A thread's summary, kept with the hash of the messages it was written from.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Summary {
+    pub input_hash: String,
+    pub text: String,
+    pub model: String,
+    pub generated_at: i64,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Scribe {
     /// Tonight's candidates; each post replaces them wholesale.
     pub suggestions: Vec<Suggestion>,
     /// Oldest first, only the newest `DECIDED_CAP` kept. A decided id is never served again.
     pub decided: Vec<Decision>,
+    /// By thread id. Past `SUMMARY_CAP` the oldest `generated_at` goes first. Defaults so a
+    /// file written before summaries existed still opens.
+    #[serde(default)]
+    pub summaries: BTreeMap<String, Summary>,
 }
 
 impl Scribe {
@@ -71,7 +86,27 @@ impl Scribe {
     pub fn with_suggestions(&self, suggestions: Vec<Suggestion>) -> Self {
         Self {
             suggestions,
-            decided: self.decided.clone(),
+            ..self.clone()
+        }
+    }
+
+    pub fn with_summaries(&self, upserts: Vec<(String, Summary)>, deletes: &[String]) -> Self {
+        let mut summaries = self.summaries.clone();
+        for thread_id in deletes {
+            summaries.remove(thread_id);
+        }
+        summaries.extend(upserts);
+        while summaries.len() > SUMMARY_CAP {
+            let oldest = summaries
+                .iter()
+                .min_by_key(|(_, summary)| summary.generated_at)
+                .map(|(thread_id, _)| thread_id.clone())
+                .expect("over the cap means not empty");
+            summaries.remove(&oldest);
+        }
+        Self {
+            summaries,
+            ..self.clone()
         }
     }
 
@@ -84,8 +119,8 @@ impl Scribe {
         let excess = decided.len().saturating_sub(DECIDED_CAP);
         decided.drain(..excess);
         Self {
-            suggestions: self.suggestions.clone(),
             decided,
+            ..self.clone()
         }
     }
 }
@@ -99,9 +134,16 @@ corvid_store::pin_shape!(Suggestion {
     hits
 });
 corvid_store::pin_shape!(Decision { id, verdict });
+corvid_store::pin_shape!(Summary {
+    input_hash,
+    text,
+    model,
+    generated_at
+});
 corvid_store::pin_shape!(Scribe {
     suggestions,
-    decided
+    decided,
+    summaries
 });
 
 pub fn open(path: &Path) -> io::Result<Scribe> {

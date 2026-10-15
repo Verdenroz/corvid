@@ -610,6 +610,7 @@ dependencies = [
  "corvid-ingest",
  "corvid-jmap",
  "corvid-label",
+ "corvid-model",
  "corvid-sentinel",
  "corvid-sign",
  "corvid-store",
@@ -670,12 +671,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "corvid-model"
+version = "0.1.0"
+dependencies = [
+ "reqwest",
+ "serde_json",
+]
+
+[[package]]
 name = "corvid-rewrite"
 version = "0.1.0"
 dependencies = [
  "corvid-sign",
  "lol_html",
  "url",
+]
+
+[[package]]
+name = "corvid-scribe"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "corvid-config",
+ "corvid-jmap",
+ "corvid-model",
+ "corvid-sentinel",
+ "corvid-sign",
+ "corvid-store",
+ "ctrlc",
+ "hex",
+ "lol_html",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -713,6 +746,9 @@ version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
  "hmac 0.13.0",
+ "reqwest",
+ "serde",
+ "serde_json",
  "sha2 0.11.0",
  "subtle",
 ]

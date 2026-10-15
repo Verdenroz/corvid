@@ -74,6 +74,9 @@ the admin credential for later applies.
 
 - For the labeler, create an app password for it (see `deploy/RUNBOOK.md`), add it to the Secret
   as `CORVID_JMAP_PASSWORD`, and upgrade with `labeler.enabled=true`.
+- For thread summaries, create an app password for the scribe, add it to the Secret as
+  `CORVID_SCRIBE_JMAP_PASSWORD` with `CORVID_SCRIBE_SECRET`, add `config.scribe` and
+  `config.sentinel.scribe`, and upgrade with `scribe.enabled=true`.
 - For passkeys, mint a setup code with `deploy/passkey.sh code` (the first key on a server always
   approves devices), enter it in the app, and apply `deploy/auth.plan.ndjson` as the RUNBOOK
   describes. That switches logins to the sentinel, so enrol a passkey before relying on it.
@@ -93,6 +96,6 @@ the admin credential for later applies.
 ## Not yet verified
 
 - A production cluster, certificates, and Cloudflare DNS automation.
-- The labeler in the chart.
+- The labeler and the scribe in the chart.
 - The sentinel in the chart: rendered and schema-validated (`helm template` plus `kubeconform`),
   never run against a live cluster.

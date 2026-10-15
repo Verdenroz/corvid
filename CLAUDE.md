@@ -49,6 +49,7 @@ namespace, so services reach each other on `127.0.0.1`:
 | `corvid-milter` | `corvid-milter` binary, called by Stalwart at DATA | 11332 |
 | `corvid-imgproxy` | serves the images the milter rewrote | 8081 |
 | `corvid-labeler` | polls JMAP, writes labels as keywords | none |
+| `corvid-scribe` | summarizes long threads with the laptop model and posts them to the sentinel; masked until `config.yaml` has `scribe:` | none |
 | `corvid-sentinel` | the pod's authenticated side door: the alert feed from Stalwart webhooks and update status, update requests, approver-approved device keys, and new-mail previews pushed to approved devices | 11333 loopback |
 | `corvid-caddy` | the web tier: JMAP, `/i/*` to imgproxy, `/corvid/update`, `/corvid/notices` and `/corvid/devices/*` to the sentinel behind `forward_auth`, `/corvid/push/vapid` and `/corvid/push/stream` to it with no session | `server.web_port`, 4443 by default |
 
@@ -82,6 +83,8 @@ Crates, grouped by the service that uses them:
   probabilities from an OpenAI-compatible endpoint's logprobs, averaged over every rotation of
   the options) → `corvid-ingest` (turns keyword changes into training signal) →
   `corvid-label` (per-sender prior, census, verdicts).
+- Summaries: `corvid-scribe` (JMAP threads in, one model call per thread, summaries posted to the
+  sentinel) → `corvid-model` (the chat-completions client it shares with the labeler).
 - Archive: `corvid-mirror` (sync encrypted to an age recipient, audit for missing messages, verify
   stored bodies with two levels of proof, `encrypt-archive` migration, restore to a fresh account).
 - Shared: `corvid-config` (the `config.yaml` schema for every service), `corvid-jmap` (session

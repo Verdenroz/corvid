@@ -505,11 +505,6 @@ EOF
 
 step "preparing the host"
 on_host 'cd /opt/corvid/deploy && CORVID_INSTALLER=1 bash bootstrap.sh'
-# The labeler runs once config.yaml has its section; until then it stays masked, on every run.
-on_host 'bash -s' <<'EOF'
-grep -q "^labeler:" /opt/corvid/config.yaml || systemctl mask corvid-labeler.service >/dev/null 2>&1
-true
-EOF
 held="$(on_host "podman ps --format '{{.Names}}' | grep -vx 'corvid-.*' || true")"
 if on_host 'systemctl is-enabled corvid-pod.service 2>/dev/null' | grep -q masked; then
   (( replace )) || die "another container holds the mail ports (${held:-see above}); rerun with --replace to remove it"

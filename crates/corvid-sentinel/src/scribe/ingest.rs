@@ -2,12 +2,8 @@ use serde::Deserialize;
 
 use super::state::{Action, Sender, SenderKind, Suggestion};
 
-/// The labeler's post may be this far from the sentinel's clock either way.
-pub(super) const SKEW_SECONDS: i64 = 300;
-
 #[derive(Deserialize)]
 pub(super) struct Post {
-    pub(super) sent_at: i64,
     pub(super) candidates: Vec<Candidate>,
 }
 
