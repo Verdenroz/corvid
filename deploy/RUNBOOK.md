@@ -119,6 +119,11 @@ The file holds no secrets, so it can be shared or committed. Secrets come from t
     labeler.env          CORVID_JMAP_PASSWORD, from device.sh add --local corvid-labeler
     mirror.env           CORVID_JMAP_PASSWORD, from device.sh add corvid-mirror, on the mirror machine
     sentinel-webhook.env CORVID_SENTINEL_SECRET (openssl rand -hex 32), shared with Stalwart
+    scribe.env           CORVID_SCRIBE_SECRET (openssl rand -hex 32), shared by labeler and sentinel
+
+`scribe.env` is read only when `labeler.suggest` and `sentinel.scribe` are in `config.yaml`. Add
+both to a host's file together, since each service exits 78 on its section without the secret.
+`install.sh` generates the secret once and keeps it afterwards.
 
 The app passwords are created as in "A service's own app password". The image-proxy secret signs
 URLs in the milter and verifies them in the proxy, so both read the same value. Changing it

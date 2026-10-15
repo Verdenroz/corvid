@@ -3,7 +3,7 @@ use std::thread::sleep;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use corvid_config::{Config, EX_TEMPFAIL, or_exit, secret, section};
-use corvid_labeler::{ActionLog, Budget, Jmap, Model, cold_start, poll_observed};
+use corvid_labeler::{ActionLog, Budget, Jmap, Model, Suggest, cold_start, poll_observed};
 
 const MINE_EVERY: Duration = Duration::from_secs(86400);
 
@@ -41,6 +41,14 @@ fn main() -> ExitCode {
         }
     };
 
+    let suggest = match labeler.suggest.map(suggest_client).transpose() {
+        Ok(suggest) => suggest,
+        Err(error) => {
+            tracing::error!(%error, "cannot build a sentinel client");
+            return ExitCode::FAILURE;
+        }
+    };
+
     let mailbox = match Jmap::connect(&url, &labeler.jmap_user, &password) {
         Ok(mailbox) => mailbox,
         Err(error) if corvid_jmap::unreachable(&error) => {
@@ -58,6 +66,7 @@ fn main() -> ExitCode {
     // writer's save would drop whatever the other learned in between.
     let mut due = Instant::now();
     let mut mine_due = Instant::now();
+    let mut unposted = false;
 
     loop {
         match poll_observed(&state, &mailbox, |delta| {
@@ -105,13 +114,28 @@ fn main() -> ExitCode {
         if Instant::now() >= mine_due {
             mine_due = Instant::now() + MINE_EVERY;
             match actions.mine(unix_now()) {
-                Ok(candidates) => tracing::info!(candidates = candidates.len(), "mined"),
+                Ok(candidates) => {
+                    tracing::info!(candidates = candidates.len(), "mined");
+                    unposted = true;
+                }
                 Err(error) => tracing::warn!(%error, "mined candidates not saved"),
+            }
+        }
+
+        if unposted && let Some(suggest) = &suggest {
+            match suggest.post(unix_now(), actions.candidates()) {
+                Ok(()) => unposted = false,
+                Err(error) => tracing::warn!(%error, "suggestions not posted; retrying"),
             }
         }
 
         sleep(interval);
     }
+}
+
+fn suggest_client(settings: corvid_config::Suggest) -> std::io::Result<Suggest> {
+    let secret = or_exit(secret("CORVID_SCRIBE_SECRET"));
+    Suggest::connect(&settings.sentinel_url, &secret)
 }
 
 fn unix_now() -> i64 {

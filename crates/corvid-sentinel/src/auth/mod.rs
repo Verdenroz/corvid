@@ -22,10 +22,9 @@ use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::http::StatusCode;
 use axum::routing::any;
-use serde::Serialize;
 
 use crate::dates;
-use crate::http::AppState;
+use crate::http::{AppState, Off, off_json};
 use crate::key_file;
 use crate::persisted::Persisted;
 use crate::state::NoticeKind;
@@ -95,16 +94,7 @@ async fn commit<T: Send + 'static>(
     state: &Shared,
     change: impl FnOnce(&Auth) -> (Option<Auth>, T) + Send + 'static,
 ) -> Result<T, StatusCode> {
-    let state = state.clone();
-    tokio::task::spawn_blocking(move || state.auth.commit(change))
-        .await
-        .expect("the blocking task panicked")
-        .map_err(|error| unrecorded(&error))
-}
-
-fn unrecorded(error: &io::Error) -> StatusCode {
-    tracing::warn!(%error, "cannot save the auth state");
-    StatusCode::INTERNAL_SERVER_ERROR
+    Persisted::commit_blocking(state.clone(), |state| &state.auth, "auth", change).await
 }
 
 async fn notify(state: &Shared, title: &'static str, detail: String) {
@@ -149,18 +139,10 @@ pub(crate) fn routes(config: Config, app: Arc<AppState>, update_dir: PathBuf) ->
         .with_state(state)
 }
 
-#[derive(Serialize)]
-struct Off {
-    error: &'static str,
-}
-
 /// The auth routes on a host whose config has no `sentinel.auth`.
 pub(crate) fn off() -> Router {
     async fn off() -> (StatusCode, Json<Off>) {
-        (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(Off { error: "auth_off" }),
-        )
+        off_json("auth_off")
     }
     Router::new()
         .route("/corvid/auth/{*path}", any(off))

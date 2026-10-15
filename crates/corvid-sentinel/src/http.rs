@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::persisted::Persisted;
 use crate::state::{Notice, NoticeKind, Seen, save};
-use crate::{auth, dates, devices, handle, notice, parse, update, verify, watch};
+use crate::{auth, dates, devices, handle, notice, parse, scribe, update, verify, watch};
 
 pub struct Config {
     pub secret: Vec<u8>,
@@ -23,6 +23,7 @@ pub struct Config {
     pub update_poll: Duration,
     pub devices: Option<devices::Config>,
     pub auth: Option<auth::Config>,
+    pub scribe: Option<scribe::Config>,
 }
 
 pub(crate) struct AppState {
@@ -58,7 +59,22 @@ pub fn build(config: Config) -> (Router, impl Future<Output = ()> + Send + 'stat
         Some(auth) => auth::routes(auth, state, update_dir),
         None => auth::off(),
     });
+    let router = router.merge(match config.scribe {
+        Some(scribe) => scribe::routes(scribe),
+        None => scribe::off(),
+    });
     (router, watcher)
+}
+
+#[derive(Serialize)]
+pub(crate) struct Off {
+    pub error: &'static str,
+}
+
+/// What a router for a switched-off feature answers on every route, so a client can tell "off"
+/// from a request that never reached the sentinel.
+pub(crate) fn off_json(error: &'static str) -> (StatusCode, Json<Off>) {
+    (StatusCode::SERVICE_UNAVAILABLE, Json(Off { error }))
 }
 
 #[derive(Deserialize)]
@@ -167,6 +183,7 @@ mod tests {
             update_poll: Duration::from_secs(60),
             devices: None,
             auth: None,
+            scribe: None,
         });
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         format!("http://{addr}/webhook")

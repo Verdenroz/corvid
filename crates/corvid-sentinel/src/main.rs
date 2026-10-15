@@ -1,11 +1,12 @@
 use std::io;
+use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Duration;
 
 use std::sync::Arc;
 
 use corvid_config::{issuer_url, or_exit, secret, section};
-use corvid_sentinel::{Config, auth, build, devices, open};
+use corvid_sentinel::{Config, auth, build, devices, open, scribe};
 use tokio::net::TcpListener;
 use tokio::signal;
 
@@ -54,6 +55,7 @@ async fn main() -> ExitCode {
             local,
         )
     });
+    let scribe = settings.scribe.map(|scribe| scribe_config(scribe.state));
     let (app, watcher) = build(Config {
         secret: hmac_secret.into_bytes(),
         state_path: settings.state,
@@ -62,6 +64,7 @@ async fn main() -> ExitCode {
         update_poll: UPDATE_POLL,
         devices,
         auth,
+        scribe,
     });
 
     tokio::spawn(watcher);
@@ -72,6 +75,19 @@ async fn main() -> ExitCode {
         .await
         .expect("server failed");
     ExitCode::SUCCESS
+}
+
+fn scribe_config(state_path: PathBuf) -> scribe::Config {
+    let secret = or_exit(secret("CORVID_SCRIBE_SECRET"));
+    let scribe = scribe::open(&state_path).unwrap_or_else(|error| {
+        tracing::error!(%error, state = %state_path.display(), "refusing to start");
+        std::process::exit(1);
+    });
+    scribe::Config {
+        secret: secret.into_bytes(),
+        state_path,
+        scribe,
+    }
 }
 
 fn auth_config(

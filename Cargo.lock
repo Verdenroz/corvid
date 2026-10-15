@@ -605,10 +605,13 @@ dependencies = [
 name = "corvid-labeler"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "corvid-config",
  "corvid-ingest",
  "corvid-jmap",
  "corvid-label",
+ "corvid-sentinel",
+ "corvid-sign",
  "corvid-store",
  "ctrlc",
  "hex",
@@ -617,6 +620,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "tempfile",
+ "tokio",
  "tracing",
  "tracing-subscriber",
 ]
@@ -684,6 +688,7 @@ dependencies = [
  "ciborium",
  "corvid-config",
  "corvid-sentinel",
+ "corvid-sign",
  "corvid-store",
  "futures-util",
  "hex",

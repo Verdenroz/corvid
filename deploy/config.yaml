@@ -3,6 +3,7 @@
 # No secrets belong here. Each service reads its own from an environment variable:
 #   CORVID_JMAP_PASSWORD     labeler and mirror, an app password each
 #   CORVID_IMGPROXY_SECRET   milter and image proxy, the same value in both
+#   CORVID_SCRIBE_SECRET     labeler and sentinel, the same value in both
 #   CORVID_SENTINEL_SECRET   sentinel and Stalwart's own WebHook, the same value in both
 # Unknown keys are refused, so a misspelt setting stops the service instead of being ignored.
 
@@ -64,6 +65,11 @@ labeler:
       chat_template_kwargs:
         enable_thinking: false
 
+  # Posts the rule suggestions it mines to the sentinel. Needs sentinel.scribe and the same
+  # CORVID_SCRIBE_SECRET in both services. Delete it to post nothing.
+  suggest:
+    sentinel_url: http://127.0.0.1:11333
+
 milter:
   bind: 127.0.0.1:11332
   # The origin image URLs point at, by default https://<server.hostname>:<server.web_port>.
@@ -99,3 +105,7 @@ sentinel:
   # through Google's push service or the device's own connection to this server. Needs devices.
   # Delete it to push nothing.
   push: {}
+  # Stores the labeler's rule suggestions and serves them to the app. Needs CORVID_SCRIBE_SECRET.
+  # Delete it to serve none.
+  scribe:
+    state: /var/lib/corvid/scribe.json
