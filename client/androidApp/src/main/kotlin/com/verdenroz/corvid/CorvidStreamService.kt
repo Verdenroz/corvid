@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.IBinder
 import androidx.core.app.ServiceCompat
+import com.verdenroz.corvid.app.AppPresence
 import com.verdenroz.corvid.core.prefs.DevicePreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,6 +27,7 @@ private const val CONNECTION_CHANNEL = "connection"
  */
 class CorvidStreamService : Service() {
     private val preferences: DevicePreferences by inject()
+    private val presence: AppPresence by inject()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var stream: Job? = null
 
@@ -40,7 +42,7 @@ class CorvidStreamService : Service() {
         if (stream == null) {
             stream =
                 scope.launch {
-                    PushStream(this@CorvidStreamService, preferences).run()
+                    PushStream(this@CorvidStreamService, preferences, presence).run()
                     stopSelf()
                 }
         }

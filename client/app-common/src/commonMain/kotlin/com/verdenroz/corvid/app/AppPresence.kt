@@ -24,12 +24,21 @@ class AppPresence {
     /** The ids of the digests a tapped notification asks to show, delivered like [inboxRequests]. */
     val digestRequests: Flow<String> = digests
 
+    private val arrivals = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+
+    /** Each digest push that reached this device, for a session that is collecting; one with nobody collecting is dropped. */
+    val digestArrivals: Flow<Unit> = arrivals
+
     fun shown(inView: Boolean) {
         _inView.value = inView
     }
 
     fun requestInbox() {
         requests.tryEmit(Unit)
+    }
+
+    fun digestArrived() {
+        arrivals.tryEmit(Unit)
     }
 
     fun requestDigest(id: String) {

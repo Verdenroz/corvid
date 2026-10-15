@@ -73,6 +73,11 @@ class FakeDigests {
     @Volatile
     var malformed: Boolean = false
 
+    /** The number of requests answered, whatever they were answered with. */
+    @Volatile
+    var reads: Int = 0
+        private set
+
     /** Each digest as it is served, the newest last. */
     fun serve(vararg digests: FakeDigest) {
         served += digests
@@ -82,6 +87,7 @@ class FakeDigests {
         scope: MockRequestHandleScope,
         request: HttpRequestData,
     ): HttpResponseData {
+        reads++
         if (off) return scope.respond("""{"error":"digest_off"}""", HttpStatusCode.ServiceUnavailable, JSON)
         val tail = request.url.encodedPath.removePrefix("/corvid/digest").trim('/')
         val digest =

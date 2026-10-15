@@ -1,5 +1,6 @@
 package com.verdenroz.corvid
 
+import com.verdenroz.corvid.app.AppPresence
 import com.verdenroz.corvid.core.common.di.applicationScopeQualifier
 import com.verdenroz.corvid.core.prefs.DevicePreferences
 import com.verdenroz.corvid.core.prefs.PushSubscription
@@ -17,8 +18,9 @@ import org.unifiedpush.android.connector.data.PushMessage
  */
 class CorvidPushService : PushService() {
     private val preferences: DevicePreferences by inject()
+    private val presence: AppPresence by inject()
     private val appScope: CoroutineScope by inject(applicationScopeQualifier)
-    private val previews by lazy { AndroidMailPreviews(this) }
+    private val previews by lazy { AndroidMailPreviews(this, presence) }
 
     override fun onNewEndpoint(
         endpoint: PushEndpoint,

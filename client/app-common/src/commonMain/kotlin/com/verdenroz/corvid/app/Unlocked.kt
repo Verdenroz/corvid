@@ -130,6 +130,7 @@ internal fun UnlockedContent(
     val saved = rememberSaveableStateHolder()
     val navigator = remember(backStack, saved, ledgers) { Navigator(backStack, saved, onLeave = ledgers::leave) }
     val newMail = rememberNewMail(scope, navigator)
+    val newDigest = rememberNewDigest(scope, navigator)
     FollowPushEndpoint(scope, hosts)
     LaunchedEffect(scope) {
         newMail.check()
@@ -167,10 +168,17 @@ internal fun UnlockedContent(
         val pages = Pages(navigator, saved, scope, models, ledgers, session, searchInput.onText)
         val topKeys = remember(navigator) { navigator::handleKey }
         CompositionLocalProvider(LocalWideLayout provides wide, LocalTopEntryKeys provides topKeys) {
-            Shell(pages, shellState, key, searchInput, notices, updates, roomForSidebar = maxWidth >= SIDEBAR_EXPANDS)
+            Shell(pages, shellState, key, searchInput, Banners(notices, updates, newDigest), roomForSidebar = maxWidth >= SIDEBAR_EXPANDS)
         }
     }
 }
+
+/** The banners above the shell, highest priority first. */
+private class Banners(
+    val notices: Notices,
+    val updates: AppUpdates,
+    val digest: NewDigest,
+)
 
 /** What every page on the stack is built from. */
 private class Pages(
@@ -189,8 +197,7 @@ private fun Shell(
     shellState: ShellState,
     key: KeyState,
     searchInput: SearchInput,
-    notices: Notices,
-    updates: AppUpdates,
+    banners: Banners,
     roomForSidebar: Boolean,
 ) {
     val navigator = pages.navigator
@@ -219,8 +226,9 @@ private fun Shell(
                 (wide && event.isSearchShortcut()).also { if (it) searchInput.focus.requestFocus() }
             },
         ) {
-            NoticesBanner(notices, navigator)
-            AppUpdatesBanner(updates)
+            NoticesBanner(banners.notices, navigator)
+            AppUpdatesBanner(banners.updates)
+            NewDigestBanner(banners.digest, navigator)
             if (wide) {
                 WideTopBar(
                     key,

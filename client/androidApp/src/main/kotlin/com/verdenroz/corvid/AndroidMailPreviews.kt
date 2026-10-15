@@ -3,6 +3,7 @@ package com.verdenroz.corvid
 import android.app.Notification
 import android.app.PendingIntent
 import android.content.Context
+import com.verdenroz.corvid.app.AppPresence
 
 private const val UNREADABLE_TAG = "unreadable"
 
@@ -10,7 +11,10 @@ private const val UNREADABLE_TAG = "unreadable"
  * The pushed new-mail notifications, one per message tagged with its id, grouped under a summary on the new-mail
  * channel. Each names sender and subject and is hidden from the lock screen.
  */
-class AndroidMailPreviews(private val context: Context) {
+class AndroidMailPreviews(
+    private val context: Context,
+    private val presence: AppPresence,
+) {
     private val manager = context.newMailChannel()
 
     private val digests = AndroidDigestNotices(context)
@@ -26,7 +30,10 @@ class AndroidMailPreviews(private val context: Context) {
         if (!decrypted) return
         when (val notice = readPushNotice(content)) {
             is PushNotice.Mail -> post(notice.preview)
-            is PushNotice.Digest -> digests.post(notice.id)
+            is PushNotice.Digest -> {
+                digests.post(notice.id)
+                presence.digestArrived()
+            }
             PushNotice.Unreadable -> post(null)
             PushNotice.Ignored -> Unit
         }

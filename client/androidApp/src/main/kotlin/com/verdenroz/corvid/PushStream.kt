@@ -2,6 +2,7 @@ package com.verdenroz.corvid
 
 import android.content.Context
 import android.util.Base64
+import com.verdenroz.corvid.app.AppPresence
 import com.verdenroz.corvid.core.jmap.EventParser
 import com.verdenroz.corvid.core.jmap.ReconnectPolicy
 import com.verdenroz.corvid.core.prefs.DevicePreferences
@@ -30,9 +31,10 @@ private enum class Ended { Dropped, Revoked }
 internal class PushStream(
     context: Context,
     private val preferences: DevicePreferences,
+    presence: AppPresence,
 ) {
     private val keys = StreamKeyStore(context).load()
-    private val previews = AndroidMailPreviews(context)
+    private val previews = AndroidMailPreviews(context, presence)
 
     suspend fun run() {
         val policy = ReconnectPolicy()

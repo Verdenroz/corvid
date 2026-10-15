@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.stateIn
 private val THEME = stringPreferencesKey("theme")
 private val AUTO_LOCK_MINUTES = intPreferencesKey("auto_lock_minutes")
 private val NOTICES_SEEN = longPreferencesKey("notices_seen")
+private val DIGEST_SEEN = stringPreferencesKey("digest_seen")
 private val NEW_MAIL_NOTIFICATIONS = booleanPreferencesKey("new_mail_notifications")
 private val ACCOUNT_SERVER = stringPreferencesKey("account_server")
 
@@ -54,6 +55,10 @@ class DevicePreferences(
 
     suspend fun setNoticesSeen(id: Long) {
         store.edit { it[NOTICES_SEEN] = id }
+    }
+
+    suspend fun setDigestSeen(id: String) {
+        store.edit { it[DIGEST_SEEN] = id }
     }
 
     suspend fun setNewMailNotifications(on: Boolean) {
@@ -133,6 +138,7 @@ internal fun decode(preferences: Preferences): DeviceSettings {
         theme = ThemeChoice.entries.firstOrNull { it.name == preferences[THEME] } ?: defaults.theme,
         autoLock = AutoLock.entries.firstOrNull { it.minutes == preferences[AUTO_LOCK_MINUTES] } ?: defaults.autoLock,
         noticesSeen = preferences[NOTICES_SEEN] ?: defaults.noticesSeen,
+        digestSeen = preferences[DIGEST_SEEN],
         newMailNotifications = preferences[NEW_MAIL_NOTIFICATIONS] ?: defaults.newMailNotifications,
         account = decodeAccount(preferences),
         push = decodePush(preferences),
