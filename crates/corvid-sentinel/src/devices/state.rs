@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 use std::path::Path;
 
@@ -38,14 +38,25 @@ pub struct Approved {
     pub blob_id: String,
 }
 
+/// A kind of push beyond new-mail previews. A device gets one only if it asked for it, since a
+/// client reads any push it cannot decode as new mail.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PushKind {
+    Digest,
+}
+
 /// An approved device: where its key lives, and where its new-mail previews go if it takes any.
-/// The push record is part of the device, so revoking or re-enrolling it ends its pushes.
+/// The push record and the kinds are part of the device, so revoking or re-enrolling it ends its
+/// pushes. A file written before `kinds` existed reads as asking for none.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Device {
     #[serde(flatten)]
     pub key: Approved,
     #[serde(default)]
     pub push: Option<Push>,
+    #[serde(default)]
+    pub kinds: BTreeSet<PushKind>,
 }
 
 /// The keys previews are encrypted to, base64url as the device sent them, and where they go.
@@ -123,7 +134,7 @@ corvid_store::pin_shape!(Approved {
     node_id,
     blob_id
 });
-corvid_store::pin_shape!(Device { key, push });
+corvid_store::pin_shape!(Device { key, push, kinds });
 corvid_store::pin_shape!(Push {
     p256dh,
     auth,
@@ -137,7 +148,16 @@ pub fn open(path: &Path) -> io::Result<Devices> {
         approved: old
             .approved
             .into_iter()
-            .map(|(name, key)| (name, Device { key, push: None }))
+            .map(|(name, key)| {
+                (
+                    name,
+                    Device {
+                        key,
+                        push: None,
+                        kinds: BTreeSet::new(),
+                    },
+                )
+            })
             .collect(),
     })
 }

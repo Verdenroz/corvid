@@ -1,6 +1,7 @@
 #[path = "../common/mod.rs"]
 mod common;
 mod digest;
+mod digest_push;
 mod push;
 mod stalwart;
 

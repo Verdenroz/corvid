@@ -91,18 +91,19 @@ async fn tick(state: &Shared, courier: &Courier, settings: &Settings) {
         }
     };
     let summaries = state.scribe.read(|scribe| scribe.summaries.clone());
+    let announced = id.clone();
     let digest = super::state::Digest {
         id,
         from,
         to,
         groups: build::groups(messages, &summaries),
     };
-    if commit(state.clone(), "digest", move |scribe| {
+    let kept = commit(state.clone(), "digest", move |scribe| {
         (Some(scribe.with_digest(digest)), ())
     })
-    .await
-    .is_err()
-    {
-        tracing::warn!("digest: cannot keep the digest");
+    .await;
+    match kept {
+        Ok(()) => courier.announce_digest(&announced).await,
+        Err(_) => tracing::warn!("digest: cannot keep the digest"),
     }
 }

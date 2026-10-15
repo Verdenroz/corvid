@@ -13,17 +13,21 @@ use super::stalwart::INBOX;
 use super::{Rig, common, rig, rig_digest};
 
 /// 2026-10-14T00:00:00Z.
-const DAY: i64 = 1_791_936_000;
-const HOUR: i64 = 3600;
+pub(super) const DAY: i64 = 1_791_936_000;
+pub(super) const HOUR: i64 = 3600;
 const CLOSING: i64 = 60;
 const JUNK: &str = "junk-id";
 
-struct Digesting {
-    rig: Rig,
+pub(super) struct Digesting {
+    pub(super) rig: Rig,
     clock: Arc<AtomicI64>,
 }
 
 async fn digesting(zone: &str, now: i64) -> Digesting {
+    digesting_with(None, zone, now).await
+}
+
+pub(super) async fn digesting_with(fcm_origin: Option<&str>, zone: &str, now: i64) -> Digesting {
     let clock = Arc::new(AtomicI64::new(now));
     let reading = clock.clone();
     let settings = Settings {
@@ -32,11 +36,17 @@ async fn digesting(zone: &str, now: i64) -> Digesting {
         poll: Duration::from_millis(10),
         clock: Arc::new(move || reading.load(Ordering::SeqCst)),
     };
-    let rig = rig_digest(Devices::default(), None, Some(settings)).await;
+    let rig = rig_digest(Devices::default(), fcm_origin, Some(settings)).await;
     Digesting { rig, clock }
 }
 
-fn email(id: &str, thread: &str, mailbox: &str, received_at: i64, keywords: &[&str]) -> Value {
+pub(super) fn email(
+    id: &str,
+    thread: &str,
+    mailbox: &str,
+    received_at: i64,
+    keywords: &[&str],
+) -> Value {
     json!({
         "id": id,
         "threadId": thread,
@@ -49,7 +59,7 @@ fn email(id: &str, thread: &str, mailbox: &str, received_at: i64, keywords: &[&s
 }
 
 impl Digesting {
-    fn at(&self, now: i64) {
+    pub(super) fn at(&self, now: i64) {
         self.clock.store(now, Ordering::SeqCst);
     }
 
@@ -70,7 +80,7 @@ impl Digesting {
     }
 
     /// The newest digest once its id is not `after`.
-    async fn latest_after(&self, after: Option<&str>) -> Value {
+    pub(super) async fn latest_after(&self, after: Option<&str>) -> Value {
         for _ in 0..250 {
             let response = self.get("/latest").await;
             if response.status() == 200 {
@@ -84,7 +94,7 @@ impl Digesting {
         panic!("no digest after {after:?}");
     }
 
-    async fn settle(&self) {
+    pub(super) async fn settle(&self) {
         tokio::time::sleep(Duration::from_millis(200)).await;
     }
 }

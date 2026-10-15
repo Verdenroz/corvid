@@ -21,6 +21,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::sync::Notify;
 
+use super::courier::set_kinds;
 use super::keys::{self, Keys, checked};
 use super::state::{Push, Target};
 use super::stream;
@@ -64,16 +65,16 @@ impl Config {
 }
 
 /// The device state with what only a host that pushes needs. Its routes exist only then.
-struct PushState {
-    device: Shared,
+pub(super) struct PushState {
+    pub(super) device: Shared,
     config: Config,
     http: reqwest::Client,
     arrived: Notify,
 }
 
-type Pushing = Arc<PushState>;
+pub(super) type Pushing = Arc<PushState>;
 
-pub(super) fn routes(device: Shared, config: Config) -> Router {
+pub(super) fn routes(device: Shared, config: Config) -> (Router, Pushing) {
     let state = Arc::new(PushState {
         device: device.clone(),
         config,
@@ -89,6 +90,7 @@ pub(super) fn routes(device: Shared, config: Config) -> Router {
             "/corvid/devices/{name}/push",
             put(register).delete(unregister),
         )
+        .route("/corvid/devices/{name}/push/kinds", put(set_kinds))
         .layer(DefaultBodyLimit::max(PUSH_BODY_LIMIT))
         .with_state(state.clone());
     let webhook = Router::new()
@@ -97,11 +99,12 @@ pub(super) fn routes(device: Shared, config: Config) -> Router {
         .with_state(state.clone());
     let key = Router::new()
         .route("/corvid/push/vapid", get(vapid_key))
-        .with_state(state);
+        .with_state(state.clone());
     let stream = Router::new()
         .route("/corvid/push/stream", get(stream::serve))
         .with_state(device);
-    registration.merge(webhook).merge(key).merge(stream)
+    let router = registration.merge(webhook).merge(key).merge(stream);
+    (router, state)
 }
 
 /// The push routes on a host whose config has devices but no `sentinel.push`.
@@ -111,6 +114,7 @@ pub(super) fn off() -> Router {
     }
     Router::new()
         .route("/corvid/devices/{name}/push", put(off).delete(off))
+        .route("/corvid/devices/{name}/push/kinds", put(off))
         .route("/corvid/push/vapid", get(off))
         .route("/corvid/push/stream", get(off))
         .route("/webhook/mail", post(|| async { StatusCode::NO_CONTENT }))
@@ -134,7 +138,7 @@ fn fcm_target(endpoint: &str) -> Option<String> {
     issued.then(|| endpoint[url.origin().ascii_serialization().len()..].to_owned())
 }
 
-fn refuse(status: StatusCode) -> (StatusCode, Json<Off>) {
+pub(super) fn refuse(status: StatusCode) -> (StatusCode, Json<Off>) {
     (status, Json(Off { error: "refused" }))
 }
 
@@ -428,7 +432,7 @@ async fn deliver(state: &Pushing, messages: &[Value]) {
 
 /// One device's share of a wake, in order. FCM that stops answering ends the device's share, so a
 /// hung endpoint costs one timeout, not one per message.
-async fn push_to(state: &Pushing, name: String, push: Push, plaintexts: &[Vec<u8>]) {
+pub(super) async fn push_to(state: &Pushing, name: String, push: Push, plaintexts: &[Vec<u8>]) {
     let Some(receiver) = receiver(&push.p256dh, &push.auth) else {
         return;
     };
