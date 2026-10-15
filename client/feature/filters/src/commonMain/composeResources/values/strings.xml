@@ -57,19 +57,8 @@
     <string name="suggestion_act_trash">move to Trash</string>
     <string name="suggestion_act_folder">move to %1$s</string>
     <string name="suggestion_list_tag">list</string>
-    <plurals name="suggestion_caption_archived">
-        <item quantity="one">Archived unread %1$d time out of %2$d</item>
-        <item quantity="other">Archived unread %1$d times out of %2$d</item>
-    </plurals>
-    <plurals name="suggestion_caption_trashed">
-        <item quantity="one">Moved to Trash unread %1$d time out of %2$d</item>
-        <item quantity="other">Moved to Trash unread %1$d times out of %2$d</item>
-    </plurals>
-    <plurals name="suggestion_caption_filed">
-        <item quantity="one">Filed in %3$s unread %1$d time out of %2$d</item>
-        <item quantity="other">Filed in %3$s unread %1$d times out of %2$d</item>
-    </plurals>
+    <string name="suggestion_counts">%1$d of the last %2$d left unread</string>
     <string name="suggestion_caption">%1$s, %2$s</string>
-    <string name="suggestion_add">Add rule</string>
+    <string name="suggestion_add">Use this rule</string>
     <string name="suggestion_dismiss">Not this one</string>
 </resources>

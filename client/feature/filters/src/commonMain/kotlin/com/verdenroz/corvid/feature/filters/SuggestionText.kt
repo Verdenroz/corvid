@@ -13,11 +13,9 @@ import com.verdenroz.corvid.feature.filters.resources.suggestion_act_archive
 import com.verdenroz.corvid.feature.filters.resources.suggestion_act_folder
 import com.verdenroz.corvid.feature.filters.resources.suggestion_act_trash
 import com.verdenroz.corvid.feature.filters.resources.suggestion_caption
-import com.verdenroz.corvid.feature.filters.resources.suggestion_caption_archived
-import com.verdenroz.corvid.feature.filters.resources.suggestion_caption_filed
-import com.verdenroz.corvid.feature.filters.resources.suggestion_caption_trashed
 import com.verdenroz.corvid.feature.filters.resources.suggestion_cond_from
 import com.verdenroz.corvid.feature.filters.resources.suggestion_cond_list
+import com.verdenroz.corvid.feature.filters.resources.suggestion_counts
 
 /** The two halves of "When [condition], [action]" that the card sets in bold. */
 internal data class RuleSentence(val condition: UiText, val action: UiText)
@@ -32,15 +30,8 @@ internal fun RuleSuggestion.sentence(folders: List<MailboxRef>): RuleSentence {
     return RuleSentence(condition, filing)
 }
 
-/** How often the messages were handled this way, and over how long when the server said. */
-internal fun RuleSuggestion.caption(folders: List<MailboxRef>): UiText {
-    val resource =
-        when (action) {
-            SuggestionAction.Archive -> Res.plurals.suggestion_caption_archived
-            SuggestionAction.Trash -> Res.plurals.suggestion_caption_trashed
-            is SuggestionAction.Folder -> Res.plurals.suggestion_caption_filed
-        }
-    val folder = action.folderText(folders)
-    val counted = UiText.Plural(resource, hits, listOfNotNull(hits, settled, folder))
+/** How many of the sender's messages were left unread, and over how long when the server said; the rule above names the action. */
+internal fun RuleSuggestion.caption(): UiText {
+    val counted = uiText(Res.string.suggestion_counts, hits, settled)
     return spanClause(spanDays)?.let { uiText(Res.string.suggestion_caption, counted, it) } ?: counted
 }

@@ -29,10 +29,11 @@ fun ConfirmReplace(
     scriptName: String,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val colors = CorvidTheme.colors
     Column(
-        Modifier.fillMaxWidth().background(colors.dangerSoft).padding(16.dp),
+        modifier.fillMaxWidth().background(colors.dangerSoft).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(stringResource(Res.string.replace_title), style = CorvidTheme.type.metaStrong, color = colors.onDangerSoft)

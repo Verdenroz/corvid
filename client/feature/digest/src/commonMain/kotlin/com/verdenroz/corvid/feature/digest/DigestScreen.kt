@@ -8,11 +8,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -56,6 +56,7 @@ import com.verdenroz.corvid.feature.digest.resources.digest_lists
 import com.verdenroz.corvid.feature.digest.resources.digest_more
 import com.verdenroz.corvid.feature.digest.resources.digest_more_count
 import com.verdenroz.corvid.feature.digest.resources.digest_people
+import com.verdenroz.corvid.feature.digest.resources.digest_quiet
 import com.verdenroz.corvid.feature.digest.resources.digest_span
 import com.verdenroz.corvid.feature.digest.resources.digest_title
 import kotlinx.datetime.TimeZone
@@ -78,7 +79,7 @@ fun DigestScreen(
         PageHeader(null, stringResource(Res.string.digest_back), onBack)
         when (val current = state) {
             is DigestState.Loading -> Unit
-            is DigestState.Empty -> QuietPane(stringResource(Res.string.digest_empty))
+            is DigestState.Empty -> NoDigest(current.quiet)
             is DigestState.Failed -> QuietPane(current.message.asString())
             is DigestState.Ready -> Briefing(current, onOpenEmail)
         }
@@ -131,6 +132,21 @@ private fun Heading(ready: DigestState.Ready) {
     }
 }
 
+/** Under the same title as a digest, so the screen reads as the digest with nothing in it rather than an error. */
+@Composable
+private fun NoDigest(quiet: Boolean) {
+    val gutter = CorvidSpacing.gutter(LocalWideLayout.current)
+    Column(Modifier.padding(horizontal = gutter, vertical = 16.dp).widthIn(max = COLUMN_WIDTH)) {
+        Text(stringResource(Res.string.digest_title), style = CorvidTheme.type.display)
+        Text(
+            stringResource(if (quiet) Res.string.digest_quiet else Res.string.digest_empty),
+            style = CorvidTheme.type.meta,
+            color = CorvidTheme.colors.inkMuted,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+    }
+}
+
 @Composable
 private fun Section(
     title: String,
@@ -146,7 +162,7 @@ private fun Section(
     }
 }
 
-/** The name and the summary came from mail or a model, so the paragraph is a plain `Text`: no links, only the row opens. */
+/** Plain `Text` with no links. Muted text is always the model's summary; a subject, the sender's own words, is in ink. */
 @Composable
 private fun Person(
     item: DigestItem,
@@ -157,7 +173,8 @@ private fun Person(
         buildAnnotatedString {
             withStyle(SpanStyle(color = colors.ink, fontWeight = FontWeight.SemiBold)) { append(item.displayName) }
             append(' ')
-            append(item.summary ?: item.subject)
+            val summary = item.summary
+            if (summary != null) append(summary) else withStyle(SpanStyle(color = colors.ink)) { append(item.subject) }
         }
     Text(
         paragraph,
@@ -220,7 +237,7 @@ private fun More(
     ) {
         Box(
             contentAlignment = Alignment.Center,
-            modifier = Modifier.defaultMinSize(22.dp, 22.dp).border(1.dp, colors.line, CorvidShape.small).padding(horizontal = 3.dp),
+            modifier = Modifier.size(22.dp).border(1.dp, colors.line, CorvidShape.small),
         ) {
             Text(stringResource(Res.string.digest_more_count, hidden), style = CorvidTheme.type.chip, color = colors.inkMuted, maxLines = 1)
         }

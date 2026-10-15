@@ -25,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalUriHandler
@@ -33,6 +34,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.SenderRepository
 import com.verdenroz.corvid.core.data.SuggestedRules
+import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
@@ -116,6 +118,10 @@ fun SenderCard(
                 confirming.scriptName,
                 onConfirm = { scope.launch { offers.accept(confirming.suggestion, replaceForeign = true) } },
                 onDismiss = offers::declineReplace,
+                modifier =
+                    Modifier
+                        .padding(horizontal = CorvidSpacing.gutter(wide), vertical = 16.dp)
+                        .clip(CorvidShape.medium),
             )
         } else if (about != null && offer.checked == about.id) {
             SuggestionCallout(

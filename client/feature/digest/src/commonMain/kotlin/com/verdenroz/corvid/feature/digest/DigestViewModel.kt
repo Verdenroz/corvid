@@ -15,8 +15,8 @@ import kotlinx.coroutines.launch
 sealed interface DigestState {
     data object Loading : DigestState
 
-    /** No digest was made yet, the server does not make them, or the digest holds no mail. */
-    data object Empty : DigestState
+    /** No digest to show: [quiet] when one was made and held no mail, else none was made or the server makes none. */
+    data class Empty(val quiet: Boolean) : DigestState
 
     data class Failed(val message: UiText) : DigestState
 
@@ -39,7 +39,11 @@ class DigestViewModel(
                 try {
                     val digest = if (id == null) repository.latest() else repository.get(id)
                     val groups = digest?.groups.orEmpty().filter { it.items.isNotEmpty() }
-                    if (digest == null || groups.isEmpty()) DigestState.Empty else DigestState.Ready(digest.copy(groups = groups))
+                    when {
+                        digest == null -> DigestState.Empty(quiet = false)
+                        groups.isEmpty() -> DigestState.Empty(quiet = true)
+                        else -> DigestState.Ready(digest.copy(groups = groups))
+                    }
                 } catch (e: JmapException) {
                     DigestState.Failed(e.userMessage())
                 }

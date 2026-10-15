@@ -39,6 +39,7 @@ import com.verdenroz.corvid.feature.mailbox.resources.overnight_people_one
 import com.verdenroz.corvid.feature.mailbox.resources.overnight_people_three
 import com.verdenroz.corvid.feature.mailbox.resources.overnight_people_two
 import com.verdenroz.corvid.feature.mailbox.resources.overnight_title
+import com.verdenroz.corvid.feature.mailbox.resources.overnight_who_lead
 import org.jetbrains.compose.resources.stringResource
 
 private const val NAMES_SHOWN = 3
@@ -50,26 +51,32 @@ data class OvernightEntry(
     val people: List<String>,
     val lists: Int,
 ) {
-    val line: UiText
+    val who: UiText?
         get() {
             val names = people.take(NAMES_SHOWN)
-            val who =
-                when (names.size) {
-                    0 -> null
-                    1 -> uiText(Res.string.overnight_people_one, names[0])
-                    2 -> uiText(Res.string.overnight_people_two, names[0], names[1])
-                    else -> uiText(Res.string.overnight_people_three, names[0], names[1], names[2])
-                }
-            val fromLists = uiPlural(Res.plurals.overnight_lists, lists)
+            return when (names.size) {
+                0 -> null
+                1 -> uiText(Res.string.overnight_people_one, names[0])
+                2 -> uiText(Res.string.overnight_people_two, names[0], names[1])
+                else -> uiText(Res.string.overnight_people_three, names[0], names[1], names[2])
+            }
+        }
+
+    val fromLists: UiText? get() = if (lists == 0) null else uiPlural(Res.plurals.overnight_lists, lists)
+
+    val line: UiText
+        get() {
+            val who = who
+            val fromLists = fromLists
             return when {
-                who == null -> fromLists
-                lists == 0 -> who
-                else -> uiText(Res.string.overnight_join, who, fromLists)
+                who != null && fromLists != null -> uiText(Res.string.overnight_join, who, fromLists)
+                else -> who ?: fromLists ?: uiPlural(Res.plurals.overnight_lists, 0)
             }
         }
 }
 
-fun Digest.overnight() = OvernightEntry(id, items.size, people.map { it.displayName }.distinct(), lists.size)
+/** First names only, so the line stays short enough that the count from lists always shows. */
+fun Digest.overnight() = OvernightEntry(id, items.size, people.map { it.displayName.trim().substringBefore(' ') }.distinct(), lists.size)
 
 class OvernightOffer(
     val entry: OvernightEntry,
@@ -105,13 +112,25 @@ internal fun OvernightBlock(offer: OvernightOffer) {
                     Text(stringResource(Res.string.overnight_title), style = CorvidTheme.type.dayHeader)
                     Text(entry.count.toString(), style = CorvidTheme.type.meta, color = colors.inkMuted)
                 }
-                Text(
-                    entry.line.asString(),
-                    style = CorvidTheme.type.meta,
-                    color = colors.inkMuted,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Row {
+                    val who = entry.who
+                    val fromLists = entry.fromLists
+                    if (who != null) {
+                        val lead = if (fromLists != null) uiText(Res.string.overnight_who_lead, who) else who
+                        Text(
+                            lead.asString(),
+                            style = CorvidTheme.type.meta,
+                            color = colors.inkMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                    }
+                    if (fromLists != null) {
+                        val tail = if (who != null) " " + fromLists.asString() else fromLists.asString()
+                        Text(tail, style = CorvidTheme.type.meta, color = colors.inkMuted, maxLines = 1)
+                    }
+                }
             }
             Icon(CorvidIcons.ChevronRight, contentDescription = null, tint = colors.inkMuted, modifier = Modifier.size(16.dp))
         }

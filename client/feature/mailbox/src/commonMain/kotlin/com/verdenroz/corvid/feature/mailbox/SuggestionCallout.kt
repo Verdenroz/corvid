@@ -46,7 +46,7 @@ internal fun SuggestionCallout(
         verticalArrangement = Arrangement.spacedBy(10.dp),
         modifier =
             Modifier
-                .padding(start = gutter, end = gutter, top = 16.dp)
+                .padding(start = gutter, end = gutter, top = 16.dp, bottom = 16.dp)
                 .fillMaxWidth()
                 .background(colors.accentSoft, CorvidShape.medium)
                 .padding(horizontal = 14.dp, vertical = 12.dp),

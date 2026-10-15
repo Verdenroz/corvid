@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
@@ -66,7 +67,7 @@ private fun SuggestionCard(
     onDismiss: () -> Unit,
 ) {
     val colors = CorvidTheme.colors
-    val caption = suggestion.caption(folders).asString()
+    val caption = suggestion.caption().asString()
     val frame = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp).fillMaxWidth()
     Column(
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -92,7 +93,13 @@ private fun Sender(suggestion: RuleSuggestion) {
     val colors = CorvidTheme.colors
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         InitialsTile(suggestion.sender.value, 28.dp)
-        Text(suggestion.sender.value, style = CorvidTheme.type.name, maxLines = 1, modifier = Modifier.weight(1f))
+        Text(
+            suggestion.sender.value,
+            style = CorvidTheme.type.name,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
         if (suggestion.sender.kind == SuggestionSenderKind.List) {
             Text(stringResource(Res.string.suggestion_list_tag), style = CorvidTheme.type.meta, color = colors.inkFaint)
         }

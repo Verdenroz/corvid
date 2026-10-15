@@ -233,6 +233,7 @@
         <item quantity="other">%1$d from lists</item>
     </plurals>
     <string name="overnight_join">%1$s; %2$s</string>
+    <string name="overnight_who_lead">%1$s;</string>
     <string name="offer_lead_archive">You archive these unread.</string>
     <string name="offer_lead_trash">You trash these unread.</string>
     <string name="offer_lead_folder">You file these in %1$s unread.</string>

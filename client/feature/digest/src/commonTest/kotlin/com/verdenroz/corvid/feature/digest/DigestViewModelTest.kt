@@ -80,13 +80,13 @@ class DigestViewModelTest {
     @Test
     fun `an id the server does not hold is empty`() =
         runViewModelTest {
-            assertEquals(DigestState.Empty, viewModel(fake, "d9").settled())
+            assertEquals(DigestState.Empty(quiet = false), viewModel(fake, "d9").settled())
         }
 
     @Test
     fun `a server with no digest yet is empty`() =
         runViewModelTest {
-            assertEquals(DigestState.Empty, viewModel(FakeJmapServer(), null).settled())
+            assertEquals(DigestState.Empty(quiet = false), viewModel(FakeJmapServer(), null).settled())
         }
 
     @Test
@@ -102,7 +102,7 @@ class DigestViewModelTest {
         runViewModelTest {
             val quiet = FakeJmapServer().apply { digests.serve(FakeDigest("d1", groups = listOf("Work" to emptyList()))) }
 
-            assertEquals(DigestState.Empty, viewModel(quiet, null).settled())
+            assertEquals(DigestState.Empty(quiet = true), viewModel(quiet, null).settled())
         }
 
     @Test

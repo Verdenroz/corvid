@@ -15,4 +15,5 @@
         <item quantity="other">%1$d more from lists</item>
     </plurals>
     <string name="digest_empty">There is no digest yet.</string>
+    <string name="digest_quiet">Nothing came in overnight.</string>
 </resources>

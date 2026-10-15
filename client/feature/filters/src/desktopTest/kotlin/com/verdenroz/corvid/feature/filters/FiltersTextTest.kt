@@ -44,26 +44,24 @@ class FiltersTextTest {
         }
 
     @Test
-    fun `the caption counts the messages by how they were handled and how long they span`() =
+    fun `the caption counts the messages left unread and how long they span, whatever the action`() =
         runTest {
-            val folders = listOf(MailboxRef("m1", listOf("Mail", "News")))
-
-            suspend fun caption(suggestion: RuleSuggestion) = suggestion.caption(folders).resolve(environment)
+            suspend fun caption(suggestion: RuleSuggestion) = suggestion.caption().resolve(environment)
 
             assertEquals(
-                "Archived unread 23 times out of 24, over 3 weeks",
+                "23 of the last 24 left unread, over 3 weeks",
                 caption(suggestion(SuggestionSenderKind.From, SuggestionAction.Archive)),
             )
             assertEquals(
-                "Moved to Trash unread 1 time out of 24, over 5 days",
+                "1 of the last 24 left unread, over 5 days",
                 caption(suggestion(SuggestionSenderKind.List, SuggestionAction.Trash, hits = 1, spanDays = 5)),
             )
             assertEquals(
-                "Filed in Mail / News unread 23 times out of 24, over 2 weeks",
+                "23 of the last 24 left unread, over 2 weeks",
                 caption(suggestion(SuggestionSenderKind.From, SuggestionAction.Folder("m1"), spanDays = 14)),
             )
             assertEquals(
-                "Archived unread 23 times out of 24",
+                "23 of the last 24 left unread",
                 caption(suggestion(SuggestionSenderKind.From, SuggestionAction.Archive, spanDays = 0)),
             )
         }

@@ -18,14 +18,14 @@ private fun item(
 
 class OvernightEntryTest {
     @Test
-    fun `the entry names each person once, falls back to the address, and counts the lists`() {
+    fun `the entry names each person once by first name, falls back to the address, and counts the lists`() {
         val digest =
             Digest(
                 "d1",
                 AT,
                 AT,
                 listOf(
-                    DigestGroup("Work", listOf(item("a", "Ada"), item("b", "Ada"), item("c", from = "eve@x.test"))),
+                    DigestGroup("Work", listOf(item("a", "Ada Lovelace"), item("b", "Ada Lovelace"), item("c", from = "eve@x.test"))),
                     DigestGroup(null, listOf(item("l1", "Shop", list = true), item("l2", "Shop", list = true))),
                 ),
             )

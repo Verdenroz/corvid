@@ -2,14 +2,12 @@ package com.verdenroz.corvid.core.ui.provenance
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.defaultMinSize
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 
@@ -23,7 +21,7 @@ fun InitialsTile(
     val colors = CorvidTheme.colors
     Box(
         contentAlignment = Alignment.Center,
-        modifier = modifier.defaultMinSize(size, size).background(colors.chip, CorvidShape.small).padding(horizontal = 3.dp),
+        modifier = modifier.size(size).background(colors.chip, CorvidShape.small),
     ) {
         Text(initials(name), style = CorvidTheme.type.chip, color = colors.ink, maxLines = 1)
     }
