@@ -78,6 +78,20 @@ async fn only_a_device_that_asked_for_digests_gets_the_content_free_push() {
 }
 
 #[tokio::test]
+async fn a_digest_with_no_mail_is_kept_but_not_pushed() {
+    let rig = pushing().await;
+    rig.enroll("phone", &Phone::new(), "phone-endpoint").await;
+    assert_eq!(rig.ask_for("phone", json!(["digest"])).await.status(), 204);
+
+    rig.sentinel.at(DAY + 7 * HOUR);
+    let digest = rig.sentinel.latest_after(None).await;
+    rig.sentinel.settle().await;
+
+    assert_eq!(digest["groups"], json!([]));
+    assert_eq!(rig.fcm.count(), 0);
+}
+
+#[tokio::test]
 async fn asking_for_kinds_leaves_the_push_registration_alone_and_can_be_withdrawn() {
     let rig = pushing().await;
     rig.enroll("phone", &Phone::new(), "phone-endpoint").await;

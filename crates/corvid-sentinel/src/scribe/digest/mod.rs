@@ -98,12 +98,14 @@ async fn tick(state: &Shared, courier: &Courier, settings: &Settings) {
         to,
         groups: build::groups(messages, &summaries),
     };
+    let has_mail = !digest.groups.is_empty();
     let kept = commit(state.clone(), "digest", move |scribe| {
         (Some(scribe.with_digest(digest)), ())
     })
     .await;
     match kept {
-        Ok(()) => courier.announce_digest(&announced).await,
+        Ok(()) if has_mail => courier.announce_digest(&announced).await,
+        Ok(()) => {}
         Err(_) => tracing::warn!("digest: cannot keep the digest"),
     }
 }
