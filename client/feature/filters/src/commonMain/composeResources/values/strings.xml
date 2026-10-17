@@ -8,9 +8,6 @@
     <string name="filters_up">Up</string>
     <string name="filters_down">Down</string>
     <string name="filters_delete">Delete</string>
-    <string name="filters_replace_title">Replace the active script?</string>
-    <string name="filters_replace_body">"%1$s" is the active Sieve script. Activating Corvid's filters turns it off. It is not deleted.</string>
-    <string name="filters_replace_confirm">Activate Corvid filters</string>
     <string name="filters_cancel">Cancel</string>
     <string name="filters_save">Save</string>
     <string name="filters_name">Name</string>
@@ -26,7 +23,6 @@
     <string name="filters_choose_folder">Choose a folder</string>
     <string name="filters_unreadable">The Corvid script has no rule list this client can read.</string>
     <string name="filters_newer">These filters were saved by a newer Corvid. Update the app to edit them.</string>
-    <string name="filters_another_active">another script is active</string>
     <string name="filters_not_saved">Not saved: %1$s</string>
     <string name="match_all">all</string>
     <string name="match_any">any</string>
@@ -52,11 +48,17 @@
     <string name="filters_empty">No rules yet. A rule can file, label, star or mark mail read as it arrives, before any device sees it.</string>
     <string name="filters_discard_question">Discard this rule?</string>
     <string name="suggestions_title">Suggested</string>
-    <string name="suggestion_summary">You left %1$d of %2$d messages from %3$s unread and %4$s.</string>
-    <string name="suggestion_who_list">the list %1$s</string>
-    <string name="suggestion_archived">archived them</string>
-    <string name="suggestion_trashed">moved them to Trash</string>
-    <string name="suggestion_filed">filed them in %1$s</string>
-    <string name="suggestion_add">Add rule</string>
-    <string name="suggestion_dismiss">Dismiss</string>
+    <string name="suggestions_aside">from what you did, no model</string>
+    <string name="suggestions_legend">Each square is one message that reached your Inbox.</string>
+    <string name="suggestion_rule">When %1$s, %2$s</string>
+    <string name="suggestion_cond_from">From is %1$s</string>
+    <string name="suggestion_cond_list">List-Id contains &lt;%1$s&gt;</string>
+    <string name="suggestion_act_archive">move to Archive</string>
+    <string name="suggestion_act_trash">move to Trash</string>
+    <string name="suggestion_act_folder">move to %1$s</string>
+    <string name="suggestion_list_tag">list</string>
+    <string name="suggestion_counts">%1$d of the last %2$d left unread</string>
+    <string name="suggestion_caption">%1$s, %2$s</string>
+    <string name="suggestion_add">Use this rule</string>
+    <string name="suggestion_dismiss">Not this one</string>
 </resources>

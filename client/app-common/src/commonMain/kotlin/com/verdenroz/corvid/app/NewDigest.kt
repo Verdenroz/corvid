@@ -1,33 +1,13 @@
 package com.verdenroz.corvid.app
 
-import com.verdenroz.corvid.appcommon.resources.Res
-import com.verdenroz.corvid.appcommon.resources.digest_banner
 import com.verdenroz.corvid.core.data.DigestRepository
-import com.verdenroz.corvid.core.data.stamp
 import com.verdenroz.corvid.core.jmap.JmapException
+import com.verdenroz.corvid.core.model.Digest
+import com.verdenroz.corvid.core.model.items
 import com.verdenroz.corvid.core.prefs.DevicePreferences
-import com.verdenroz.corvid.core.text.UiText
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.datetime.TimeZone
-import kotlin.time.Clock
-import kotlin.time.Instant
-
-/** The latest digest this device has not seen: its [id] and the [count] of messages since [since]. */
-data class DigestBanner(
-    val id: String,
-    val count: Int,
-    val since: Instant,
-) {
-    val line: UiText
-        get() =
-            UiText.Plural(
-                Res.plurals.digest_banner,
-                count,
-                listOf(count, stamp(since, TimeZone.currentSystemDefault(), Clock.System.now())),
-            )
-}
 
 /**
  * Offers the server's latest digest while the app is unlocked, until it is opened or dismissed; the id of the last
@@ -37,8 +17,8 @@ class NewDigest(
     private val repository: DigestRepository,
     private val preferences: DevicePreferences,
 ) {
-    private val _banner = MutableStateFlow<DigestBanner?>(null)
-    val banner: StateFlow<DigestBanner?> = _banner
+    private val _unseen = MutableStateFlow<Digest?>(null)
+    val unseen: StateFlow<Digest?> = _unseen
 
     private val opened = mutableSetOf<String?>()
 
@@ -49,18 +29,18 @@ class NewDigest(
     }
 
     suspend fun dismiss() {
-        _banner.value?.let { seen(it.id) }
+        _unseen.value?.let { seen(it.id) }
     }
 
     /** Called when the digest [id] is on screen, where null is the latest. */
     suspend fun opened(id: String?) {
         opened += id
-        val shown = _banner.value ?: return
+        val shown = _unseen.value ?: return
         if (id == null || id == shown.id) seen(shown.id)
     }
 
     private suspend fun seen(id: String) {
-        _banner.value = null
+        _unseen.value = null
         preferences.setDigestSeen(id)
     }
 
@@ -71,9 +51,8 @@ class NewDigest(
             } catch (e: JmapException) {
                 null
             } ?: return
-        val count = digest.groups.sumOf { it.items.size }
-        if (count == 0 || digest.id == preferences.settings.value.digestSeen) return
+        if (digest.items.isEmpty() || digest.id == preferences.settings.value.digestSeen) return
         if (null in opened || digest.id in opened) return seen(digest.id)
-        _banner.value = DigestBanner(digest.id, count, digest.from)
+        _unseen.value = digest
     }
 }

@@ -111,6 +111,24 @@ fn a_state_file_written_before_digests_still_opens() {
     assert!(scribe.digests.is_empty());
 }
 
+#[test]
+fn a_digest_saved_without_sender_fields_still_opens() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("scribe.json");
+    let item = json!({"thread_id": "T", "email_id": "m", "from": "a@x.test",
+                      "subject": "s", "received_at": 1, "summary": null});
+    let old = json!({"suggestions": [], "decided": [], "summaries": {}, "digests": [
+        {"id": "2026-10-14", "from": 0, "to": 1, "groups": [{"label": null, "items": [item]}]}
+    ]});
+    corvid_store::save(&path, 1, &old).unwrap();
+
+    let scribe = corvid_sentinel::scribe::open(&path).unwrap();
+
+    let kept = &scribe.digests[0].groups[0].items[0];
+    assert_eq!(kept.from_name, None);
+    assert!(!kept.is_list);
+}
+
 #[tokio::test]
 async fn no_digest_exists_before_the_first_is_built() {
     let sentinel = digesting("UTC", DAY + 6 * HOUR + 59 * 60).await;
@@ -281,6 +299,7 @@ async fn a_digest_groups_the_inbox_by_label_with_summaries_and_leaves_out_junk()
 
     let item = |email: &str, thread: &str, hour: i64, summary: Value| {
         json!({"threadId": thread, "emailId": email, "from": "sender@example.com",
+               "fromName": "Sender", "isList": false,
                "subject": format!("subject of {email}"),
                "receivedAt": rfc3339(DAY + hour * HOUR), "summary": summary})
     };
@@ -299,6 +318,28 @@ async fn a_digest_groups_the_inbox_by_label_with_summaries_and_leaves_out_junk()
         listed,
         json!({"digests": [{"id": "2026-10-14", "to": rfc3339(DAY + 7 * HOUR - CLOSING), "count": 3}]})
     );
+}
+
+#[tokio::test]
+async fn a_digest_item_names_its_sender_and_flags_list_mail() {
+    let sentinel = digesting("UTC", DAY + 6 * HOUR).await;
+    let stalwart = &sentinel.rig.stalwart;
+    let mut list = email("m1", "T1", INBOX, DAY + HOUR, &[]);
+    list["header:List-Id:asText"] = json!("<news.example.com>");
+    let mut nameless = email("m2", "T2", INBOX, DAY + 2 * HOUR, &[]);
+    nameless["from"] = json!([{"name": "  ", "email": "sender@example.com"}]);
+    stalwart.deliver(list);
+    stalwart.deliver(nameless);
+
+    sentinel.at(DAY + 7 * HOUR);
+    let digest = sentinel.latest_after(None).await;
+
+    let items = &digest["groups"][0]["items"];
+    assert_eq!(items[0]["threadId"], "T2");
+    assert_eq!(items[0]["fromName"], Value::Null);
+    assert_eq!(items[0]["isList"], false);
+    assert_eq!(items[1]["fromName"], "Sender");
+    assert_eq!(items[1]["isList"], true);
 }
 
 async fn post_summary(sentinel: &Digesting, thread: &str, text: &str) {

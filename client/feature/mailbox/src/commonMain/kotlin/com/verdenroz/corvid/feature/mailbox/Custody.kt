@@ -108,7 +108,7 @@ private fun LabelledCell(
 }
 
 @Composable
-private fun Cell(
+internal fun Cell(
     icon: ImageVector,
     title: String,
     value: String,

@@ -31,6 +31,9 @@ class SuggestedRules(
 ) {
     suspend fun fetch(): List<RuleSuggestion> = suggestions.list()
 
+    /** The saved rules and the folders they and the suggestions may name. */
+    suspend fun current(): FilterSet = filters.load()
+
     /** The [fetched] suggestions worth showing against [current]: none whose folder is gone or that a rule already does. */
     suspend fun pending(
         fetched: List<RuleSuggestion>,

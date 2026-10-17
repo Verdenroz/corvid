@@ -60,11 +60,6 @@
     <string name="tab_filters">Filters</string>
     <string name="write">Write</string>
     <string name="new_mail_title">New mail</string>
-    <plurals name="digest_banner">
-        <item quantity="one">Your digest is ready: %1$d message since %2$s</item>
-        <item quantity="other">Your digest is ready: %1$d messages since %2$s</item>
-    </plurals>
-    <string name="digest_open">Open</string>
     <plurals name="new_mail_count">
         <item quantity="one">%1$d new message in Inbox</item>
         <item quantity="other">%1$d new messages in Inbox</item>

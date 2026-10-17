@@ -41,6 +41,25 @@ class SuggestionRepositoryTest {
         }
 
     @Test
+    fun `a suggestion carries its history and span and an older server has neither`() =
+        runTest {
+            val fake =
+                FakeJmapServer().apply {
+                    suggestions.serve(
+                        FakeSuggestion("s1", history = listOf(true, false, true), spanDays = 20),
+                        FakeSuggestion("s2"),
+                    )
+                }
+
+            val read = repository(fake).list()
+
+            assertEquals(listOf(true, false, true), read[0].history)
+            assertEquals(20, read[0].spanDays)
+            assertEquals(emptyList(), read[1].history)
+            assertEquals(0, read[1].spanDays)
+        }
+
+    @Test
     fun `an archive suggestion is read as archive`() =
         runTest {
             val fake = FakeJmapServer().apply { suggestions.serve(FakeSuggestion("s1")) }

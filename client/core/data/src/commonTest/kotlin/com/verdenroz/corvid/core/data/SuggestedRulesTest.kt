@@ -46,6 +46,20 @@ private fun fromRule(
 
 class SuggestedRulesTest {
     @Test
+    fun `current reads the saved rules and the folders`() =
+        runTest {
+            val fake = FakeJmapServer().withRoleMailboxes("inbox", "archive")
+            val (rules, filters) = suggested(fake)
+            val saved = fromRule("news@x.test", FilterAction.MoveToFolder(ARCHIVE_REF))
+            filters.save(listOf(saved), replaceForeign = false)
+
+            val set = rules.current()
+
+            assertEquals(listOf(saved), set.rules)
+            assertEquals(listOf(ARCHIVE_REF), set.folders.filter { it.id == "archive" })
+        }
+
+    @Test
     fun `accepting a from suggestion saves a demoting rule and tells the server`() =
         runTest {
             val fake = FakeJmapServer().withRoleMailboxes("inbox", "archive")

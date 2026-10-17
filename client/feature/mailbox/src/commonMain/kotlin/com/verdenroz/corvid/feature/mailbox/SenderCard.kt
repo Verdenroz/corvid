@@ -22,8 +22,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalUriHandler
@@ -31,6 +33,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.SenderRepository
+import com.verdenroz.corvid.core.data.SuggestedRules
+import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
@@ -40,6 +44,7 @@ import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.core.model.SenderKind
 import com.verdenroz.corvid.core.text.asString
+import com.verdenroz.corvid.core.ui.ConfirmReplace
 import com.verdenroz.corvid.core.ui.provenance.SenderAvatar
 import com.verdenroz.corvid.core.ui.provenance.openUntrusted
 import com.verdenroz.corvid.feature.mailbox.resources.Res
@@ -51,6 +56,7 @@ import com.verdenroz.corvid.feature.mailbox.resources.card_unsubscribe
 import com.verdenroz.corvid.feature.mailbox.resources.card_write
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_no_subject
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_separator
+import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
@@ -67,6 +73,7 @@ class SenderCardActions(
 @Composable
 fun SenderCard(
     senders: SenderRepository,
+    suggested: SuggestedRules,
     address: String,
     wide: Boolean,
     actions: SenderCardActions,
@@ -74,6 +81,10 @@ fun SenderCard(
     val model = remember(address) { SenderCardModel(senders, address) }
     LaunchedEffect(model) { model.load() }
     val state by model.state.collectAsState()
+    val offers = remember(suggested) { SuggestionOfferModel(suggested) }
+    LaunchedEffect(offers) { offers.fetch() }
+    val offer by offers.state.collectAsState()
+    val scope = rememberCoroutineScope()
     val latest = state.recent?.firstOrNull()
     val isSource = latest?.provenance?.sender is SenderKind.Source
 
@@ -97,6 +108,27 @@ fun SenderCard(
                     Modifier.fillMaxWidth().background(
                         CorvidTheme.colors.dangerSoft,
                     ).padding(horizontal = CorvidSpacing.gutter(wide), vertical = 10.dp),
+            )
+        }
+        val about = offer.suggestions.about(address, latest?.provenance?.trustedListId)
+        LaunchedEffect(about?.id) { about?.let { offers.check(it) } }
+        val confirming = offer.confirming
+        if (confirming != null) {
+            ConfirmReplace(
+                confirming.scriptName,
+                onConfirm = { scope.launch { offers.accept(confirming.suggestion, replaceForeign = true) } },
+                onDismiss = offers::declineReplace,
+                modifier =
+                    Modifier
+                        .padding(horizontal = CorvidSpacing.gutter(wide), vertical = 16.dp)
+                        .clip(CorvidShape.medium),
+            )
+        } else if (about != null && offer.checked == about.id) {
+            SuggestionCallout(
+                about,
+                offer,
+                wide,
+                OfferActions(accept = { scope.launch { offers.accept(it) } }, dismiss = { scope.launch { offers.dismiss(it) } }),
             )
         }
         Facts(state, latest, isSource, wide)

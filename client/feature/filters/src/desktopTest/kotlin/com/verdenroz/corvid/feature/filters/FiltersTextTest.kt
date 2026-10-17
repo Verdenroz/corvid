@@ -6,11 +6,7 @@ import com.verdenroz.corvid.core.model.SuggestionAction
 import com.verdenroz.corvid.core.model.SuggestionSender
 import com.verdenroz.corvid.core.model.SuggestionSenderKind
 import com.verdenroz.corvid.core.testing.composedResourceEnvironment
-import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.resolve
-import com.verdenroz.corvid.core.text.uiText
-import com.verdenroz.corvid.feature.filters.resources.Res
-import com.verdenroz.corvid.feature.filters.resources.filters_replace_body
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -18,36 +14,55 @@ import kotlin.test.assertEquals
 class FiltersTextTest {
     private val environment = composedResourceEnvironment()
 
-    @Test
-    fun `the replace warning keeps its quotes and apostrophe`() =
-        runTest {
-            assertEquals(
-                "\"vacation\" is the active Sieve script. Activating Corvid's filters turns it off. It is not deleted.",
-                uiText(Res.string.filters_replace_body, UiText.FromServer("vacation")).resolve(environment),
-            )
-        }
-
     private fun suggestion(
         sender: SuggestionSenderKind,
         action: SuggestionAction,
-    ) = RuleSuggestion("s1", SuggestionSender(sender, "news@x.test"), action, settled = 24, hits = 23)
+        hits: Int = 23,
+        spanDays: Int = 20,
+    ) = RuleSuggestion("s1", SuggestionSender(sender, "news@x.test"), action, settled = 24, hits = hits, spanDays = spanDays)
 
     @Test
-    fun `a suggestion says how many of the messages were handled and how`() =
+    fun `the rule sentence names the condition and where the mail goes`() =
         runTest {
+            val folders = listOf(MailboxRef("m1", listOf("Mail", "News")))
+
+            suspend fun sentence(suggestion: RuleSuggestion) =
+                suggestion.sentence(folders).let { it.condition.resolve(environment) to it.action.resolve(environment) }
+
             assertEquals(
-                "You left 23 of 24 messages from news@x.test unread and archived them.",
-                suggestion(SuggestionSenderKind.From, SuggestionAction.Archive).summary(emptyList()).resolve(environment),
+                "From is news@x.test" to "move to Archive",
+                sentence(suggestion(SuggestionSenderKind.From, SuggestionAction.Archive)),
             )
             assertEquals(
-                "You left 23 of 24 messages from the list news@x.test unread and moved them to Trash.",
-                suggestion(SuggestionSenderKind.List, SuggestionAction.Trash).summary(emptyList()).resolve(environment),
+                "List-Id contains <news@x.test>" to "move to Trash",
+                sentence(suggestion(SuggestionSenderKind.List, SuggestionAction.Trash)),
             )
             assertEquals(
-                "You left 23 of 24 messages from news@x.test unread and filed them in Mail / News.",
-                suggestion(SuggestionSenderKind.From, SuggestionAction.Folder("m1"))
-                    .summary(listOf(MailboxRef("m1", listOf("Mail", "News"))))
-                    .resolve(environment),
+                "From is news@x.test" to "move to Mail / News",
+                sentence(suggestion(SuggestionSenderKind.From, SuggestionAction.Folder("m1"))),
+            )
+        }
+
+    @Test
+    fun `the caption counts the messages left unread and how long they span, whatever the action`() =
+        runTest {
+            suspend fun caption(suggestion: RuleSuggestion) = suggestion.caption().resolve(environment)
+
+            assertEquals(
+                "23 of the last 24 left unread, over 3 weeks",
+                caption(suggestion(SuggestionSenderKind.From, SuggestionAction.Archive)),
+            )
+            assertEquals(
+                "1 of the last 24 left unread, over 5 days",
+                caption(suggestion(SuggestionSenderKind.List, SuggestionAction.Trash, hits = 1, spanDays = 5)),
+            )
+            assertEquals(
+                "23 of the last 24 left unread, over 2 weeks",
+                caption(suggestion(SuggestionSenderKind.From, SuggestionAction.Folder("m1"), spanDays = 14)),
+            )
+            assertEquals(
+                "23 of the last 24 left unread",
+                caption(suggestion(SuggestionSenderKind.From, SuggestionAction.Archive, spanDays = 0)),
             )
         }
 }

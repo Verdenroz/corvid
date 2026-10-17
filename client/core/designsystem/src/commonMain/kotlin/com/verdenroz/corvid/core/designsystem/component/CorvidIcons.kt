@@ -84,6 +84,7 @@ object CorvidIcons {
     }
     val ChevronDown: ImageVector by lazy { stroke("ChevronDown", "M6 9l6 6 6-6") }
     val ChevronUp: ImageVector by lazy { stroke("ChevronUp", "M6 15l6-6 6 6") }
+    val ChevronRight: ImageVector by lazy { stroke("ChevronRight", "M9 6l6 6-6 6") }
 
     val Send: ImageVector by lazy { stroke("Send", "M4 12l16-8-6 16-2-6-8-2zM12 14l8-10") }
 

@@ -78,8 +78,18 @@ fun LedgerScreen(
     onOpenEmail: (EmailSummary) -> Unit,
     onOpenSender: (String) -> Unit,
     modifier: Modifier = Modifier,
+    overnight: OvernightOffer? = null,
 ) {
-    LedgerContent(viewModel, actions, stringResource(tab.emptyText()), onOpenEmail, onOpenSender, modifier, takeFocus = true)
+    LedgerContent(
+        viewModel,
+        actions,
+        stringResource(tab.emptyText()),
+        onOpenEmail,
+        onOpenSender,
+        modifier,
+        takeFocus = true,
+        overnight = overnight,
+    )
 }
 
 /**
@@ -95,6 +105,7 @@ internal fun LedgerContent(
     onOpenSender: (String) -> Unit,
     modifier: Modifier = Modifier,
     takeFocus: Boolean = false,
+    overnight: OvernightOffer? = null,
 ) {
     val state by viewModel.state.collectAsState()
     val selected by viewModel.selected.collectAsState()
@@ -224,6 +235,7 @@ internal fun LedgerContent(
                             menu,
                             onAct,
                             viewModel::loadMore,
+                            overnight,
                         )
                     }
             }
@@ -281,6 +293,7 @@ private fun Ledger(
     menu: MoveMenu,
     onAct: (Act, ActionTarget) -> Unit,
     onLoadMore: () -> Unit,
+    overnight: OvernightOffer?,
 ) {
     val conversations = state.conversations
     val zone = remember { TimeZone.currentSystemDefault() }
@@ -296,6 +309,7 @@ private fun Ledger(
     val onRowAct = remember(onAct) { { act: Act, row: Conversation -> onAct(act, listOf(row).target()) } }
     val bottom = CorvidFloating.listClearance(noticeOverWrite = noticeShown && !wide)
     LazyColumn(state = listState, contentPadding = PaddingValues(bottom = bottom), modifier = Modifier.fillMaxSize()) {
+        overnight?.let { offer -> item(key = "overnight") { OvernightBlock(offer) } }
         days.forEach { day ->
             stickyHeader(key = day.date.toString()) { DayHeader(day, wide) }
             items(day.conversations, key = { it.latest.id }) { conversation ->

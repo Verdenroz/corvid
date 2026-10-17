@@ -1,6 +1,8 @@
 package com.verdenroz.corvid.feature.digest
 
 import com.verdenroz.corvid.core.data.DigestRepository
+import com.verdenroz.corvid.core.model.lists
+import com.verdenroz.corvid.core.model.people
 import com.verdenroz.corvid.core.testing.FakeDigest
 import com.verdenroz.corvid.core.testing.FakeDigestItem
 import com.verdenroz.corvid.core.testing.FakeJmapServer
@@ -42,6 +44,31 @@ class DigestViewModelTest {
         }
 
     @Test
+    fun `mail is regrouped by who sent it, keeping the group a list came in`() =
+        runViewModelTest {
+            val groups =
+                listOf(
+                    "Work" to listOf(FakeDigestItem(emailId = "p1", fromName = "Marta"), FakeDigestItem(emailId = "l1", isList = true)),
+                    null to listOf(FakeDigestItem(emailId = "l2", isList = true), FakeDigestItem(emailId = "p2", from = "ana@x.test")),
+                )
+            val mixed = FakeJmapServer().apply { digests.serve(FakeDigest("d1", groups = groups)) }
+
+            val ready = assertIs<DigestState.Ready>(viewModel(mixed, null).settled())
+
+            assertEquals(listOf("Marta", "ana"), ready.digest.people.map { it.displayName })
+            assertEquals(listOf("l1" to "Work", "l2" to null), ready.digest.lists.map { it.item.emailId to it.label })
+        }
+
+    @Test
+    fun `summaries on lists alone do not count as people summaries`() =
+        runViewModelTest {
+            val groups = listOf("News" to listOf(FakeDigestItem(emailId = "l1", isList = true, summary = "x"), item()))
+            val mixed = FakeJmapServer().apply { digests.serve(FakeDigest("d1", groups = groups)) }
+
+            assertFalse(assertIs<DigestState.Ready>(viewModel(mixed, null).settled()).anySummary)
+        }
+
+    @Test
     fun `an id shows that digest`() =
         runViewModelTest {
             val ready = assertIs<DigestState.Ready>(viewModel(fake, "d1").settled())
@@ -53,13 +80,13 @@ class DigestViewModelTest {
     @Test
     fun `an id the server does not hold is empty`() =
         runViewModelTest {
-            assertEquals(DigestState.Empty, viewModel(fake, "d9").settled())
+            assertEquals(DigestState.Empty(quiet = false), viewModel(fake, "d9").settled())
         }
 
     @Test
     fun `a server with no digest yet is empty`() =
         runViewModelTest {
-            assertEquals(DigestState.Empty, viewModel(FakeJmapServer(), null).settled())
+            assertEquals(DigestState.Empty(quiet = false), viewModel(FakeJmapServer(), null).settled())
         }
 
     @Test
@@ -75,7 +102,7 @@ class DigestViewModelTest {
         runViewModelTest {
             val quiet = FakeJmapServer().apply { digests.serve(FakeDigest("d1", groups = listOf("Work" to emptyList()))) }
 
-            assertEquals(DigestState.Empty, viewModel(quiet, null).settled())
+            assertEquals(DigestState.Empty(quiet = true), viewModel(quiet, null).settled())
         }
 
     @Test

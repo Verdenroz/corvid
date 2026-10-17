@@ -22,6 +22,7 @@ import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
@@ -88,6 +89,7 @@ class LedgerInteractionTest {
     /** Escape feeds the back dispatcher, as the desktop window does, and back and keys reach the list through its entry, as in the shell. */
     private fun ComposeUiTest.showLedger(
         wide: Boolean,
+        overnight: OvernightOffer? = null,
         above: @Composable () -> Unit = {},
     ) {
         val escape = DirectNavigationEventInput()
@@ -114,7 +116,15 @@ class LedgerInteractionTest {
                         },
                     ) {
                         above()
-                        LedgerContent(ledger, actions, "empty", { opened += it.id }, { senders += it }, takeFocus = true)
+                        LedgerContent(
+                            ledger,
+                            actions,
+                            "empty",
+                            { opened += it.id },
+                            { senders += it },
+                            takeFocus = true,
+                            overnight = overnight,
+                        )
                     }
                 }
             }
@@ -132,6 +142,23 @@ class LedgerInteractionTest {
     private fun ComposeUiTest.pressShifted(key: Key) = onRoot().performKeyInput { withKeyDown(Key.ShiftLeft) { pressKey(key) } }
 
     private fun ComposeUiTest.waitForServer(condition: () -> Boolean) = waitUntil(timeoutMillis = 5_000, condition = condition)
+
+    @Test
+    fun `the overnight block names the digest and opens it or hides it`() =
+        runDesktopComposeUiTest {
+            var opens = 0
+            var hides = 0
+            val entry = OvernightEntry("d1", 3, listOf("Marta"), 2)
+            showLedger(wide = false, overnight = OvernightOffer(entry, onOpen = { opens++ }, onHide = { hides++ }))
+
+            onNodeWithText("Marta wrote;").assertExists()
+            onNodeWithText("2 from lists", substring = true).assertExists()
+            onNodeWithText("Overnight").performClick()
+            onNodeWithContentDescription("Hide").performClick()
+
+            assertEquals(1, opens)
+            assertEquals(1, hides)
+        }
 
     @Test
     fun `j and k move keyboard focus down and up the rows`() =

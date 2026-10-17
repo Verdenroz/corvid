@@ -10,6 +10,7 @@ const MIN_LOWER_BOUND: f64 = 0.80;
 const MIN_DAYS: usize = 5;
 const MIN_SPAN_DAYS: i64 = 14;
 const Z: f64 = 1.96;
+const SHOWN: usize = 30;
 
 impl Actions {
     /// Replaces the candidates with every (key, outcome) the settled history supports.
@@ -31,12 +32,18 @@ impl Actions {
             for (outcome, hits) in exits {
                 let precision = f64::from(hits) / f64::from(settled);
                 if precision >= MIN_PRECISION && wilson_lower(hits, settled) >= MIN_LOWER_BOUND {
+                    let recent = history.len().saturating_sub(SHOWN);
                     found.push(Candidate {
                         id: id_of(key, &outcome.to_string()),
                         key: key.clone(),
                         outcome: outcome.clone(),
                         settled,
                         hits,
+                        history: history[recent..]
+                            .iter()
+                            .map(|seen| seen.exit.as_ref() == Some(outcome))
+                            .collect(),
+                        span_days: (last - first) as u32,
                     });
                 }
             }

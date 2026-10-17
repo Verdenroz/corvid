@@ -57,6 +57,9 @@ pub struct Candidate {
     pub outcome: Exit,
     pub settled: u32,
     pub hits: u32,
+    /// The last observations oldest first, true where the outcome matched this exit.
+    pub history: Vec<bool>,
+    pub span_days: u32,
 }
 
 corvid_store::pin_shape!(Actions {
@@ -77,5 +80,7 @@ corvid_store::pin_shape!(Candidate {
     key,
     outcome,
     settled,
-    hits
+    hits,
+    history,
+    span_days
 });

@@ -17,7 +17,7 @@ private val ROLE_ORDER = listOf(INBOX, ARCHIVE, SENT, JUNK, TRASH)
 /** Role mailboxes first in a fixed order, then the user's own folders by path; Drafts holds only unsent mail, so it is left out. */
 fun moveFolders(mailboxes: List<Mailbox>): List<MoveFolder> {
     val roles = mailboxes.associate { it.id to it.role }
-    val folders = mailboxes.refs().filter { roles[it.id] != DRAFTS }.map { MoveFolder(it.id, it.path.joinToString(" / ")) }
+    val folders = mailboxes.refs().filter { roles[it.id] != DRAFTS }.map { MoveFolder(it.id, it.displayPath()) }
     val (withRole, own) = folders.partition { roles[it.id] in ROLE_ORDER }
     return withRole.sortedBy { ROLE_ORDER.indexOf(roles[it.id]) } + own.sortedBy { it.label.lowercase() }
 }

@@ -37,12 +37,17 @@ pub enum Action {
 
 /// Stored in the shape the app reads, so serving one is a copy.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Suggestion {
     pub id: String,
     pub sender: Sender,
     pub action: Action,
     pub settled: u32,
     pub hits: u32,
+    #[serde(default)]
+    pub history: Vec<bool>,
+    #[serde(default)]
+    pub span_days: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -89,6 +94,10 @@ pub struct Item {
     pub thread_id: String,
     pub email_id: String,
     pub from: String,
+    #[serde(default)]
+    pub from_name: Option<String>,
+    #[serde(default)]
+    pub is_list: bool,
     pub subject: String,
     pub received_at: i64,
     pub summary: Option<String>,
@@ -173,7 +182,9 @@ corvid_store::pin_shape!(Suggestion {
     sender,
     action,
     settled,
-    hits
+    hits,
+    history,
+    span_days
 });
 corvid_store::pin_shape!(Decision { id, verdict });
 corvid_store::pin_shape!(Summary {
@@ -193,6 +204,8 @@ corvid_store::pin_shape!(Item {
     thread_id,
     email_id,
     from,
+    from_name,
+    is_list,
     subject,
     received_at,
     summary

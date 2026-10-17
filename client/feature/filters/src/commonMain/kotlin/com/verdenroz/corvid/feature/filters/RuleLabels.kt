@@ -6,7 +6,6 @@ import com.verdenroz.corvid.core.model.ConditionOperator
 import com.verdenroz.corvid.core.model.FilterAction
 import com.verdenroz.corvid.core.model.FilterCondition
 import com.verdenroz.corvid.core.model.FilterRule
-import com.verdenroz.corvid.core.model.MailboxRef
 import com.verdenroz.corvid.core.model.MatchMode
 import com.verdenroz.corvid.feature.filters.resources.Res
 import com.verdenroz.corvid.feature.filters.resources.action_add_label
@@ -87,5 +86,3 @@ internal fun FilterRule.summary(): String {
         actions.map { it.summary() }.joinToString(", "),
     )
 }
-
-internal fun MailboxRef.displayPath(): String = path.joinToString(" / ")

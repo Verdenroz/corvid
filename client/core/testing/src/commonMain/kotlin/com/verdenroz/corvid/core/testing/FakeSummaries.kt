@@ -13,9 +13,9 @@ import java.util.concurrent.ConcurrentHashMap
 
 private val JSON = headersOf(HttpHeaders.ContentType, listOf("application/json"))
 
-/** `/corvid/summaries/{threadId}`: a 404 for a thread with none served, and a 503 while [off]. */
+/** `/corvid/summaries/{threadId}`: `model` is left off the wire when null, as an older server does; a 404 for a thread with none served, and a 503 while [off]. */
 class FakeSummaries {
-    private val served = ConcurrentHashMap<String, Pair<String, String>>()
+    private val served = ConcurrentHashMap<String, Triple<String, String, String?>>()
 
     /** Answers the 503 a server gives when the feature is not enabled. */
     @Volatile
@@ -29,8 +29,9 @@ class FakeSummaries {
         threadId: String,
         text: String,
         generatedAt: String = "2024-01-02T03:04:05Z",
+        model: String? = null,
     ) {
-        served[threadId] = text to generatedAt
+        served[threadId] = Triple(text, generatedAt, model)
     }
 
     internal fun handle(
@@ -39,12 +40,13 @@ class FakeSummaries {
     ): HttpResponseData {
         if (off) return scope.respond("""{"error":"summaries_off"}""", HttpStatusCode.ServiceUnavailable, JSON)
         val threadId = request.url.encodedPath.removePrefix("/corvid/summaries/")
-        val (text, generatedAt) = served[threadId] ?: return scope.respond("not found", HttpStatusCode.NotFound)
+        val (text, generatedAt, model) = served[threadId] ?: return scope.respond("not found", HttpStatusCode.NotFound)
         val body =
             buildJsonObject {
                 put("threadId", threadId)
                 if (!malformed) put("text", text)
                 put("generatedAt", generatedAt)
+                model?.let { put("model", it) }
             }
         return scope.respond(body.toString(), HttpStatusCode.OK, JSON)
     }

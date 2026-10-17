@@ -16,7 +16,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 
 private val JSON = headersOf(HttpHeaders.ContentType, listOf("application/json"))
 
-/** One item of a [FakeDigest]; [summary] is left off the wire when null. */
+/** One item of a [FakeDigest]; [summary] and [fromName] are left off the wire when null, [isList] when false. */
 data class FakeDigestItem(
     val threadId: String = "t1",
     val emailId: String = "e1",
@@ -24,6 +24,8 @@ data class FakeDigestItem(
     val subject: String = "Lunch",
     val receivedAt: String = "2024-05-06T07:08:09Z",
     val summary: String? = null,
+    val fromName: String? = null,
+    val isList: Boolean = false,
 ) {
     internal fun toJson(): JsonObject =
         buildJsonObject {
@@ -33,6 +35,8 @@ data class FakeDigestItem(
             put("subject", subject)
             put("receivedAt", receivedAt)
             summary?.let { put("summary", it) }
+            fromName?.let { put("fromName", it) }
+            if (isList) put("isList", true)
         }
 }
 

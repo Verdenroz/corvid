@@ -43,6 +43,34 @@ class DigestRepositoryTest {
         }
 
     @Test
+    fun `an item carries who wrote it and whether a list sent it, and an older server has neither`() =
+        runTest {
+            val fake =
+                FakeJmapServer().apply {
+                    digests.serve(
+                        FakeDigest(
+                            "d1",
+                            groups =
+                                listOf(
+                                    null to
+                                        listOf(
+                                            FakeDigestItem(emailId = "e1", fromName = "Ada", isList = true),
+                                            FakeDigestItem(emailId = "e2"),
+                                        ),
+                                ),
+                        ),
+                    )
+                }
+
+            val items = repository(fake).latest()!!.groups.single().items
+
+            assertEquals("Ada", items[0].fromName)
+            assertEquals(true, items[0].isList)
+            assertNull(items[1].fromName)
+            assertEquals(false, items[1].isList)
+        }
+
+    @Test
     fun `a digest is read by its id`() =
         runTest {
             val fake = FakeJmapServer().apply { digests.serve(FakeDigest("d1"), NIGHT) }

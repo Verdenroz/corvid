@@ -6,24 +6,32 @@ import com.verdenroz.corvid.core.model.SuggestionAction
 import com.verdenroz.corvid.core.model.SuggestionSenderKind
 import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.uiText
+import com.verdenroz.corvid.core.ui.suggestion.folderText
+import com.verdenroz.corvid.core.ui.suggestion.spanClause
 import com.verdenroz.corvid.feature.filters.resources.Res
-import com.verdenroz.corvid.feature.filters.resources.suggestion_archived
-import com.verdenroz.corvid.feature.filters.resources.suggestion_filed
-import com.verdenroz.corvid.feature.filters.resources.suggestion_summary
-import com.verdenroz.corvid.feature.filters.resources.suggestion_trashed
-import com.verdenroz.corvid.feature.filters.resources.suggestion_who_list
+import com.verdenroz.corvid.feature.filters.resources.suggestion_act_archive
+import com.verdenroz.corvid.feature.filters.resources.suggestion_act_folder
+import com.verdenroz.corvid.feature.filters.resources.suggestion_act_trash
+import com.verdenroz.corvid.feature.filters.resources.suggestion_caption
+import com.verdenroz.corvid.feature.filters.resources.suggestion_cond_from
+import com.verdenroz.corvid.feature.filters.resources.suggestion_cond_list
+import com.verdenroz.corvid.feature.filters.resources.suggestion_counts
 
-internal fun RuleSuggestion.summary(folders: List<MailboxRef>): UiText {
-    val who = UiText.FromServer(sender.value)
-    val from = if (sender.kind == SuggestionSenderKind.List) uiText(Res.string.suggestion_who_list, who) else who
-    val did =
-        when (val action = action) {
-            SuggestionAction.Archive -> uiText(Res.string.suggestion_archived)
-            SuggestionAction.Trash -> uiText(Res.string.suggestion_trashed)
-            is SuggestionAction.Folder -> {
-                val path = folders.firstOrNull { it.id == action.mailboxId }?.displayPath() ?: action.mailboxId
-                uiText(Res.string.suggestion_filed, UiText.FromServer(path))
-            }
-        }
-    return uiText(Res.string.suggestion_summary, hits, settled, from, did)
+/** The two halves of "When [condition], [action]" that the card sets in bold. */
+internal data class RuleSentence(val condition: UiText, val action: UiText)
+
+internal fun RuleSuggestion.sentence(folders: List<MailboxRef>): RuleSentence {
+    val value = UiText.FromServer(sender.value)
+    val field = if (sender.kind == SuggestionSenderKind.List) Res.string.suggestion_cond_list else Res.string.suggestion_cond_from
+    val condition = uiText(field, value)
+    val filing =
+        action.folderText(folders)?.let { uiText(Res.string.suggestion_act_folder, it) }
+            ?: uiText(if (action == SuggestionAction.Archive) Res.string.suggestion_act_archive else Res.string.suggestion_act_trash)
+    return RuleSentence(condition, filing)
+}
+
+/** How many of the sender's messages were left unread, and over how long when the server said; the rule above names the action. */
+internal fun RuleSuggestion.caption(): UiText {
+    val counted = uiText(Res.string.suggestion_counts, hits, settled)
+    return spanClause(spanDays)?.let { uiText(Res.string.suggestion_caption, counted, it) } ?: counted
 }

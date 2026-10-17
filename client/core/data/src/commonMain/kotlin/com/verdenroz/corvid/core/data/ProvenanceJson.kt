@@ -2,6 +2,7 @@ package com.verdenroz.corvid.core.data
 
 import com.verdenroz.corvid.core.model.EmailAddress
 import com.verdenroz.corvid.core.model.Provenance
+import com.verdenroz.corvid.core.model.parseAddresses
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -20,11 +21,13 @@ internal fun JsonObject.provenance(
     ownDomain: String?,
 ): Provenance {
     val unsubscribe = texts(LIST_UNSUBSCRIBE)
+    val listId = text(LIST_ID)
     return Provenance(
         seal = readSeal(texts(AUTHENTICATION_RESULTS)),
         rewrite = readRewrite(texts(CORVID_REWRITE)),
-        sender = senderKind(from, SenderHeaders(text(LIST_ID), unsubscribe, text(AUTO_SUBMITTED)), ownDomain),
+        sender = senderKind(from, SenderHeaders(listId, unsubscribe, text(AUTO_SUBMITTED)), ownDomain),
         unsubscribe = unsubscribe,
+        listId = listId?.let { parseAddresses(it).firstOrNull()?.email },
     )
 }
 

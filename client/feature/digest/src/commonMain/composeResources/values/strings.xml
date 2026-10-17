@@ -1,9 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="digest_title">Digest</string>
+    <string name="digest_title">Overnight</string>
     <string name="digest_back">Back</string>
-    <string name="digest_span">Mail from %1$s to %2$s</string>
-    <string name="digest_caveat">Summary by a model; it can be wrong.</string>
-    <string name="digest_other">Other</string>
+    <plurals name="digest_span">
+        <item quantity="one">%1$s to %2$s · %3$d message</item>
+        <item quantity="other">%1$s to %2$s · %3$d messages</item>
+    </plurals>
+    <string name="digest_people">From people</string>
+    <string name="digest_caveat">model summary, can be wrong</string>
+    <string name="digest_lists">Lists and services</string>
+    <string name="digest_more_count">+%1$d</string>
+    <plurals name="digest_more">
+        <item quantity="one">%1$d more from a list</item>
+        <item quantity="other">%1$d more from lists</item>
+    </plurals>
     <string name="digest_empty">There is no digest yet.</string>
+    <string name="digest_quiet">Nothing came in overnight.</string>
 </resources>

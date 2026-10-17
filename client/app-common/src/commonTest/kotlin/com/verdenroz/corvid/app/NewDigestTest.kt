@@ -1,6 +1,7 @@
 package com.verdenroz.corvid.app
 
 import com.verdenroz.corvid.core.data.DigestRepository
+import com.verdenroz.corvid.core.model.items
 import com.verdenroz.corvid.core.prefs.DevicePreferences
 import com.verdenroz.corvid.core.prefs.DeviceSettings
 import com.verdenroz.corvid.core.testing.FakeDigest
@@ -54,57 +55,57 @@ private suspend fun untilDigest(condition: () -> Boolean) {
 @OptIn(ExperimentalCoroutinesApi::class)
 class NewDigestTest {
     @Test
-    fun `a digest not seen yet becomes a banner with its message count`() =
+    fun `a digest not seen yet is offered with its messages`() =
         runTest {
             val rig = digestRig(FakeJmapServer().apply { digests.serve(mail(3)) })
 
-            untilDigest { rig.newDigest.banner.value != null }
+            untilDigest { rig.newDigest.unseen.value != null }
 
-            assertEquals(3, rig.newDigest.banner.value?.count)
-            assertEquals("d1", rig.newDigest.banner.value?.id)
+            assertEquals(3, rig.newDigest.unseen.value?.items?.size)
+            assertEquals("d1", rig.newDigest.unseen.value?.id)
         }
 
     @Test
-    fun `opening the digest clears the banner and keeps it away`() =
+    fun `opening the digest clears the offer and keeps it away`() =
         runTest {
             val rig = digestRig(FakeJmapServer().apply { digests.serve(mail(1)) })
-            untilDigest { rig.newDigest.banner.value != null }
+            untilDigest { rig.newDigest.unseen.value != null }
 
             rig.newDigest.opened("d1")
             runCurrent()
 
-            assertNull(rig.newDigest.banner.value)
+            assertNull(rig.newDigest.unseen.value)
             assertEquals("d1", rig.preferences.settings.value.digestSeen)
             rig.triggers.send(Unit)
             runCurrent()
-            assertNull(rig.newDigest.banner.value)
+            assertNull(rig.newDigest.unseen.value)
         }
 
     @Test
-    fun `dismissing the banner clears it and keeps it away`() =
+    fun `dismissing the offer clears it and keeps it away`() =
         runTest {
             val rig = digestRig(FakeJmapServer().apply { digests.serve(mail(1)) })
-            untilDigest { rig.newDigest.banner.value != null }
+            untilDigest { rig.newDigest.unseen.value != null }
 
             rig.newDigest.dismiss()
             runCurrent()
             rig.triggers.send(Unit)
             runCurrent()
 
-            assertNull(rig.newDigest.banner.value)
+            assertNull(rig.newDigest.unseen.value)
             assertEquals("d1", rig.preferences.settings.value.digestSeen)
         }
 
     @Test
-    fun `opening the latest digest without an id clears the banner too`() =
+    fun `opening the latest digest without an id clears the offer too`() =
         runTest {
             val rig = digestRig(FakeJmapServer().apply { digests.serve(mail(1)) })
-            untilDigest { rig.newDigest.banner.value != null }
+            untilDigest { rig.newDigest.unseen.value != null }
 
             rig.newDigest.opened(null)
             runCurrent()
 
-            assertNull(rig.newDigest.banner.value)
+            assertNull(rig.newDigest.unseen.value)
         }
 
     @Test
@@ -118,7 +119,7 @@ class NewDigestTest {
             untilDigest { fake.digests.reads > 0 }
             runCurrent()
 
-            assertNull(rig.newDigest.banner.value)
+            assertNull(rig.newDigest.unseen.value)
         }
 
     @Test
@@ -130,7 +131,7 @@ class NewDigestTest {
             untilDigest { fake.digests.reads > 0 }
             runCurrent()
 
-            assertNull(rig.newDigest.banner.value)
+            assertNull(rig.newDigest.unseen.value)
         }
 
     @Test
@@ -145,7 +146,7 @@ class NewDigestTest {
             untilDigest { fake.digests.reads > 0 }
             runCurrent()
 
-            assertNull(newDigest.banner.value)
+            assertNull(newDigest.unseen.value)
             assertEquals("d1", preferences.settings.value.digestSeen)
         }
 
@@ -156,12 +157,12 @@ class NewDigestTest {
             val rig = digestRig(fake)
             untilDigest { fake.digests.reads > 0 }
             runCurrent()
-            assertNull(rig.newDigest.banner.value)
+            assertNull(rig.newDigest.unseen.value)
 
             fake.digests.serve(mail(2))
             rig.triggers.send(Unit)
-            untilDigest { rig.newDigest.banner.value != null }
+            untilDigest { rig.newDigest.unseen.value != null }
 
-            assertEquals(2, rig.newDigest.banner.value?.count)
+            assertEquals(2, rig.newDigest.unseen.value?.items?.size)
         }
 }

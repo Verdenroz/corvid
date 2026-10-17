@@ -38,13 +38,17 @@ sealed interface SenderKind {
 
 enum class SourceKind { OwnServer, MailingList, Newsletter, Automated }
 
-/** Everything the client can show about where a message came from; [unsubscribe] holds `List-Unsubscribe` URLs. */
+/** Everything the client can show about where a message came from; [unsubscribe] holds `List-Unsubscribe` URLs and [listId] the bare `List-Id`. */
 data class Provenance(
     val seal: Seal,
     val rewrite: Rewrite?,
     val sender: SenderKind,
     val unsubscribe: List<String>,
+    val listId: String? = null,
 ) {
+    /** The list's bare id, only when DMARC passed: a header on unsigned mail is a claim anyone can make. */
+    val trustedListId: String? get() = listId.takeIf { seal is Seal.Signed }
+
     /** DMARC failed, so the From line is a claim nobody vouched for. */
     val suspect: Boolean get() = seal is Seal.Failed
 
