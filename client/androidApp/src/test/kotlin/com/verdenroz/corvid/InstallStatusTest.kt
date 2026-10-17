@@ -6,14 +6,29 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class InstallStatusTest {
+    private fun result(
+        status: Int,
+        message: String?,
+        prompted: Boolean = true,
+    ) = installResult(status, message, prompted, unprompted = "Blocked.")
+
     @Test
     fun `a successful install starts the new build`() {
-        assertEquals(InstallResult.Started, installResult(PackageInstaller.STATUS_SUCCESS, null))
+        assertEquals(InstallResult.Started, result(PackageInstaller.STATUS_SUCCESS, null))
     }
 
     @Test
-    fun `an install the user aborted is a cancellation`() {
-        assertEquals(InstallResult.Cancelled, installResult(PackageInstaller.STATUS_FAILURE_ABORTED, "INSTALL_FAILED_ABORTED"))
+    fun `an abort after the system asked the user is a cancellation`() {
+        assertEquals(InstallResult.Cancelled, result(PackageInstaller.STATUS_FAILURE_ABORTED, "INSTALL_FAILED_ABORTED"))
+    }
+
+    @Test
+    fun `an abort the user was never asked about is a failure carrying the system's message`() {
+        assertEquals(
+            InstallResult.Failed("Blocked. INSTALL_FAILED_ABORTED"),
+            result(PackageInstaller.STATUS_FAILURE_ABORTED, "INSTALL_FAILED_ABORTED", prompted = false),
+        )
+        assertEquals(InstallResult.Failed("Blocked."), result(PackageInstaller.STATUS_FAILURE_ABORTED, null, prompted = false))
     }
 
     @Test
@@ -28,12 +43,12 @@ class InstallStatusTest {
                 PackageInstaller.STATUS_FAILURE_STORAGE,
             )
         for (status in failures) {
-            assertEquals(InstallResult.Failed("no space"), installResult(status, "no space"))
+            assertEquals(InstallResult.Failed("no space"), result(status, "no space"))
         }
     }
 
     @Test
     fun `a failure without a message still names its status`() {
-        assertEquals(InstallResult.Failed("Install failed, status 6"), installResult(PackageInstaller.STATUS_FAILURE_STORAGE, null))
+        assertEquals(InstallResult.Failed("Install failed, status 6"), result(PackageInstaller.STATUS_FAILURE_STORAGE, null))
     }
 }

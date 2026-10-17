@@ -12,10 +12,18 @@ import java.util.concurrent.ConcurrentHashMap
 /** Install sessions waiting on the system's verdict, by session id. */
 internal object InstallSessions {
     private val waiting = ConcurrentHashMap<Int, CompletableDeferred<InstallResult>>()
+    private val prompted = ConcurrentHashMap.newKeySet<Int>()
 
     fun expect(id: Int) = CompletableDeferred<InstallResult>().also { waiting[id] = it }
 
-    fun forget(id: Int) = waiting.remove(id)
+    fun prompt(id: Int) = prompted.add(id)
+
+    fun prompted(id: Int) = id in prompted
+
+    fun forget(id: Int) {
+        waiting.remove(id)
+        prompted.remove(id)
+    }
 
     fun finish(
         id: Int,
@@ -29,12 +37,17 @@ class InstallStatusReceiver : BroadcastReceiver() {
         intent: Intent,
     ) {
         val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
+        val id = intent.getIntExtra(PackageInstaller.EXTRA_SESSION_ID, -1)
         if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
             val confirm = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_INTENT, Intent::class.java) ?: return
+            InstallSessions.prompt(id)
             context.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             return
         }
-        val id = intent.getIntExtra(PackageInstaller.EXTRA_SESSION_ID, -1)
-        InstallSessions.finish(id, installResult(status, intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)))
+        val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
+        InstallSessions.finish(
+            id,
+            installResult(status, message, InstallSessions.prompted(id), context.getString(R.string.install_unprompted)),
+        )
     }
 }

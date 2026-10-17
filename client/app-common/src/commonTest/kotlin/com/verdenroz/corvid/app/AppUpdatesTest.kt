@@ -9,6 +9,7 @@ import com.verdenroz.corvid.core.model.AppPlatform
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.KeyedTextResolver
 import com.verdenroz.corvid.core.testing.client
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
@@ -38,6 +39,7 @@ private val APK = ByteArray(1_000) { it.toByte() }
 private class RecordingInstaller(
     override val platform: AppPlatform?,
     var result: InstallResult = InstallResult.Started,
+    private val verdict: CompletableDeferred<Unit>? = null,
 ) : AppInstaller {
     val installed = mutableListOf<ByteArray>()
     var allowRequests = 0
@@ -45,6 +47,7 @@ private class RecordingInstaller(
 
     override suspend fun install(file: File): InstallResult {
         installed += file.readBytes()
+        verdict?.await()
         return result
     }
 
@@ -318,5 +321,22 @@ class AppUpdatesTest {
 
             assertEquals(7, (rig.updates.banner.first() as AppUpdateState.Available).release.versionCode)
             assertEquals(7, (rig.updates.state.value as AppUpdateState.Available).release.versionCode)
+        }
+
+    @Test
+    fun `the banner stays up while the build downloads and the installer decides`() =
+        runTest {
+            val verdict = CompletableDeferred<Unit>()
+            val installer = RecordingInstaller(AppPlatform.Android, InstallResult.Cancelled, verdict)
+            val rig = updatesRig(FakeJmapServer().apply { app.release(6, android = APK) }, installer)
+            eventually { rig.updates.state.value is AppUpdateState.Available }
+
+            rig.updates.update()
+            eventually { rig.installer.installed.isNotEmpty() }
+
+            assertEquals(1f, (rig.updates.banner.first() as AppUpdateState.Downloading).progress)
+            verdict.complete(Unit)
+            eventually { rig.updates.state.value is AppUpdateState.Available }
+            assertIs<AppUpdateState.Available>(rig.updates.banner.first())
         }
 }
