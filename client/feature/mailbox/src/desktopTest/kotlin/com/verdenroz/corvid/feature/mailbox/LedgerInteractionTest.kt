@@ -151,7 +151,8 @@ class LedgerInteractionTest {
             val entry = OvernightEntry("d1", 3, listOf("Marta"), 2)
             showLedger(wide = false, overnight = OvernightOffer(entry, onOpen = { opens++ }, onHide = { hides++ }))
 
-            onNodeWithText("Marta wrote; 2 from lists").assertExists()
+            onNodeWithText("Marta wrote;").assertExists()
+            onNodeWithText("2 from lists", substring = true).assertExists()
             onNodeWithText("Overnight").performClick()
             onNodeWithContentDescription("Hide").performClick()
 
