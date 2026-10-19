@@ -7,7 +7,7 @@ plugins {
 android {
     namespace = "com.verdenroz.corvid"
     defaultConfig {
-        applicationId = "com.verdenroz.corvid"
+        applicationId = "com.verdenroz.corvid.mail"
     }
 }
 

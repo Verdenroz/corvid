@@ -128,7 +128,7 @@ impl AndroidApp {
 /// The release key of the published app, as the release build's `apksigner` reports it.
 fn official_apps() -> Vec<AndroidApp> {
     vec![AndroidApp {
-        package: Name("com.verdenroz.corvid".to_owned()),
+        package: Name("com.verdenroz.corvid.mail".to_owned()),
         sha256: Fingerprint::try_from(
             "8f10b092622baa87b2b0236af429ed515d4ea0d0437d76b0322a9f5568f8a1af".to_owned(),
         )
@@ -1004,7 +1004,7 @@ mod server_tests {
         assert_eq!(server.android_apps.len(), 1);
         assert_eq!(
             server.android_apps[0].package.as_str(),
-            "com.verdenroz.corvid"
+            "com.verdenroz.corvid.mail"
         );
         assert_eq!(
             server.android_apps[0].sha256.colon_hex(),

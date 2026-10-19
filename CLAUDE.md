@@ -516,7 +516,7 @@ Caddyfile built from the same env vars as everything else. `core/discovery` hold
   `corvid-config assetlinks`. Where the web tier serves it, a difference fails verify; where a
   Worker does, it is reported `stale` and does not roll back, since no release changes the Worker.
   Measured: a Worker fixed by hand ahead of the image failed an update and then its rollback.
-- **A debug build of the Android app is `com.verdenroz.corvid.debug` and does not trust the
+- **A debug build of the Android app is `com.verdenroz.corvid.mail.debug` and does not trust the
   rig's CA.** Credential Manager only accepts a passkey for a domain whose `assetlinks.json`
   lists the exact package and signing certificate, so a rig needs its own `android_apps`
   entry for the debug key, and a user CA in `cacerts-added` is ignored without a debug-only
