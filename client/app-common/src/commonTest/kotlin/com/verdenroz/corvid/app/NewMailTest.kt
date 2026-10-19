@@ -250,4 +250,31 @@ class NewMailTest {
 
             assertEquals(1, scans)
         }
+
+    @Test
+    fun `nothing is posted while the server pushes previews, and nothing it already saw counts after`() =
+        runTest {
+            val rig = mailRig().started("old" to 10)
+
+            rig.newMail.attention(inboxInView = false, enabled = true, previewsPushed = true)
+            rig.arrive("pushed", 30)
+            rig.newMail.check()
+            rig.newMail.attention(inboxInView = false, enabled = true, previewsPushed = false)
+            rig.newMail.check()
+            rig.arrive("counted", 40)
+            rig.newMail.check()
+
+            assertEquals(listOf("new_mail_count[1]"), rig.notifier.shown.map { it.second })
+        }
+
+    @Test
+    fun `pushed previews are left in place when the counter stops posting`() =
+        runTest {
+            val rig = mailRig().started()
+            val before = rig.notifier.clears
+
+            rig.newMail.attention(inboxInView = false, enabled = true, previewsPushed = true)
+
+            assertEquals(before, rig.notifier.clears)
+        }
 }

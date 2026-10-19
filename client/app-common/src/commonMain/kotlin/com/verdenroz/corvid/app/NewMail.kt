@@ -22,7 +22,8 @@ interface NewMailNotifier : NoticeNotifier {
  * Turns Inbox checks into one content-free notification with a running count. A message counts as new when it is
  * unread and arrived no earlier than the newest Inbox message the previous check saw, so mail moved back into the
  * Inbox, which keeps its old arrival time, never counts. The first check only sets that baseline. While quiet a check
- * scans nothing, and the baseline is taken again when it stops being quiet.
+ * scans nothing, and the baseline is taken again when it stops being quiet. While the server pushes previews of each
+ * message, checks keep the baseline and post nothing.
  */
 class NewMail(
     private val scan: suspend () -> List<InboxArrival>,
@@ -35,14 +36,20 @@ class NewMail(
     private var started = false
     private var pending = 0
     private var quiet = true
+    private var pushed = false
 
-    /** [inboxInView] or ![enabled] clears the notification and suppresses the next ones until both change. */
+    /**
+     * [inboxInView] or ![enabled] clears the notification and suppresses the next ones until both change.
+     * [previewsPushed] only stops new posts, since clearing would also clear the pushed previews.
+     */
     suspend fun attention(
         inboxInView: Boolean,
         enabled: Boolean,
+        previewsPushed: Boolean = false,
     ) {
         val waking =
             lock.withLock {
+                pushed = previewsPushed
                 val was = quiet
                 quiet = inboxInView || !enabled
                 if (quiet) {
@@ -68,7 +75,7 @@ class NewMail(
             val fresh = if (started) arrivals.filter { it.isNewSince(newest) } else emptyList()
             started = true
             remember(arrivals)
-            if (fresh.isEmpty() || quiet) return
+            if (fresh.isEmpty() || quiet || pushed) return
             pending += fresh.size
             notifier.post(text.resolve(uiText(Res.string.new_mail_title)), text.resolve(uiPlural(Res.plurals.new_mail_count, pending)))
         }
