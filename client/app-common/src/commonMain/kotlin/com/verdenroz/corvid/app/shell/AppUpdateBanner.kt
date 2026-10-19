@@ -17,7 +17,7 @@ import com.verdenroz.corvid.core.ui.offerText
 import com.verdenroz.corvid.core.ui.problemText
 import org.jetbrains.compose.resources.stringResource
 
-/** A banner above the shell offering a newer app build, or saying why the last attempt did not finish. */
+/** A banner above the shell offering a newer app build, following its download, or saying why the last attempt did not finish. */
 @Composable
 internal fun AppUpdateBannerBar(
     state: AppUpdateState,
@@ -36,13 +36,9 @@ internal fun AppUpdateBannerBar(
             },
         onDismiss = onDismiss,
     ) { content ->
+        val action = state.actionLabel() ?: return@ShellBannerBar
         TextButton(onClick = onUpdate, shape = CorvidShape.pill, border = BorderStroke(1.dp, content)) {
-            Text(
-                state.actionLabel()?.let { stringResource(it) }.orEmpty(),
-                style = CorvidTheme.type.meta,
-                fontWeight = FontWeight.SemiBold,
-                color = content,
-            )
+            Text(stringResource(action), style = CorvidTheme.type.meta, fontWeight = FontWeight.SemiBold, color = content)
         }
     }
 }

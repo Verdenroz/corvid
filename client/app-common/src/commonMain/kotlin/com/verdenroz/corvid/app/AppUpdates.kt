@@ -44,13 +44,10 @@ class AppUpdates(
 
     private val dismissed = MutableStateFlow<Int?>(null)
 
-    /** The state the banner shows, or null when there is nothing to offer or its release was dismissed; a newer release shows again. */
+    /** The state the banner shows, or null when there is nothing to show or its release was dismissed; a newer release shows again. */
     val banner: Flow<AppUpdateState?> =
         combine(_state, dismissed) { current, dismissedCode ->
-            current.takeIf {
-                (it is AppUpdateState.Available || it is AppUpdateState.NeedsPermission || it is AppUpdateState.Failed) &&
-                    it.release()?.versionCode != dismissedCode
-            }
+            current.takeIf { it !is AppUpdateState.UpToDate && it !is AppUpdateState.Ready && it.release()?.versionCode != dismissedCode }
         }
 
     private val requests = Channel<Unit>(Channel.CONFLATED)

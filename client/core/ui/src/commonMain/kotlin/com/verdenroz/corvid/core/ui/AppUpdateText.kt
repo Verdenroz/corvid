@@ -8,7 +8,9 @@ import com.verdenroz.corvid.core.ui.resources.Res
 import com.verdenroz.corvid.core.ui.resources.app_update_action
 import com.verdenroz.corvid.core.ui.resources.app_update_allow
 import com.verdenroz.corvid.core.ui.resources.app_update_available
+import com.verdenroz.corvid.core.ui.resources.app_update_downloading
 import com.verdenroz.corvid.core.ui.resources.app_update_failed
+import com.verdenroz.corvid.core.ui.resources.app_update_installing
 import com.verdenroz.corvid.core.ui.resources.app_update_needs_permission
 import com.verdenroz.corvid.core.ui.resources.app_update_retry
 import org.jetbrains.compose.resources.StringResource
@@ -23,14 +25,20 @@ fun AppUpdateState.actionLabel(): StringResource? =
         else -> null
     }
 
-/** The build on offer, or that its last attempt failed; null when the state names none. */
+/** The build on offer and how far it has got, or that its last attempt failed; null when the state names none. */
 @Composable
 fun AppUpdateState.offerText(): String? {
     val release = release() ?: return null
-    return if (this is AppUpdateState.Failed) {
-        stringResource(Res.string.app_update_failed)
-    } else {
-        stringResource(Res.string.app_update_available, release.versionName)
+    return when {
+        this is AppUpdateState.Failed -> stringResource(Res.string.app_update_failed)
+        this is AppUpdateState.Downloading && progress >= 1f -> stringResource(Res.string.app_update_installing, release.versionName)
+        this is AppUpdateState.Downloading ->
+            stringResource(
+                Res.string.app_update_downloading,
+                release.versionName,
+                (progress * 100).toInt(),
+            )
+        else -> stringResource(Res.string.app_update_available, release.versionName)
     }
 }
 
