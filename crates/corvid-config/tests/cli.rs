@@ -79,7 +79,7 @@ fn assetlinks_prints_the_official_app_for_the_template() {
     assert_eq!(out.status.code(), Some(0));
     let text = String::from_utf8(out.stdout).unwrap();
     assert!(
-        text.contains(r#""package_name":"com.verdenroz.corvid""#),
+        text.contains(r#""package_name":"com.verdenroz.corvid.mail""#),
         "{text}"
     );
     assert!(
@@ -98,7 +98,7 @@ fn shell_carries_the_assetlinks_document_on_one_line() {
         .find_map(|l| l.strip_prefix("ASSETLINKS="))
         .unwrap();
     assert_eq!(line, document.trim_end());
-    assert!(line.contains("com.verdenroz.corvid"), "{line}");
+    assert!(line.contains("com.verdenroz.corvid.mail"), "{line}");
 }
 
 #[test]
