@@ -19,7 +19,7 @@ struct Rig {
     url: String,
     issuer: Arc<Issuer>,
     stalwart: Stalwart,
-    _dir: tempfile::TempDir,
+    dir: tempfile::TempDir,
 }
 
 async fn rig() -> Rig {
@@ -30,6 +30,22 @@ async fn rig_with(ledger: Ledger, timeout: Duration) -> Rig {
     let dir = tempfile::tempdir().unwrap();
     let issuer = Arc::new(Issuer::new(signing_key(), ISSUER_URL.to_owned()));
     let stalwart = Stalwart::start().await;
+    let url = serve(&dir, &issuer, &stalwart, ledger, timeout).await;
+    Rig {
+        url,
+        issuer,
+        stalwart,
+        dir,
+    }
+}
+
+async fn serve(
+    dir: &tempfile::TempDir,
+    issuer: &Arc<Issuer>,
+    stalwart: &Stalwart,
+    ledger: Ledger,
+    timeout: Duration,
+) -> String {
     let mut config = common::config(
         &dir.path().join("sentinel.json"),
         &dir.path().join("no-update"),
@@ -44,15 +60,27 @@ async fn rig_with(ledger: Ledger, timeout: Duration) -> Rig {
         issuer: issuer.clone(),
         timeout,
     });
-    Rig {
-        url: common::serve(config).await,
-        issuer,
-        stalwart,
-        _dir: dir,
-    }
+    common::serve(config).await
 }
 
 impl Rig {
+    fn ledger(&self) -> Ledger {
+        aliases::state::open(&self.dir.path().join("aliases.json")).unwrap()
+    }
+
+    /// A second sentinel over the same state file and Stalwart, as after a restart.
+    async fn restart(&mut self) {
+        let ledger = self.ledger();
+        self.url = serve(
+            &self.dir,
+            &self.issuer,
+            &self.stalwart,
+            ledger,
+            Duration::from_secs(5),
+        )
+        .await;
+    }
+
     fn daily(&self) -> String {
         self.issuer
             .mint(Audience::Daily, "handle", "mailuser", now_secs())
@@ -430,4 +458,90 @@ async fn no_alias_is_written_over_keys_with_a_gap() {
 
     assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
     assert_eq!(rig.stalwart.aliases().len(), 3);
+}
+
+#[tokio::test]
+async fn a_created_alias_keeps_its_label_and_creation_time_across_a_restart() {
+    let mut rig = rig().await;
+    let name = rig.created("Shop").await;
+    let before = rig.list().await;
+
+    rig.restart().await;
+
+    let after = rig.list().await;
+    assert_eq!(after[0]["name"], name.as_str());
+    assert_eq!(after[0]["label"], "shop");
+    assert_eq!(after[0]["createdAt"], before[0]["createdAt"]);
+    assert!(after[0]["createdAt"].is_string());
+}
+
+#[tokio::test]
+async fn a_refused_name_is_minted_again_and_leaves_one_alias_and_one_record() {
+    let rig = rig().await;
+    rig.stalwart.refuse_next_set();
+
+    let name = rig.created("shop").await;
+
+    let minted_names: Vec<String> = rig.stalwart.aliases()[2..]
+        .iter()
+        .map(|(name, _)| name.clone())
+        .collect();
+    assert_eq!(minted_names, vec![name.clone()]);
+    assert_eq!(
+        rig.ledger().aliases.keys().cloned().collect::<Vec<_>>(),
+        vec![name]
+    );
+}
+
+#[tokio::test]
+async fn a_patch_that_lands_and_then_times_out_is_created() {
+    let rig = rig_with(Ledger::default(), Duration::from_millis(300)).await;
+    rig.stalwart.hang_next_set(true);
+
+    let response = rig.create("shop").await;
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(
+        rig.stalwart.aliases()[2],
+        (body["name"].as_str().unwrap().to_owned(), true)
+    );
+    assert_eq!(rig.ledger().aliases.len(), 1);
+}
+
+#[tokio::test]
+async fn a_patch_that_times_out_without_landing_leaves_no_record() {
+    let rig = rig_with(Ledger::default(), Duration::from_millis(300)).await;
+    rig.stalwart.hang_next_set(false);
+
+    let response = rig.create("shop").await;
+
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    assert_eq!(rig.stalwart.aliases().len(), 2);
+    assert!(rig.ledger().aliases.is_empty());
+    assert!(rig.list().await.is_empty());
+}
+
+#[tokio::test]
+async fn an_unknown_name_costs_no_admin_token() {
+    let rig = rig().await;
+    let name = rig.created("shop").await;
+    let master = rig.master();
+
+    let missing = rig.switch("gone.abcdefgh", "disable", Some(&master)).await;
+    let disabled = rig.switch(&name, "disable", Some(&master)).await;
+
+    assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+    assert_eq!(disabled.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_switch_whose_read_back_finds_no_entry_is_a_bad_gateway() {
+    let rig = rig().await;
+    let name = rig.created("shop").await;
+    rig.stalwart.wipe_after_next_set();
+
+    let response = rig.switch(&name, "disable", Some(&rig.master())).await;
+
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
 }

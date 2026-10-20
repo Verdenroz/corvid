@@ -76,6 +76,10 @@ struct Shared {
     aliases: Arc<Mutex<Aliases>>,
     refuse_creates: Arc<AtomicBool>,
     hang: Arc<AtomicBool>,
+    /// The next `x:Account/set` hangs before it applies (1) or after (2), or applies and then
+    /// loses every alias past abuse (3).
+    hang_set: Arc<AtomicU64>,
+    refuse_set: Arc<AtomicBool>,
     busy: Arc<AtomicU64>,
     calls: Arc<AtomicU64>,
 }
@@ -88,6 +92,8 @@ impl Stalwart {
             aliases: Arc::default(),
             refuse_creates: Arc::default(),
             hang: Arc::default(),
+            hang_set: Arc::default(),
+            refuse_set: Arc::default(),
             busy: Arc::default(),
             calls: Arc::default(),
         };
@@ -116,6 +122,23 @@ impl Stalwart {
     /// Every later JMAP request waits an hour before it is answered.
     pub fn hang(&self) {
         self.shared.hang.store(true, Ordering::SeqCst);
+    }
+
+    /// The next `x:Account/set` waits an hour, applied first when `applied` and not at all otherwise.
+    pub fn hang_next_set(&self, applied: bool) {
+        self.shared
+            .hang_set
+            .store(if applied { 2 } else { 1 }, Ordering::SeqCst);
+    }
+
+    /// The next `x:Account/set` applies, then a wipe takes every alias past abuse.
+    pub fn wipe_after_next_set(&self) {
+        self.shared.hang_set.store(3, Ordering::SeqCst);
+    }
+
+    /// The next `x:Account/set` is refused, as a name another account holds is.
+    pub fn refuse_next_set(&self) {
+        self.shared.refuse_set.store(true, Ordering::SeqCst);
     }
 
     /// The next `count` JMAP requests are answered 429.
@@ -277,6 +300,19 @@ async fn jmap(
     if busy.is_ok() {
         return Err(StatusCode::TOO_MANY_REQUESTS);
     }
+    let sets = request["methodCalls"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|call| call[0] == "x:Account/set");
+    let hang_set = if sets {
+        shared.hang_set.swap(0, Ordering::SeqCst)
+    } else {
+        0
+    };
+    if hang_set == 1 {
+        tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+    }
     let mut responses: Vec<Value> = Vec::new();
     for call in request["methodCalls"].as_array().unwrap() {
         let [method, arguments, id] = &call.as_array().unwrap()[..] else {
@@ -303,6 +339,11 @@ async fn jmap(
             other => panic!("unexpected method {other}"),
         };
         responses.push(json!([method, answer, id]));
+    }
+    match hang_set {
+        2 => tokio::time::sleep(std::time::Duration::from_secs(3600)).await,
+        3 => shared.aliases.lock().unwrap().list.truncate(2),
+        _ => {}
     }
     Ok(Json(json!({"methodResponses": responses})))
 }
@@ -387,7 +428,10 @@ fn set_account(shared: &Shared, arguments: &Value) -> Value {
         );
         let mut aliases = shared.aliases.lock().unwrap();
         let mut list = aliases.list.clone();
-        let mut refusal = None;
+        let mut refusal = shared
+            .refuse_set
+            .swap(false, Ordering::SeqCst)
+            .then(|| json!({"type": "invalidPatch", "description": "update failed"}));
         for (pointer, value) in patch.as_object().unwrap() {
             let path: Vec<&str> = pointer.split('/').collect();
             let index: usize = path[1].parse().unwrap();

@@ -261,6 +261,32 @@ async fn create(
 ) -> Result<(StatusCode, Json<View>), StatusCode> {
     require_daily(&state, &headers)?;
     let label = label(&new.label).ok_or(StatusCode::BAD_REQUEST)?;
+    settled(mint_alias(state, label)).await
+}
+
+/// Runs a write to the end on its own task, so a caller that disconnects cannot leave it half done.
+async fn settled<T: Send + 'static>(
+    write: impl Future<Output = Result<T, StatusCode>> + Send + 'static,
+) -> Result<T, StatusCode> {
+    tokio::spawn(write).await.expect("an alias write panicked")
+}
+
+fn holds(aliases: &[Alias], name: &str) -> bool {
+    aliases
+        .iter()
+        .any(|alias| alias.name == name && alias.enabled)
+}
+
+async fn forget(state: &Shared, name: String) -> Result<(), StatusCode> {
+    commit(state, move |ledger| {
+        let mut next = ledger.clone();
+        next.aliases.remove(&name);
+        (Some(next), ())
+    })
+    .await
+}
+
+async fn mint_alias(state: Shared, label: String) -> Result<(StatusCode, Json<View>), StatusCode> {
     let _write = state.writes.lock().await;
     let now = dates::now_secs();
     if state.ledger.read(|ledger| ledger.created_since(now - 3600)) >= MAX_PER_HOUR {
@@ -271,6 +297,7 @@ async fn create(
     if all >= MAX_MINTED || enabled >= MAX_ENABLED {
         return Err(StatusCode::TOO_MANY_REQUESTS);
     }
+    let mut refusal = None;
     for _ in 0..MINT_ATTEMPTS {
         let name = mint(&label);
         if aliases.iter().any(|alias| alias.name == name) {
@@ -294,20 +321,22 @@ async fn create(
         )]
         .into_iter()
         .collect();
+        let created = (
+            StatusCode::CREATED,
+            Json(state.view(&name, Some(&entry), true, false)),
+        );
         match state.stalwart.patch(&target, patch).await {
+            // A failed read-back here would send the app to create a second alias, so it gets a retry.
             Ok(()) => {
-                let (_, after) = read(&state).await?;
-                if !after
-                    .iter()
-                    .any(|alias| alias.name == name && alias.enabled)
-                {
+                let after = match state.stalwart.read().await {
+                    Ok((_, after)) => after,
+                    Err(_) => read(&state).await?.1,
+                };
+                if !holds(&after, &name) {
                     tracing::warn!(name, "a created alias is not on the account");
                     return Err(StatusCode::BAD_GATEWAY);
                 }
-                return Ok((
-                    StatusCode::CREATED,
-                    Json(state.view(&name, Some(&entry), true, false)),
-                ));
+                return Ok(created);
             }
             Err(Error::Refused(reason)) => {
                 tracing::info!(
@@ -315,18 +344,24 @@ async fn create(
                     reason,
                     "Stalwart refused a minted name; minting another"
                 );
-                let refused = name.clone();
-                commit(&state, move |ledger| {
-                    let mut next = ledger.clone();
-                    next.aliases.remove(&refused);
-                    (Some(next), ())
-                })
-                .await?;
+                forget(&state, name).await?;
+                refusal = Some(reason);
             }
-            Err(error) => return Err(gateway(&error)),
+            // A patch that timed out may still have landed, so one read decides which it was.
+            Err(error) => {
+                let (_, after) = read(&state).await?;
+                if holds(&after, &name) {
+                    return Ok(created);
+                }
+                forget(&state, name).await?;
+                return Err(gateway(&error));
+            }
         }
     }
-    tracing::warn!("no minted name was free after {MINT_ATTEMPTS} attempts");
+    tracing::warn!(
+        refusal = refusal.as_deref().unwrap_or("none"),
+        "no minted name was taken after {MINT_ATTEMPTS} attempts"
+    );
     Err(StatusCode::BAD_GATEWAY)
 }
 
@@ -346,8 +381,6 @@ async fn enable(
     set_enabled(state, name, headers, true).await
 }
 
-/// Sets `enabled` on every entry holding `name`, since an admin may have added it twice, and reads
-/// back to confirm none was missed.
 async fn set_enabled(
     state: Shared,
     name: String,
@@ -358,7 +391,17 @@ async fn set_enabled(
     if !minted(&name) {
         return Err(StatusCode::NOT_FOUND);
     }
-    require_master(&state, &headers)?;
+    settled(switch(state, name, headers, enabled)).await
+}
+
+/// Sets `enabled` on every entry holding `name`, since an admin may have added it twice, and reads
+/// back to confirm each one took it. The admin token is spent only once the change can be made.
+async fn switch(
+    state: Shared,
+    name: String,
+    headers: HeaderMap,
+    enabled: bool,
+) -> Result<Json<View>, StatusCode> {
     let _write = state.writes.lock().await;
     let (target, aliases) = read_for_write(&state).await?;
     let held: Vec<&Alias> = aliases.iter().filter(|alias| alias.name == name).collect();
@@ -369,22 +412,23 @@ async fn set_enabled(
     if enabled && !was_enabled && counts(&aliases).1 >= MAX_ENABLED {
         return Err(StatusCode::TOO_MANY_REQUESTS);
     }
+    require_master(&state, &headers)?;
     let patch: Map<String, Value> = held
         .iter()
         .map(|alias| (format!("aliases/{}/enabled", alias.index), json!(enabled)))
         .collect();
-    state
-        .stalwart
-        .patch(&target, patch)
-        .await
-        .map_err(|error| gateway(&error))?;
+    let patched = state.stalwart.patch(&target, patch).await;
     let (_, after) = read(&state).await?;
-    if after
-        .iter()
-        .any(|alias| alias.name == name && alias.enabled != enabled)
-    {
-        tracing::warn!(name, enabled, "an alias entry did not take the change");
-        return Err(StatusCode::BAD_GATEWAY);
+    let entries: Vec<&Alias> = after.iter().filter(|alias| alias.name == name).collect();
+    let took = !entries.is_empty() && entries.iter().all(|alias| alias.enabled == enabled);
+    if !took {
+        return Err(match patched {
+            Err(error) => gateway(&error),
+            Ok(()) => {
+                tracing::warn!(name, enabled, "an alias entry did not take the change");
+                StatusCode::BAD_GATEWAY
+            }
+        });
     }
     let now = dates::now_secs();
     let changed = name.clone();
