@@ -4,20 +4,20 @@ import android.content.pm.PackageInstaller
 import com.verdenroz.corvid.core.data.InstallResult
 
 /**
- * An abort that arrives without a prompt was the device refusing the install and reads as a failure saying [unprompted].
- * After a prompt it is the user's answer, unless the device has a [blocker] that can also abort there, as Samsung's
- * Auto Blocker does; then it reads as a failure saying [blocker], since the two cannot be told apart.
+ * Every abort is a failure. One that arrives without a prompt was the device refusing the install and says [unprompted].
+ * One after a prompt says [aborted]: the user declining and a setting such as Samsung's Auto Blocker refusing the install
+ * there report the same status, so the message has to cover both.
  */
 internal fun installResult(
     status: Int,
     message: String?,
     prompted: Boolean,
     unprompted: String,
-    blocker: String?,
+    aborted: String,
 ): InstallResult =
     when {
         status == PackageInstaller.STATUS_SUCCESS -> InstallResult.Started
-        status == PackageInstaller.STATUS_FAILURE_ABORTED && prompted -> blocker?.let(InstallResult::Failed) ?: InstallResult.Cancelled
+        status == PackageInstaller.STATUS_FAILURE_ABORTED && prompted -> InstallResult.Failed(aborted)
         status == PackageInstaller.STATUS_FAILURE_ABORTED -> InstallResult.Failed(listOfNotNull(unprompted, message).joinToString(" "))
         else -> InstallResult.Failed(message ?: "Install failed, status $status")
     }

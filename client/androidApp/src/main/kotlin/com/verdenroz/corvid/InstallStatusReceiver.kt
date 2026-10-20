@@ -4,7 +4,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
-import android.os.Build
 import androidx.core.content.IntentCompat
 import com.verdenroz.corvid.core.data.InstallResult
 import kotlinx.coroutines.CompletableDeferred
@@ -46,7 +45,6 @@ class InstallStatusReceiver : BroadcastReceiver() {
             return
         }
         val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
-        val samsung = Build.MANUFACTURER.equals("samsung", ignoreCase = true)
         InstallSessions.finish(
             id,
             installResult(
@@ -54,7 +52,7 @@ class InstallStatusReceiver : BroadcastReceiver() {
                 message,
                 InstallSessions.prompted(id),
                 unprompted = context.getString(R.string.install_unprompted),
-                blocker = if (samsung) context.getString(R.string.install_aborted_samsung) else null,
+                aborted = context.getString(R.string.install_aborted),
             ),
         )
     }

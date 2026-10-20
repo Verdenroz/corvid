@@ -160,22 +160,6 @@ class AppUpdatesTest {
         }
 
     @Test
-    fun `an install the user cancels leaves the offer standing`() =
-        runTest {
-            val rig =
-                updatesRig(
-                    FakeJmapServer().apply { app.release(6, android = APK) },
-                    RecordingInstaller(AppPlatform.Android, InstallResult.Cancelled),
-                )
-            eventually { rig.updates.state.value is AppUpdateState.Available }
-
-            rig.updates.update()
-            eventually { rig.installer.installed.size == 1 }
-
-            eventually { rig.updates.state.value is AppUpdateState.Available }
-        }
-
-    @Test
     fun `an install the platform fails shows its message`() =
         runTest {
             val rig =
@@ -327,7 +311,7 @@ class AppUpdatesTest {
     fun `the banner stays up while the build downloads and the installer decides`() =
         runTest {
             val verdict = CompletableDeferred<Unit>()
-            val installer = RecordingInstaller(AppPlatform.Android, InstallResult.Cancelled, verdict)
+            val installer = RecordingInstaller(AppPlatform.Android, InstallResult.Failed("Not installed"), verdict)
             val rig = updatesRig(FakeJmapServer().apply { app.release(6, android = APK) }, installer)
             eventually { rig.updates.state.value is AppUpdateState.Available }
 
@@ -336,7 +320,7 @@ class AppUpdatesTest {
 
             assertEquals(1f, (rig.updates.banner.first() as AppUpdateState.Downloading).progress)
             verdict.complete(Unit)
-            eventually { rig.updates.state.value is AppUpdateState.Available }
-            assertIs<AppUpdateState.Available>(rig.updates.banner.first())
+            eventually { rig.updates.state.value is AppUpdateState.Failed }
+            assertIs<AppUpdateState.Failed>(rig.updates.banner.first())
         }
 }
