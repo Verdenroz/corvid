@@ -35,7 +35,7 @@ const MINT_ATTEMPTS: usize = 3;
 const MAX_ENABLED: usize = 400;
 const MAX_MINTED: usize = 1000;
 const MAX_PER_HOUR: usize = 20;
-/// Stalwart's own entries, which nothing here may move.
+/// The plan's entries at keys 0 and 1, which nothing here may move.
 const RESERVED: [&str; 2] = ["postmaster", "abuse"];
 
 pub struct Config {
