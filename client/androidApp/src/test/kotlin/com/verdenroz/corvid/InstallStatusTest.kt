@@ -10,7 +10,8 @@ class InstallStatusTest {
         status: Int,
         message: String?,
         prompted: Boolean = true,
-    ) = installResult(status, message, prompted, unprompted = "Blocked.")
+        blocker: String? = null,
+    ) = installResult(status, message, prompted, unprompted = "Blocked.", blocker = blocker)
 
     @Test
     fun `a successful install starts the new build`() {
@@ -20,6 +21,14 @@ class InstallStatusTest {
     @Test
     fun `an abort after the system asked the user is a cancellation`() {
         assertEquals(InstallResult.Cancelled, result(PackageInstaller.STATUS_FAILURE_ABORTED, "INSTALL_FAILED_ABORTED"))
+    }
+
+    @Test
+    fun `an abort after a prompt on a device with a blocker is a failure naming the blocker`() {
+        assertEquals(
+            InstallResult.Failed("Auto Blocker."),
+            result(PackageInstaller.STATUS_FAILURE_ABORTED, "INSTALL_FAILED_ABORTED", blocker = "Auto Blocker."),
+        )
     }
 
     @Test
