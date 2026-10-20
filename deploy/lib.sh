@@ -249,6 +249,17 @@ for d in rows(sys.stdin.read()):
         print(d["id"], d["@type"], d["selector"])' "$1" <<<"$keys"
 }
 
+# The catch-all address of domain NAME, or empty when it has none. Read by get, since a query
+# carries only some fields and would report every domain as having none.
+catch_all_address() {
+  local domains id
+  domains="$($STALWART_CLI query Domain --json)" || return 1
+  id="$(python3 -c '
+import json, sys
+print(next(d["id"] for d in map(json.loads, filter(str.strip, sys.stdin)) if d["name"] == sys.argv[1]))' "$1" <<<"$domains")" || return 1
+  $STALWART_CLI get Domain "$id" --json | python3 -c 'import json, sys; print(json.load(sys.stdin).get("catchAllAddress") or "")'
+}
+
 # The DNS form of a DKIM key's public half. Only a get carries it, never a query.
 dkim_public_key() {
   local key

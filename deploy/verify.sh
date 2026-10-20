@@ -184,6 +184,14 @@ echo "== dns =="
 [[ -n "$(dig +short MX "$DOMAIN")" ]]                  && ok "MX"    || bad "MX missing"
 dig +short TXT "$DOMAIN" | grep -q 'v=spf1'            && ok "SPF"   || bad "SPF missing"
 dig +short TXT "_dmarc.$DOMAIN" | grep -q 'v=DMARC1'   && ok "DMARC" || bad "DMARC missing"
+echo "== aliases =="
+# A catch-all takes mail for a disabled alias too, so killing one would stop nothing.
+if catchall=$(catch_all_address "$DOMAIN"); then
+  [[ -z "$catchall" ]] && ok "$DOMAIN has no catch-all" || bad "$DOMAIN has a catch-all ($catchall), which takes mail for disabled aliases"
+else
+  bad "could not read $DOMAIN from Stalwart"
+fi
+
 echo "== dkim =="
 if keys=$(active_dkim_keys "$DOMAIN"); then
   grep -q ' Dkim1RsaSha256 ' <<<"$keys" && ok "an active RSA key signs outbound mail" || bad "no active RSA DKIM key"

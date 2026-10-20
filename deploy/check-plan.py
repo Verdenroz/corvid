@@ -50,6 +50,7 @@ ACCEPTS = {
 PINNED = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stalwart-schema-v0.16.21.json")
 CACHE = os.path.expanduser("~/.cache/stalwart-cli/*/schema-*.json")
 TEMPLATE = re.compile(r"\$\{[A-Z_]+\}")
+WHOLESALE = {"aliases", "credentials", "quotas"}
 
 
 def load_schema():
@@ -205,6 +206,22 @@ def dangling(entries):
     return found
 
 
+def wholesale(entries):
+    """Account properties a plan may only patch by key.
+
+    Each replaces the server's whole map, so naming one in an Account entry erases whatever the
+    host added at runtime on every deploy: minted aliases, app passwords, quotas set by hand.
+    """
+    found = []
+    for number, entry in enumerate(entries, 1):
+        if entry.get("object") != "Account":
+            continue
+        for obj in objects_in(entry):
+            for name in sorted(WHOLESALE & set(obj)):
+                found.append(f"line {number}: Account.{name} replaces the server's whole map; patch {name}/<key> instead")
+    return found
+
+
 def complaints(entry, schema, unchecked):
     name = entry.get("object")
     if f"x:{name}" not in schema["objects"]:
@@ -221,7 +238,7 @@ def main():
     warnings = dangling(entries)
 
     schema, source = load_schema()
-    problems, unchecked = [], []
+    problems, unchecked = wholesale(entries), []
     if schema is not None:
         for number, entry in enumerate(entries, 1):
             problems += [f"line {number}: {c}" for c in complaints(entry, schema, unchecked)]

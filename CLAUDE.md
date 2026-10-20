@@ -467,6 +467,13 @@ Caddyfile built from the same env vars as everything else. `core/discovery` hold
   entry, matched the same way, that runs after the account is known to exist. Verified on a
   brand-new server with the account absent: both entries apply, the account is created, and its
   quota is set in the same pass.
+- **`Account.aliases` keys are list positions, not ids.** Nulling `aliases/3` shifts every later
+  alias down a key, a key past the end appends, and a key already in use is overwritten. Duplicate
+  names on one account are accepted. The plan sets only `aliases/0` and `aliases/1`, in their own
+  upsert, so a deploy keeps aliases added at runtime; a whole `aliases` property erased them on every
+  apply, and so would a rollback to an image from before that split. Disable an alias
+  (`enabled:false`, a `550` at RCPT at once) rather than delete it. A domain `catchAllAddress`
+  takes mail for disabled aliases too, which `verify.sh` fails. Measured by `aliases.test.sh`.
 - **Stalwart rate-limits rapid successive JMAP calls with a bare `429`.** A restore that uploads
   and imports hundreds of messages back to back hit it on a freshly bootstrapped throwaway server;
   the run failed loudly mid-way rather than corrupting anything, and a rerun after a short wait

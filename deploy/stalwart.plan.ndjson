@@ -10,8 +10,9 @@
 {"@type":"update","object":"Http","value":{"useXForwarded":true}}
 {"@type":"update","object":"SenderAuth","value":{"dkimSignDomain":{"else":"false","match":{"0":{"if":"is_local_domain(sender_domain) && !is_empty(authenticated_as)","then":"sender_domain"}}}}}
 {"@type":"update","object":"MtaSts","value":{"mode":"${MTA_STS_MODE}"}}
-{"@type":"upsert","object":"Account","matchOn":["name"],"value":{"acct":{"@type":"User","name":"${MAIL_USER}","description":"${MAIL_USER}","domainId":"#dom","roles":{"@type":"User"},"aliases":{"0":{"name":"postmaster","domainId":"#dom"},"1":{"name":"abuse","domainId":"#dom"}}}}}
+{"@type":"upsert","object":"Account","matchOn":["name"],"value":{"acct":{"@type":"User","name":"${MAIL_USER}","description":"${MAIL_USER}","domainId":"#dom","roles":{"@type":"User"}}}}
 {"@type":"upsert","object":"Account","matchOn":["name"],"value":{"acctquota":{"@type":"User","name":"${MAIL_USER}","quotas/maxAppPasswords":20}}}
+{"@type":"upsert","object":"Account","matchOn":["name"],"value":{"acctaliases":{"@type":"User","name":"${MAIL_USER}","aliases/0":{"name":"postmaster","domainId":"#dom"},"aliases/1":{"name":"abuse","domainId":"#dom"}}}}
 {"@type":"upsert","object":"Domain","matchOn":["name"],"value":{"keysdom":{"name":"keys.${MAIL_DOMAIN}","isEnabled":false,"reportAddressUri":null,"dnsManagement":{"@type":"Manual"},"certificateManagement":{"@type":"Manual"},"dkimManagement":{"@type":"Manual"}}}}
 {"@type":"upsert","object":"Account","matchOn":["name"],"value":{"acctkeys":{"@type":"User","name":"corvid-keys","description":"corvid-keys","domainId":"#keysdom","roles":{"@type":"User"},"permissions":{"@type":"Merge","disabledPermissions":{"authenticate":true,"authenticateWithAlias":true}}}}}
 {"@type":"upsert","object":"SieveSystemScript","matchOn":["name"],"value":{"refusekeys":{"name":"refuse-keys","description":"refuses mail for the keys account","isActive":true,"contents":"reject \"550 5.1.1 No such recipient\";"}}}
