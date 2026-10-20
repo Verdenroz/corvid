@@ -139,7 +139,7 @@ class AppUpdates(
         release: AppRelease,
         file: File,
     ): AppUpdateState =
-        when (val result = installer.install(file)) {
+        when (val result = installer.install(file, release.versionCode)) {
             InstallResult.Started -> AppUpdateState.Ready(release)
             InstallResult.Cancelled -> AppUpdateState.Available(release)
             InstallResult.NeedsPermission -> AppUpdateState.NeedsPermission(release)

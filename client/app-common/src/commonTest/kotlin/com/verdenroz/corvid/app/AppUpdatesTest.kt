@@ -42,11 +42,16 @@ private class RecordingInstaller(
     private val verdict: CompletableDeferred<Unit>? = null,
 ) : AppInstaller {
     val installed = mutableListOf<ByteArray>()
+    val versionCodes = mutableListOf<Int>()
     var allowRequests = 0
     var allowed = true
 
-    override suspend fun install(file: File): InstallResult {
+    override suspend fun install(
+        file: File,
+        versionCode: Int,
+    ): InstallResult {
         installed += file.readBytes()
+        versionCodes += versionCode
         verdict?.await()
         return result
     }
@@ -157,6 +162,7 @@ class AppUpdatesTest {
 
             assertEquals(1, rig.installer.installed.size)
             assertEquals(APK.toList(), rig.installer.installed.single().toList())
+            assertEquals(listOf(6), rig.installer.versionCodes)
         }
 
     @Test

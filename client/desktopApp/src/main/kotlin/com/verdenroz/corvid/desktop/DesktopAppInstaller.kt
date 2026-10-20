@@ -20,10 +20,13 @@ class DesktopAppInstaller(
         AppPlatform.Linux.takeIf { System.getProperty("os.name").startsWith("Linux") && installation.manages(appPath) }
     }
 
-    override suspend fun install(file: File): InstallResult {
+    override suspend fun install(
+        file: File,
+        versionCode: Int,
+    ): InstallResult {
         if (!installation.manages(appPath)) return InstallResult.Failed("Install Corvid with the setup script to get automatic updates")
         try {
-            withContext(Dispatchers.IO) { installation.install(file) }
+            withContext(Dispatchers.IO) { installation.install(file, versionCode) }
         } catch (e: IOException) {
             return InstallResult.Failed(e.message ?: "Could not install the update")
         }

@@ -39,7 +39,7 @@ class DesktopInstallTest {
 
     @Test
     fun `installing unpacks the build with its launcher runnable and points current at it`() {
-        installation.install(tarball("one"))
+        installation.install(tarball("one"), 1)
 
         assertTrue(installation.launcher.canExecute())
         assertTrue(File(root, "versions/1/corvid/lib").isDirectory)
@@ -48,25 +48,44 @@ class DesktopInstallTest {
 
     @Test
     fun `a second install moves current and keeps the previous version`() {
-        installation.install(tarball("one"))
-        installation.install(tarball("two"))
+        installation.install(tarball("one"), 1)
+        installation.install(tarball("two"), 2)
 
         assertEquals(listOf("1", "2"), File(root, "versions").list()!!.sorted())
         assertEquals("2", currentVersion())
     }
 
     @Test
+    fun `each version is named after its release code`() {
+        installation.install(tarball("one"), 1030)
+        installation.install(tarball("two"), 1051)
+
+        assertEquals(listOf("1030", "1051"), File(root, "versions").list()!!.sorted())
+        assertEquals("1051", currentVersion())
+    }
+
+    @Test
+    fun `a release already on disk is replaced by the new unpack`() {
+        installation.install(tarball("one"), 1)
+        installation.install(tarball("two"), 2)
+        installation.install(tarball("again"), 1)
+
+        assertEquals("1", currentVersion())
+        assertEquals("#!/bin/sh\necho again\n", installation.launcher.readText())
+    }
+
+    @Test
     fun `only the newest two versions are kept`() {
-        listOf("a", "b", "c", "d").forEach { installation.install(tarball(it)) }
+        listOf("a", "b", "c", "d").forEachIndexed { i, name -> installation.install(tarball(name), i + 1) }
 
         assertEquals(listOf("3", "4"), File(root, "versions").list()!!.sorted())
     }
 
     @Test
     fun `a launcher that is not executable leaves current untouched`() {
-        installation.install(tarball("one"))
+        installation.install(tarball("one"), 1)
 
-        assertFailsWith<IOException> { installation.install(tarball("two", executable = false)) }
+        assertFailsWith<IOException> { installation.install(tarball("two", executable = false), 2) }
 
         assertEquals("1", currentVersion())
         assertEquals(listOf("1"), File(root, "versions").list()!!.sorted())
@@ -74,17 +93,17 @@ class DesktopInstallTest {
 
     @Test
     fun `a file that is not a tarball fails and leaves current untouched`() {
-        installation.install(tarball("one"))
+        installation.install(tarball("one"), 1)
         val junk = tmp.newFile("junk.tar.gz").also { it.writeText("nope") }
 
-        assertFailsWith<IOException> { installation.install(junk) }
+        assertFailsWith<IOException> { installation.install(junk, 2) }
 
         assertEquals("1", currentVersion())
     }
 
     @Test
     fun `only a launcher under the managed versions counts as managed`() {
-        installation.install(tarball("one"))
+        installation.install(tarball("one"), 1)
 
         assertTrue(installation.manages(File(root, "versions/1/corvid/bin/corvid").path))
         assertTrue(installation.manages(File(root, "current/corvid/bin/corvid").path))
@@ -94,7 +113,7 @@ class DesktopInstallTest {
 
     @Test
     fun `an app outside the managed install is offered no update`() {
-        installation.install(tarball("one"))
+        installation.install(tarball("one"), 1)
 
         assertNull(DesktopAppInstaller(installation, tmp.newFile("elsewhere").path) {}.platform)
         assertNull(DesktopAppInstaller(installation, null) {}.platform)
@@ -102,7 +121,7 @@ class DesktopInstallTest {
 
     @Test
     fun `the managed install is offered the Linux build`() {
-        installation.install(tarball("one"))
+        installation.install(tarball("one"), 1)
 
         val installer = DesktopAppInstaller(installation, File(root, "versions/1/corvid/bin/corvid").path) {}
 
@@ -114,7 +133,7 @@ class DesktopInstallTest {
         var relaunched = false
         val installer = DesktopAppInstaller(installation, tmp.newFile("elsewhere").path) { relaunched = true }
 
-        val result = runBlocking { installer.install(tarball("one")) }
+        val result = runBlocking { installer.install(tarball("one"), 1) }
 
         assertTrue(result is InstallResult.Failed)
         assertFalse(relaunched)
@@ -123,11 +142,11 @@ class DesktopInstallTest {
 
     @Test
     fun `the installer relaunches into current after a managed install`() {
-        installation.install(tarball("one"))
+        installation.install(tarball("one"), 1)
         var launched: File? = null
         val installer = DesktopAppInstaller(installation, File(root, "versions/1/corvid/bin/corvid").path) { launched = it }
 
-        val result = runBlocking { installer.install(tarball("two")) }
+        val result = runBlocking { installer.install(tarball("two"), 2) }
 
         assertEquals(InstallResult.Started, result)
         assertEquals(installation.launcher, launched)
