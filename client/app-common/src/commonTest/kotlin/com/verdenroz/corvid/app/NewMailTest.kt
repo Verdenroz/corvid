@@ -16,7 +16,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
-private const val OWN = "me@corvid.test"
+private const val OWN = "verde@corvid.test"
 
 private class RecordingNewMailNotifier : NewMailNotifier {
     val shown = mutableListOf<Pair<String, String>>()

@@ -5,6 +5,7 @@ import com.verdenroz.corvid.core.model.Draft
 import com.verdenroz.corvid.core.model.EmailAddress
 import com.verdenroz.corvid.core.model.EmailDetail
 import com.verdenroz.corvid.core.testing.FakeEmail
+import com.verdenroz.corvid.core.testing.FakeIdentity
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.FakeMailbox
 import com.verdenroz.corvid.core.testing.KeyedTextResolver
@@ -170,7 +171,7 @@ class ComposeRepositoryTest {
         runTest {
             val (mailboxes, _) = repositories(server())
 
-            val draft = replyDraft(mailboxes.original(), OWN, all = true, attribution = "")
+            val draft = replyDraft(mailboxes.original(), setOf(OWN), all = true, attribution = "")
 
             assertEquals(listOf(EmailAddress(null, "alice@example.test")), draft.to)
             assertEquals(listOf("bob@example.test", "carol@example.test"), draft.cc.map { it.email })
@@ -182,7 +183,7 @@ class ComposeRepositoryTest {
             val (mailboxes, _) = repositories(server())
             val original = mailboxes.original()
 
-            assertEquals("RE: Lunch", replyDraft(original.copy(subject = "RE: Lunch"), OWN, all = false, attribution = "").subject)
+            assertEquals("RE: Lunch", replyDraft(original.copy(subject = "RE: Lunch"), setOf(OWN), all = false, attribution = "").subject)
             assertEquals("fwd: Lunch", forwardDraft(original.copy(subject = "fwd: Lunch"), divider = "", date = "").subject)
         }
 
@@ -215,8 +216,8 @@ class ComposeRepositoryTest {
             fake.emails.replaceAll { it.copy(replyTo = listOf("list@example.test")) }
             val (mailboxes, _) = repositories(fake)
 
-            val reply = replyDraft(mailboxes.original(), OWN, all = false, attribution = "")
-            val replyAll = replyDraft(mailboxes.original(), OWN, all = true, attribution = "")
+            val reply = replyDraft(mailboxes.original(), setOf(OWN), all = false, attribution = "")
+            val replyAll = replyDraft(mailboxes.original(), setOf(OWN), all = true, attribution = "")
 
             assertEquals(listOf("list@example.test"), reply.to.map { it.email })
             assertEquals(listOf("list@example.test"), replyAll.to.map { it.email })
@@ -232,6 +233,46 @@ class ComposeRepositoryTest {
 
             assertEquals(SendUnavailable.NoIdentity, compose.start(ComposeIntent.New))
             assertEquals(SendUnavailable.NoIdentity, compose.save(Draft(), replacing = null))
+        }
+
+    @Test
+    fun `a send uses the main identity when aliases are listed before it`() =
+        runTest {
+            val fake = server()
+            fake.identities.clear()
+            fake.identities += FakeIdentity(id = "i0", email = "postmaster@example.test")
+            fake.identities += FakeIdentity(id = "i9", email = "Shop@example.test")
+            fake.identities += FakeIdentity(id = "i1", email = OWN)
+            val (_, compose) = repositories(fake)
+
+            compose.sendNew(Draft(to = listOf(EmailAddress(null, "dan@example.test")), body = "hello"))
+
+            assertEquals("i1", fake.submissions.single().identityId)
+        }
+
+    @Test
+    fun `an account whose main address has no identity cannot send as an alias`() =
+        runTest {
+            val fake = server()
+            fake.identities.clear()
+            fake.identities += FakeIdentity(id = "i0", email = "postmaster@example.test")
+            val (_, compose) = repositories(fake)
+
+            assertEquals(SendUnavailable.NoIdentity, compose.sendNew(Draft()))
+            assertTrue(fake.submissions.isEmpty())
+        }
+
+    @Test
+    fun `reply all drops every identity of the account from cc`() =
+        runTest {
+            val fake = server()
+            fake.identities += FakeIdentity(id = "i2", email = "shop@example.test")
+            fake.emails.replaceAll { it.copy(cc = listOf("carol@example.test", "Shop@example.test")) }
+            val (_, compose) = repositories(fake)
+
+            val reply = assertIs<StartResult.Ready>(compose.start(ComposeIntent.Reply("orig", all = true))).draft
+
+            assertEquals(listOf("bob@example.test", "carol@example.test"), reply.cc.map { it.email })
         }
 
     @Test
