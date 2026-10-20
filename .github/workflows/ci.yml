@@ -42,6 +42,8 @@ jobs:
               - .dockerignore
             deploy:
               - *ci
+              - install.sh
+              - .shellcheckrc
               - deploy/**
               - scripts/**
               - crates/corvid-sentinel/**
@@ -99,7 +101,7 @@ jobs:
         with:
           name: corvid-sentinel
           path: sentinel
-      - run: shellcheck -S warning deploy/*.sh deploy/tests/*.sh scripts/*.sh
+      - run: shellcheck -S warning install.sh deploy/*.sh deploy/tests/*.sh scripts/*.sh
       - run: bash deploy/tests/bootstrap-server.test.sh
       - run: bash deploy/tests/apply-plan.test.sh
       - run: bash deploy/tests/install.test.sh
