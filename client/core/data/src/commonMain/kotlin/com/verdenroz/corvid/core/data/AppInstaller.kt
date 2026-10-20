@@ -18,7 +18,11 @@ interface AppInstaller {
     /** The build this device takes, or null where the platform cannot be updated from here. */
     val platform: AppPlatform?
 
-    suspend fun install(file: File): InstallResult
+    /** Installs [file], the build of release [versionCode]. */
+    suspend fun install(
+        file: File,
+        versionCode: Int,
+    ): InstallResult
 
     /** Whether [install] would be accepted now rather than answer [InstallResult.NeedsPermission]. */
     fun canInstall(): Boolean = true

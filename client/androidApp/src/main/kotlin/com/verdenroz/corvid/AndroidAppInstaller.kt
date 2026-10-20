@@ -18,7 +18,10 @@ import java.io.IOException
 class AndroidAppInstaller(private val context: Context) : AppInstaller {
     override val platform = AppPlatform.Android
 
-    override suspend fun install(file: File): InstallResult {
+    override suspend fun install(
+        file: File,
+        versionCode: Int,
+    ): InstallResult {
         if (!canInstall()) return InstallResult.NeedsPermission
         val installer = context.packageManager.packageInstaller
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply { setSize(file.length()) }

@@ -7,8 +7,8 @@ import java.nio.file.StandardCopyOption.ATOMIC_MOVE
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 
 /**
- * Unpacks release tarballs into `versions/<n>` under [root] and points the `current` symlink at the newest.
- * Every failure leaves `current` where it was.
+ * Unpacks release tarballs into `versions/<versionCode>` under [root], as `scripts/install-desktop.sh` does, and points
+ * the `current` symlink at the one just installed. Every failure leaves `current` where it was.
  */
 class DesktopInstall(private val root: File) {
     private val versions = File(root, "versions")
@@ -21,16 +21,19 @@ class DesktopInstall(private val root: File) {
     }
 
     @Throws(IOException::class)
-    fun install(tarball: File) {
+    fun install(
+        tarball: File,
+        versionCode: Int,
+    ) {
         versions.mkdirs()
-        val next = (installed().maxOrNull() ?: 0) + 1
-        val partial = File(versions, ".partial-$next")
+        val partial = File(versions, ".partial-$versionCode")
         try {
             partial.deleteRecursively()
             partial.mkdirs()
             extract(tarball, partial)
             if (!File(partial, "corvid/bin/corvid").canExecute()) throw IOException("The update has no runnable launcher")
-            val target = File(versions, next.toString())
+            val target = File(versions, versionCode.toString())
+            target.deleteRecursively()
             Files.move(partial.toPath(), target.toPath(), ATOMIC_MOVE)
             point(target)
         } finally {
