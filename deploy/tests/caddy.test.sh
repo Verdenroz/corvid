@@ -80,6 +80,14 @@ for path in /corvid/devices/requests /corvid/devices/requests/abc /corvid/device
   check "$path with a refused credential gets Stalwart's 401" "$(fetch -X POST -d '{}' -u bad:bad "$url$path")" "401 stalwart"
   check "$path with an accepted credential reaches the sentinel" "$(fetch -X POST -d '{}' -u good:good "$url$path")" "200 sentinel"
 done
+for path in /corvid/aliases /corvid/aliases/shop.abcdefgh/disable /corvid/aliases/shop.abcdefgh/enable; do
+  check "$path without a credential stays with Stalwart" "$(fetch -X POST -d '{}' "$url$path")" "404 stalwart"
+  check "$path with a refused credential gets Stalwart's 401" "$(fetch -X POST -d '{}' -u bad:bad "$url$path")" "401 stalwart"
+  check "$path with an accepted credential reaches the sentinel" "$(fetch -X POST -d '{}' -u good:good "$url$path")" "200 sentinel"
+done
+check "the alias list with an accepted credential reaches the sentinel" "$(fetch -u good:good "$url/corvid/aliases")" "200 sentinel"
+check "a path that only starts like the alias routes stays with Stalwart" \
+  "$(fetch -X POST -d '{}' -u good:good "$url/corvid/aliases-other")" "404 stalwart"
 check "the public VAPID key reaches the sentinel without a credential" "$(fetch "$url/corvid/push/vapid")" "200 sentinel"
 check "the push stream reaches the sentinel on a bearer token Stalwart never sees" \
   "$(fetch -H 'Authorization: Bearer stream-token' "$url/corvid/push/stream")" "200 sentinel"
