@@ -137,19 +137,22 @@ def check(where, key, obj, schema, unchecked):
     for name, value in obj.items():
         if name == "@type":
             continue
-        # A JSON-pointer patch (e.g. "quotas/maxAppPasswords") checks only the base property;
-        # the leaf's shape is unreachable, like a nested object.
+        # A JSON-pointer patch (e.g. "quotas/maxAppPasswords") checks only the base property, unless
+        # it names one whole item of an object list ("aliases/0"), whose shape the schema gives.
         base, _, leaf = name.partition("/")
         prop = properties.get(base)
         at = f"{where}.{name}"
         if prop is None:
             found.append(f"{at}: not a property of this object")
             continue
+        kind = prop.get("type", {})
+        if leaf.isdigit() and kind.get("type") == "objectList" and isinstance(value, dict):
+            found += check(at, kind["objectName"], value, schema, unchecked)
+            continue
         if leaf:
             unchecked.append(at)
             continue
 
-        kind = prop.get("type", {})
         if value is None and kind.get("nullable"):
             continue
         # A template stands in for a value of any type, so it cannot be checked here.

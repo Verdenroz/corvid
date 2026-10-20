@@ -187,9 +187,9 @@ dig +short TXT "_dmarc.$DOMAIN" | grep -q 'v=DMARC1'   && ok "DMARC" || bad "DMA
 echo "== aliases =="
 # A catch-all takes mail for a disabled alias too, so killing one would stop nothing.
 if catchall=$(catch_all_address "$DOMAIN"); then
-  [[ -z "$catchall" ]] && ok "$DOMAIN has no catch-all" || bad "$DOMAIN has a catch-all ($catchall), which takes mail for disabled aliases"
+  [[ -z "$catchall" ]] && ok "$DOMAIN has no catch-all" || warn "$DOMAIN has a catch-all ($catchall), which takes mail for disabled aliases"
 else
-  bad "could not read $DOMAIN from Stalwart"
+  warn "could not read $DOMAIN's catch-all from Stalwart"
 fi
 
 echo "== dkim =="

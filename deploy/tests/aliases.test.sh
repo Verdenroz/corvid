@@ -3,7 +3,7 @@
 # does to aliases added at runtime: a second apply keeps them, enabled or not, and leaves
 # postmaster and abuse at keys 0 and 1. Over SMTP, a disabled alias is refused at RCPT and a
 # re-enabled one accepted, and a delivered copy's Delivered-To names the alias it came to.
-# A catch-all, which verify.sh fails, is shown to take mail for a disabled alias.
+# A catch-all, which verify.sh warns about, is shown to take mail for a disabled alias.
 # Needs stalwart-cli, curl, python3, envsubst and docker or podman; port 8080 must be free.
 set -uo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
@@ -43,18 +43,18 @@ wait_for http://127.0.0.1:8080/healthz/live || { echo "Stalwart never restarted"
 create_admin_api_key "$work/corvid.env" || { echo "the admin API key was not created" >&2; exit 1; }
 load_env "$work/corvid.env"
 
-domain_id="$(stalwart-cli query Domain --json | python3 -c '
-import json, sys
-print(next(o["id"] for o in map(json.loads, filter(str.strip, sys.stdin)) if o.get("name") == "rig.test"))')"
+domain_id="$(stalwart_id Domain name rig.test)"
 # Spam filtering is off so a test sender with no SPF record is delivered.
 cat > "$work/rig.ndjson" <<JSON
 {"@type":"reconcile","object":"NetworkListener","matchOn":["name"],"value":{"l-http":{"name":"http","protocol":"http","useTls":false,"tlsImplicit":false,"bind":{"[::]:$mail_port":true}},"l-smtp":{"name":"smtp","protocol":"smtp","useTls":false,"tlsImplicit":false,"bind":{"[::]:$smtp_port":true}}}}
 {"@type":"update","object":"MtaStageAuth","value":{"require":{"match":{},"else":"false"}}}
 {"@type":"update","object":"SpamSettings","value":{"enable":false}}
 JSON
-# The plan's own account lines, with the Domain they reference already on the server.
-grep -E '"(acct|acctquota|acctaliases)":' "$here/stalwart.plan.ndjson" |
-  MAIL_USER=mailuser envsubst '${MAIL_USER}' | sed "s/\"#dom\"/\"$domain_id\"/g" > "$work/account.ndjson"
+# The plan's own account lines, unedited, after a Domain entry its #dom resolves to.
+{
+  echo '{"@type":"upsert","object":"Domain","matchOn":["name"],"value":{"dom":{"name":"rig.test"}}}'
+  grep -E '"(acct|acctquota|acctaliases)":' "$here/stalwart.plan.ndjson" | MAIL_USER=mailuser envsubst '${MAIL_USER}'
+} > "$work/account.ndjson"
 cat "$work/rig.ndjson" "$work/account.ndjson" | stalwart-cli apply --stdin >/dev/null 2>&1 || { echo "the rig plan did not apply" >&2; exit 1; }
 "$engine" restart "$mail" >/dev/null
 export STALWART_URL="http://127.0.0.1:$mail_port"
@@ -71,8 +71,7 @@ a = json.load(sys.stdin)["aliases"]
 print(" ".join("%s=%s:%s" % (k, a[k]["name"], str(a[k]["enabled"]).lower()) for k in sorted(a, key=int)))'
 }
 patch_aliases() {
-  jmap_admin "[[\"x:Account/set\",{\"update\":{\"$account\":$1}},\"0\"]]" |
-    python3 -c 'import json,sys; r=json.load(sys.stdin)["methodResponses"][0][1]; sys.exit(0 if r.get("updated") else str(r))'
+  stalwart-cli update Account "$account" --json "$1" >/dev/null || { echo "Stalwart refused the alias patch $1" >&2; exit 1; }
 }
 # The reply code to RCPT TO for each address, space-separated, from one polite session.
 rcpt() {
@@ -97,13 +96,20 @@ PY
 }
 # The first Delivered-To of the message with this subject, once it has arrived.
 delivered_to() {
-  for _ in $(seq 1 20); do
-    found="$(printf '{"using":["urn:ietf:params:jmap:core","urn:ietf:params:jmap:mail"],"methodCalls":[["Email/query",{"accountId":"%s","filter":{"subject":"%s"}},"q"],["Email/get",{"accountId":"%s","#ids":{"resultOf":"q","name":"Email/query","path":"/ids"},"properties":["header:Delivered-To:asText:all"]},"g"]]}' \
-      "$account" "$1" "$account" | jmap_call "$account" | python3 -c '
+  local request header
+  request="$(python3 -I -c '
 import json, sys
-found = json.load(sys.stdin)["methodResponses"][1][1]["list"]
-print(found[0]["header:Delivered-To:asText:all"][0] if found else "")')"
-    [[ -n "$found" ]] && { echo "$found"; return; }
+account, subject = sys.argv[1:]
+print(json.dumps({"using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"], "methodCalls": [
+    ["Email/query", {"accountId": account, "filter": {"subject": subject}}, "q"],
+    ["Email/get", {"accountId": account, "#ids": {"resultOf": "q", "name": "Email/query", "path": "/ids"},
+                   "properties": ["header:Delivered-To:asText:all"]}, "g"]]}))' "$account" "$1")"
+  for _ in $(seq 1 20); do
+    header="$(jmap_call "$account" <<<"$request" | python3 -c '
+import json, sys
+emails = json.load(sys.stdin)["methodResponses"][1][1]["list"]
+print(emails[0]["header:Delivered-To:asText:all"][0] if emails else "")')"
+    [[ -n "$header" ]] && { echo "$header"; return; }
     sleep 0.5
   done
 }
@@ -113,8 +119,7 @@ check "the plan creates postmaster and abuse at keys 0 and 1" "$(aliases)" "0=po
 check "both take mail" "$(rcpt postmaster@rig.test abuse@rig.test)" "250 250"
 
 echo "== aliases added at runtime, then a redeploy"
-patch_aliases "{\"aliases/2\":{\"name\":\"shop.k2mq7x4p\",\"domainId\":\"$domain_id\",\"description\":\"shop\"},\"aliases/3\":{\"name\":\"gone.a7b3c5d2\",\"domainId\":\"$domain_id\",\"enabled\":false}}" ||
-  { echo "the runtime aliases were not added" >&2; exit 1; }
+patch_aliases "{\"aliases/2\":{\"name\":\"shop.k2mq7x4p\",\"domainId\":\"$domain_id\",\"description\":\"shop\"},\"aliases/3\":{\"name\":\"gone.a7b3c5d2\",\"domainId\":\"$domain_id\",\"enabled\":false}}"
 stalwart-cli apply --file "$work/account.ndjson" >/dev/null 2>&1 || { echo "the second apply failed" >&2; exit 1; }
 check "a second apply keeps runtime aliases, the disabled one disabled" "$(aliases)" \
   "0=postmaster:true 1=abuse:true 2=shop.k2mq7x4p:true 3=gone.a7b3c5d2:false"
@@ -126,16 +131,19 @@ deliver shop.k2mq7x4p@rig.test "to the shop alias"
 check "the delivered copy's Delivered-To names the alias" "$(delivered_to "to the shop alias")" "shop.k2mq7x4p@rig.test"
 
 echo "== disabling and re-enabling"
-patch_aliases '{"aliases/2/enabled":false}' || { echo "disabling failed" >&2; exit 1; }
+patch_aliases '{"aliases/2/enabled":false}'
 check "a disabled alias is refused at once, with no restart" "$(rcpt shop.k2mq7x4p@rig.test)" 550
-patch_aliases '{"aliases/2/enabled":true}' || { echo "re-enabling failed" >&2; exit 1; }
+patch_aliases '{"aliases/2/enabled":true}'
 check "and taken again once re-enabled" "$(rcpt shop.k2mq7x4p@rig.test)" 250
+check "disabling a key past the end is refused rather than creating a half alias" \
+  "$( (patch_aliases '{"aliases/9/enabled":false}') 2>/dev/null && echo applied || echo refused)" refused
+check "and nothing was added" "$(aliases)" "0=postmaster:true 1=abuse:true 2=shop.k2mq7x4p:true 3=gone.a7b3c5d2:false"
 
-echo "== the catch-all verify.sh refuses"
-check "a domain the plan made has no catch-all" "$(STALWART_CLI=stalwart-cli catch_all_address rig.test)" ""
+echo "== the catch-all verify.sh warns about"
+check "a freshly bootstrapped domain has no catch-all" "$(catch_all_address rig.test)" ""
 stalwart-cli update Domain "$domain_id" --json '{"catchAllAddress":"mailuser@rig.test"}' >/dev/null 2>&1
-check "one set by hand is seen" "$(STALWART_CLI=stalwart-cli catch_all_address rig.test)" "mailuser@rig.test"
-patch_aliases '{"aliases/2/enabled":false}' || { echo "disabling failed" >&2; exit 1; }
+check "one set by hand is seen" "$(catch_all_address rig.test)" "mailuser@rig.test"
+patch_aliases '{"aliases/2/enabled":false}'
 check "and it takes mail for a disabled alias" "$(rcpt shop.k2mq7x4p@rig.test)" 250
 
 exit "$fail"
