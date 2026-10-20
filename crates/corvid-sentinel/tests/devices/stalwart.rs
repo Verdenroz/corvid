@@ -56,7 +56,7 @@ enum NextSet {
     HangAfter,
     /// Applies, then a wipe takes every alias past abuse.
     Wipe,
-    /// Refused as a name another account holds is.
+    /// Refused the way a name another account holds is refused.
     Refuse,
 }
 
