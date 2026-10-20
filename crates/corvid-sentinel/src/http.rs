@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::persisted::Persisted;
 use crate::state::{Notice, NoticeKind, Seen, save};
-use crate::{auth, dates, devices, handle, notice, parse, scribe, update, verify, watch};
+use crate::{aliases, auth, dates, devices, handle, notice, parse, scribe, update, verify, watch};
 
 pub struct Config {
     pub secret: Vec<u8>,
@@ -24,6 +24,7 @@ pub struct Config {
     pub devices: Option<devices::Config>,
     pub auth: Option<auth::Config>,
     pub scribe: Option<scribe::Config>,
+    pub aliases: Option<aliases::Config>,
 }
 
 pub(crate) struct AppState {
@@ -66,6 +67,10 @@ pub fn build(config: Config) -> (Router, impl Future<Output = ()> + Send + 'stat
     let router = router.merge(match config.scribe {
         Some(scribe) => scribe::routes(scribe, courier),
         None => scribe::off(),
+    });
+    let router = router.merge(match config.aliases {
+        Some(aliases) => aliases::routes(aliases),
+        None => aliases::off(),
     });
     (router, watcher)
 }
@@ -188,6 +193,7 @@ mod tests {
             devices: None,
             auth: None,
             scribe: None,
+            aliases: None,
         });
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         format!("http://{addr}/webhook")

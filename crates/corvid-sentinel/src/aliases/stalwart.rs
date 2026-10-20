@@ -181,7 +181,7 @@ fn string(value: &Value, field: &str) -> Result<String, Error> {
         .ok_or_else(|| Error::Failed(format!("the account has no {field}")))
 }
 
-/// The aliases map in key order. Its keys are list positions, so they run 0, 1, 2 with no gaps.
+/// The aliases map in key order. A writer checks the keys run 0, 1, 2 before it trusts a position.
 fn aliases(map: &Value) -> Result<Vec<Alias>, Error> {
     let mut list = Vec::new();
     for (key, alias) in map.as_object().into_iter().flatten() {
@@ -196,4 +196,26 @@ fn aliases(map: &Value) -> Result<Vec<Alias>, Error> {
     }
     list.sort_by_key(|alias| alias.index);
     Ok(list)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_alias_with_no_enabled_field_is_enabled() {
+        let list = aliases(&json!({"0": {"name": "postmaster", "domainId": "d"}})).unwrap();
+
+        assert!(list[0].enabled);
+    }
+
+    #[test]
+    fn the_aliases_come_back_in_numeric_key_order() {
+        let list = aliases(&json!({"10": {"name": "b"}, "9": {"name": "a"}})).unwrap();
+
+        assert_eq!(
+            list.iter().map(|alias| alias.index).collect::<Vec<_>>(),
+            [9, 10]
+        );
+    }
 }

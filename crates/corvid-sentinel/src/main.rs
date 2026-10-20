@@ -5,7 +5,7 @@ use std::time::Duration;
 use std::sync::Arc;
 
 use corvid_config::{issuer_url, or_exit, secret, section};
-use corvid_sentinel::{Config, auth, build, devices, now_secs, open, scribe};
+use corvid_sentinel::{Config, aliases, auth, build, devices, now_secs, open, scribe};
 use tokio::net::TcpListener;
 use tokio::signal;
 
@@ -13,6 +13,7 @@ use tokio::signal;
 const UPDATE_DIR: &str = "/var/lib/corvid-update";
 const UPDATE_POLL: Duration = Duration::from_secs(60);
 const DIGEST_POLL: Duration = Duration::from_secs(60);
+const STALWART_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -58,6 +59,10 @@ async fn main() -> ExitCode {
     let scribe = settings
         .scribe
         .map(|scribe| scribe_config(scribe, devices.is_some()));
+    let aliases = devices
+        .as_ref()
+        .zip(auth.as_ref())
+        .map(|(devices, auth)| alias_config(devices, auth));
     let (app, watcher) = build(Config {
         secret: hmac_secret.into_bytes(),
         state_path: settings.state,
@@ -67,6 +72,7 @@ async fn main() -> ExitCode {
         devices,
         auth,
         scribe,
+        aliases,
     });
 
     tokio::spawn(watcher);
@@ -99,6 +105,26 @@ fn scribe_config(settings: corvid_config::Scribe, devices: bool) -> scribe::Conf
             poll: DIGEST_POLL,
             clock: Arc::new(now_secs),
         }),
+    }
+}
+
+/// Aliases take the device settings' Stalwart key and the passkey issuer, so they need no setting
+/// of their own, and an image that knows no alias key reads the same config.
+fn alias_config(devices: &devices::Config, auth: &auth::Config) -> aliases::Config {
+    let state_path = devices.state_path.with_file_name("aliases.json");
+    let ledger = aliases::state::open(&state_path).unwrap_or_else(|error| {
+        tracing::error!(%error, state = %state_path.display(), "refusing to start");
+        std::process::exit(1);
+    });
+    aliases::Config {
+        state_path,
+        ledger,
+        stalwart_url: devices.stalwart_url.clone(),
+        stalwart_token: devices.stalwart_token.clone(),
+        mail_address: devices.mail_address.clone(),
+        admin_user: devices.admin_user.clone(),
+        issuer: auth.issuer.clone(),
+        timeout: STALWART_TIMEOUT,
     }
 }
 

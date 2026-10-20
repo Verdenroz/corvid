@@ -33,6 +33,7 @@ fn sentinel(dir: &Path) -> String {
                         scribe: scribe::Scribe::default(),
                         digest: None,
                     }),
+                    aliases: None,
                 });
                 tokio::spawn(watcher);
                 axum::serve(listener, app).await.unwrap();

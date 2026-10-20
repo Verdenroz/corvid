@@ -53,6 +53,7 @@ struct Mail {
 struct Aliases {
     list: Vec<Value>,
     held: Vec<String>,
+    gap: Option<usize>,
 }
 
 impl Default for Aliases {
@@ -63,6 +64,7 @@ impl Default for Aliases {
                 json!({"name": "abuse", "domainId": MAIL_DOMAIN, "enabled": true}),
             ],
             held: Vec::new(),
+            gap: None,
         }
     }
 }
@@ -151,6 +153,11 @@ impl Stalwart {
     /// What a deploy of a plan that sets `aliases` wholesale leaves behind.
     pub fn wipe_aliases(&self) {
         self.shared.aliases.lock().unwrap().list.truncate(2);
+    }
+
+    /// Moves the alias at `index` to a key one past the end, leaving a gap in the keys.
+    pub fn gap_alias(&self, index: usize) {
+        self.shared.aliases.lock().unwrap().gap = Some(index);
     }
 
     /// Drops the alias at `index`, which moves every later alias down one, as Stalwart does.
@@ -351,7 +358,14 @@ fn get_accounts(shared: &Shared, arguments: &Value) -> Value {
                     .list
                     .iter()
                     .enumerate()
-                    .map(|(index, alias)| (index.to_string(), alias.clone()))
+                    .map(|(index, alias)| {
+                        let key = if aliases.gap == Some(index) {
+                            index + 1
+                        } else {
+                            index
+                        };
+                        (key.to_string(), alias.clone())
+                    })
                     .collect();
                 account["domainId"] = json!(MAIL_DOMAIN);
                 account["aliases"] = Value::Object(map);
