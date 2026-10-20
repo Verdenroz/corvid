@@ -20,7 +20,7 @@ use std::sync::Arc;
 use axum::Json;
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode, header};
 use axum::routing::any;
 
 use crate::dates;
@@ -87,6 +87,33 @@ pub(crate) fn master_status(refusal: MasterRefusal) -> StatusCode {
         }
         MasterRefusal::NotMaster => StatusCode::FORBIDDEN,
     }
+}
+
+/// Accepts an admin token for `admin` in `X-Corvid-Master`, which is spent by this one request.
+pub(crate) fn require_master(
+    issuer: &Issuer,
+    headers: &HeaderMap,
+    admin: &str,
+) -> Result<(), StatusCode> {
+    let token = headers
+        .get("X-Corvid-Master")
+        .and_then(|value| value.to_str().ok())
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+    issuer
+        .verify_master(token, admin, dates::now_secs())
+        .map_err(master_status)
+}
+
+/// The claims of the mail token in `Authorization: Bearer`, or a bare 401.
+pub(crate) fn daily_claims(issuer: &Issuer, headers: &HeaderMap) -> Result<Claims, StatusCode> {
+    let token = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+    issuer
+        .verify(token, Audience::Daily, dates::now_secs())
+        .map_err(|_| StatusCode::UNAUTHORIZED)
 }
 
 /// Runs a state change off the async threads, since it writes the state file.

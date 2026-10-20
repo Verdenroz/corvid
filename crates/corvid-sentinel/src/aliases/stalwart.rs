@@ -75,20 +75,14 @@ impl Aliases {
 
     /// The account, its domain and its aliases in list order.
     pub async fn read(&self) -> Result<(Target, Vec<Alias>), Error> {
-        let result = self.fetch().await;
-        if result.is_err() {
-            self.forget();
-        }
-        result
+        self.fetch().await.inspect_err(|_| self.forget())
     }
 
     /// Applies `patch` to the account, keyed by JSON pointers such as `aliases/2/enabled`.
     pub async fn patch(&self, target: &Target, patch: Map<String, Value>) -> Result<(), Error> {
-        let result = self.update(target, patch).await;
-        if result.is_err() {
-            self.forget();
-        }
-        result
+        self.update(target, patch)
+            .await
+            .inspect_err(|_| self.forget())
     }
 
     fn forget(&self) {
@@ -102,32 +96,28 @@ impl Aliases {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .clone();
-        let found = match &remembered {
-            Some(target) => {
-                let answers = self
-                    .send(&[(
-                        "x:Account/get",
-                        json!({"ids": [target.account], "properties": properties}),
-                    )])
-                    .await?;
-                checked("x:Account/get", &answers[0])?["list"].clone()
-            }
+        let calls = match &remembered {
+            Some(target) => vec![(
+                "x:Account/get",
+                json!({"ids": [target.account], "properties": properties}),
+            )],
             None => {
                 let local = self.mail_address.split('@').next().unwrap_or_default();
-                let answers = self
-                    .send(&[
-                        ("x:Account/query", json!({"filter": {"name": local}})),
-                        (
-                            "x:Account/get",
-                            json!({"properties": properties,
-                                   "#ids": back("c0", "x:Account/query", "/ids")}),
-                        ),
-                    ])
-                    .await?;
-                checked("x:Account/get", &answers[1])?["list"].clone()
+                vec![
+                    ("x:Account/query", json!({"filter": {"name": local}})),
+                    (
+                        "x:Account/get",
+                        json!({"properties": properties,
+                               "#ids": back("c0", "x:Account/query", "/ids")}),
+                    ),
+                ]
             }
         };
-        let account = found
+        let answers = self.send(&calls).await?;
+        let got = answers
+            .last()
+            .ok_or_else(|| Error::Failed("Stalwart answered no method call".to_owned()))?;
+        let account = checked("x:Account/get", got)?["list"]
             .as_array()
             .into_iter()
             .flatten()

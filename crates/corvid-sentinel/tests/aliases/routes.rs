@@ -20,6 +20,7 @@ struct Rig {
     issuer: Arc<Issuer>,
     stalwart: Stalwart,
     dir: tempfile::TempDir,
+    timeout: Duration,
 }
 
 async fn rig() -> Rig {
@@ -36,7 +37,13 @@ async fn rig_with(ledger: Ledger, timeout: Duration) -> Rig {
         issuer,
         stalwart,
         dir,
+        timeout,
     }
+}
+
+/// A rig whose Stalwart client gives up after 300 ms.
+async fn rig_timing_out() -> Rig {
+    rig_with(Ledger::default(), Duration::from_millis(300)).await
 }
 
 async fn serve(
@@ -76,7 +83,7 @@ impl Rig {
             &self.issuer,
             &self.stalwart,
             ledger,
-            Duration::from_secs(5),
+            self.timeout,
         )
         .await;
     }
@@ -134,6 +141,22 @@ impl Rig {
         request.send().await.unwrap()
     }
 
+    async fn disable(&self, name: &str) -> reqwest::Response {
+        self.switch(name, "disable", Some(&self.master())).await
+    }
+
+    async fn enable(&self, name: &str) -> reqwest::Response {
+        self.switch(name, "enable", Some(&self.master())).await
+    }
+
+    fn names(&self) -> Vec<String> {
+        self.stalwart
+            .aliases()
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect()
+    }
+
     fn enabled(&self, name: &str) -> Vec<bool> {
         self.stalwart
             .aliases()
@@ -151,7 +174,6 @@ fn recent(count: usize) -> Ledger {
                 (
                     format!("old{n}.abcdefgh"),
                     Entry {
-                        label: format!("old{n}"),
                         created_at: now_secs() - 60,
                         disabled_at: None,
                     },
@@ -199,12 +221,7 @@ async fn two_concurrent_creates_both_land() {
 
     assert_eq!(first.status(), StatusCode::CREATED);
     assert_eq!(second.status(), StatusCode::CREATED);
-    let names: Vec<String> = rig
-        .stalwart
-        .aliases()
-        .into_iter()
-        .map(|(name, _)| name)
-        .collect();
+    let names = rig.names();
     assert_eq!(names.len(), 4);
     assert!(names[2..].iter().all(|name| minted(name)), "{names:?}");
     assert_ne!(names[2], names[3]);
@@ -226,7 +243,7 @@ async fn disabling_turns_off_every_entry_holding_the_name() {
     let name = rig.created("shop").await;
     rig.stalwart.add_alias(&name, true);
 
-    let response = rig.switch(&name, "disable", Some(&rig.master())).await;
+    let response = rig.disable(&name).await;
 
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(rig.enabled(&name), vec![false, false]);
@@ -238,9 +255,9 @@ async fn disabling_turns_off_every_entry_holding_the_name() {
 async fn a_disabled_alias_can_be_enabled_again() {
     let rig = rig().await;
     let name = rig.created("shop").await;
-    rig.switch(&name, "disable", Some(&rig.master())).await;
+    rig.disable(&name).await;
 
-    let response = rig.switch(&name, "enable", Some(&rig.master())).await;
+    let response = rig.enable(&name).await;
 
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(rig.enabled(&name), vec![true]);
@@ -252,7 +269,7 @@ async fn postmaster_and_abuse_cannot_be_disabled() {
     let rig = rig().await;
 
     for name in ["postmaster", "abuse"] {
-        let response = rig.switch(name, "disable", Some(&rig.master())).await;
+        let response = rig.disable(name).await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND, "{name}");
     }
     assert_eq!(rig.enabled("postmaster"), vec![true]);
@@ -262,9 +279,7 @@ async fn postmaster_and_abuse_cannot_be_disabled() {
 async fn a_minted_name_the_account_does_not_hold_is_not_found() {
     let rig = rig().await;
 
-    let response = rig
-        .switch("shop.abcdefgh", "disable", Some(&rig.master()))
-        .await;
+    let response = rig.disable("shop.abcdefgh").await;
 
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
@@ -338,7 +353,7 @@ async fn an_admin_token_is_good_for_one_switch_only() {
 
 #[tokio::test]
 async fn a_stalwart_that_never_answers_is_a_bad_gateway_within_the_timeout() {
-    let rig = rig_with(Ledger::default(), Duration::from_millis(300)).await;
+    let rig = rig_timing_out().await;
     rig.stalwart.hang();
     let started = Instant::now();
 
@@ -399,9 +414,7 @@ async fn enabling_past_four_hundred_enabled_aliases_is_too_many() {
         rig.stalwart.add_alias(&format!("x{n}.abcdefgh"), true);
     }
 
-    let response = rig
-        .switch("off.abcdefgh", "enable", Some(&rig.master()))
-        .await;
+    let response = rig.enable("off.abcdefgh").await;
 
     assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
     assert_eq!(rig.enabled("off.abcdefgh"), vec![false]);
@@ -495,8 +508,8 @@ async fn a_refused_name_is_minted_again_and_leaves_one_alias_and_one_record() {
 
 #[tokio::test]
 async fn a_patch_that_lands_and_then_times_out_is_created() {
-    let rig = rig_with(Ledger::default(), Duration::from_millis(300)).await;
-    rig.stalwart.hang_next_set(true);
+    let rig = rig_timing_out().await;
+    rig.stalwart.hang_after_next_set();
 
     let response = rig.create("shop").await;
 
@@ -511,8 +524,8 @@ async fn a_patch_that_lands_and_then_times_out_is_created() {
 
 #[tokio::test]
 async fn a_patch_that_times_out_without_landing_leaves_no_record() {
-    let rig = rig_with(Ledger::default(), Duration::from_millis(300)).await;
-    rig.stalwart.hang_next_set(false);
+    let rig = rig_timing_out().await;
+    rig.stalwart.hang_before_next_set();
 
     let response = rig.create("shop").await;
 
@@ -541,7 +554,7 @@ async fn a_switch_whose_read_back_finds_no_entry_is_a_bad_gateway() {
     let name = rig.created("shop").await;
     rig.stalwart.wipe_after_next_set();
 
-    let response = rig.switch(&name, "disable", Some(&rig.master())).await;
+    let response = rig.disable(&name).await;
 
     assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
 }

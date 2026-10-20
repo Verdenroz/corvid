@@ -4,7 +4,7 @@
 pub mod stalwart;
 pub mod state;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -12,12 +12,12 @@ use std::time::Duration;
 use axum::Json;
 use axum::Router;
 use axum::extract::{DefaultBodyLimit, Path, State};
-use axum::http::{HeaderMap, StatusCode, header};
+use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
-use crate::auth::{Audience, Issuer, master_status};
+use crate::auth::{Issuer, daily_claims, require_master};
 use crate::dates;
 use crate::http::{Off, off_json};
 use crate::persisted::Persisted;
@@ -106,30 +106,10 @@ pub fn off() -> Router {
 /// a passkey session of the mail user themselves. The 401 carries no `WWW-Authenticate`, which
 /// would sign the app out.
 fn require_daily(state: &AliasState, headers: &HeaderMap) -> Result<(), StatusCode> {
-    let token = headers
-        .get(header::AUTHORIZATION)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.strip_prefix("Bearer "))
-        .ok_or(StatusCode::UNAUTHORIZED)?;
-    let claims = state
-        .issuer
-        .verify(token, Audience::Daily, dates::now_secs())
-        .map_err(|_| StatusCode::UNAUTHORIZED)?;
-    if claims.preferred_username != state.mail_user {
+    if daily_claims(&state.issuer, headers)?.preferred_username != state.mail_user {
         return Err(StatusCode::UNAUTHORIZED);
     }
     Ok(())
-}
-
-fn require_master(state: &AliasState, headers: &HeaderMap) -> Result<(), StatusCode> {
-    let token = headers
-        .get("X-Corvid-Master")
-        .and_then(|value| value.to_str().ok())
-        .ok_or(StatusCode::UNAUTHORIZED)?;
-    state
-        .issuer
-        .verify_master(token, &state.admin_user, dates::now_secs())
-        .map_err(master_status)
 }
 
 fn gateway(error: &Error) -> StatusCode {
@@ -167,14 +147,14 @@ async fn read_for_write(state: &AliasState) -> Result<(Target, Vec<Alias>), Stat
 
 /// Distinct minted names, and those with any enabled entry.
 fn counts(aliases: &[Alias]) -> (usize, usize) {
-    let minted: Vec<&Alias> = aliases.iter().filter(|alias| minted(&alias.name)).collect();
-    let all: BTreeSet<&str> = minted.iter().map(|alias| alias.name.as_str()).collect();
-    let enabled: BTreeSet<&str> = minted
-        .iter()
-        .filter(|alias| alias.enabled)
-        .map(|alias| alias.name.as_str())
-        .collect();
-    (all.len(), enabled.len())
+    let mut names: BTreeMap<&str, bool> = BTreeMap::new();
+    for alias in aliases.iter().filter(|alias| minted(&alias.name)) {
+        *names.entry(&alias.name).or_default() |= alias.enabled;
+    }
+    (
+        names.len(),
+        names.values().filter(|&&enabled| enabled).count(),
+    )
 }
 
 async fn commit<T: Send + 'static>(
@@ -182,6 +162,18 @@ async fn commit<T: Send + 'static>(
     change: impl FnOnce(&Ledger) -> (Option<Ledger>, T) + Send + 'static,
 ) -> Result<T, StatusCode> {
     Persisted::commit_blocking(state.clone(), |state| &state.ledger, "alias", change).await
+}
+
+async fn edit(
+    state: &Shared,
+    change: impl FnOnce(&mut BTreeMap<String, Entry>) + Send + 'static,
+) -> Result<(), StatusCode> {
+    commit(state, move |ledger| {
+        let mut next = ledger.clone();
+        change(&mut next.aliases);
+        (Some(next), ())
+    })
+    .await
 }
 
 #[derive(Serialize)]
@@ -200,14 +192,10 @@ impl AliasState {
         View {
             name: name.to_owned(),
             address: format!("{name}@{}", self.domain),
-            label: entry.map_or_else(
-                || {
-                    name.rsplit_once('.')
-                        .map_or(name, |(label, _)| label)
-                        .to_owned()
-                },
-                |entry| entry.label.clone(),
-            ),
+            label: name
+                .rsplit_once('.')
+                .map_or(name, |(label, _)| label)
+                .to_owned(),
             enabled,
             created_at: entry.map(|entry| dates::rfc3339(entry.created_at)),
             missing,
@@ -222,29 +210,25 @@ async fn list(
 ) -> Result<Json<Vec<View>>, StatusCode> {
     require_daily(&state, &headers)?;
     let (_, aliases) = read(&state).await?;
-    let ledger = state.ledger.read(Ledger::clone);
-    let mut names: Vec<&str> = Vec::new();
-    for alias in aliases.iter().filter(|alias| minted(&alias.name)) {
-        if !names.contains(&alias.name.as_str()) {
-            names.push(&alias.name);
-        }
-    }
-    let mut views: Vec<View> = names
-        .iter()
-        .map(|name| {
-            let enabled = aliases
-                .iter()
-                .any(|alias| alias.name == *name && alias.enabled);
-            state.view(name, ledger.aliases.get(*name), enabled, false)
-        })
-        .collect();
-    views.extend(
-        ledger
-            .aliases
+    let views = state.ledger.read(|ledger| {
+        let mut seen = BTreeSet::new();
+        let mut views: Vec<View> = aliases
             .iter()
-            .filter(|(name, _)| !names.contains(&name.as_str()))
-            .map(|(name, entry)| state.view(name, Some(entry), false, true)),
-    );
+            .filter(|alias| minted(&alias.name) && seen.insert(alias.name.as_str()))
+            .map(|alias| {
+                let entry = ledger.aliases.get(&alias.name);
+                state.view(&alias.name, entry, holds(&aliases, &alias.name), false)
+            })
+            .collect();
+        views.extend(
+            ledger
+                .aliases
+                .iter()
+                .filter(|(name, _)| !seen.contains(name.as_str()))
+                .map(|(name, entry)| state.view(name, Some(entry), false, true)),
+        );
+        views
+    });
     Ok(Json(views))
 }
 
@@ -278,10 +262,8 @@ fn holds(aliases: &[Alias], name: &str) -> bool {
 }
 
 async fn forget(state: &Shared, name: String) -> Result<(), StatusCode> {
-    commit(state, move |ledger| {
-        let mut next = ledger.clone();
-        next.aliases.remove(&name);
-        (Some(next), ())
+    edit(state, move |aliases| {
+        aliases.remove(&name);
     })
     .await
 }
@@ -304,15 +286,12 @@ async fn mint_alias(state: Shared, label: String) -> Result<(StatusCode, Json<Vi
             continue;
         }
         let entry = Entry {
-            label: label.clone(),
             created_at: now,
             disabled_at: None,
         };
-        let intent = (name.clone(), entry.clone());
-        commit(&state, move |ledger| {
-            let mut next = ledger.clone();
-            next.aliases.insert(intent.0, intent.1);
-            (Some(next), ())
+        let intent = name.clone();
+        edit(&state, move |aliases| {
+            aliases.insert(intent, entry);
         })
         .await?;
         let patch: Map<String, Value> = [(
@@ -412,7 +391,7 @@ async fn switch(
     if enabled && !was_enabled && counts(&aliases).1 >= MAX_ENABLED {
         return Err(StatusCode::TOO_MANY_REQUESTS);
     }
-    require_master(&state, &headers)?;
+    require_master(&state.issuer, &headers, &state.admin_user)?;
     let patch: Map<String, Value> = held
         .iter()
         .map(|alias| (format!("aliases/{}/enabled", alias.index), json!(enabled)))
@@ -439,9 +418,9 @@ async fn switch(
         let mut next = ledger.clone();
         let entry = Entry {
             disabled_at: (!enabled).then_some(entry.disabled_at.unwrap_or(now)),
-            ..entry.clone()
+            ..*entry
         };
-        next.aliases.insert(changed, entry.clone());
+        next.aliases.insert(changed, entry);
         (Some(next), Some(entry))
     })
     .await?;

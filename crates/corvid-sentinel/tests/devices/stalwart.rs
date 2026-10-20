@@ -49,6 +49,21 @@ struct Mail {
     state: u64,
 }
 
+/// What becomes of the next request that carries an `x:Account/set`.
+#[derive(Clone, Copy, PartialEq)]
+enum NextSet {
+    HangBefore,
+    HangAfter,
+    /// Applies, then a wipe takes every alias past abuse.
+    Wipe,
+    /// Refused as a name another account holds is.
+    Refuse,
+}
+
+fn refusal() -> Value {
+    json!({"type": "invalidPatch", "description": "update failed"})
+}
+
 /// The mail account's `aliases`, in list order, and the names other accounts hold.
 struct Aliases {
     list: Vec<Value>,
@@ -76,10 +91,7 @@ struct Shared {
     aliases: Arc<Mutex<Aliases>>,
     refuse_creates: Arc<AtomicBool>,
     hang: Arc<AtomicBool>,
-    /// The next `x:Account/set` hangs before it applies (1) or after (2), or applies and then
-    /// loses every alias past abuse (3).
-    hang_set: Arc<AtomicU64>,
-    refuse_set: Arc<AtomicBool>,
+    next_set: Arc<Mutex<Option<NextSet>>>,
     busy: Arc<AtomicU64>,
     calls: Arc<AtomicU64>,
 }
@@ -92,8 +104,7 @@ impl Stalwart {
             aliases: Arc::default(),
             refuse_creates: Arc::default(),
             hang: Arc::default(),
-            hang_set: Arc::default(),
-            refuse_set: Arc::default(),
+            next_set: Arc::default(),
             busy: Arc::default(),
             calls: Arc::default(),
         };
@@ -124,21 +135,28 @@ impl Stalwart {
         self.shared.hang.store(true, Ordering::SeqCst);
     }
 
-    /// The next `x:Account/set` waits an hour, applied first when `applied` and not at all otherwise.
-    pub fn hang_next_set(&self, applied: bool) {
-        self.shared
-            .hang_set
-            .store(if applied { 2 } else { 1 }, Ordering::SeqCst);
+    /// The next `x:Account/set` waits an hour without applying.
+    pub fn hang_before_next_set(&self) {
+        self.next_set(NextSet::HangBefore);
+    }
+
+    /// The next `x:Account/set` applies, then waits an hour before it answers.
+    pub fn hang_after_next_set(&self) {
+        self.next_set(NextSet::HangAfter);
     }
 
     /// The next `x:Account/set` applies, then a wipe takes every alias past abuse.
     pub fn wipe_after_next_set(&self) {
-        self.shared.hang_set.store(3, Ordering::SeqCst);
+        self.next_set(NextSet::Wipe);
     }
 
     /// The next `x:Account/set` is refused, as a name another account holds is.
     pub fn refuse_next_set(&self) {
-        self.shared.refuse_set.store(true, Ordering::SeqCst);
+        self.next_set(NextSet::Refuse);
+    }
+
+    fn next_set(&self, next: NextSet) {
+        *self.shared.next_set.lock().unwrap() = Some(next);
     }
 
     /// The next `count` JMAP requests are answered 429.
@@ -305,12 +323,12 @@ async fn jmap(
         .unwrap()
         .iter()
         .any(|call| call[0] == "x:Account/set");
-    let hang_set = if sets {
-        shared.hang_set.swap(0, Ordering::SeqCst)
+    let next = if sets {
+        shared.next_set.lock().unwrap().take()
     } else {
-        0
+        None
     };
-    if hang_set == 1 {
+    if next == Some(NextSet::HangBefore) {
         tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
     }
     let mut responses: Vec<Value> = Vec::new();
@@ -322,7 +340,7 @@ async fn jmap(
         let answer = match method.as_str().unwrap() {
             "x:Account/query" => query_account(&arguments),
             "x:Account/get" => get_accounts(&shared, &arguments),
-            "x:Account/set" => set_account(&shared, &arguments),
+            "x:Account/set" => set_account(&shared, &arguments, next == Some(NextSet::Refuse)),
             "FileNode/query" => query_nodes(&shared, &arguments),
             "FileNode/get" => get_nodes(&shared, &arguments),
             "FileNode/set" => set_nodes(&shared, &arguments),
@@ -340,9 +358,9 @@ async fn jmap(
         };
         responses.push(json!([method, answer, id]));
     }
-    match hang_set {
-        2 => tokio::time::sleep(std::time::Duration::from_secs(3600)).await,
-        3 => shared.aliases.lock().unwrap().list.truncate(2),
+    match next {
+        Some(NextSet::HangAfter) => tokio::time::sleep(std::time::Duration::from_secs(3600)).await,
+        Some(NextSet::Wipe) => shared.aliases.lock().unwrap().list.truncate(2),
         _ => {}
     }
     Ok(Json(json!({"methodResponses": responses})))
@@ -419,7 +437,7 @@ fn get_accounts(shared: &Shared, arguments: &Value) -> Value {
 
 /// Patches the mail account's aliases by position: a key past the end appends, an existing key
 /// is overwritten, and a pointer into a missing key's field fails, as on Stalwart.
-fn set_account(shared: &Shared, arguments: &Value) -> Value {
+fn set_account(shared: &Shared, arguments: &Value, refuse: bool) -> Value {
     let mut answer = json!({"updated": {}, "notUpdated": {}});
     for (id, patch) in arguments["update"].as_object().into_iter().flatten() {
         assert_eq!(
@@ -428,10 +446,7 @@ fn set_account(shared: &Shared, arguments: &Value) -> Value {
         );
         let mut aliases = shared.aliases.lock().unwrap();
         let mut list = aliases.list.clone();
-        let mut refusal = shared
-            .refuse_set
-            .swap(false, Ordering::SeqCst)
-            .then(|| json!({"type": "invalidPatch", "description": "update failed"}));
+        let mut refused = refuse.then(refusal);
         for (pointer, value) in patch.as_object().unwrap() {
             let path: Vec<&str> = pointer.split('/').collect();
             let index: usize = path[1].parse().unwrap();
@@ -442,8 +457,7 @@ fn set_account(shared: &Shared, arguments: &Value) -> Value {
                         .iter()
                         .any(|held| value["name"] == held.as_str())
                     {
-                        refusal =
-                            Some(json!({"type": "invalidPatch", "description": "update failed"}));
+                        refused = Some(refusal());
                     } else if index < list.len() {
                         list[index] = value.clone();
                     } else {
@@ -452,13 +466,13 @@ fn set_account(shared: &Shared, arguments: &Value) -> Value {
                 }
                 ["aliases", _, field] if index < list.len() => list[index][field] = value.clone(),
                 ["aliases", _, _] => {
-                    refusal = Some(json!({"type": "validationFailed",
+                    refused = Some(json!({"type": "validationFailed",
                                           "description": "Required name, domainId"}));
                 }
                 _ => panic!("unexpected patch {pointer}"),
             }
         }
-        match refusal {
+        match refused {
             Some(refusal) => answer["notUpdated"][id] = refusal,
             None => {
                 aliases.list = list;

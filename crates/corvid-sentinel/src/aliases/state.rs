@@ -9,10 +9,9 @@ const SCHEMA: u32 = 1;
 
 /// What Stalwart does not keep about an alias. An entry is written before the alias exists on the
 /// server, so one with no alias there is an alias a create or a wipe lost.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Entry {
-    pub label: String,
     pub created_at: i64,
     pub disabled_at: Option<i64>,
 }
@@ -33,7 +32,6 @@ impl Ledger {
 }
 
 corvid_store::pin_shape!(Entry {
-    label,
     created_at,
     disabled_at
 });
@@ -59,7 +57,6 @@ mod tests {
         ledger.aliases.insert(
             "shop.abcdefgh".to_owned(),
             Entry {
-                label: "shop".to_owned(),
                 created_at: 100,
                 disabled_at: Some(200),
             },
@@ -83,7 +80,6 @@ mod tests {
     #[test]
     fn only_entries_created_after_the_cutoff_count_as_recent() {
         let entry = |created_at| Entry {
-            label: "x".to_owned(),
             created_at,
             disabled_at: None,
         };

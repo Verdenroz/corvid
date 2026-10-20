@@ -14,7 +14,7 @@ use sha2::{Digest, Sha256};
 use super::limits::Pending;
 use super::state::{Auth, Credential, Family, Purpose};
 use super::webauthn::{AssertionResponse, Refusal, RegistrationResponse};
-use super::{Audience, Shared, codes, commit, notify};
+use super::{Audience, Shared, codes, commit, daily_claims, notify};
 use crate::webpush::random_bytes;
 use crate::{dates, update};
 
@@ -512,15 +512,7 @@ async fn userinfo(
     State(state): State<Shared>,
     headers: HeaderMap,
 ) -> Result<Json<Value>, StatusCode> {
-    let token = headers
-        .get("Authorization")
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.strip_prefix("Bearer "))
-        .ok_or(StatusCode::UNAUTHORIZED)?;
-    let claims = state
-        .issuer
-        .verify(token, Audience::Daily, dates::now_secs())
-        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+    let claims = daily_claims(&state.issuer, &headers)?;
     Ok(Json(
         json!({"sub": claims.sub, "preferred_username": claims.preferred_username}),
     ))
