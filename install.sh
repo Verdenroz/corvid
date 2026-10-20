@@ -68,6 +68,8 @@ on_host() {
   if [[ "$login" == root ]]; then ssh "${ssh_opts[@]}" "$host" "$@"
   else ssh "${ssh_opts[@]}" "$host" "sudo -n bash -c $(printf '%q' "$*")"; fi
 }
+# lib.sh is bash, and root's login shell on the host need not be.
+on_host_bash() { on_host "bash -c $(printf '%q' "$1")"; }
 # Pipes one of the deploy/ scripts to the server and runs it there with ARGS.
 run_on_host() { local script="$1"; shift; on_host "bash -s -- $*" < "$HERE/deploy/$script"; }
 interactive() { [[ -t 0 ]]; }
@@ -562,7 +564,7 @@ esac
 
 # Stalwart names its keys v1-TYPE-DATE and never deletes one it has replaced, so every reinstall
 # leaves a pair behind. Only records in that form that Stalwart no longer holds are removed.
-current_dkim="$(on_host 'set -a; . /opt/corvid/corvid.env; set +a; stalwart-cli query DkimSignature --json' |
+current_dkim="$(on_host_bash '. /opt/corvid/deploy/lib.sh; load_env /opt/corvid/corvid.env; stalwart-cli query DkimSignature --json' |
   grep -o '"selector":"[^"]*"' | cut -d'"' -f4)" || true
 if [[ -n "$current_dkim" ]]; then
   stale_dkim=()
@@ -590,7 +592,7 @@ if [[ -n "$password" ]]; then
 fi
 
 step "waiting for certificates (Let's Encrypt, up to 10 minutes)"
-on_host 'set -a; . /opt/corvid/corvid.env; set +a; for _ in $(seq 1 60); do n=$(stalwart-cli query Certificate 2>/dev/null | awk "NR>1" | wc -l); [ "$n" -gt 0 ] && { echo "  $n certificate(s) issued"; exit 0; }; sleep 10; done; echo "  none yet; Stalwart keeps retrying, and the checks below report it"'
+on_host_bash '. /opt/corvid/deploy/lib.sh; load_env /opt/corvid/corvid.env; for _ in $(seq 1 60); do n=$(stalwart-cli query Certificate 2>/dev/null | awk "NR>1" | wc -l); [ "$n" -gt 0 ] && { echo "  $n certificate(s) issued"; exit 0; }; sleep 10; done; echo "  none yet; Stalwart keeps retrying, and the checks below report it"'
 
 step "verifying"
 verified=0
