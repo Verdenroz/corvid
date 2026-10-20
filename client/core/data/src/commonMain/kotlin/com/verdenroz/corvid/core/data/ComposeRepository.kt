@@ -209,16 +209,13 @@ class ComposeRepository(
                 .associate { it["role"]?.jsonPrimitive?.contentOrNull to it.getValue("id").jsonPrimitive.content }
         val draftsId = roles[DRAFTS] ?: return Loaded.Unavailable(SendUnavailable.NoMailbox(DRAFTS))
         val sentId = roles[SENT] ?: return Loaded.Unavailable(SendUnavailable.NoMailbox(SENT))
-        return Loaded.Ready(identity, identities.map { it.email.lowercase() }.toSet(), draftsId, sentId)
+        return Loaded.Ready(identity, identities.map { it.email }.toSet(), draftsId, sentId)
     }
 }
 
-/** The identity for the account's own address; an alias is never the sender. [accountName] is a full address or a bare local part. */
+/** The identity for the account's own address, which the session names in full; an alias is never the sender. */
 internal fun List<Identity>.mainIdentity(accountName: String?): Identity? =
-    accountName?.let { name ->
-        firstOrNull { it.email.equals(name, ignoreCase = true) }
-            ?: if ('@' in name) null else firstOrNull { it.email.substringBefore('@').equals(name, ignoreCase = true) }
-    }
+    accountName?.let { name -> firstOrNull { it.email.equals(name, ignoreCase = true) } }
 
 internal fun JsonObject.toIdentity() =
     Identity(

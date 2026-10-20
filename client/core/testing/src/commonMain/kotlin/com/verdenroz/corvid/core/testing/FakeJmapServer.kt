@@ -84,6 +84,9 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
     /** The core capability's `maxSizeUpload`, left out of the session while null. */
     var maxSizeUpload: Long? = null
 
+    /** The session's name for the account, which Stalwart gives as the account's full address. */
+    var accountName: String = SENDABLE_ACCOUNT_EMAIL
+
     /** Omits the session's `state`, to exercise adopting a call's sessionState instead of refetching. */
     var omitSessionState: Boolean = false
 
@@ -664,7 +667,7 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
                 put("username", "")
             } else {
                 putJsonObject("accounts") {
-                    putJsonObject(ACCOUNT_ID) { put("name", "verde") }
+                    putJsonObject(ACCOUNT_ID) { put("name", accountName) }
                     putJsonObject(devices.keysAccountId) {
                         put("name", "corvid-keys")
                         put("isPersonal", false)
@@ -672,7 +675,7 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
                     }
                 }
                 putJsonObject("primaryAccounts") { put(MAIL_CAPABILITY, ACCOUNT_ID) }
-                put("username", "verde")
+                put("username", accountName)
             }
             for (
             (key, value) in

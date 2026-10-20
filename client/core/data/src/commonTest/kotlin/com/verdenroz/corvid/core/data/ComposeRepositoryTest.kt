@@ -239,10 +239,10 @@ class ComposeRepositoryTest {
     fun `a send uses the main identity when aliases are listed before it`() =
         runTest {
             val fake = server()
-            fake.identities.clear()
-            fake.identities += FakeIdentity(id = "i0", email = "postmaster@example.test")
-            fake.identities += FakeIdentity(id = "i9", email = "Shop@example.test")
-            fake.identities += FakeIdentity(id = "i1", email = OWN)
+            fake.identities.addAll(
+                0,
+                listOf(FakeIdentity(id = "i0", email = "postmaster@example.test"), FakeIdentity(id = "i9", email = "Shop@example.test")),
+            )
             val (_, compose) = repositories(fake)
 
             compose.sendNew(Draft(to = listOf(EmailAddress(null, "dan@example.test")), body = "hello"))

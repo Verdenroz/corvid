@@ -16,7 +16,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
-private const val OWN = "verde@corvid.test"
+private const val OWN = "me@corvid.test"
 
 private class RecordingNewMailNotifier : NewMailNotifier {
     val shown = mutableListOf<Pair<String, String>>()
@@ -64,6 +64,7 @@ private suspend fun mailRig(): MailRig {
     val fake = FakeJmapServer()
     fake.withRoleMailboxes(INBOX, ARCHIVE)
     fake.identities += FakeIdentity(id = "i1", email = OWN)
+    fake.accountName = OWN
     val notifier = RecordingNewMailNotifier()
     val newMail = NewMail(MailboxRepository(fake.client())::inboxArrivals, notifier, KeyedTextResolver)
     return MailRig(fake, notifier, newMail)
