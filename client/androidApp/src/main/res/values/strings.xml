@@ -10,5 +10,6 @@
     <string name="connection_text">Waiting for new mail</string>
     <string name="new_mail_no_subject">(no subject)</string>
     <string name="new_mail_no_sender">Unknown sender</string>
-    <string name="install_unprompted">Android stopped the install without asking you. On a Samsung phone, turn off Auto Blocker under Security and privacy.</string>
+    <string name="install_unprompted">Android stopped the install without asking you. A setting that only allows apps from an app store is probably on, such as Auto Blocker on Samsung phones or Advanced Protection.</string>
+    <string name="install_aborted">The update was not installed. If you did not cancel it, a setting that only allows apps from an app store may be on, such as Auto Blocker on Samsung phones or Advanced Protection.</string>
 </resources>

@@ -10,7 +10,7 @@ class InstallStatusTest {
         status: Int,
         message: String?,
         prompted: Boolean = true,
-    ) = installResult(status, message, prompted, unprompted = "Blocked.")
+    ) = installResult(status, message, prompted, unprompted = "Blocked.", aborted = "Not installed.")
 
     @Test
     fun `a successful install starts the new build`() {
@@ -18,8 +18,8 @@ class InstallStatusTest {
     }
 
     @Test
-    fun `an abort after the system asked the user is a cancellation`() {
-        assertEquals(InstallResult.Cancelled, result(PackageInstaller.STATUS_FAILURE_ABORTED, "INSTALL_FAILED_ABORTED"))
+    fun `an abort after the system asked the user is a failure that also covers a declined prompt`() {
+        assertEquals(InstallResult.Failed("Not installed."), result(PackageInstaller.STATUS_FAILURE_ABORTED, "INSTALL_FAILED_ABORTED"))
     }
 
     @Test

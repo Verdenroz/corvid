@@ -7,9 +7,6 @@ sealed interface InstallResult {
     /** The platform installed the build or took over. */
     data object Started : InstallResult
 
-    /** The user declined the platform's confirmation. */
-    data object Cancelled : InstallResult
-
     /** The user has not yet let this app install builds; see [AppInstaller.allowInstalls]. */
     data object NeedsPermission : InstallResult
 

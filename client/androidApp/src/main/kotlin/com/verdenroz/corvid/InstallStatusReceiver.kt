@@ -47,7 +47,13 @@ class InstallStatusReceiver : BroadcastReceiver() {
         val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
         InstallSessions.finish(
             id,
-            installResult(status, message, InstallSessions.prompted(id), context.getString(R.string.install_unprompted)),
+            installResult(
+                status,
+                message,
+                InstallSessions.prompted(id),
+                unprompted = context.getString(R.string.install_unprompted),
+                aborted = context.getString(R.string.install_aborted),
+            ),
         )
     }
 }
