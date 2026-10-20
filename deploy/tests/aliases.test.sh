@@ -3,38 +3,61 @@
 # does to aliases added at runtime: a second apply keeps them, enabled or not, and leaves
 # postmaster and abuse at keys 0 and 1. Over SMTP, a disabled alias is refused at RCPT and a
 # re-enabled one accepted, and a delivered copy's Delivered-To names the alias it came to.
-# A catch-all, which verify.sh warns about, is shown to take mail for a disabled alias.
-# Needs stalwart-cli, curl, python3, envsubst and docker or podman; port 8080 must be free.
+# Then, with the real sentinel as the passkey directory, an alias minted through its routes takes
+# mail at once, comes first in Delivered-To ahead of one the sender forged, and is refused once an
+# admin token disables it. A catch-all, which verify.sh warns about, is shown to take mail for a
+# disabled alias. The sentinel and the authenticator are built with cargo unless
+# CORVID_SENTINEL_BIN and CORVID_SOFT_BIN name them. Needs stalwart-cli, curl, python3, envsubst
+# and docker or podman; port 8080 must be free.
 set -uo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 engine="$(command -v podman || command -v docker)"
 mail_image="$(awk -F= '$1=="Image"{print $2}' "$here/corvid-mail.container")"
 mail_port="${CORVID_RIG_MAIL_PORT:-18080}"
 smtp_port="${CORVID_RIG_SMTP_PORT:-18125}"
+sentinel_port="${CORVID_RIG_SENTINEL_PORT:-18333}"
 recovery_pw=RigRecovery-93kQxz7pW
+sentinel_secret=rig-sentinel-secret-0123456789
+app_sha256=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff
 work="$(mktemp -d)"
 mail="corvid-rig-aliases-$$"
 volumes=("$mail-etc" "$mail-data")
-trap '"$engine" rm -f "$mail" >/dev/null 2>&1; "$engine" volume rm "${volumes[@]}" >/dev/null 2>&1; rm -rf "$work"' EXIT
+sentinel_pid=
+trap '"$engine" rm -f "$mail" >/dev/null 2>&1; "$engine" volume rm "${volumes[@]}" >/dev/null 2>&1; [[ -z "$sentinel_pid" ]] || kill "$sentinel_pid" 2>/dev/null; rm -rf "$work"' EXIT
 
 command -v stalwart-cli >/dev/null || { echo "stalwart-cli not found" >&2; exit 69; }
 command -v envsubst >/dev/null || { echo "envsubst not found" >&2; exit 69; }
-for port in 8080 "$mail_port" "$smtp_port"; do
+for port in 8080 "$mail_port" "$smtp_port" "$sentinel_port"; do
   ! (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null || { echo "port $port is in use" >&2; exit 69; }
 done
+
+build() {
+  (cd "$here/.." && cargo build -p corvid-sentinel --locked --quiet "$@") || { echo "cargo build $* failed" >&2; exit 1; }
+}
+sentinel_bin="${CORVID_SENTINEL_BIN:-}"
+if [[ -z "$sentinel_bin" ]]; then
+  build
+  sentinel_bin="${CARGO_TARGET_DIR:-$here/../target}/debug/corvid-sentinel"
+fi
+soft_bin="${CORVID_SOFT_BIN:-}"
+if [[ -z "$soft_bin" ]]; then
+  build --example soft-authenticator --features soft-authenticator
+  soft_bin="${CARGO_TARGET_DIR:-$here/../target}/debug/examples/soft-authenticator"
+fi
 
 "$engine" run -d --name "$mail" --network host -e STALWART_RECOVERY_ADMIN="recovery:$recovery_pw" \
   -v "$mail-etc:/etc/stalwart" -v "$mail-data:/var/lib/stalwart" "$mail_image" >/dev/null
 wait_for() { for _ in $(seq 1 60); do curl -sf -o /dev/null --max-time 2 "$1" && return 0; sleep 1; done; return 1; }
 wait_for http://127.0.0.1:8080/healthz/live || { echo "Stalwart never came up" >&2; exit 1; }
 
-cat > "$work/shell" <<'SH'
+cat > "$work/shell" <<SH
 #!/bin/sh
-printf 'MAIL_DOMAIN=rig.test\nMAIL_HOSTNAME=mail.rig.test\nMAIL_USER=mailuser\nACME_CONTACT=ops@rig.test\nWEB_PORT=4443\n'
+printf 'MAIL_DOMAIN=rig.test\nMAIL_HOSTNAME=mail.rig.test\nMAIL_USER=mailuser\nACME_CONTACT=ops@rig.test\nWEB_PORT=4443\nSENTINEL_URL=http://127.0.0.1:$sentinel_port\nISSUER_URL=http://127.0.0.1:$sentinel_port/internal/issuer\n'
 SH
 chmod +x "$work/shell"
 export CORVID_DIR="$work"; . "$here/lib.sh"
 printf 'STALWART_URL=http://127.0.0.1:8080\nRECOVERY_ADMIN_USER=recovery\nRECOVERY_ADMIN_PASSWORD=%s\n' "$recovery_pw" > "$work/corvid.env"
+printf 'CORVID_SENTINEL_SECRET=%s\n' "$sentinel_secret" > "$work/sentinel-webhook.env"
 CORVID_DIR="$work" CORVID_ENV="$work/corvid.env" CORVID_CONFIG_CMD="$work/shell" \
   bash "$here/bootstrap-server.sh" >/dev/null || { echo "bootstrap-server.sh failed" >&2; exit 1; }
 load_env "$work/corvid.env"
@@ -84,17 +107,18 @@ with smtplib.SMTP("127.0.0.1", int(port)) as s:
     s.rset(); s.quit()
 PY
 }
+# Sends one message to TO; a third argument is a header line the sender adds.
 deliver() {
-  python3 -I - "$smtp_port" "$1" "$2" <<'PY'
+  python3 -I - "$smtp_port" "$1" "$2" "${3:-}" <<'PY'
 import smtplib, sys
-port, to, subject = sys.argv[1:]
-msg = (f"From: Ada Lovelace <ada@outside.test>\r\nTo: {to}\r\nSubject: {subject}\r\n"
+port, to, subject, extra = sys.argv[1:]
+msg = (f"{extra + chr(13) + chr(10) if extra else ''}From: Ada Lovelace <ada@outside.test>\r\nTo: {to}\r\nSubject: {subject}\r\n"
        f"Message-ID: <{subject.replace(' ', '-')}@outside.test>\r\nDate: Sat, 10 Oct 2026 12:00:00 +0000\r\n\r\nhello\r\n")
 with smtplib.SMTP("127.0.0.1", int(port)) as s:
     s.ehlo("outside.test"); s.sendmail("ada@outside.test", [to], msg); s.quit()
 PY
 }
-# The first Delivered-To of the message with this subject, once it has arrived.
+# Every Delivered-To of the message with this subject, in header order, once it has arrived.
 delivered_to() {
   local request header
   request="$(python3 -I -c '
@@ -108,7 +132,7 @@ print(json.dumps({"using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:m
     header="$(jmap_call "$account" <<<"$request" | python3 -c '
 import json, sys
 emails = json.load(sys.stdin)["methodResponses"][1][1]["list"]
-print(emails[0]["header:Delivered-To:asText:all"][0] if emails else "")')"
+print(" ".join(emails[0]["header:Delivered-To:asText:all"]) if emails else "")')"
     [[ -n "$header" ]] && { echo "$header"; return; }
     sleep 0.5
   done
@@ -138,6 +162,63 @@ check "and taken again once re-enabled" "$(rcpt shop.k2mq7x4p@rig.test)" 250
 check "disabling a key past the end is refused rather than creating a half alias" \
   "$( (patch_aliases '{"aliases/9/enabled":false}') 2>/dev/null && echo applied || echo refused)" refused
 check "and nothing was added" "$(aliases)" "0=postmaster:true 1=abuse:true 2=shop.k2mq7x4p:true 3=gone.a7b3c5d2:false"
+
+echo "== the sentinel's alias routes, under the passkey directory"
+android_origin="android:apk-key-hash:$(python3 -c '
+import base64, sys
+print(base64.urlsafe_b64encode(bytes.fromhex(sys.argv[1])).decode().rstrip("="))' "$app_sha256")"
+cat > "$work/sentinel.yaml" <<YAML
+server:
+  domain: rig.test
+  hostname: mail.rig.test
+  mail_user: mailuser
+  acme_contact: ops@rig.test
+  android_apps:
+    - {package: org.rig.corvid, sha256: $app_sha256}
+sentinel:
+  bind: 127.0.0.1:$sentinel_port
+  state: $work/sentinel.json
+  auth: {state: $work/auth.json}
+  devices: {state: $work/devices.json, stalwart_url: "$STALWART_URL"}
+YAML
+CORVID_CONFIG="$work/sentinel.yaml" CORVID_SENTINEL_SECRET="$sentinel_secret" CORVID_STALWART_TOKEN="$STALWART_TOKEN" \
+  "$sentinel_bin" >> "$work/sentinel.log" 2>&1 &
+sentinel_pid=$!
+wait_for "http://127.0.0.1:$sentinel_port/internal/issuer/.well-known/openid-configuration" ||
+  { cat "$work/sentinel.log" >&2; echo "the sentinel never came up" >&2; exit 1; }
+json() { python3 -c 'import json,sys; print(json.load(sys.stdin)[sys.argv[1]])' "$1"; }
+soft() { "$soft_bin" "$work/first.state" "http://127.0.0.1:$sentinel_port" rig.test "$android_origin" "$@" 2>/dev/null; }
+code="$(CORVID_HOST_NET=1 CORVID_ENV="$work/corvid.env" CORVID_CONFIG_CMD="$work/shell" bash "$here/passkey.sh" code 2>/dev/null)" ||
+  { echo "no setup code" >&2; exit 1; }
+soft enroll "$code" >/dev/null || { echo "the passkey did not enroll" >&2; exit 1; }
+ISSUER_URL="http://127.0.0.1:$sentinel_port/internal/issuer" MAIL_DOMAIN=rig.test \
+  envsubst '${MAIL_DOMAIN} ${ISSUER_URL}' < "$here/auth.plan.ndjson" | stalwart-cli apply --stdin >/dev/null 2>&1 ||
+  { echo "the passkey directory did not apply" >&2; exit 1; }
+"$engine" restart "$mail" >/dev/null
+wait_for "$STALWART_URL/healthz/live" || { echo "Stalwart never restarted" >&2; exit 1; }
+daily="$(soft login sign-in | json access_token)"
+# A call to an alias route as the passkey session: prints the status, the body goes to $work/reply.
+alias_route() { curl -s -o "$work/reply" -w '%{http_code}' -H "Authorization: Bearer $daily" "$@"; }
+check "a passkey session reaches Stalwart through the sentinel's directory" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $daily" "$STALWART_URL/jmap/session")" 200
+check "the sentinel mints an alias" "$(alias_route -H 'content-type: application/json' -d '{"label":"News"}' \
+  "http://127.0.0.1:$sentinel_port/corvid/aliases")" 201
+minted="$(json name < "$work/reply")"
+check "named after the label with an eight-character tag" "$(grep -cE '^news\.[a-z2-7]{8}$' <<<"$minted")" 1
+check "appended after the aliases already on the account" "$(aliases)" \
+  "0=postmaster:true 1=abuse:true 2=shop.k2mq7x4p:true 3=gone.a7b3c5d2:false 4=$minted:true"
+check "it takes mail at once" "$(rcpt "$minted@rig.test")" 250
+deliver "$minted@rig.test" "to the minted alias" "Delivered-To: forged@rig.test"
+check "Stalwart's Delivered-To names the alias ahead of the one the sender forged" \
+  "$(delivered_to "to the minted alias")" "$minted@rig.test forged@rig.test"
+switch="http://127.0.0.1:$sentinel_port/corvid/aliases/$minted/disable"
+check "disabling it without an admin token is refused" "$(alias_route -X POST "$switch")" 401
+check "and it still takes mail" "$(rcpt "$minted@rig.test")" 250
+admin="$(soft login approve | json access_token)"
+check "disabling it with a fresh admin token is accepted" "$(alias_route -X POST -H "X-Corvid-Master: $admin" "$switch")" 200
+check "and it is refused at RCPT at once" "$(rcpt "$minted@rig.test")" 550
+check "the sentinel lists it disabled" "$(alias_route "http://127.0.0.1:$sentinel_port/corvid/aliases" >/dev/null;
+  python3 -c 'import json,sys; print([a["enabled"] for a in json.load(sys.stdin) if a["name"] == sys.argv[1]])' "$minted" < "$work/reply")" "[False]"
 
 echo "== the catch-all verify.sh warns about"
 check "a freshly bootstrapped domain has no catch-all" "$(catch_all_address rig.test)" ""
