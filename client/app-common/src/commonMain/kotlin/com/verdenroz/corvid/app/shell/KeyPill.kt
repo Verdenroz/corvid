@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -17,12 +18,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.appcommon.resources.Res
 import com.verdenroz.corvid.appcommon.resources.key_countdown
 import com.verdenroz.corvid.appcommon.resources.key_lock_now
 import com.verdenroz.corvid.appcommon.resources.key_status
+import com.verdenroz.corvid.appcommon.resources.key_status_spoken
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.PillButton
@@ -67,14 +71,17 @@ internal fun KeyPill(key: KeyState) {
 @Composable
 internal fun KeyRingButton(key: KeyState) {
     val remaining = key.remaining() ?: return
+    val status = stringResource(Res.string.key_status_spoken, key.host, countdown(remaining))
     Box(
         contentAlignment = Alignment.Center,
         modifier =
             Modifier
+                .minimumInteractiveComponentSize()
                 .size(40.dp)
                 .focusRing(CircleShape)
                 .clip(CircleShape)
-                .clickable(onClickLabel = stringResource(Res.string.key_lock_now), role = Role.Button, onClick = key.onLock),
+                .clickable(onClickLabel = stringResource(Res.string.key_lock_now), role = Role.Button, onClick = key.onLock)
+                .semantics { contentDescription = status },
     ) { KeyRing(fraction(remaining, key.timeout)) }
 }
 

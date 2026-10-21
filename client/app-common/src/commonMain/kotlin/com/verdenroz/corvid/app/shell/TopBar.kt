@@ -16,14 +16,16 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.appcommon.resources.Res
 import com.verdenroz.corvid.appcommon.resources.app_name
@@ -32,6 +34,7 @@ import com.verdenroz.corvid.appcommon.resources.search_placeholder
 import com.verdenroz.corvid.appcommon.resources.settings_open
 import com.verdenroz.corvid.appcommon.resources.sidebar_toggle
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.component.ActionIcon
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.CorvidMark
 import com.verdenroz.corvid.core.designsystem.focusRing
@@ -78,7 +81,7 @@ internal fun WideTopBar(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.widthIn(min = 212.dp),
             ) {
-                IconAction(CorvidIcons.Menu, stringResource(Res.string.sidebar_toggle), 40.dp, onToggleSidebar)
+                ActionIcon(stringResource(Res.string.sidebar_toggle), CorvidIcons.Menu, onToggleSidebar, iconSize = 24.dp)
                 Wordmark()
             }
             Box(Modifier.weight(1f)) {
@@ -107,7 +110,7 @@ internal fun NarrowTopBar(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 10.dp, top = 4.dp, bottom = 6.dp),
         ) {
-            IconAction(CorvidIcons.Menu, stringResource(Res.string.drawer_open), 48.dp, onMenu)
+            ActionIcon(stringResource(Res.string.drawer_open), CorvidIcons.Menu, onMenu, iconSize = 24.dp)
             Text(
                 title,
                 style = CorvidTheme.type.title,
@@ -116,26 +119,11 @@ internal fun NarrowTopBar(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f).padding(start = 4.dp, end = 8.dp),
             )
-            IconAction(CorvidIcons.Search, stringResource(Res.string.search_placeholder), 40.dp, onSearch)
+            ActionIcon(stringResource(Res.string.search_placeholder), CorvidIcons.Search, onSearch, iconSize = 24.dp)
             KeyRingButton(key)
             AccountAvatar(identity, onOpenSettings)
         }
         KeyStatusLine(key)
-    }
-}
-
-@Composable
-private fun IconAction(
-    icon: ImageVector,
-    label: String,
-    size: Dp,
-    onClick: () -> Unit,
-) {
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier = Modifier.size(size).clip(CircleShape).clickable(onClickLabel = label, role = Role.Button, onClick = onClick),
-    ) {
-        Icon(icon, contentDescription = null, tint = CorvidTheme.colors.inkMuted)
     }
 }
 
@@ -145,20 +133,28 @@ private fun AccountAvatar(
     onClick: () -> Unit,
 ) {
     val colors = CorvidTheme.colors
+    val label = stringResource(Res.string.settings_open)
     Box(
         contentAlignment = Alignment.Center,
         modifier =
             Modifier
+                .minimumInteractiveComponentSize()
                 .size(36.dp)
                 .focusRing(CircleShape)
                 .clip(CircleShape)
                 .border(1.5.dp, colors.outline, CircleShape)
-                .clickable(onClickLabel = stringResource(Res.string.settings_open), role = Role.Button, onClick = onClick),
+                .clickable(role = Role.Button, onClick = onClick)
+                .semantics { contentDescription = label },
     ) {
         if (identity == null) {
             Icon(CorvidIcons.Person, contentDescription = null, tint = colors.inkMuted, modifier = Modifier.size(18.dp))
         } else {
-            Text(initials(identity.name.ifBlank { identity.email }), style = CorvidTheme.type.action, color = colors.ink)
+            Text(
+                initials(identity.name.ifBlank { identity.email }),
+                style = CorvidTheme.type.action,
+                color = colors.ink,
+                modifier = Modifier.clearAndSetSemantics {},
+            )
         }
     }
 }

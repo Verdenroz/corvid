@@ -41,12 +41,14 @@ import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.app.HomeTab
 import com.verdenroz.corvid.app.Route
 import com.verdenroz.corvid.appcommon.resources.Res
+import com.verdenroz.corvid.appcommon.resources.place_unread
 import com.verdenroz.corvid.appcommon.resources.settings_open
 import com.verdenroz.corvid.appcommon.resources.tab_filters
 import com.verdenroz.corvid.appcommon.resources.write
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
+import com.verdenroz.corvid.core.designsystem.component.LabelTooltip
 import com.verdenroz.corvid.core.designsystem.component.drawIndicator
 import com.verdenroz.corvid.core.designsystem.focusRing
 import org.jetbrains.compose.resources.stringResource
@@ -201,39 +203,49 @@ private fun Item(
     val colors = CorvidTheme.colors
     val ink = if (selected) colors.ink else colors.inkMuted
     val shown = count?.takeIf { it > 0 }
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .height(rowHeight)
-                .focusRing(CorvidShape.small)
-                .clip(CorvidShape.small)
-                .clickable(role = Role.Tab, onClick = onClick)
-                .semantics {
-                    this.selected = selected
-                    if (!expanded) contentDescription = title
-                }.drawBehind { if (selected) drawIndicator(colors.accent, centerX = (ICON_START + ICON_SIZE / 2).toPx()) }
-                .padding(start = ICON_START, end = 10.dp),
-    ) {
-        Box {
-            Icon(icon, contentDescription = null, tint = ink, modifier = Modifier.size(ICON_SIZE))
-            if (!expanded && shown != null) {
-                Box(Modifier.align(Alignment.TopEnd).offset(x = 3.dp, y = (-2).dp).size(6.dp).clip(CorvidShape.pill).background(colors.ink))
+    val railLabel = shown?.let { stringResource(Res.string.place_unread, title, it) } ?: title
+    LabelTooltip(title, beside = true, enabled = !expanded) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(rowHeight)
+                    .focusRing(CorvidShape.small)
+                    .clip(CorvidShape.small)
+                    .clickable(role = Role.Tab, onClick = onClick)
+                    .semantics {
+                        this.selected = selected
+                        if (!expanded) contentDescription = railLabel
+                    }.drawBehind { if (selected) drawIndicator(colors.accent, centerX = (ICON_START + ICON_SIZE / 2).toPx()) }
+                    .padding(start = ICON_START, end = 10.dp),
+        ) {
+            Box {
+                Icon(icon, contentDescription = null, tint = ink, modifier = Modifier.size(ICON_SIZE))
+                if (!expanded && shown != null) {
+                    Box(
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .offset(x = 3.dp, y = (-2).dp)
+                            .size(6.dp)
+                            .clip(CorvidShape.pill)
+                            .background(colors.ink),
+                    )
+                }
             }
-        }
-        if (expanded) {
-            Text(
-                title,
-                style = CorvidTheme.type.name,
-                fontWeight = if (selected || shown != null) FontWeight.Bold else FontWeight.Normal,
-                color = ink,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            shown?.let { Text(it.toString(), style = CorvidTheme.type.metaNumeric, color = ink) }
+            if (expanded) {
+                Text(
+                    title,
+                    style = CorvidTheme.type.name,
+                    fontWeight = if (selected || shown != null) FontWeight.Bold else FontWeight.Normal,
+                    color = ink,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                shown?.let { Text(it.toString(), style = CorvidTheme.type.metaNumeric, color = ink) }
+            }
         }
     }
 }

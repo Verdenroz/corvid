@@ -35,8 +35,8 @@ internal fun NoticeBannerBar(
         text = text,
         onDismiss = onDismiss,
         modifier =
-            Modifier.focusRing(
-                RectangleShape,
-            ).clickable(onClickLabel = stringResource(Res.string.notices_open), role = Role.Button, onClick = onOpen),
+            Modifier
+                .focusRing(RectangleShape)
+                .clickable(onClickLabel = stringResource(Res.string.notices_open), role = Role.Button, onClick = onOpen),
     )
 }

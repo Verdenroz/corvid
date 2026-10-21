@@ -8,12 +8,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.semantics.SemanticsActions
-import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
@@ -63,8 +62,7 @@ class NavDrawerTest {
     @AfterTest
     fun clear() = ledgers.clear()
 
-    private val menu =
-        SemanticsMatcher("opens the drawer") { it.config.getOrNull(SemanticsActions.OnClick)?.label == "Open folders" }
+    private val menu = hasContentDescription("Open folders") and hasClickAction()
 
     private fun narrowHome(
         open: Boolean = true,

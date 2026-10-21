@@ -43,6 +43,7 @@
     <string name="app_update_corrupt">The download did not match what the server lists. Nothing was installed.</string>
     <string name="app_update_no_build">This server has no build for this device.</string>
     <string name="key_status">· key held · locks in %1$s</string>
+    <string name="key_status_spoken">%1$s, key held, locks in %2$s</string>
     <string name="key_countdown">%1$s:%2$s</string>
     <string name="key_lock_now">Lock now</string>
     <string name="tab_inbox">Inbox</string>
@@ -56,6 +57,7 @@
     <string name="tab_trash">Trash</string>
     <string name="sidebar_toggle">Show or hide folder names</string>
     <string name="drawer_open">Open folders</string>
+    <string name="place_unread">%1$s, %2$d unread</string>
     <string name="tab_labels">Labels</string>
     <string name="tab_filters">Filters</string>
     <string name="write">Write</string>
