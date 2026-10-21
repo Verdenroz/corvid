@@ -173,15 +173,19 @@ class LedgerViewModel(
         return id?.let { MailFilter.InMailbox(it, threaded = tab != LedgerTab.Drafts) }
     }
 
-    private suspend fun loadPage(anchor: String?) {
+    /** [scrolling] holds across a fallback to the top, so a failure there is still the scroll's. */
+    private suspend fun loadPage(
+        anchor: String?,
+        scrolling: Boolean = anchor != null,
+    ) {
         val current = filter ?: return
         try {
             when (val page = repository.page(current, anchor)) {
-                is EmailPage.AnchorNotFound -> loadPage(anchor = null)
+                is EmailPage.AnchorNotFound -> loadPage(anchor = null, scrolling)
                 is EmailPage.Found -> {
                     val staleAnchor = anchor != null && queryState != null && page.queryState != queryState
                     if (staleAnchor) {
-                        loadPage(anchor = null)
+                        loadPage(anchor = null, scrolling)
                         return
                     }
                     conversations = if (anchor == null) page.conversations else conversations + page.conversations
@@ -200,7 +204,7 @@ class LedgerViewModel(
             }
         } catch (e: JmapException) {
             if (_state.value is LedgerUiState.Loaded && conversations.isNotEmpty()) {
-                if (anchor == null) refreshFailed = e.userMessage() else moreFailed = e.userMessage()
+                if (scrolling) moreFailed = e.userMessage() else refreshFailed = e.userMessage()
                 publish()
             } else {
                 _state.value = LedgerUiState.Failed(e.userMessage())

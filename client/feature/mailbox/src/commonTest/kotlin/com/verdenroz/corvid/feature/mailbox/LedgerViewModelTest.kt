@@ -254,6 +254,28 @@ class LedgerViewModelTest {
         }
 
     @Test
+    fun `a scroll that restarts from the top and fails there reports the scroll, not a refresh`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
+            repeat(EMAIL_COUNT) { i ->
+                val receivedAt = Instant.fromEpochSeconds((1000 - i).toLong()).toString()
+                fake.emails += FakeEmail("e$i", "e$i", setOf("inbox"), "subject $i", "s$i@x.test", receivedAt)
+            }
+            var queries = 0
+            fake.beforeEmailQuery = { if (++queries == 2) fake.apiProblem = "urn:ietf:params:jmap:error:limit" }
+            val vm = track(LedgerViewModel(repository(fake), LedgerTab.Inbox))
+            vm.state.first { it is LedgerUiState.Loaded }
+
+            fake.queryState = "qs2"
+            vm.loadMore()
+            val kept = vm.state.first { it is LedgerUiState.Loaded && it.moreFailed != null } as LedgerUiState.Loaded
+            assertEquals(2, queries)
+            assertEquals(50, kept.conversations.size)
+            assertNull(kept.refreshFailed)
+        }
+
+    @Test
     fun `a refresh that fails keeps the rows already loaded and says so`() =
         runViewModelTest {
             val fake = FakeJmapServer()
