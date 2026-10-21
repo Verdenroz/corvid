@@ -126,9 +126,13 @@ private fun SetUp(
 
     val canSetUp = !working && code.isNotBlank()
     StatePane(stringResource(Res.string.signin_set_up_title), detail = stringResource(Res.string.signin_set_up_detail)) {
-        CorvidTextField(code, { code = it }, stringResource(Res.string.signin_set_up_code), Modifier.fillMaxWidth(), onSubmit = {
-            if (canSetUp) viewModel.setUp(account, code)
-        })
+        CorvidTextField(
+            code,
+            { code = it },
+            stringResource(Res.string.signin_set_up_code),
+            Modifier.fillMaxWidth(),
+            onSubmit = { if (canSetUp) viewModel.setUp(account, code) },
+        )
         failed?.let { Problem(it.message.asString()) }
         PrimaryButton(
             stringResource(setUpLabel(state)),
@@ -174,31 +178,25 @@ private fun AccountEntry(
         when {
             advanced -> {
                 val url = KeyboardOptions(keyboardType = KeyboardType.Uri)
-                val label = stringResource(Res.string.signin_server)
                 CorvidTextField(
                     server,
                     { server = it },
-                    label,
+                    stringResource(Res.string.signin_server),
                     Modifier.fillMaxWidth(),
                     url,
-                    onSubmit = {
-                        if (!signingIn) viewModel.signIn(server)
-                    },
+                    onSubmit = { if (!signingIn) viewModel.signIn(server) },
                 )
             }
             discovery != null -> Confirmation(discovery)
             else -> {
                 val keyboard = KeyboardOptions(keyboardType = KeyboardType.Email)
-                val label = stringResource(Res.string.signin_email)
                 CorvidTextField(
                     email,
                     { email = it },
-                    label,
+                    stringResource(Res.string.signin_email),
                     Modifier.fillMaxWidth(),
                     keyboard,
-                    onSubmit = {
-                        if (!discovering) viewModel.discover(email)
-                    },
+                    onSubmit = { if (!discovering) viewModel.discover(email) },
                 )
             }
         }

@@ -13,8 +13,8 @@ import org.jetbrains.compose.resources.stringResource
 
 /**
  * Shown when the server or the device key could not be reached. Nothing is wiped: only a confirmed Missing lookup
- * (RevokedPane) means the device actually lost access. A server that never answers as hoped, or the wrong account,
- * leaves [onSignOut] as the way out.
+ * (RevokedPane) means the device actually lost access. [onSignOut] is the way out when the server never comes back
+ * or the account is the wrong one.
  */
 @Composable
 fun UnreachablePane(

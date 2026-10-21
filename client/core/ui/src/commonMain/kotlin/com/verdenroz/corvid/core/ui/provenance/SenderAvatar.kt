@@ -44,7 +44,7 @@ private val SourceShape = RoundedCornerShape(percent = 30)
 /**
  * Circles are people, rounded squares are sources, and the squircle holding the Corvid mark is the
  * user's own server; the badge is the server's own verdict on the sender. With [onClick] the
- * avatar is a button named for the sender, and [onClickLabel] says what it opens.
+ * avatar is a button named for the sender.
  */
 @Composable
 fun SenderAvatar(
@@ -54,7 +54,6 @@ fun SenderAvatar(
     modifier: Modifier = Modifier,
     size: Dp = 36.dp,
     onClick: (() -> Unit)? = null,
-    onClickLabel: String? = null,
 ) {
     val colors = CorvidTheme.colors
     val source = sender as? SenderKind.Source
@@ -73,7 +72,7 @@ fun SenderAvatar(
                 .focusRing(shape)
                 .clip(shape)
                 .semantics { contentDescription = name }
-                .clickable(onClickLabel = onClickLabel, role = Role.Button, onClick = it)
+                .clickable(role = Role.Button, onClick = it)
         } ?: Modifier
     Box(modifier.then(if (onClick == null) Modifier else Modifier.minimumInteractiveComponentSize()).size(size)) {
         Box(

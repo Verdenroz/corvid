@@ -26,9 +26,13 @@ fun DeviceNamePrompt(onSubmit: (String) -> Unit) {
 
     val valid = DEVICE_NAME_PATTERN.matches(name)
     StatePane(stringResource(Res.string.device_name_title), detail = stringResource(Res.string.device_name_detail)) {
-        CorvidTextField(name, { name = it }, stringResource(Res.string.device_name_hint), Modifier.fillMaxWidth(), onSubmit = {
-            if (valid) onSubmit(name)
-        })
+        CorvidTextField(
+            name,
+            { name = it },
+            stringResource(Res.string.device_name_hint),
+            Modifier.fillMaxWidth(),
+            onSubmit = { if (valid) onSubmit(name) },
+        )
         PrimaryButton(stringResource(Res.string.device_name_continue), onClick = { onSubmit(name) }, enabled = valid)
     }
 }

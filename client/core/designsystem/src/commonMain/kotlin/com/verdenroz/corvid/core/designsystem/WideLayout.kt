@@ -19,7 +19,7 @@ val LocalWideLayout = compositionLocalOf { false }
 @ReadOnlyComposable
 fun touchTarget(): Dp = if (LocalWideLayout.current) 40.dp else 48.dp
 
-/** Provides [wide] as [LocalWideLayout] and sizes `minimumInteractiveComponentSize` by [touchTarget], so every control follows one rule. */
+/** Provides [wide] as [LocalWideLayout] and sizes `minimumInteractiveComponentSize` by [touchTarget]. */
 @Composable
 fun ProvideWideLayout(
     wide: Boolean,

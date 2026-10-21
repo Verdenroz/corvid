@@ -29,7 +29,7 @@ import com.verdenroz.corvid.core.designsystem.focusRing
 
 /**
  * A hairline pill, a step below the primary action and above a [QuietLink]. [height] is only what
- * is drawn: the layout keeps a 48dp touch target around it, so a short pill keeps its look.
+ * is drawn: the layout keeps a full touch target around it, so a short pill keeps its look.
  */
 @Composable
 fun PillButton(
