@@ -165,9 +165,9 @@ private fun WideRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         modifier =
-            Modifier.heightIn(
-                min = 64.dp,
-            ).padding(start = CorvidSpacing.gutter(wide = true), end = 16.dp, top = 6.dp, bottom = 6.dp),
+            Modifier
+                .heightIn(min = 64.dp)
+                .padding(start = CorvidSpacing.gutter(wide = true), end = 16.dp, top = 6.dp, bottom = 6.dp),
     ) {
         Time(conversation, zone, Modifier.width(58.dp))
         leading()

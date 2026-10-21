@@ -34,6 +34,7 @@ import com.verdenroz.corvid.appcommon.resources.sidebar_toggle
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.CorvidMark
+import com.verdenroz.corvid.core.designsystem.focusRing
 import com.verdenroz.corvid.core.model.Identity
 import com.verdenroz.corvid.core.ui.provenance.initials
 import kotlinx.coroutines.flow.StateFlow
@@ -149,6 +150,7 @@ private fun AccountAvatar(
         modifier =
             Modifier
                 .size(36.dp)
+                .focusRing(CircleShape)
                 .clip(CircleShape)
                 .border(1.5.dp, colors.outline, CircleShape)
                 .clickable(onClickLabel = stringResource(Res.string.settings_open), role = Role.Button, onClick = onClick),

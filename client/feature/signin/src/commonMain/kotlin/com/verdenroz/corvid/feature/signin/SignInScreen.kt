@@ -87,7 +87,6 @@ private fun RememberedSignIn(
 ) {
     val state by viewModel.state.collectAsState()
     val signingIn = state is SignInUiState.SigningIn
-    val discovering = state is SignInUiState.Discovering
     val failed = state as? SignInUiState.Failed
     StatePane(stringResource(Res.string.signin_title), detail = stringResource(Res.string.signin_remembered_detail)) {
         Text(
@@ -175,12 +174,11 @@ private fun AccountEntry(
         when {
             advanced -> {
                 val url = KeyboardOptions(keyboardType = KeyboardType.Uri)
+                val label = stringResource(Res.string.signin_server)
                 CorvidTextField(
                     server,
                     { server = it },
-                    stringResource(
-                        Res.string.signin_server,
-                    ),
+                    label,
                     Modifier.fillMaxWidth(),
                     url,
                     onSubmit = {
@@ -191,12 +189,11 @@ private fun AccountEntry(
             discovery != null -> Confirmation(discovery)
             else -> {
                 val keyboard = KeyboardOptions(keyboardType = KeyboardType.Email)
+                val label = stringResource(Res.string.signin_email)
                 CorvidTextField(
                     email,
                     { email = it },
-                    stringResource(
-                        Res.string.signin_email,
-                    ),
+                    label,
                     Modifier.fillMaxWidth(),
                     keyboard,
                     onSubmit = {

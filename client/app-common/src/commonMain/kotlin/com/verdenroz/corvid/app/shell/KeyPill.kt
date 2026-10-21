@@ -26,6 +26,7 @@ import com.verdenroz.corvid.appcommon.resources.key_status
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.PillButton
+import com.verdenroz.corvid.core.designsystem.focusRing
 import com.verdenroz.corvid.core.ui.provenance.KeyRing
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
@@ -71,6 +72,7 @@ internal fun KeyRingButton(key: KeyState) {
         modifier =
             Modifier
                 .size(40.dp)
+                .focusRing(CircleShape)
                 .clip(CircleShape)
                 .clickable(onClickLabel = stringResource(Res.string.key_lock_now), role = Role.Button, onClick = key.onLock),
     ) { KeyRing(fraction(remaining, key.timeout)) }

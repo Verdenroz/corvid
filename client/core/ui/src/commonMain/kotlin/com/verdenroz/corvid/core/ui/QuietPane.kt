@@ -18,8 +18,8 @@ import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.QuietLink
 import com.verdenroz.corvid.core.ui.resources.Res
-import com.verdenroz.corvid.core.ui.resources.pane_try_again
 import com.verdenroz.corvid.core.ui.resources.pane_waiting
+import com.verdenroz.corvid.core.ui.resources.try_again
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Duration.Companion.milliseconds
@@ -36,7 +36,7 @@ fun QuietPane(
     Box(modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
         Column(Modifier.widthIn(max = 420.dp)) {
             Text(text, style = CorvidTheme.type.body, color = CorvidTheme.colors.inkMuted)
-            onRetry?.let { QuietLink(stringResource(Res.string.pane_try_again), it) }
+            onRetry?.let { QuietLink(stringResource(Res.string.try_again), it) }
         }
     }
 }

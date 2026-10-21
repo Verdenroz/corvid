@@ -84,7 +84,6 @@ class LedgerViewModel(
     fun refresh(): Job? = if (_state.value is LedgerUiState.Loaded) reload() else null
 
     fun retry() {
-        if (_state.value !is LedgerUiState.Failed) return
         _state.value = LedgerUiState.Loading
         reload()
     }

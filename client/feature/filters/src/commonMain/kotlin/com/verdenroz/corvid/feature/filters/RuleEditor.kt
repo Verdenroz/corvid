@@ -46,9 +46,10 @@ internal fun RuleEditor(
 ) {
     Column(
         modifier =
-            Modifier.fillMaxSize().verticalScroll(
-                rememberScrollState(),
-            ).padding(horizontal = CorvidSpacing.gutter(LocalWideLayout.current), vertical = 16.dp),
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = CorvidSpacing.gutter(LocalWideLayout.current), vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         CorvidTextField(rule.name, { onChange(rule.copy(name = it)) }, stringResource(Res.string.filters_name), Modifier.fillMaxWidth())

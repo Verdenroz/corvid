@@ -6,8 +6,8 @@ import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.resources.Res
+import com.verdenroz.corvid.core.ui.resources.try_again
 import com.verdenroz.corvid.core.ui.resources.unreachable_detail
-import com.verdenroz.corvid.core.ui.resources.unreachable_retry
 import com.verdenroz.corvid.core.ui.resources.unreachable_title
 import org.jetbrains.compose.resources.stringResource
 
@@ -30,6 +30,6 @@ fun UnreachablePane(
         detail = stringResource(Res.string.unreachable_detail, reason.asString()),
         onSignOut = onSignOut,
     ) {
-        PillButton(stringResource(Res.string.unreachable_retry), null, onRetry)
+        PillButton(stringResource(Res.string.try_again), null, onRetry)
     }
 }

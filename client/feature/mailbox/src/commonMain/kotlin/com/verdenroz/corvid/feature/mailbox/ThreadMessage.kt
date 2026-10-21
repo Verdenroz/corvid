@@ -18,19 +18,23 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.Correction
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.data.stamp
+import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.ActionIcon
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.PillButton
+import com.verdenroz.corvid.core.designsystem.focusRing
 import com.verdenroz.corvid.core.model.Attachment
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.model.EmailAddress
@@ -238,7 +242,14 @@ private fun SenderLine(
         modifier = modifier.fillMaxWidth().padding(bottom = 16.dp),
     ) {
         val openLabel = stringResource(Res.string.card_open, email.from.displayName())
-        SenderAvatar(email.from.displayName(), email.provenance.sender, seal, onClick = open, onClickLabel = openLabel)
+        SenderAvatar(
+            email.from.displayName(),
+            email.provenance.sender,
+            seal,
+            // The name beside it is the one stop for this action, for a screen reader and for Tab alike.
+            Modifier.clearAndSetSemantics {}.focusProperties { canFocus = false },
+            onClick = open,
+        )
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
@@ -247,11 +258,9 @@ private fun SenderLine(
                         if (open == null) {
                             Modifier
                         } else {
-                            Modifier.clickable(
-                                onClickLabel = openLabel,
-                                role = Role.Button,
-                                onClick = open,
-                            )
+                            Modifier
+                                .focusRing(CorvidShape.small)
+                                .clickable(onClickLabel = openLabel, role = Role.Button, onClick = open)
                         },
                     style = CorvidTheme.type.name,
                     fontWeight = FontWeight.Bold,

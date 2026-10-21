@@ -3,6 +3,7 @@ package com.verdenroz.corvid.app.shell
 import androidx.compose.foundation.clickable
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -11,6 +12,7 @@ import androidx.compose.ui.text.withStyle
 import com.verdenroz.corvid.app.NoticeBanner
 import com.verdenroz.corvid.appcommon.resources.Res
 import com.verdenroz.corvid.appcommon.resources.notices_open
+import com.verdenroz.corvid.core.designsystem.focusRing
 import com.verdenroz.corvid.core.model.NoticeKind
 import com.verdenroz.corvid.core.text.asString
 import org.jetbrains.compose.resources.stringResource
@@ -32,6 +34,9 @@ internal fun NoticeBannerBar(
         tone = if (banner.newest.kind != NoticeKind.SignIn) BannerTone.Danger else BannerTone.Accent,
         text = text,
         onDismiss = onDismiss,
-        modifier = Modifier.clickable(onClickLabel = stringResource(Res.string.notices_open), role = Role.Button, onClick = onOpen),
+        modifier =
+            Modifier.focusRing(
+                RectangleShape,
+            ).clickable(onClickLabel = stringResource(Res.string.notices_open), role = Role.Button, onClick = onOpen),
     )
 }

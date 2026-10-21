@@ -15,9 +15,9 @@ class RecipientInputTest {
     fun `a recipient field is named by its label, so Bcc reads apart from To`() =
         runComposeUiTest {
             setContent {
-                CorvidTheme(
-                    darkTheme = false,
-                ) { RecipientInput("Bcc", RecipientField.Bcc, "ana@x.test", suggestions = null, actions = actions) }
+                CorvidTheme(darkTheme = false) {
+                    RecipientInput("Bcc", RecipientField.Bcc, "ana@x.test", suggestions = null, actions = actions)
+                }
             }
 
             onNode(hasSetTextAction() and hasText("Bcc")).assertExists()

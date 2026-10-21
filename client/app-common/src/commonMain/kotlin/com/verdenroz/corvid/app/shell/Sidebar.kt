@@ -48,6 +48,7 @@ import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.drawIndicator
+import com.verdenroz.corvid.core.designsystem.focusRing
 import org.jetbrains.compose.resources.stringResource
 
 private val EXPANDED_WIDTH = 232.dp
@@ -174,7 +175,7 @@ private fun WriteButton(
         shape = CorvidShape.medium,
         color = colors.ink,
         contentColor = colors.surface,
-        modifier = modifier.semantics { contentDescription = label },
+        modifier = modifier.focusRing(CorvidShape.medium).semantics { contentDescription = label },
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -207,6 +208,7 @@ private fun Item(
             Modifier
                 .fillMaxWidth()
                 .height(rowHeight)
+                .focusRing(CorvidShape.small)
                 .clip(CorvidShape.small)
                 .clickable(role = Role.Tab, onClick = onClick)
                 .semantics {

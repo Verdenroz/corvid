@@ -12,7 +12,7 @@ import com.verdenroz.corvid.core.ui.resources.app_update_downloading
 import com.verdenroz.corvid.core.ui.resources.app_update_failed
 import com.verdenroz.corvid.core.ui.resources.app_update_installing
 import com.verdenroz.corvid.core.ui.resources.app_update_needs_permission
-import com.verdenroz.corvid.core.ui.resources.app_update_retry
+import com.verdenroz.corvid.core.ui.resources.try_again
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -21,7 +21,7 @@ fun AppUpdateState.actionLabel(): StringResource? =
     when (this) {
         is AppUpdateState.Available -> Res.string.app_update_action
         is AppUpdateState.NeedsPermission -> Res.string.app_update_allow
-        is AppUpdateState.Failed -> Res.string.app_update_retry
+        is AppUpdateState.Failed -> Res.string.try_again
         else -> null
     }
 
