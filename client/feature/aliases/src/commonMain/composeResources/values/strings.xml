@@ -1,5 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="aliases_title">Aliases</string>
+    <string name="aliases_back">Back</string>
+    <string name="aliases_detail">Each alias is its own address that delivers here. Give one to a single site, and turn it off when that site leaks it. Turning one off or on asks for a key that approves devices.</string>
+    <string name="aliases_loading">Loading.</string>
+    <string name="aliases_refresh">Try again</string>
+    <string name="aliases_none">No aliases yet.</string>
+    <string name="aliases_added_on">Added %1$s</string>
+    <string name="aliases_row_meta">%1$s · %2$s</string>
+    <string name="aliases_is_off">Off</string>
+    <string name="aliases_missing">Missing. The server no longer has it, so mail to it is refused.</string>
+    <string name="aliases_copy">Copy</string>
+    <string name="aliases_copied">Copied</string>
+    <string name="aliases_turn_off">Turn off</string>
+    <string name="aliases_turn_on">Turn on</string>
+    <string name="aliases_keep_on">Keep it on</string>
+    <string name="aliases_turn_off_question">Turn off this alias? Mail to it will be refused.</string>
+    <string name="aliases_make_heading">Make an alias</string>
+    <string name="aliases_label">Label</string>
+    <string name="aliases_label_hint">Up to 20 lowercase letters, digits or dashes. The server adds a random tag after it.</string>
+    <string name="aliases_make">Make alias</string>
+    <string name="aliases_minting">Making the alias.</string>
+    <string name="aliases_minted">Made %1$s.</string>
+    <string name="aliases_signing_in">Waiting for a key that approves devices.</string>
+    <string name="aliases_working">Working.</string>
+    <string name="aliases_switched_on">%1$s is on.</string>
+    <string name="aliases_switched_off">%1$s is off.</string>
     <string name="aliases_off">This server has aliases switched off.</string>
     <string name="aliases_failed_label">A label is 1 to 20 lowercase letters, digits or dashes.</string>
     <string name="aliases_failed_cap">The server is at its alias limit: 400 on, 1000 made, or 20 made in the last hour.</string>

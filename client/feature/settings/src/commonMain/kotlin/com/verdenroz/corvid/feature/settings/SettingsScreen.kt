@@ -32,6 +32,8 @@ import com.verdenroz.corvid.feature.settings.resources.settings_about_off
 import com.verdenroz.corvid.feature.settings.resources.settings_about_on
 import com.verdenroz.corvid.feature.settings.resources.settings_account
 import com.verdenroz.corvid.feature.settings.resources.settings_address
+import com.verdenroz.corvid.feature.settings.resources.settings_aliases_detail
+import com.verdenroz.corvid.feature.settings.resources.settings_aliases_row
 import com.verdenroz.corvid.feature.settings.resources.settings_approve_detail
 import com.verdenroz.corvid.feature.settings.resources.settings_approve_row
 import com.verdenroz.corvid.feature.settings.resources.settings_auto_lock
@@ -96,6 +98,7 @@ fun SettingsScreen(
     onOpenDigest: (() -> Unit)?,
     onOpenApproveDevice: () -> Unit,
     onOpenPasskeys: () -> Unit,
+    onOpenAliases: () -> Unit,
 ) {
     val state by viewModel.state.collectAsState()
     val aboutState by about.state.collectAsState()
@@ -105,7 +108,7 @@ fun SettingsScreen(
 
     val topic: @Composable (SettingsTopic) -> Unit = {
         when (it) {
-            SettingsTopic.Account -> AccountSection(account, state.confirmingSignOut, viewModel, onOpenPasskeys)
+            SettingsTopic.Account -> AccountSection(account, state.confirmingSignOut, viewModel, onOpenPasskeys, onOpenAliases)
             SettingsTopic.Appearance ->
                 SettingsSection(stringResource(it.title)) {
                     ChoiceRow(
@@ -204,6 +207,7 @@ private fun AccountSection(
     confirmingSignOut: Boolean,
     viewModel: SettingsViewModel,
     onOpenPasskeys: () -> Unit,
+    onOpenAliases: () -> Unit,
 ) {
     SettingsSection(stringResource(Res.string.settings_account)) {
         account.name?.let { FactRow(stringResource(Res.string.settings_name), it) }
@@ -213,6 +217,11 @@ private fun AccountSection(
             title = stringResource(Res.string.settings_passkeys_row),
             detail = stringResource(Res.string.settings_passkeys_detail),
             onClick = onOpenPasskeys,
+        )
+        LinkRow(
+            title = stringResource(Res.string.settings_aliases_row),
+            detail = stringResource(Res.string.settings_aliases_detail),
+            onClick = onOpenAliases,
         )
         if (confirmingSignOut) {
             DiscardQuestion(
