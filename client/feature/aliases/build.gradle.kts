@@ -1,0 +1,17 @@
+plugins {
+    id("corvid.kmp.feature")
+}
+
+android { namespace = "com.verdenroz.corvid.feature.aliases" }
+
+kotlin {
+    sourceSets {
+        commonMain.dependencies {
+            implementation(projects.core.data)
+            implementation(projects.core.jmap)
+        }
+        commonTest.dependencies {
+            implementation(projects.core.testing)
+        }
+    }
+}

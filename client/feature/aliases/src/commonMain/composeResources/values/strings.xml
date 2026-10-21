@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="aliases_off">This server has aliases switched off.</string>
+    <string name="aliases_failed_label">A label is 1 to 20 lowercase letters, digits or dashes.</string>
+    <string name="aliases_failed_cap">The server is at its alias limit: 400 on, 1000 made, or 20 made in the last hour.</string>
+    <string name="aliases_failed_busy">The mail server is busy. Try again in a minute.</string>
+    <string name="aliases_failed_server">The mail server refused or failed the change.</string>
+    <string name="aliases_failed_session">The server did not accept this session.</string>
+    <string name="aliases_failed_not_accepted">That key does not approve devices, or the sign-in was not accepted.</string>
+    <string name="aliases_failed_gone">The server no longer holds that alias.</string>
+</resources>
