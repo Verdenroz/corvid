@@ -158,6 +158,26 @@ class AliasRepositoryTest {
         }
 
     @Test
+    fun `a daily session the sentinel refuses on the list or a mint does not trip the latch`() =
+        runTest {
+            fake.aliases.dailyRefused = true
+
+            assertEquals(AliasRefusal.NotAccepted, repository().list())
+            assertEquals(AliasRefusal.NotAccepted, repository().mint("shop"))
+
+            assertFalse(latch.tripped.value)
+        }
+
+    @Test
+    fun `a web tier without the alias routes reads as aliases off on the list and a mint`() =
+        runTest {
+            fake.aliases.unrouted = true
+
+            assertEquals(AliasRefusal.Off, repository().list())
+            assertEquals(AliasRefusal.Off, repository().mint("shop"))
+        }
+
+    @Test
     fun `a server with aliases off is reported on a mint and a switch`() =
         runTest {
             fake.aliases.off = true

@@ -49,7 +49,7 @@ data object AtCap : MintOutcome, SwitchOutcome
 
 /** What any alias route answers in place of its result. */
 sealed interface AliasRefusal : AliasListing, MintOutcome, SwitchOutcome {
-    /** The server has aliases switched off. */
+    /** The server has aliases switched off, or has no alias routes at all. */
     data object Off : AliasRefusal
 
     /** The mail server is rate-limiting the sentinel; a later try may land. */
@@ -73,8 +73,12 @@ private val REFUSALS =
  */
 class AliasRepository(private val jmapClient: JmapClient) {
     suspend fun list(): AliasListing {
-        val reply = jmapClient.webSend(HttpMethod.Get, ALIASES_PATH, passThrough = REFUSALS)
-        return reply.refusal() ?: AliasListing.Listed(reply.array.orEmpty().map { it.jsonObject.toAlias() })
+        val reply = jmapClient.webSend(HttpMethod.Get, ALIASES_PATH, passThrough = REFUSALS + HttpStatusCode.NotFound)
+        return reply.refusal() ?: when (reply.status) {
+            // A web tier without the alias routes passes this path to the mail server's 404.
+            HttpStatusCode.NotFound -> AliasRefusal.Off
+            else -> AliasListing.Listed(reply.array.orEmpty().map { it.jsonObject.toAlias() })
+        }
     }
 
     suspend fun mint(label: String): MintOutcome {
@@ -83,9 +87,10 @@ class AliasRepository(private val jmapClient: JmapClient) {
                 HttpMethod.Post,
                 ALIASES_PATH,
                 buildJsonObject { put("label", label) },
-                passThrough = REFUSALS + HttpStatusCode.BadRequest + HttpStatusCode.TooManyRequests,
+                passThrough = REFUSALS + HttpStatusCode.NotFound + HttpStatusCode.BadRequest + HttpStatusCode.TooManyRequests,
             )
         return reply.refusal() ?: when (reply.status) {
+            HttpStatusCode.NotFound -> AliasRefusal.Off
             HttpStatusCode.BadRequest -> MintOutcome.BadLabel
             HttpStatusCode.TooManyRequests -> AtCap
             else -> MintOutcome.Minted(reply.body.orEmpty().toAlias())

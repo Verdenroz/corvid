@@ -32,6 +32,12 @@ class FakeAliases {
 
     var domain: String = "corvid.test"
 
+    /** Answers every route an empty 401 with no `WWW-Authenticate`, as the sentinel's daily-session check does. */
+    var dailyRefused: Boolean = false
+
+    /** Answers every route the mail server's 404, as a web tier without the alias routes does. */
+    var unrouted: Boolean = false
+
     /** Answers every route 503 `aliases_off`, as a sentinel without the alias routes does. */
     var off: Boolean = false
 
@@ -59,6 +65,8 @@ class FakeAliases {
         scope: MockRequestHandleScope,
         request: HttpRequestData,
     ): HttpResponseData {
+        if (unrouted) return scope.respond("not found", HttpStatusCode.NotFound)
+        if (dailyRefused) return scope.respond("", HttpStatusCode.Unauthorized)
         if (off) return json(scope, HttpStatusCode.ServiceUnavailable, buildJsonObject { put("error", "aliases_off") })
         if (busy) return scope.respond("", HttpStatusCode.ServiceUnavailable)
         if (failing) return scope.respond("", HttpStatusCode.BadGateway)
