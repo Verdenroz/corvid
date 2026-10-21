@@ -25,7 +25,9 @@ import com.verdenroz.corvid.core.data.SearchQuery
 import com.verdenroz.corvid.core.data.SearchScope
 import com.verdenroz.corvid.core.data.searchAnywhere
 import com.verdenroz.corvid.core.designsystem.CorvidShape
+import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.LocalWideLayout
 import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.search_exclude_discarded
@@ -84,7 +86,7 @@ private fun SearchSummary(
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = CorvidSpacing.gutter(LocalWideLayout.current), vertical = 6.dp),
     ) {
         Text(
             count?.let { pluralStringResource(Res.plurals.search_results, it, it) }.orEmpty(),
@@ -117,7 +119,7 @@ private fun SearchHints(modifier: Modifier = Modifier) {
     val colors = CorvidTheme.colors
     Column(
         verticalArrangement = Arrangement.spacedBy(10.dp),
-        modifier = modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 14.dp),
+        modifier = modifier.fillMaxSize().padding(horizontal = CorvidSpacing.gutter(LocalWideLayout.current), vertical = 14.dp),
     ) {
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(6.dp),

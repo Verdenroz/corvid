@@ -25,7 +25,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.LocalWideLayout
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.designsystem.component.PrimaryButton
@@ -124,7 +126,7 @@ private fun RuleList(
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         item {
             Column(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                Modifier.fillMaxWidth().padding(horizontal = CorvidSpacing.gutter(LocalWideLayout.current), vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text(stringResource(Res.string.filters_intro), style = CorvidTheme.type.body, color = CorvidTheme.colors.inkMuted)
@@ -158,7 +160,11 @@ private fun RuleList(
                     stringResource(Res.string.filters_empty),
                     style = CorvidTheme.type.body,
                     color = CorvidTheme.colors.inkMuted,
-                    modifier = Modifier.padding(16.dp).widthIn(max = 520.dp),
+                    modifier =
+                        Modifier.padding(
+                            horizontal = CorvidSpacing.gutter(LocalWideLayout.current),
+                            vertical = 16.dp,
+                        ).widthIn(max = 520.dp),
                 )
             }
         }
@@ -187,7 +193,10 @@ private fun RuleRow(
     onDown: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = CorvidSpacing.gutter(LocalWideLayout.current), vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Switch(checked = rule.enabled, onCheckedChange = { onToggle() }, enabled = enabledControls)
             Text(rule.name, style = CorvidTheme.type.name, fontWeight = FontWeight.SemiBold)

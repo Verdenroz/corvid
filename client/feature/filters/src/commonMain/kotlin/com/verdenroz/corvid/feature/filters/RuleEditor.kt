@@ -16,7 +16,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.LocalWideLayout
 import com.verdenroz.corvid.core.designsystem.component.CorvidTextField
 import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.designsystem.component.PrimaryButton
@@ -43,7 +45,10 @@ internal fun RuleEditor(
     onCancel: () -> Unit,
 ) {
     Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        modifier =
+            Modifier.fillMaxSize().verticalScroll(
+                rememberScrollState(),
+            ).padding(horizontal = CorvidSpacing.gutter(LocalWideLayout.current), vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         CorvidTextField(rule.name, { onChange(rule.copy(name = it)) }, stringResource(Res.string.filters_name), Modifier.fillMaxWidth())

@@ -46,6 +46,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.clockTime
+import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.touchTarget
@@ -163,7 +164,10 @@ private fun WideRow(
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
-        modifier = Modifier.heightIn(min = 64.dp).padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
+        modifier =
+            Modifier.heightIn(
+                min = 64.dp,
+            ).padding(start = CorvidSpacing.gutter(wide = true), end = 16.dp, top = 6.dp, bottom = 6.dp),
     ) {
         Time(conversation, zone, Modifier.width(58.dp))
         leading()

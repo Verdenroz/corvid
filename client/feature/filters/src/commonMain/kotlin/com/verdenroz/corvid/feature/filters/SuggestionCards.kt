@@ -20,7 +20,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.designsystem.CorvidShape
+import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.LocalWideLayout
 import com.verdenroz.corvid.core.model.MailboxRef
 import com.verdenroz.corvid.core.model.RuleSuggestion
 import com.verdenroz.corvid.core.model.SuggestionSenderKind
@@ -45,7 +47,7 @@ internal fun LazyListScope.suggestionCards(
     if (state.suggestions.isEmpty()) return
     item {
         Column(
-            Modifier.padding(horizontal = 16.dp).padding(top = 14.dp, bottom = 12.dp),
+            Modifier.padding(horizontal = CorvidSpacing.gutter(LocalWideLayout.current)).padding(top = 14.dp, bottom = 12.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.SpaceBetween) {
@@ -75,7 +77,7 @@ private fun SuggestionCard(
 ) {
     val colors = CorvidTheme.colors
     val caption = suggestion.caption().asString()
-    val frame = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp).fillMaxWidth()
+    val frame = Modifier.padding(horizontal = CorvidSpacing.gutter(LocalWideLayout.current)).padding(bottom = 12.dp).fillMaxWidth()
     Column(
         verticalArrangement = Arrangement.spacedBy(12.dp),
         modifier = frame.border(1.dp, colors.line, CorvidShape.medium).padding(14.dp),
