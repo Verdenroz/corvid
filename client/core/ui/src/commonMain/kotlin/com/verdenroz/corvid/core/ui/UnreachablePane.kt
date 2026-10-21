@@ -14,18 +14,21 @@ import org.jetbrains.compose.resources.stringResource
 /**
  * Shown for a network failure, a damaged key file or an ambiguous device
  * folder set. Nothing is wiped for any of the three: only a confirmed
- * Missing lookup (RevokedPane) means the device actually lost access.
+ * Missing lookup (RevokedPane) means the device actually lost access. A server that never answers
+ * as hoped, or the wrong account, leaves [onSignOut] as the way out.
  */
 @Composable
 fun UnreachablePane(
     reason: UiText,
     onRetry: () -> Unit,
+    onSignOut: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     StatePane(
         stringResource(Res.string.unreachable_title),
         modifier,
         detail = stringResource(Res.string.unreachable_detail, reason.asString()),
+        onSignOut = onSignOut,
     ) {
         PillButton(stringResource(Res.string.unreachable_retry), null, onRetry)
     }

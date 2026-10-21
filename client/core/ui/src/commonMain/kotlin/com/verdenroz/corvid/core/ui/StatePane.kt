@@ -23,6 +23,10 @@ import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidMark
+import com.verdenroz.corvid.core.designsystem.component.QuietLink
+import com.verdenroz.corvid.core.ui.resources.Res
+import com.verdenroz.corvid.core.ui.resources.state_sign_out
+import org.jetbrains.compose.resources.stringResource
 
 /** A labelled fact under a state's statement, such as the server or the device. */
 class StateFact(
@@ -32,7 +36,8 @@ class StateFact(
 
 /**
  * The full-screen states the gate swaps in (locked, unreachable, revoked, signing in): the mark,
- * one statement, the eye line, what is true, and whatever the user can do about it.
+ * one statement, the eye line, what is true, and whatever the user can do about it. [onSignOut]
+ * adds Sign out under the actions, the way to another account or server from a state that holds.
  */
 @Composable
 fun StatePane(
@@ -41,6 +46,7 @@ fun StatePane(
     detail: String? = null,
     facts: List<StateFact> = emptyList(),
     headlineColor: Color = CorvidTheme.colors.ink,
+    onSignOut: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit = {},
 ) {
     val colors = CorvidTheme.colors
@@ -64,6 +70,7 @@ fun StatePane(
                 }
             }
             Column(Modifier.padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
+            onSignOut?.let { QuietLink(stringResource(Res.string.state_sign_out), it) }
         }
     }
 }

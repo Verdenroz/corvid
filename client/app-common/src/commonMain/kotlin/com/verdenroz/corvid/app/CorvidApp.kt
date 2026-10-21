@@ -57,7 +57,12 @@ fun CorvidApp(
                         onLock = viewModel::lock,
                         onSignOut = viewModel::signOut,
                     )
-                is AppLockState.Unreachable -> UnreachablePane(reason = current.reason, onRetry = viewModel::retry)
+                is AppLockState.Unreachable ->
+                    UnreachablePane(
+                        reason = current.reason,
+                        onRetry = viewModel::retry,
+                        onSignOut = viewModel::signOut,
+                    )
                 is AppLockState.Locked -> {
                     val facts = viewModel.lockFacts
                     LockedPane(facts.server, facts.device, facts.lockedAt?.let { droppedAt(it) }, onUnlock = viewModel::unlock)
@@ -71,6 +76,7 @@ fun CorvidApp(
                         onAskAgain = viewModel::askAgain,
                         onApproveSelf = viewModel::approveWithAdminPasskey,
                         onWatch = viewModel::watchRequest,
+                        onSignOut = viewModel::signOut,
                     )
             }
         }

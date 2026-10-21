@@ -6,7 +6,6 @@ import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.ui.resources.Res
 import com.verdenroz.corvid.core.ui.resources.device_approval_off_ask_again
 import com.verdenroz.corvid.core.ui.resources.device_approval_off_detail
-import com.verdenroz.corvid.core.ui.resources.device_approval_off_sign_out
 import com.verdenroz.corvid.core.ui.resources.device_approval_off_title
 import org.jetbrains.compose.resources.stringResource
 
@@ -24,8 +23,8 @@ fun DeviceApprovalOffPane(
         stringResource(Res.string.device_approval_off_title),
         modifier,
         detail = stringResource(Res.string.device_approval_off_detail),
+        onSignOut = onSignOut,
     ) {
         PillButton(stringResource(Res.string.device_approval_off_ask_again), null, onAskAgain)
-        PillButton(stringResource(Res.string.device_approval_off_sign_out), null, onSignOut)
     }
 }

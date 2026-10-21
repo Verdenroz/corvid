@@ -37,7 +37,8 @@ import org.jetbrains.compose.resources.stringResource
 
 /**
  * The server holds no key for [deviceName]. This device shows what a master device needs to approve
- * it and, while visible, [onWatch] polls for the approval.
+ * it and, while visible, [onWatch] polls for the approval. [onSignOut] leaves an account that
+ * has nothing able to approve it.
  */
 @Composable
 fun EnrollmentPrompt(
@@ -46,12 +47,17 @@ fun EnrollmentPrompt(
     onAskAgain: () -> Unit,
     onApproveSelf: () -> Unit,
     onWatch: suspend () -> Unit,
+    onSignOut: () -> Unit,
 ) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val polled = (request as? EnrollmentRequest.Open)?.request ?: request
     LaunchedEffect(polled, lifecycle) { lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { onWatch() } }
 
-    StatePane(stringResource(Res.string.enroll_title, deviceName), detail = stringResource(Res.string.enroll_detail)) {
+    StatePane(
+        stringResource(Res.string.enroll_title, deviceName),
+        detail = stringResource(Res.string.enroll_detail),
+        onSignOut = onSignOut,
+    ) {
         when (request) {
             is EnrollmentRequest.Opening -> Text(stringResource(Res.string.enroll_opening), style = CorvidTheme.type.body)
             is EnrollmentRequest.Open -> OpenRequest(request, onApproveSelf)
