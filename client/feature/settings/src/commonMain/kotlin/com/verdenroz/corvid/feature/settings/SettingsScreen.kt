@@ -19,13 +19,13 @@ import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.AppUpdateState
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.LocalWideLayout
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.prefs.AutoLock
 import com.verdenroz.corvid.core.prefs.PushStatus
 import com.verdenroz.corvid.core.prefs.ThemeChoice
 import com.verdenroz.corvid.core.ui.DiscardQuestion
-import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.core.ui.PageHeader
 import com.verdenroz.corvid.feature.settings.resources.Res
 import com.verdenroz.corvid.feature.settings.resources.settings_about_off

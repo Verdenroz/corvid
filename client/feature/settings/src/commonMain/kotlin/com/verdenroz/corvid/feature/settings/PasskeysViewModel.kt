@@ -21,6 +21,7 @@ import com.verdenroz.corvid.feature.settings.resources.passkeys_failed_last
 import com.verdenroz.corvid.feature.settings.resources.passkeys_failed_not_accepted
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 sealed interface PasskeyList {
@@ -78,7 +79,7 @@ class PasskeysViewModel(
     }
 
     fun refresh() {
-        _state.value = _state.value.copy(list = PasskeyList.Loading)
+        _state.update { it.copy(list = PasskeyList.Loading) }
         viewModelScope.launch {
             val list =
                 try {
@@ -89,7 +90,7 @@ class PasskeysViewModel(
                 } catch (e: JmapException) {
                     PasskeyList.Failed(e.userMessage())
                 }
-            _state.value = _state.value.copy(list = list)
+            _state.update { it.copy(list = list) }
         }
     }
 
@@ -121,19 +122,19 @@ class PasskeysViewModel(
         }
 
     fun setNewApproves(approves: Boolean) {
-        _state.value = _state.value.copy(newApproves = approves)
+        _state.update { it.copy(newApproves = approves) }
     }
 
     fun askRemove(id: String) {
-        if (!_state.value.busy) _state.value = _state.value.copy(removing = id, step = PasskeyStep.Idle)
+        if (!_state.value.busy) _state.update { it.copy(removing = id, step = PasskeyStep.Idle) }
     }
 
     fun keep() {
-        _state.value = _state.value.copy(removing = null)
+        _state.update { it.copy(removing = null) }
     }
 
     fun remove(id: String) {
-        _state.value = _state.value.copy(removing = null)
+        _state.update { it.copy(removing = null) }
         withApprover { token ->
             when (repository.remove(id, token)) {
                 RemoveOutcome.Removed, RemoveOutcome.Gone -> PasskeyStep.Removed
@@ -145,16 +146,16 @@ class PasskeysViewModel(
 
     private fun withApprover(act: suspend (String) -> PasskeyStep) {
         if (_state.value.busy) return
-        _state.value = _state.value.copy(step = PasskeyStep.SigningIn)
+        _state.update { it.copy(step = PasskeyStep.SigningIn) }
         viewModelScope.launch {
             val step =
                 catchingSignIn(PasskeyStep::Failed) {
                     approveWithKey.withAdminToken { token ->
-                        _state.value = _state.value.copy(step = PasskeyStep.Working)
+                        _state.update { it.copy(step = PasskeyStep.Working) }
                         act(token)
                     }
                 }
-            _state.value = _state.value.copy(step = step)
+            _state.update { it.copy(step = step) }
             if (step is PasskeyStep.Added || step == PasskeyStep.Removed) refresh()
         }
     }

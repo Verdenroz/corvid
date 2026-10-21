@@ -13,7 +13,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.verdenroz.corvid.app.shell.countdown
-import com.verdenroz.corvid.app.shell.rememberRemaining
 import com.verdenroz.corvid.appcommon.resources.Res
 import com.verdenroz.corvid.appcommon.resources.enroll_ask_again
 import com.verdenroz.corvid.appcommon.resources.enroll_code
@@ -33,11 +32,14 @@ import com.verdenroz.corvid.core.designsystem.component.PrimaryButton
 import com.verdenroz.corvid.core.keyring.approvalLink
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.StatePane
+import com.verdenroz.corvid.core.ui.StatusLine
+import com.verdenroz.corvid.core.ui.rememberRemaining
 import org.jetbrains.compose.resources.stringResource
 
 /**
  * The server holds no key for [deviceName]. This device shows what a master device needs to approve
- * it and, while visible, [onWatch] polls for the approval.
+ * it and, while visible, [onWatch] polls for the approval. [onSignOut] leaves an account that
+ * has nothing able to approve it.
  */
 @Composable
 fun EnrollmentPrompt(
@@ -46,12 +48,17 @@ fun EnrollmentPrompt(
     onAskAgain: () -> Unit,
     onApproveSelf: () -> Unit,
     onWatch: suspend () -> Unit,
+    onSignOut: () -> Unit,
 ) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val polled = (request as? EnrollmentRequest.Open)?.request ?: request
     LaunchedEffect(polled, lifecycle) { lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { onWatch() } }
 
-    StatePane(stringResource(Res.string.enroll_title, deviceName), detail = stringResource(Res.string.enroll_detail)) {
+    StatePane(
+        stringResource(Res.string.enroll_title, deviceName),
+        detail = stringResource(Res.string.enroll_detail),
+        onSignOut = onSignOut,
+    ) {
         when (request) {
             is EnrollmentRequest.Opening -> Text(stringResource(Res.string.enroll_opening), style = CorvidTheme.type.body)
             is EnrollmentRequest.Open -> OpenRequest(request, onApproveSelf)
@@ -89,7 +96,7 @@ private fun OpenRequest(
         SelfApproval.Idle -> PillButton(stringResource(Res.string.enroll_self_approve), icon = null, onClick = onApproveSelf)
         is SelfApproval.Failed -> {
             PillButton(stringResource(Res.string.enroll_self_approve), icon = null, onClick = onApproveSelf)
-            Text(self.message.asString(), style = CorvidTheme.type.body, color = colors.ink)
+            StatusLine(self.message.asString(), failed = true)
         }
     }
 }

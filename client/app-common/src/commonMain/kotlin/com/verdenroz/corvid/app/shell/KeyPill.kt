@@ -9,43 +9,33 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.appcommon.resources.Res
 import com.verdenroz.corvid.appcommon.resources.key_countdown
 import com.verdenroz.corvid.appcommon.resources.key_lock_now
 import com.verdenroz.corvid.appcommon.resources.key_status
+import com.verdenroz.corvid.appcommon.resources.key_status_spoken
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.PillButton
+import com.verdenroz.corvid.core.designsystem.focusRing
 import com.verdenroz.corvid.core.ui.provenance.KeyRing
-import kotlinx.coroutines.delay
+import com.verdenroz.corvid.core.ui.rememberRemaining
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
-import kotlin.time.Clock
 import kotlin.time.Duration
-import kotlin.time.Duration.Companion.seconds
-import kotlin.time.Instant
-
-/** What is left of the idle window, ticking once a second; null while no deadline is set. */
-@Composable
-internal fun rememberRemaining(locksAt: Instant?): Duration? {
-    val remaining by produceState<Duration?>(null, locksAt) {
-        while (locksAt != null) {
-            value = (locksAt - Clock.System.now()).coerceAtLeast(Duration.ZERO)
-            delay(1.seconds)
-        }
-        value = null
-    }
-    return remaining
-}
 
 @Composable
 private fun KeyState.remaining(): Duration? = rememberRemaining(locksAt.collectAsState().value)
@@ -53,27 +43,43 @@ private fun KeyState.remaining(): Duration? = rememberRemaining(locksAt.collectA
 @Composable
 internal fun KeyPill(key: KeyState) {
     val remaining = key.remaining() ?: return
+    val status = spokenStatus(key.host, remaining)
     PillButton(
         onClick = key.onLock,
+        modifier = Modifier.semantics { contentDescription = status },
         onClickLabel = stringResource(Res.string.key_lock_now),
         contentPadding = PaddingValues(start = 7.dp, end = 13.dp),
     ) {
         KeyRing(fraction(remaining, key.timeout))
-        KeyStatus(key.host, remaining)
+        KeyStatus(key.host, remaining, Modifier.clearAndSetSemantics {})
     }
 }
 
 @Composable
 internal fun KeyRingButton(key: KeyState) {
     val remaining = key.remaining() ?: return
+    val status = spokenStatus(key.host, remaining)
     Box(
         contentAlignment = Alignment.Center,
         modifier =
             Modifier
+                .minimumInteractiveComponentSize()
                 .size(40.dp)
+                .focusRing(CircleShape)
                 .clip(CircleShape)
-                .clickable(onClickLabel = stringResource(Res.string.key_lock_now), role = Role.Button, onClick = key.onLock),
+                .clickable(onClickLabel = stringResource(Res.string.key_lock_now), role = Role.Button, onClick = key.onLock)
+                .semantics { contentDescription = status },
     ) { KeyRing(fraction(remaining, key.timeout)) }
+}
+
+// Whole minutes, so the description holds still while TalkBack has the control focused.
+@Composable
+private fun spokenStatus(
+    host: String,
+    remaining: Duration,
+): String {
+    val minutes = remaining.inWholeMinutes.toInt() + 1
+    return pluralStringResource(Res.plurals.key_status_spoken, minutes, host, minutes)
 }
 
 @Composable
@@ -88,8 +94,9 @@ internal fun KeyStatusLine(key: KeyState) {
 private fun KeyStatus(
     host: String,
     remaining: Duration,
+    modifier: Modifier = Modifier,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(host, style = CorvidTheme.type.meta, fontWeight = FontWeight.SemiBold, color = CorvidTheme.colors.ink)
         Text(
             stringResource(Res.string.key_status, countdown(remaining)),

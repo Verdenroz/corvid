@@ -8,6 +8,12 @@
     <string name="filters_up">Up</string>
     <string name="filters_down">Down</string>
     <string name="filters_delete">Delete</string>
+    <string name="filters_edit_named">Edit rule %1$s</string>
+    <string name="filters_up_named">Move rule %1$s up</string>
+    <string name="filters_down_named">Move rule %1$s down</string>
+    <string name="filters_delete_named">Delete rule %1$s</string>
+    <string name="filters_delete_question">Delete the rule “%1$s”? It stops running at once.</string>
+    <string name="filters_keep">Keep</string>
     <string name="filters_cancel">Cancel</string>
     <string name="filters_save">Save</string>
     <string name="filters_name">Name</string>

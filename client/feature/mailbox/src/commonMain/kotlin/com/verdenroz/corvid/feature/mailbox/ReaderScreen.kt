@@ -30,13 +30,15 @@ import com.verdenroz.corvid.core.data.Correction
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.LocalWideLayout
 import com.verdenroz.corvid.core.designsystem.component.ActionIcon
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
+import com.verdenroz.corvid.core.designsystem.touchTarget
 import com.verdenroz.corvid.core.model.Attachment
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.HandleKeys
-import com.verdenroz.corvid.core.ui.LocalWideLayout
+import com.verdenroz.corvid.core.ui.LoadingPane
 import com.verdenroz.corvid.core.ui.QuietPane
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_back
@@ -109,8 +111,8 @@ fun ReaderScreen(
             }
             if (wide) HorizontalDivider(color = CorvidTheme.colors.line)
             when (val current = state) {
-                is ReaderUiState.Loading -> Unit
-                is ReaderUiState.Failed -> QuietPane(current.message.asString())
+                is ReaderUiState.Loading -> LoadingPane()
+                is ReaderUiState.Failed -> QuietPane(current.message.asString(), onRetry = viewModel::retry)
                 is ReaderUiState.Gone -> QuietPane(stringResource(Res.string.mailbox_gone))
                 is ReaderUiState.Loaded ->
                     ThreadColumn(

@@ -35,21 +35,26 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.designsystem.CorvidFloating
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.LocalWideLayout
 import com.verdenroz.corvid.core.designsystem.component.ActionIcon
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.PillButton
+import com.verdenroz.corvid.core.designsystem.touchTarget
 import com.verdenroz.corvid.core.model.Conversation
 import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.core.text.asString
+import com.verdenroz.corvid.core.ui.FailedLine
 import com.verdenroz.corvid.core.ui.GuardBack
 import com.verdenroz.corvid.core.ui.HandleKeys
+import com.verdenroz.corvid.core.ui.LoadingPane
 import com.verdenroz.corvid.core.ui.LocalTopEntryKeys
-import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.core.ui.QuietPane
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.ledger_empty_archive
@@ -59,6 +64,8 @@ import com.verdenroz.corvid.feature.mailbox.resources.ledger_empty_junk
 import com.verdenroz.corvid.feature.mailbox.resources.ledger_empty_sent
 import com.verdenroz.corvid.feature.mailbox.resources.ledger_empty_starred
 import com.verdenroz.corvid.feature.mailbox.resources.ledger_empty_trash
+import com.verdenroz.corvid.feature.mailbox.resources.ledger_more_failed
+import com.verdenroz.corvid.feature.mailbox.resources.ledger_refresh_failed
 import com.verdenroz.corvid.feature.mailbox.resources.selection_all
 import com.verdenroz.corvid.feature.mailbox.resources.selection_clear
 import com.verdenroz.corvid.feature.mailbox.resources.selection_count
@@ -220,8 +227,11 @@ internal fun LedgerContent(
             modifier = Modifier.weight(1f),
         ) {
             when (val current = state) {
-                is LedgerUiState.Loading -> Unit
-                is LedgerUiState.Failed -> QuietPane(current.message.asString())
+                is LedgerUiState.Loading -> LoadingPane()
+                is LedgerUiState.Failed ->
+                    LazyColumn(Modifier.fillMaxSize()) {
+                        item { QuietPane(current.message.asString(), Modifier.fillParentMaxSize(), onRetry = viewModel::retry) }
+                    }
                 is LedgerUiState.Loaded ->
                     if (current.conversations.isEmpty()) {
                         LazyColumn(Modifier.fillMaxSize()) { item { QuietPane(emptyText, Modifier.fillParentMaxSize()) } }
@@ -235,6 +245,7 @@ internal fun LedgerContent(
                             menu,
                             onAct,
                             viewModel::loadMore,
+                            { viewModel.refresh() },
                             overnight,
                         )
                     }
@@ -293,6 +304,7 @@ private fun Ledger(
     menu: MoveMenu,
     onAct: (Act, ActionTarget) -> Unit,
     onLoadMore: () -> Unit,
+    onRefresh: () -> Unit,
     overnight: OvernightOffer?,
 ) {
     val conversations = state.conversations
@@ -302,13 +314,22 @@ private fun Ledger(
     val listState = rememberLazyListState()
     val nearEnd by remember { derivedStateOf { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 } }
     LaunchedEffect(nearEnd, conversations.size) {
-        if (state.canLoadMore && nearEnd >= listState.layoutInfo.totalItemsCount - LOAD_AHEAD) onLoadMore()
+        if (state.canLoadMore && state.moreFailed == null && nearEnd >= listState.layoutInfo.totalItemsCount - LOAD_AHEAD) onLoadMore()
     }
     val wide = LocalWideLayout.current
     val selecting = selected.isNotEmpty()
     val onRowAct = remember(onAct) { { act: Act, row: Conversation -> onAct(act, listOf(row).target()) } }
     val bottom = CorvidFloating.listClearance(noticeOverWrite = noticeShown && !wide)
     LazyColumn(state = listState, contentPadding = PaddingValues(bottom = bottom), modifier = Modifier.fillMaxSize()) {
+        state.refreshFailed?.let { reason ->
+            item(key = "refresh-failed") {
+                FailedLine(
+                    stringResource(Res.string.ledger_refresh_failed, reason.asString()),
+                    onRefresh,
+                    Modifier.padding(horizontal = CorvidSpacing.gutter(wide), vertical = 8.dp),
+                )
+            }
+        }
         overnight?.let { offer -> item(key = "overnight") { OvernightBlock(offer) } }
         days.forEach { day ->
             stickyHeader(key = day.date.toString()) { DayHeader(day, wide) }
@@ -333,6 +354,15 @@ private fun Ledger(
                 if (wide) row() else SwipeRow(kind, enabled = !selecting, onSwipe = { onRowAct(Act.Do(it), conversation) }, content = row)
             }
         }
+        state.moreFailed?.let { reason ->
+            item(key = "more-failed") {
+                FailedLine(
+                    stringResource(Res.string.ledger_more_failed, reason.asString()),
+                    onLoadMore,
+                    Modifier.padding(horizontal = CorvidSpacing.gutter(wide), vertical = 8.dp),
+                )
+            }
+        }
     }
 }
 
@@ -346,7 +376,10 @@ private fun DayHeader(
         Row(
             verticalAlignment = Alignment.Bottom,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier.padding(start = CorvidSpacing.gutter(wide), end = 16.dp, top = 18.dp, bottom = 8.dp),
+            modifier =
+                Modifier
+                    .padding(start = CorvidSpacing.gutter(wide), end = 16.dp, top = 18.dp, bottom = 8.dp)
+                    .semantics(mergeDescendants = true) { heading() },
         ) {
             Text(day.heading.title.asString(), style = CorvidTheme.type.dayHeader)
             Text(

@@ -5,9 +5,10 @@
     <string name="locked_title">Locked</string>
     <string name="locked_unlock">Unlock</string>
     <string name="revoked_title">Revoked</string>
-    <string name="revoked_detail">This device's key is gone from the server. Enroll it again from a device that still has access.</string>
+    <string name="revoked_detail">This device's key is gone from the server. Close Corvid completely (on a phone, swipe it away), then reopen it to sign in and approve this device again.</string>
     <string name="unreachable_title">Unreachable</string>
-    <string name="unreachable_retry">Retry</string>
+    <string name="key_damaged_title">Key damaged</string>
+    <string name="key_damaged_detail">The server returned a device key this app cannot read. Nothing was wiped.</string>
     <string name="label_guess">%1$s?</string>
     <string name="seal_signed_by">Signed by %1$s</string>
     <string name="seal_signed">Signed</string>
@@ -25,10 +26,11 @@
     <string name="device_approval_off_title">Device approval is off</string>
     <string name="device_approval_off_detail">This server signs you in but does not hand out device keys yet. Its administrator turns this on in the server's settings, then you can ask again.</string>
     <string name="device_approval_off_ask_again">Ask again</string>
-    <string name="device_approval_off_sign_out">Sign out</string>
+    <string name="state_sign_out">Sign out</string>
+    <string name="try_again">Try again</string>
+    <string name="pane_waiting">Waiting for the server…</string>
     <string name="app_update_available">Corvid %1$s is available</string>
     <string name="app_update_action">Update</string>
-    <string name="app_update_retry">Try again</string>
     <string name="app_update_allow">Allow</string>
     <string name="app_update_needs_permission">Allow Corvid to install %1$s</string>
     <string name="app_update_failed">Update failed</string>

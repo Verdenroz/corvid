@@ -69,9 +69,9 @@ private fun RowScope.SwipeBackground(
             SwipeToDismissBoxValue.Settled -> null
         } ?: return
     val colors = CorvidTheme.colors
-    val archive = action == ConversationAction.Archive
-    val fill = if (archive) colors.accentSoft else colors.dangerSoft
-    val tint = if (archive) colors.onAccentSoft else colors.onDangerSoft
+    val destructive = action in SWIPE_LEFT
+    val fill = if (destructive) colors.dangerSoft else colors.accentSoft
+    val tint = if (destructive) colors.onDangerSoft else colors.onAccentSoft
     val side = if (direction == SwipeToDismissBoxValue.StartToEnd) Alignment.Start else Alignment.End
     Row(
         verticalAlignment = Alignment.CenterVertically,

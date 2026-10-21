@@ -26,6 +26,7 @@ import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.ActionIcon
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
+import com.verdenroz.corvid.core.designsystem.focusRing
 import com.verdenroz.corvid.core.ui.resources.Res
 import com.verdenroz.corvid.core.ui.resources.attachment_remove
 import com.verdenroz.corvid.core.ui.resources.attachment_unnamed
@@ -56,13 +57,14 @@ fun AttachmentTile(
             modifier
                 .widthIn(max = 300.dp)
                 .heightIn(min = 52.dp)
+                .focusRing(CorvidShape.medium)
                 .clip(CorvidShape.medium)
                 .border(1.dp, colors.line, CorvidShape.medium)
                 .then(clickable)
-                .padding(start = 8.dp, end = if (onRemove == null) 14.dp else 0.dp, top = 8.dp, bottom = 8.dp),
+                .padding(start = 8.dp, end = if (onRemove == null) 14.dp else 0.dp),
     ) {
         Badge(fileBadge(name, type))
-        Column(Modifier.weight(1f, fill = false)) {
+        Column(Modifier.weight(1f, fill = false).padding(vertical = 8.dp)) {
             Text(shown, style = CorvidTheme.type.name, color = colors.ink, maxLines = 1, overflow = TextOverflow.MiddleEllipsis)
             Text(detail, style = CorvidTheme.type.meta, color = detailColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }

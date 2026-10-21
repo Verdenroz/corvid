@@ -27,6 +27,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -37,6 +40,8 @@ import com.verdenroz.corvid.core.data.stamp
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.LocalWideLayout
+import com.verdenroz.corvid.core.designsystem.focusRingInset
 import com.verdenroz.corvid.core.model.DigestItem
 import com.verdenroz.corvid.core.model.ListedItem
 import com.verdenroz.corvid.core.model.items
@@ -44,7 +49,7 @@ import com.verdenroz.corvid.core.model.lists
 import com.verdenroz.corvid.core.model.people
 import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.asString
-import com.verdenroz.corvid.core.ui.LocalWideLayout
+import com.verdenroz.corvid.core.ui.LoadingPane
 import com.verdenroz.corvid.core.ui.PageHeader
 import com.verdenroz.corvid.core.ui.QuietPane
 import com.verdenroz.corvid.core.ui.provenance.InitialsTile
@@ -58,6 +63,8 @@ import com.verdenroz.corvid.feature.digest.resources.digest_more_count
 import com.verdenroz.corvid.feature.digest.resources.digest_people
 import com.verdenroz.corvid.feature.digest.resources.digest_quiet
 import com.verdenroz.corvid.feature.digest.resources.digest_span
+import com.verdenroz.corvid.feature.digest.resources.digest_subject_quoted
+import com.verdenroz.corvid.feature.digest.resources.digest_summary_spoken
 import com.verdenroz.corvid.feature.digest.resources.digest_title
 import kotlinx.datetime.TimeZone
 import org.jetbrains.compose.resources.pluralStringResource
@@ -78,9 +85,9 @@ fun DigestScreen(
     Column(modifier = Modifier.fillMaxSize().background(CorvidTheme.colors.surface)) {
         PageHeader(null, stringResource(Res.string.digest_back), onBack)
         when (val current = state) {
-            is DigestState.Loading -> Unit
+            is DigestState.Loading -> LoadingPane()
             is DigestState.Empty -> NoDigest(current.quiet)
-            is DigestState.Failed -> QuietPane(current.message.asString())
+            is DigestState.Failed -> QuietPane(current.message.asString(), onRetry = viewModel::retry)
             is DigestState.Ready -> Briefing(current, onOpenEmail)
         }
     }
@@ -157,33 +164,42 @@ private fun Section(
         horizontalArrangement = Arrangement.SpaceBetween,
         modifier = Modifier.widthIn(max = COLUMN_WIDTH).fillMaxWidth().padding(top = 20.dp, bottom = 8.dp),
     ) {
-        Text(title, style = CorvidTheme.type.dayHeader)
+        Text(title, style = CorvidTheme.type.dayHeader, modifier = Modifier.semantics { heading() })
         aside?.let { Text(it, style = CorvidTheme.type.meta, color = CorvidTheme.colors.inkFaint) }
     }
 }
 
-/** Plain `Text` with no links. Muted text is always the model's summary; a subject, the sender's own words, is in ink. */
+/**
+ * Plain `Text` with no links. Muted text is always the model's summary; a subject, the sender's own words, is in ink and
+ * in quotes, and a screen reader hears a summary named as one.
+ */
 @Composable
 private fun Person(
     item: DigestItem,
     onOpen: () -> Unit,
 ) {
     val colors = CorvidTheme.colors
+    val summary = item.summary
+    val subject = stringResource(Res.string.digest_subject_quoted, item.subject)
     val paragraph =
         buildAnnotatedString {
             withStyle(SpanStyle(color = colors.ink, fontWeight = FontWeight.SemiBold)) { append(item.displayName) }
             append(' ')
-            val summary = item.summary
-            if (summary != null) append(summary) else withStyle(SpanStyle(color = colors.ink)) { append(item.subject) }
+            if (summary != null) append(summary) else withStyle(SpanStyle(color = colors.ink)) { append(subject) }
         }
+    val spoken = summary?.let { stringResource(Res.string.digest_summary_spoken, item.displayName, it) }
     Text(
         paragraph,
         style = CorvidTheme.type.body,
         color = colors.inkMuted,
         modifier =
-            Modifier.widthIn(
-                max = COLUMN_WIDTH,
-            ).fillMaxWidth().clickable(role = Role.Button, onClick = onOpen).padding(vertical = 10.dp),
+            Modifier
+                .widthIn(max = COLUMN_WIDTH)
+                .fillMaxWidth()
+                .focusRingInset()
+                .clickable(role = Role.Button, onClick = onOpen)
+                .semantics { spoken?.let { contentDescription = it } }
+                .padding(vertical = 10.dp),
     )
 }
 
@@ -197,9 +213,12 @@ private fun Listed(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         modifier =
-            Modifier.widthIn(
-                max = COLUMN_WIDTH,
-            ).fillMaxWidth().heightIn(min = 44.dp).clickable(role = Role.Button, onClick = onOpen),
+            Modifier
+                .widthIn(max = COLUMN_WIDTH)
+                .fillMaxWidth()
+                .heightIn(min = 44.dp)
+                .focusRingInset()
+                .clickable(role = Role.Button, onClick = onOpen),
     ) {
         InitialsTile(row.item.displayName, 22.dp)
         Text(
@@ -233,7 +252,7 @@ private fun More(
         modifier =
             Modifier.widthIn(
                 max = COLUMN_WIDTH,
-            ).fillMaxWidth().heightIn(min = 44.dp).clickable(role = Role.Button, onClick = onExpand),
+            ).fillMaxWidth().heightIn(min = 44.dp).focusRingInset().clickable(role = Role.Button, onClick = onExpand),
     ) {
         Box(
             contentAlignment = Alignment.Center,

@@ -24,13 +24,16 @@ import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.LocalWideLayout
 import com.verdenroz.corvid.core.designsystem.component.CorvidTextField
 import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.designsystem.component.PrimaryButton
+import com.verdenroz.corvid.core.designsystem.focusRingInset
 import com.verdenroz.corvid.core.keyring.PendingRequest
 import com.verdenroz.corvid.core.text.asString
-import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.core.ui.PageHeader
+import com.verdenroz.corvid.core.ui.StatusLine
+import com.verdenroz.corvid.core.ui.rememberRemaining
 import com.verdenroz.corvid.feature.settings.resources.Res
 import com.verdenroz.corvid.feature.settings.resources.approve_action
 import com.verdenroz.corvid.feature.settings.resources.approve_approved
@@ -43,6 +46,7 @@ import com.verdenroz.corvid.feature.settings.resources.approve_loading
 import com.verdenroz.corvid.feature.settings.resources.approve_none
 import com.verdenroz.corvid.feature.settings.resources.approve_off
 import com.verdenroz.corvid.feature.settings.resources.approve_refresh
+import com.verdenroz.corvid.feature.settings.resources.approve_request_expired
 import com.verdenroz.corvid.feature.settings.resources.approve_scan
 import com.verdenroz.corvid.feature.settings.resources.approve_sending
 import com.verdenroz.corvid.feature.settings.resources.approve_signing_in
@@ -50,7 +54,7 @@ import com.verdenroz.corvid.feature.settings.resources.approve_title
 import com.verdenroz.corvid.feature.settings.resources.approve_waiting
 import com.verdenroz.corvid.feature.settings.resources.settings_back
 import org.jetbrains.compose.resources.stringResource
-import kotlin.time.Clock
+import kotlin.time.Duration
 
 @Composable
 fun ApproveDeviceScreen(
@@ -60,6 +64,8 @@ fun ApproveDeviceScreen(
     val state by viewModel.state.collectAsState()
     val scan = rememberQrScanLauncher(viewModel::scanned)
     val gutter = CorvidSpacing.gutter(LocalWideLayout.current)
+    val picked = (state.pending as? PendingList.Listed)?.requests?.find { it.id == state.id }
+    val canApprove = state.canApprove && rememberRemaining(picked?.expiresAt) != Duration.ZERO
 
     Column(modifier = Modifier.fillMaxSize().background(CorvidTheme.colors.surface)) {
         PageHeader(stringResource(Res.string.approve_title), stringResource(Res.string.settings_back), onBack)
@@ -81,8 +87,9 @@ fun ApproveDeviceScreen(
                     stringResource(Res.string.approve_code),
                     Modifier.fillMaxWidth(),
                     KeyboardOptions(keyboardType = KeyboardType.Number),
+                    onSubmit = { if (canApprove) viewModel.approve() },
                 )
-                PrimaryButton(stringResource(Res.string.approve_action), viewModel::approve, enabled = state.canApprove)
+                PrimaryButton(stringResource(Res.string.approve_action), viewModel::approve, enabled = canApprove)
                 StepText(state.step)
             }
         }
@@ -116,22 +123,31 @@ private fun RequestRow(
     onClick: () -> Unit,
 ) {
     val colors = CorvidTheme.colors
-    val minutes = (request.expiresAt - Clock.System.now()).inWholeMinutes.toInt() + 1
+    val remaining = rememberRemaining(request.expiresAt) ?: Duration.ZERO
+    val expired = remaining == Duration.ZERO
+    val highlighted = selected && !expired
+    val ink = if (highlighted) colors.onAccentSoft else colors.ink
+    val meta = if (highlighted) colors.onAccentSoft else colors.inkMuted
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
+                .focusRingInset(CorvidShape.pill)
                 .clip(CorvidShape.pill)
-                .then(if (selected) Modifier.background(colors.accentSoft) else Modifier)
-                .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+                .then(if (highlighted) Modifier.background(colors.accentSoft) else Modifier)
+                .selectable(selected = highlighted, enabled = !expired, role = Role.RadioButton, onClick = onClick)
                 .padding(horizontal = 16.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text(request.name, style = CorvidTheme.type.name, color = if (selected) colors.onAccentSoft else colors.ink)
+        Text(request.name, style = CorvidTheme.type.name, color = if (expired) colors.inkMuted else ink)
         Text(
-            stringResource(Res.string.approve_expires_in, minutes.coerceAtLeast(1)),
+            if (expired) {
+                stringResource(Res.string.approve_request_expired)
+            } else {
+                stringResource(Res.string.approve_expires_in, remaining.inWholeMinutes.toInt() + 1)
+            },
             style = CorvidTheme.type.meta,
-            color = if (selected) colors.onAccentSoft else colors.inkMuted,
+            color = meta,
         )
     }
 }
@@ -146,5 +162,5 @@ private fun StepText(step: ApproveStep) {
             is ApproveStep.Approved -> stringResource(Res.string.approve_approved, step.shortId)
             is ApproveStep.Failed -> step.message.asString()
         }
-    Text(text, style = CorvidTheme.type.body, color = CorvidTheme.colors.ink)
+    StatusLine(text, failed = step is ApproveStep.Failed)
 }

@@ -36,6 +36,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 private fun rule(
@@ -289,10 +290,85 @@ class FiltersViewModelTest {
             vm.toggle(0)
             vm.ready()
             vm.delete(1)
+            vm.confirmDelete()
             vm.ready()
 
             val reloaded = viewModel(fake).ready()
             assertEquals(listOf("a" to false), reloaded.rules.map { it.name to it.enabled })
+        }
+
+    @Test
+    fun `deleting a rule asks first, and keeping it saves nothing`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            val vm = viewModel(fake)
+            vm.save(null, rule("a"))
+            vm.ready()
+
+            vm.delete(0)
+            assertEquals(rule("a"), vm.ready().confirmingDelete)
+            vm.keepRule()
+
+            assertNull(vm.ready().confirmingDelete)
+            assertEquals(listOf("a"), viewModel(fake).ready().rules.map { it.name })
+        }
+
+    @Test
+    fun `a rule moved while its delete is asked about is the one deleted`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            val vm = viewModel(fake)
+            vm.save(null, rule("a"))
+            vm.ready()
+            vm.save(null, rule("b"))
+            vm.ready()
+
+            vm.delete(0)
+            vm.move(0, 1)
+            vm.ready()
+            assertEquals(rule("a"), vm.ready().confirmingDelete)
+            vm.confirmDelete()
+            vm.ready()
+
+            assertEquals(listOf("b"), viewModel(fake).ready().rules.map { it.name })
+        }
+
+    @Test
+    fun `confirming a delete while a save is in flight keeps the question`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            val vm = viewModel(fake)
+            vm.save(null, rule("a"))
+            vm.ready()
+            vm.save(null, rule("b"))
+            vm.ready()
+            vm.delete(1)
+            val release = CompletableDeferred<Unit>()
+            fake.gate = release
+
+            vm.toggle(0)
+            vm.confirmDelete()
+            assertEquals(rule("b"), (vm.state.value as FiltersUiState.Ready).confirmingDelete)
+            release.complete(Unit)
+            vm.ready()
+            vm.confirmDelete()
+            vm.ready()
+
+            assertEquals(listOf("a" to false), viewModel(fake).ready().rules.map { it.name to it.enabled })
+        }
+
+    @Test
+    fun `editing a rule drops an open delete question`() =
+        runViewModelTest {
+            val vm = viewModel(FakeJmapServer())
+            vm.save(null, rule("a"))
+            vm.ready()
+
+            vm.delete(0)
+            vm.startEdit(0)
+            vm.cancelEdit()
+
+            assertNull(vm.ready().confirmingDelete)
         }
 
     @Test

@@ -42,7 +42,13 @@ val LedgerSource.kind: ListKind
 sealed interface LedgerUiState {
     data object Loading : LedgerUiState
 
-    data class Loaded(val conversations: List<Conversation>, val canLoadMore: Boolean) : LedgerUiState
+    /** [moreFailed] and [refreshFailed] say why a later page or a refetch from the top did not load; the rows shown stay. */
+    data class Loaded(
+        val conversations: List<Conversation>,
+        val canLoadMore: Boolean,
+        val moreFailed: UiText? = null,
+        val refreshFailed: UiText? = null,
+    ) : LedgerUiState
 
     data class Failed(val message: UiText) : LedgerUiState
 }

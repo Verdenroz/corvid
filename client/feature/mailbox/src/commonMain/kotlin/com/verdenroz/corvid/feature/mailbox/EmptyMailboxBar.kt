@@ -17,9 +17,9 @@ import com.verdenroz.corvid.core.data.JUNK
 import com.verdenroz.corvid.core.data.TRASH
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.LocalWideLayout
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.PillButton
-import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.action_empty_junk
 import com.verdenroz.corvid.feature.mailbox.resources.action_empty_question
@@ -52,7 +52,7 @@ internal fun EmptyMailboxBar(
         } else {
             Row(
                 horizontalArrangement = Arrangement.End,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = CorvidSpacing.gutter(LocalWideLayout.current), vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = CorvidSpacing.gutter(LocalWideLayout.current)),
             ) {
                 PillButton(stringResource(label), CorvidIcons.Trash, { confirming = true }, height = 32.dp)
             }

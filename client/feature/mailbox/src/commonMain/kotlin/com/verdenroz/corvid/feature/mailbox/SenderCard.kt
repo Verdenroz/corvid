@@ -29,6 +29,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -40,6 +42,7 @@ import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.designsystem.component.PrimaryButton
+import com.verdenroz.corvid.core.designsystem.focusRingInset
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.core.model.SenderKind
@@ -239,12 +242,12 @@ private fun History(
                 stringResource(Res.string.card_recent).uppercase(),
                 style = CorvidTheme.type.label,
                 color = colors.inkFaint,
-                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp).semantics { heading() },
             )
         }
         items(recent, key = { it.id }) { email ->
             Row(
-                Modifier.fillMaxWidth().clickable { onOpen(email) }.padding(vertical = 10.dp),
+                Modifier.fillMaxWidth().focusRingInset().clickable { onOpen(email) }.padding(vertical = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text(

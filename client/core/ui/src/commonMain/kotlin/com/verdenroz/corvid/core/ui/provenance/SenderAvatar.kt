@@ -9,11 +9,17 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -22,6 +28,7 @@ import com.verdenroz.corvid.core.designsystem.BRAND_HUE
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.CorvidMark
+import com.verdenroz.corvid.core.designsystem.focusRing
 import com.verdenroz.corvid.core.designsystem.oklch
 import com.verdenroz.corvid.core.model.Seal
 import com.verdenroz.corvid.core.model.SenderKind
@@ -36,7 +43,8 @@ private val SourceShape = RoundedCornerShape(percent = 30)
 
 /**
  * Circles are people, rounded squares are sources, and the squircle holding the Corvid mark is the
- * user's own server; the badge is the server's own verdict on the sender.
+ * user's own server; the badge is the server's own verdict on the sender. With [onClick] the
+ * avatar is a button named for the sender.
  */
 @Composable
 fun SenderAvatar(
@@ -58,14 +66,18 @@ fun SenderAvatar(
         remember(type, source != null) {
             if (source != null) type.name.copy(fontFamily = type.title.fontFamily) else type.name
         }
-    Box(modifier.size(size)) {
+    val pressable =
+        onClick?.let {
+            Modifier
+                .focusRing(shape)
+                .clip(shape)
+                .semantics { contentDescription = name }
+                .clickable(role = Role.Button, onClick = it)
+        } ?: Modifier
+    Box(modifier.then(if (onClick == null) Modifier else Modifier.minimumInteractiveComponentSize()).size(size)) {
         Box(
             contentAlignment = Alignment.Center,
-            modifier =
-                Modifier
-                    .size(size)
-                    .background(fill, shape)
-                    .then(if (onClick == null) Modifier else Modifier.clickable(onClick = onClick)),
+            modifier = Modifier.size(size).then(pressable).background(fill, shape),
         ) {
             if (ownServer) {
                 CorvidMark(size * 0.58f)
@@ -76,6 +88,7 @@ fun SenderAvatar(
                     fontWeight = if (source != null) FontWeight.Bold else FontWeight.SemiBold,
                     fontSize = (size.value * 0.39f).sp,
                     color = colors.ink,
+                    modifier = if (onClick == null) Modifier else Modifier.clearAndSetSemantics {},
                 )
             }
         }

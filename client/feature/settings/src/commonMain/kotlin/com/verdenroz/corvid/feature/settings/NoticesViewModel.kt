@@ -28,6 +28,15 @@ class NoticesViewModel(private val repository: NoticeRepository) : ViewModel() {
     val state: StateFlow<NoticesState> = _state
 
     init {
+        load()
+    }
+
+    fun retry() {
+        _state.value = NoticesState.Loading
+        load()
+    }
+
+    private fun load() {
         viewModelScope.launch {
             _state.value =
                 try {

@@ -29,8 +29,10 @@ import com.verdenroz.corvid.core.data.clockTime
 import com.verdenroz.corvid.core.data.dayHeading
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.LocalWideLayout
+import com.verdenroz.corvid.core.designsystem.focusRingInset
 import com.verdenroz.corvid.core.text.asString
-import com.verdenroz.corvid.core.ui.LocalWideLayout
+import com.verdenroz.corvid.core.ui.LoadingPane
 import com.verdenroz.corvid.core.ui.QuietPane
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.directory_window
@@ -55,8 +57,8 @@ internal fun DirectoryList(
     }
     val state by viewModel.state.collectAsState()
     when (val current = state) {
-        is DirectoryUiState.Loading -> Unit
-        is DirectoryUiState.Failed -> QuietPane(current.message.asString())
+        is DirectoryUiState.Loading -> LoadingPane()
+        is DirectoryUiState.Failed -> QuietPane(current.message.asString(), onRetry = viewModel::retry)
         is DirectoryUiState.Loaded -> {
             val directory = current.directory
             LazyColumn(Modifier.fillMaxSize().background(CorvidTheme.colors.surface)) {
@@ -94,7 +96,7 @@ internal fun DirectoryRow(
 ) {
     val colors = CorvidTheme.colors
     val gutter = CorvidSpacing.gutter(LocalWideLayout.current)
-    Column(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+    Column(Modifier.fillMaxWidth().focusRingInset().clickable(onClick = onClick)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),

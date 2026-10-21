@@ -37,7 +37,13 @@ fun LockedPane(
                 )
             },
         )
-    StatePane(stringResource(Res.string.locked_title), modifier, detail = stringResource(Res.string.locked_detail), facts = facts) {
+    StatePane(
+        stringResource(Res.string.locked_title),
+        modifier,
+        detail = stringResource(Res.string.locked_detail),
+        facts = facts,
+        drawEyeLine = true,
+    ) {
         PrimaryButton(stringResource(Res.string.locked_unlock), onUnlock)
     }
 }

@@ -18,18 +18,24 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.Correction
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.data.stamp
+import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.ActionIcon
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.PillButton
+import com.verdenroz.corvid.core.designsystem.focusRing
+import com.verdenroz.corvid.core.designsystem.focusRingInset
 import com.verdenroz.corvid.core.model.Attachment
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.model.EmailAddress
@@ -41,6 +47,7 @@ import com.verdenroz.corvid.core.ui.provenance.sealDescription
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.action_headers
 import com.verdenroz.corvid.feature.mailbox.resources.action_hide_headers
+import com.verdenroz.corvid.feature.mailbox.resources.card_open
 import com.verdenroz.corvid.feature.mailbox.resources.has_attachments
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_forward
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_reply
@@ -128,7 +135,7 @@ private fun ExpandedMessage(
             headers != null,
             onHeaders,
             onOpenSender,
-            if (threaded) Modifier.clickable(onClick = onToggle) else Modifier,
+            if (threaded) Modifier.focusRingInset().clickable(onClick = onToggle) else Modifier,
         )
         headers?.let { HeadersPanel(it, Modifier.padding(bottom = 16.dp)) }
         Custody(email, wide) { guess -> TeachControls(guess, teach.answering, teach.error, onAnswer) }
@@ -185,7 +192,7 @@ private fun CollapsedMessage(
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(vertical = 12.dp),
+        modifier = Modifier.fillMaxWidth().focusRingInset().clickable(onClick = onToggle).padding(vertical = 12.dp),
     ) {
         SenderAvatar(email.from.displayName(), email.provenance.sender, email.provenance.seal, size = 28.dp)
         Text(
@@ -235,12 +242,27 @@ private fun SenderLine(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         modifier = modifier.fillMaxWidth().padding(bottom = 16.dp),
     ) {
-        SenderAvatar(email.from.displayName(), email.provenance.sender, seal, onClick = open)
+        val openLabel = stringResource(Res.string.card_open, email.from.displayName())
+        SenderAvatar(
+            email.from.displayName(),
+            email.provenance.sender,
+            seal,
+            // The name beside it is the one stop for this action, for a screen reader and for Tab alike.
+            Modifier.clearAndSetSemantics {}.focusProperties { canFocus = false },
+            onClick = open,
+        )
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
                     email.from.displayName(),
-                    modifier = if (open == null) Modifier else Modifier.clickable(onClick = open),
+                    modifier =
+                        if (open == null) {
+                            Modifier
+                        } else {
+                            Modifier
+                                .focusRing(CorvidShape.small)
+                                .clickable(onClickLabel = openLabel, role = Role.Button, onClick = open)
+                        },
                     style = CorvidTheme.type.name,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,

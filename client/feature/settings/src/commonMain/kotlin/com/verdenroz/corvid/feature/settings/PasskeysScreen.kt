@@ -21,18 +21,22 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.auth.Passkey
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.LocalWideLayout
 import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.designsystem.component.QuietLink
+import com.verdenroz.corvid.core.designsystem.focusRingInset
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.DiscardQuestion
-import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.core.ui.PageHeader
+import com.verdenroz.corvid.core.ui.StatusLine
 import com.verdenroz.corvid.feature.settings.resources.Res
 import com.verdenroz.corvid.feature.settings.resources.passkeys_add_heading
 import com.verdenroz.corvid.feature.settings.resources.passkeys_add_here
@@ -162,7 +166,12 @@ private fun Actions(
     viewModel: PasskeysViewModel,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(stringResource(Res.string.passkeys_add_heading), style = CorvidTheme.type.dayHeader, color = CorvidTheme.colors.ink)
+        Text(
+            stringResource(Res.string.passkeys_add_heading),
+            style = CorvidTheme.type.dayHeader,
+            color = CorvidTheme.colors.ink,
+            modifier = Modifier.semantics { heading() },
+        )
         Row(
             Modifier.padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -187,7 +196,11 @@ private fun ActionRow(
     onClick: () -> Unit,
 ) {
     Column(
-        Modifier.fillMaxWidth().clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(vertical = 12.dp),
+        Modifier
+            .fillMaxWidth()
+            .focusRingInset()
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Text(stringResource(title), style = CorvidTheme.type.name, fontWeight = FontWeight.SemiBold, color = CorvidTheme.colors.ink)
@@ -213,7 +226,7 @@ private fun StepText(step: PasskeyStep) {
                     PasskeyStep.Removed -> stringResource(Res.string.passkeys_removed)
                     is PasskeyStep.Failed -> step.message.asString()
                 }
-            Text(text, style = CorvidTheme.type.body, color = CorvidTheme.colors.ink)
+            StatusLine(text, failed = step is PasskeyStep.Failed)
         }
     }
 }

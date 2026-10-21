@@ -2,7 +2,6 @@
 <resources>
     <string name="unreachable_server">Could not reach the server.</string>
     <string name="unreachable_session">The server's session response is unusable.</string>
-    <string name="unreachable_key_damaged">The device key is damaged.</string>
     <string name="unreachable_key_unreachable">The device key could not be reached.</string>
     <string name="unreachable_heartbeat">The server stopped answering.</string>
     <string name="device_name_title">Name this device</string>
@@ -10,7 +9,7 @@
     <string name="device_name_hint">lowercase letters, digits, hyphens</string>
     <string name="device_name_continue">Continue</string>
     <string name="unreachable_request_failed">Could not reach the server to ask for a key.</string>
-    <string name="enroll_title">Approve "%1$s" from another device</string>
+    <string name="enroll_title">Approve “%1$s” from another device</string>
     <string name="enroll_detail">On a device that already has access, open Settings, choose Approve a device, and pick this device by name, then type the code below. Or scan the QR code.</string>
     <string name="enroll_qr">QR code for approving this device</string>
     <string name="enroll_request_id">Request id</string>
@@ -43,6 +42,10 @@
     <string name="app_update_corrupt">The download did not match what the server lists. Nothing was installed.</string>
     <string name="app_update_no_build">This server has no build for this device.</string>
     <string name="key_status">· key held · locks in %1$s</string>
+    <plurals name="key_status_spoken">
+        <item quantity="one">%1$s, key held, locks within %2$d minute</item>
+        <item quantity="other">%1$s, key held, locks within %2$d minutes</item>
+    </plurals>
     <string name="key_countdown">%1$s:%2$s</string>
     <string name="key_lock_now">Lock now</string>
     <string name="tab_inbox">Inbox</string>
@@ -56,6 +59,7 @@
     <string name="tab_trash">Trash</string>
     <string name="sidebar_toggle">Show or hide folder names</string>
     <string name="drawer_open">Open folders</string>
+    <string name="place_unread">%1$s, %2$d unread</string>
     <string name="tab_labels">Labels</string>
     <string name="tab_filters">Filters</string>
     <string name="write">Write</string>

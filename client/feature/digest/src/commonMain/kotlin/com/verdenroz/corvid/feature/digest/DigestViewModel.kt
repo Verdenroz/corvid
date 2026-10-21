@@ -34,6 +34,15 @@ class DigestViewModel(
     val state: StateFlow<DigestState> = _state
 
     init {
+        load()
+    }
+
+    fun retry() {
+        _state.value = DigestState.Loading
+        load()
+    }
+
+    private fun load() {
         viewModelScope.launch {
             _state.value =
                 try {

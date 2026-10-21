@@ -21,7 +21,14 @@ class EnrollmentPromptTest {
         runComposeUiTest {
             setContent {
                 CorvidTheme(darkTheme = false) {
-                    EnrollmentPrompt("laptop-1", EnrollmentRequest.Open(request), onAskAgain = {}, onApproveSelf = {}, onWatch = {})
+                    EnrollmentPrompt(
+                        "laptop-1",
+                        EnrollmentRequest.Open(request),
+                        onAskAgain = {},
+                        onApproveSelf = {},
+                        onWatch = {},
+                        onSignOut = {},
+                    )
                 }
             }
 
@@ -41,6 +48,7 @@ class EnrollmentPromptTest {
                         onAskAgain = {},
                         onApproveSelf = { approved++ },
                         onWatch = {},
+                        onSignOut = {},
                     )
                 }
             }
@@ -62,6 +70,7 @@ class EnrollmentPromptTest {
                         onAskAgain = { asked++ },
                         onApproveSelf = {},
                         onWatch = {},
+                        onSignOut = {},
                     )
                 }
             }
@@ -69,5 +78,27 @@ class EnrollmentPromptTest {
             onNodeWithText("Ask again").performClick()
 
             assertEquals(1, asked)
+        }
+
+    @Test
+    fun `a request nothing can approve still offers signing out`() =
+        runComposeUiTest {
+            var signedOut = 0
+            setContent {
+                CorvidTheme(darkTheme = false) {
+                    EnrollmentPrompt(
+                        "laptop-1",
+                        EnrollmentRequest.Open(request),
+                        onAskAgain = {},
+                        onApproveSelf = {},
+                        onWatch = {},
+                        onSignOut = { signedOut++ },
+                    )
+                }
+            }
+
+            onNodeWithText("Sign out").performClick()
+
+            assertEquals(1, signedOut)
         }
 }

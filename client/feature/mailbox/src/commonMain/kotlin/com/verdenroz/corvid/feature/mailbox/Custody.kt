@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -77,7 +78,11 @@ private fun CustodyCellView(
     when (cell) {
         is CustodyCell.Sender ->
             Cell(
-                if (cell.danger) CorvidIcons.Alert else CorvidIcons.Seal,
+                when {
+                    cell.danger -> CorvidIcons.Alert
+                    cell.signed -> CorvidIcons.Seal
+                    else -> null
+                },
                 stringResource(Res.string.custody_sender),
                 cell.value.asString(),
                 cell.detail.asString(),
@@ -109,7 +114,7 @@ private fun LabelledCell(
 
 @Composable
 internal fun Cell(
-    icon: ImageVector,
+    icon: ImageVector?,
     title: String,
     value: String,
     detail: String?,
@@ -127,12 +132,16 @@ internal fun Cell(
 
 @Composable
 private fun Key(
-    icon: ImageVector,
+    icon: ImageVector?,
     title: String,
     tint: Color,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(14.dp))
+        if (icon == null) {
+            Spacer(Modifier.size(14.dp))
+        } else {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(14.dp))
+        }
         Text(title.uppercase(), style = CorvidTheme.type.label, color = tint)
     }
 }

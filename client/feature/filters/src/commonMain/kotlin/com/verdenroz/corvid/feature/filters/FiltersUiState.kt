@@ -13,7 +13,7 @@ sealed interface FiltersUiState {
 
     data class Failed(val message: UiText) : FiltersUiState
 
-    /** [rules] is what the editor holds, saved or not: a failed save leaves it as edited. */
+    /** [rules] is what the editor holds, saved or not: a failed save leaves it as edited. [confirmingDelete] is the rule asked about. */
     data class Ready(
         val rules: List<FilterRule>,
         val folders: List<MailboxRef>,
@@ -23,6 +23,7 @@ sealed interface FiltersUiState {
         val save: SaveStatus = SaveStatus.Idle,
         val suggestions: List<RuleSuggestion> = emptyList(),
         val confirmingSuggestion: RuleSuggestion? = null,
+        val confirmingDelete: FilterRule? = null,
     ) : FiltersUiState
 }
 

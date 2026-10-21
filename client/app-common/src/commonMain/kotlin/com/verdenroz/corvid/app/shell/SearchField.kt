@@ -2,7 +2,6 @@ package com.verdenroz.corvid.app.shell
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -26,13 +24,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.appcommon.resources.Res
@@ -41,6 +37,7 @@ import com.verdenroz.corvid.appcommon.resources.search_placeholder
 import com.verdenroz.corvid.appcommon.resources.search_shortcut
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.component.ActionIcon
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import org.jetbrains.compose.resources.stringResource
 
@@ -112,16 +109,7 @@ internal fun SearchTopBar(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             modifier = Modifier.fillMaxWidth().padding(start = 6.dp, end = 16.dp, top = 4.dp, bottom = 6.dp),
         ) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier =
-                    Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .clickable(onClickLabel = stringResource(Res.string.search_back), role = Role.Button, onClick = onBack),
-            ) {
-                Icon(CorvidIcons.Back, contentDescription = null, tint = colors.ink)
-            }
+            ActionIcon(stringResource(Res.string.search_back), CorvidIcons.Back, onBack, tint = colors.ink, iconSize = 24.dp)
             SearchField(input, shortcutHint = false, modifier = Modifier.weight(1f))
         }
         HorizontalDivider(color = colors.line)

@@ -7,17 +7,26 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.verdenroz.corvid.core.designsystem.CorvidShape
+import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.LocalWideLayout
 import com.verdenroz.corvid.core.designsystem.component.CorvidTextField
 import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.designsystem.component.PrimaryButton
+import com.verdenroz.corvid.core.designsystem.focusRing
 import com.verdenroz.corvid.core.model.FilterRule
 import com.verdenroz.corvid.core.model.MailboxRef
 import com.verdenroz.corvid.core.model.MatchMode
@@ -41,7 +50,11 @@ internal fun RuleEditor(
     onCancel: () -> Unit,
 ) {
     Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = CorvidSpacing.gutter(LocalWideLayout.current), vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         CorvidTextField(rule.name, { onChange(rule.copy(name = it)) }, stringResource(Res.string.filters_name), Modifier.fillMaxWidth())
@@ -52,12 +65,18 @@ internal fun RuleEditor(
         }
         ConditionsSection(rule.conditions) { onChange(rule.copy(conditions = it)) }
 
-        Text(stringResource(Res.string.filters_then), style = CorvidTheme.type.dayHeader)
+        Text(stringResource(Res.string.filters_then), style = CorvidTheme.type.dayHeader, modifier = Modifier.semantics { heading() })
         ActionsSection(rule.actions, folders) { onChange(rule.copy(actions = it)) }
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = rule.stop, onCheckedChange = { onChange(rule.copy(stop = it)) })
-            Text(stringResource(Res.string.filters_stop))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier =
+                Modifier
+                    .focusRing(CorvidShape.small)
+                    .toggleable(rule.stop, role = Role.Checkbox) { onChange(rule.copy(stop = it)) },
+        ) {
+            Checkbox(checked = rule.stop, onCheckedChange = null, modifier = Modifier.minimumInteractiveComponentSize())
+            Text(stringResource(Res.string.filters_stop), modifier = Modifier.padding(end = 8.dp))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PrimaryButton(stringResource(Res.string.filters_save), onClick = onSave, enabled = rule.isComplete)

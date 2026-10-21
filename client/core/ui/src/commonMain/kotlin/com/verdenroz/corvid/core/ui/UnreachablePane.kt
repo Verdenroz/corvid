@@ -6,27 +6,29 @@ import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.resources.Res
+import com.verdenroz.corvid.core.ui.resources.try_again
 import com.verdenroz.corvid.core.ui.resources.unreachable_detail
-import com.verdenroz.corvid.core.ui.resources.unreachable_retry
 import com.verdenroz.corvid.core.ui.resources.unreachable_title
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * Shown for a network failure, a damaged key file or an ambiguous device
- * folder set. Nothing is wiped for any of the three: only a confirmed
- * Missing lookup (RevokedPane) means the device actually lost access.
+ * Shown when the server or the device key could not be reached. Nothing is wiped: only a confirmed Missing lookup
+ * (RevokedPane) means the device actually lost access. [onSignOut] is the way out when the server never comes back
+ * or the account is the wrong one.
  */
 @Composable
 fun UnreachablePane(
     reason: UiText,
     onRetry: () -> Unit,
+    onSignOut: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     StatePane(
         stringResource(Res.string.unreachable_title),
         modifier,
         detail = stringResource(Res.string.unreachable_detail, reason.asString()),
+        onSignOut = onSignOut,
     ) {
-        PillButton(stringResource(Res.string.unreachable_retry), null, onRetry)
+        PillButton(stringResource(Res.string.try_again), null, onRetry)
     }
 }

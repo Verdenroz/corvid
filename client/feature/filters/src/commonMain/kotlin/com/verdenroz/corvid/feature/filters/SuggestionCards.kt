@@ -12,13 +12,17 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.designsystem.CorvidShape
+import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.LocalWideLayout
 import com.verdenroz.corvid.core.model.MailboxRef
 import com.verdenroz.corvid.core.model.RuleSuggestion
 import com.verdenroz.corvid.core.model.SuggestionSenderKind
@@ -43,11 +47,15 @@ internal fun LazyListScope.suggestionCards(
     if (state.suggestions.isEmpty()) return
     item {
         Column(
-            Modifier.padding(horizontal = 16.dp).padding(top = 14.dp, bottom = 12.dp),
+            Modifier.padding(horizontal = CorvidSpacing.gutter(LocalWideLayout.current)).padding(top = 14.dp, bottom = 12.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(stringResource(Res.string.suggestions_title), style = CorvidTheme.type.dayHeader)
+                Text(
+                    stringResource(Res.string.suggestions_title),
+                    style = CorvidTheme.type.dayHeader,
+                    modifier = Modifier.semantics { heading() },
+                )
                 Text(stringResource(Res.string.suggestions_aside), style = CorvidTheme.type.meta, color = CorvidTheme.colors.inkFaint)
             }
             Text(stringResource(Res.string.suggestions_legend), style = CorvidTheme.type.meta, color = CorvidTheme.colors.inkMuted)
@@ -55,7 +63,7 @@ internal fun LazyListScope.suggestionCards(
     }
     val enabled = state.save !is SaveStatus.Saving
     items(state.suggestions, key = { it.id }) { suggestion ->
-        SuggestionCard(suggestion, state.folders, onAccept = { if (enabled) onAccept(suggestion) }, onDismiss = { onDismiss(suggestion) })
+        SuggestionCard(suggestion, state.folders, enabled, onAccept = { onAccept(suggestion) }, onDismiss = { onDismiss(suggestion) })
     }
 }
 
@@ -63,12 +71,13 @@ internal fun LazyListScope.suggestionCards(
 private fun SuggestionCard(
     suggestion: RuleSuggestion,
     folders: List<MailboxRef>,
+    acceptEnabled: Boolean,
     onAccept: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val colors = CorvidTheme.colors
     val caption = suggestion.caption().asString()
-    val frame = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp).fillMaxWidth()
+    val frame = Modifier.padding(horizontal = CorvidSpacing.gutter(LocalWideLayout.current)).padding(bottom = 12.dp).fillMaxWidth()
     Column(
         verticalArrangement = Arrangement.spacedBy(12.dp),
         modifier = frame.border(1.dp, colors.line, CorvidShape.medium).padding(14.dp),
@@ -83,7 +92,13 @@ private fun SuggestionCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             SuggestionButton(stringResource(Res.string.suggestion_dismiss), onDismiss, ink = colors.inkMuted)
-            SuggestionButton(stringResource(Res.string.suggestion_add), onAccept, ink = colors.surface, fill = colors.ink)
+            SuggestionButton(
+                stringResource(Res.string.suggestion_add),
+                onAccept,
+                ink = colors.surface,
+                fill = colors.ink,
+                enabled = acceptEnabled,
+            )
         }
     }
 }

@@ -25,6 +25,11 @@
     <string name="ledger_empty_starred">Nothing starred.</string>
     <string name="ledger_empty_sent">Nothing sent from here yet.</string>
     <string name="ledger_empty_drafts">No drafts.</string>
+    <string name="ledger_more_failed">Older mail not loaded: %1$s</string>
+    <string name="ledger_refresh_failed">List not refreshed: %1$s</string>
+    <string name="ledger_state_unread">Unread</string>
+    <string name="ledger_state_starred">Starred</string>
+    <string name="ledger_state_suspect">Failed authentication</string>
     <plurals name="ledger_thread_messages">
         <item quantity="one">%1$d message in this conversation</item>
         <item quantity="other">%1$d messages in this conversation</item>
@@ -108,6 +113,7 @@
     <string name="card_unsubscribe">Unsubscribe</string>
     <string name="card_make_filter">Make a filter</string>
     <string name="card_close">Close</string>
+    <string name="card_open">Open card for %1$s</string>
     <plurals name="card_signed_of">
         <item quantity="one">Signed on %1$d of %2$d message</item>
         <item quantity="other">Signed on %1$d of %2$d messages</item>

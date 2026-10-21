@@ -21,8 +21,8 @@ import com.verdenroz.corvid.appcommon.resources.Res
 import com.verdenroz.corvid.appcommon.resources.notices_dismiss
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.LocalWideLayout
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
-import com.verdenroz.corvid.core.ui.LocalWideLayout
 import org.jetbrains.compose.resources.stringResource
 
 internal enum class BannerTone { Accent, Danger }

@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
@@ -210,6 +211,105 @@ class LedgerViewModelTest {
             val vm = track(LedgerViewModel(repository, LedgerSource.Search("invoice")))
 
             vm.state.first { it is LedgerUiState.Failed }
+        }
+
+    @Test
+    fun `retrying a failed list loads it once the server answers`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.emails += FakeEmail("a", "a", setOf("inbox"), "Invoice March", "a@x.test", "2024-01-01T00:00:00Z")
+            val repository = repository(fake)
+            fake.apiProblem = "urn:ietf:params:jmap:error:limit"
+            val vm = track(LedgerViewModel(repository, LedgerSource.Search("invoice")))
+            vm.state.first { it is LedgerUiState.Failed }
+
+            fake.apiProblem = null
+            vm.retry()
+
+            val loaded = vm.state.first { it is LedgerUiState.Loaded } as LedgerUiState.Loaded
+            assertEquals(listOf("a"), loaded.conversations.map { it.latest.id })
+        }
+
+    @Test
+    fun `a later page that fails keeps the rows already loaded and says so`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
+            repeat(EMAIL_COUNT) { i ->
+                val receivedAt = Instant.fromEpochSeconds((1000 - i).toLong()).toString()
+                fake.emails += FakeEmail("e$i", "e$i", setOf("inbox"), "subject $i", "s$i@x.test", receivedAt)
+            }
+            val vm = track(LedgerViewModel(repository(fake), LedgerTab.Inbox))
+            vm.state.first { it is LedgerUiState.Loaded }
+
+            fake.apiProblem = "urn:ietf:params:jmap:error:limit"
+            vm.loadMore()
+            val kept = vm.state.first { it is LedgerUiState.Loaded && it.moreFailed != null } as LedgerUiState.Loaded
+            assertEquals(50, kept.conversations.size)
+
+            fake.apiProblem = null
+            vm.loadMore()
+            val whole = vm.state.first { it is LedgerUiState.Loaded && it.conversations.size == EMAIL_COUNT } as LedgerUiState.Loaded
+            assertNull(whole.moreFailed)
+        }
+
+    @Test
+    fun `a scroll that restarts from the top and fails there reports the scroll, not a refresh`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
+            repeat(EMAIL_COUNT) { i ->
+                val receivedAt = Instant.fromEpochSeconds((1000 - i).toLong()).toString()
+                fake.emails += FakeEmail("e$i", "e$i", setOf("inbox"), "subject $i", "s$i@x.test", receivedAt)
+            }
+            var queries = 0
+            fake.beforeEmailQuery = { if (++queries == 2) fake.apiProblem = "urn:ietf:params:jmap:error:limit" }
+            val vm = track(LedgerViewModel(repository(fake), LedgerTab.Inbox))
+            vm.state.first { it is LedgerUiState.Loaded }
+
+            fake.queryState = "qs2"
+            vm.loadMore()
+            val kept = vm.state.first { it is LedgerUiState.Loaded && it.moreFailed != null } as LedgerUiState.Loaded
+            assertEquals(2, queries)
+            assertEquals(50, kept.conversations.size)
+            assertNull(kept.refreshFailed)
+        }
+
+    @Test
+    fun `a refresh that fails keeps the rows already loaded and says so`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
+            fake.emails += FakeEmail("a", "a", setOf("inbox"), "subject", "a@x.test", "2024-01-01T00:00:00Z")
+            val vm = track(LedgerViewModel(repository(fake), LedgerTab.Inbox))
+            vm.state.first { it is LedgerUiState.Loaded }
+
+            fake.apiProblem = "urn:ietf:params:jmap:error:limit"
+            vm.refresh()?.join()
+            val kept = vm.state.value as LedgerUiState.Loaded
+            assertEquals(listOf("a"), kept.conversations.map { it.latest.id })
+            assertNotNull(kept.refreshFailed)
+
+            fake.apiProblem = null
+            vm.refresh()?.join()
+            assertNull((vm.state.value as LedgerUiState.Loaded).refreshFailed)
+        }
+
+    @Test
+    fun `refreshing a failed list loads it once the server answers`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.emails += FakeEmail("a", "a", setOf("inbox"), "Invoice March", "a@x.test", "2024-01-01T00:00:00Z")
+            val repository = repository(fake)
+            fake.apiProblem = "urn:ietf:params:jmap:error:limit"
+            val vm = track(LedgerViewModel(repository, LedgerSource.Search("invoice")))
+            vm.state.first { it is LedgerUiState.Failed }
+
+            fake.apiProblem = null
+            vm.refresh()?.join()
+
+            val loaded = vm.state.value as LedgerUiState.Loaded
+            assertEquals(listOf("a"), loaded.conversations.map { it.latest.id })
         }
 
     @Test

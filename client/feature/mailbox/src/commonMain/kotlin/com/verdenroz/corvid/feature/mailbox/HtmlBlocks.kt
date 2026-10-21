@@ -34,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.focusRingInset
 import com.verdenroz.corvid.core.html.HtmlBlock
 import com.verdenroz.corvid.core.html.Inline
 import com.verdenroz.corvid.core.model.Provenance
@@ -174,7 +175,7 @@ private fun BodyImage(
         if (link == null || context.provenance.suspect) {
             Modifier
         } else {
-            Modifier.clickable {
+            Modifier.focusRingInset().clickable {
                 uriHandler.openUntrusted(
                     link.href,
                     context.provenance,

@@ -17,17 +17,22 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.LocalWideLayout
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
-import com.verdenroz.corvid.core.ui.LocalWideLayout
+import com.verdenroz.corvid.core.designsystem.focusRing
+import com.verdenroz.corvid.core.designsystem.focusRingInset
 
 @Composable
 internal fun SettingsSection(
@@ -39,7 +44,7 @@ internal fun SettingsSection(
             title.uppercase(),
             style = CorvidTheme.type.label,
             color = CorvidTheme.colors.inkMuted,
-            modifier = Modifier.padding(top = 32.dp, bottom = 10.dp),
+            modifier = Modifier.padding(top = 32.dp, bottom = 10.dp).semantics { heading() },
         )
         HorizontalDivider(color = CorvidTheme.colors.line)
         content()
@@ -78,7 +83,7 @@ internal fun <T> ChoiceRow(
     Column(Modifier.fillMaxWidth().padding(vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(title, style = CorvidTheme.type.name)
         detail?.let { Text(it, style = CorvidTheme.type.meta, color = CorvidTheme.colors.inkMuted) }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             options.forEach { option -> ChoicePill(label(option), option == selected) { onSelect(option) } }
         }
     }
@@ -96,7 +101,9 @@ private fun ChoicePill(
         verticalAlignment = Alignment.CenterVertically,
         modifier =
             Modifier
+                .minimumInteractiveComponentSize()
                 .height(36.dp)
+                .focusRing(CorvidShape.pill)
                 .clip(CorvidShape.pill)
                 .then(if (selected) Modifier.background(colors.accentSoft) else Modifier.border(1.dp, colors.line, CorvidShape.pill))
                 .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
@@ -120,7 +127,7 @@ internal fun LinkRow(
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick).padding(vertical = 14.dp),
+        modifier = Modifier.fillMaxWidth().focusRingInset().clickable(role = Role.Button, onClick = onClick).padding(vertical = 14.dp),
     ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(title, style = CorvidTheme.type.name)

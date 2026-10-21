@@ -22,6 +22,7 @@ import com.verdenroz.corvid.core.model.hostOf
 import com.verdenroz.corvid.core.prefs.RememberedAccount
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.StatePane
+import com.verdenroz.corvid.core.ui.StatusLine
 import com.verdenroz.corvid.feature.signin.resources.Res
 import com.verdenroz.corvid.feature.signin.resources.signin_advanced
 import com.verdenroz.corvid.feature.signin.resources.signin_another
@@ -123,13 +124,20 @@ private fun SetUp(
         if (failed?.hint == FailureHint.NewCode) code = ""
     }
 
+    val canSetUp = !working && code.isNotBlank()
     StatePane(stringResource(Res.string.signin_set_up_title), detail = stringResource(Res.string.signin_set_up_detail)) {
-        CorvidTextField(code, { code = it }, stringResource(Res.string.signin_set_up_code), Modifier.fillMaxWidth())
+        CorvidTextField(
+            code,
+            { code = it },
+            stringResource(Res.string.signin_set_up_code),
+            Modifier.fillMaxWidth(),
+            onSubmit = { if (canSetUp) viewModel.setUp(account, code) },
+        )
         failed?.let { Problem(it.message.asString()) }
         PrimaryButton(
             stringResource(setUpLabel(state)),
             onClick = { viewModel.setUp(account, code) },
-            enabled = !working && code.isNotBlank(),
+            enabled = canSetUp,
         )
         QuietLink(stringResource(Res.string.signin_set_up_back), onClick = onBack)
     }
@@ -154,6 +162,7 @@ private fun AccountEntry(
     var advanced by rememberSaveable { mutableStateOf(false) }
     val state by viewModel.state.collectAsState()
     val signingIn = state is SignInUiState.SigningIn
+    val discovering = state is SignInUiState.Discovering
 
     LaunchedEffect(state) {
         when (val current = state) {
@@ -169,12 +178,26 @@ private fun AccountEntry(
         when {
             advanced -> {
                 val url = KeyboardOptions(keyboardType = KeyboardType.Uri)
-                CorvidTextField(server, { server = it }, stringResource(Res.string.signin_server), Modifier.fillMaxWidth(), url)
+                CorvidTextField(
+                    server,
+                    { server = it },
+                    stringResource(Res.string.signin_server),
+                    Modifier.fillMaxWidth(),
+                    url,
+                    onSubmit = { if (!signingIn) viewModel.signIn(server) },
+                )
             }
             discovery != null -> Confirmation(discovery)
             else -> {
                 val keyboard = KeyboardOptions(keyboardType = KeyboardType.Email)
-                CorvidTextField(email, { email = it }, stringResource(Res.string.signin_email), Modifier.fillMaxWidth(), keyboard)
+                CorvidTextField(
+                    email,
+                    { email = it },
+                    stringResource(Res.string.signin_email),
+                    Modifier.fillMaxWidth(),
+                    keyboard,
+                    onSubmit = { if (!discovering) viewModel.discover(email) },
+                )
             }
         }
         (state as? SignInUiState.DiscoveryFailed)?.let { Problem(it.message.asString()) }
@@ -188,7 +211,6 @@ private fun AccountEntry(
             val account = discovery?.let { RememberedAccount(it.server.baseUrl, it.email) } ?: RememberedAccount(server.trimEnd('/'))
             QuietLink(stringResource(Res.string.signin_set_up), onClick = { onSetUp(account) })
         } else {
-            val discovering = state is SignInUiState.Discovering
             PrimaryButton(
                 stringResource(if (discovering) Res.string.signin_discovering else Res.string.signin_continue),
                 onClick = { viewModel.discover(email) },
@@ -230,5 +252,5 @@ private fun Confirmation(discovery: Discovery) {
 
 @Composable
 private fun Problem(message: String) {
-    Text(message, style = CorvidTheme.type.meta, color = CorvidTheme.colors.danger)
+    StatusLine(message, failed = true, style = CorvidTheme.type.meta)
 }

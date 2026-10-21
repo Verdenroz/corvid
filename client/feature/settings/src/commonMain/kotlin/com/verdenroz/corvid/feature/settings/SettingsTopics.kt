@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.drawIndicator
+import com.verdenroz.corvid.core.designsystem.focusRing
 import com.verdenroz.corvid.feature.settings.resources.Res
 import com.verdenroz.corvid.feature.settings.resources.settings_about
 import com.verdenroz.corvid.feature.settings.resources.settings_account
@@ -69,6 +70,7 @@ private fun TopicItem(
             Modifier
                 .fillMaxWidth()
                 .height(38.dp)
+                .focusRing(CorvidShape.small)
                 .clip(CorvidShape.small)
                 .clickable(role = Role.Tab, onClick = onClick)
                 .semantics { this.selected = selected }

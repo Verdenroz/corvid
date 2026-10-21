@@ -1,6 +1,5 @@
 package com.verdenroz.corvid.feature.mailbox
 
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -25,7 +24,10 @@ import com.verdenroz.corvid.core.data.SearchQuery
 import com.verdenroz.corvid.core.data.SearchScope
 import com.verdenroz.corvid.core.data.searchAnywhere
 import com.verdenroz.corvid.core.designsystem.CorvidShape
+import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.LocalWideLayout
+import com.verdenroz.corvid.core.designsystem.focusRing
 import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.search_exclude_discarded
@@ -84,7 +86,7 @@ private fun SearchSummary(
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = CorvidSpacing.gutter(LocalWideLayout.current), vertical = 6.dp),
     ) {
         Text(
             count?.let { pluralStringResource(Res.plurals.search_results, it, it) }.orEmpty(),
@@ -104,6 +106,7 @@ private fun SearchSummary(
                 maxLines = 1,
                 modifier =
                     Modifier
+                        .focusRing(CorvidShape.small)
                         .clickable(role = Role.Button) { onScope(!anywhere) }
                         .padding(vertical = 6.dp),
             )
@@ -117,20 +120,16 @@ private fun SearchHints(modifier: Modifier = Modifier) {
     val colors = CorvidTheme.colors
     Column(
         verticalArrangement = Arrangement.spacedBy(10.dp),
-        modifier = modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 14.dp),
+        modifier = modifier.fillMaxSize().padding(horizontal = CorvidSpacing.gutter(LocalWideLayout.current), vertical = 14.dp),
     ) {
         FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
             modifier = Modifier.widthIn(max = 520.dp),
         ) {
+            // Unbordered, so the examples read as text to type rather than chips to tap.
             stringArrayResource(Res.array.search_hint_examples).forEach { example ->
-                Text(
-                    example,
-                    style = CorvidTheme.type.chip,
-                    color = colors.inkMuted,
-                    modifier = Modifier.border(1.dp, colors.line, CorvidShape.small).padding(horizontal = 6.dp, vertical = 2.dp),
-                )
+                Text(example, style = CorvidTheme.type.chip, color = colors.inkMuted)
             }
         }
         Text(stringResource(Res.string.search_hint_scope), style = CorvidTheme.type.meta, color = colors.inkMuted)

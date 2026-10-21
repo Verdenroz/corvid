@@ -15,13 +15,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.LocalWideLayout
 import com.verdenroz.corvid.core.designsystem.component.ActionIcon
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
+import com.verdenroz.corvid.core.designsystem.focusRingInset
 import com.verdenroz.corvid.core.model.Digest
 import com.verdenroz.corvid.core.model.items
 import com.verdenroz.corvid.core.model.lists
@@ -30,7 +34,6 @@ import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.text.uiPlural
 import com.verdenroz.corvid.core.text.uiText
-import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.overnight_hide
 import com.verdenroz.corvid.feature.mailbox.resources.overnight_join
@@ -103,13 +106,19 @@ internal fun OvernightBlock(offer: OvernightOffer) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             modifier =
-                Modifier.weight(
-                    1f,
-                ).clickable(role = Role.Button, onClick = offer.onOpen).padding(start = 14.dp, top = 12.dp, end = 4.dp, bottom = 12.dp),
+                Modifier
+                    .weight(1f)
+                    .focusRingInset(CorvidShape.medium)
+                    .clickable(role = Role.Button, onClick = offer.onOpen)
+                    .padding(start = 14.dp, top = 12.dp, end = 4.dp, bottom = 12.dp),
         ) {
             Column(Modifier.weight(1f)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Bottom) {
-                    Text(stringResource(Res.string.overnight_title), style = CorvidTheme.type.dayHeader)
+                    Text(
+                        stringResource(Res.string.overnight_title),
+                        style = CorvidTheme.type.dayHeader,
+                        modifier = Modifier.semantics { heading() },
+                    )
                     Text(entry.count.toString(), style = CorvidTheme.type.meta, color = colors.inkMuted)
                 }
                 Row {

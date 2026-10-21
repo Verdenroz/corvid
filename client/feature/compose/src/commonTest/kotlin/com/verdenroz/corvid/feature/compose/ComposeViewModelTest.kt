@@ -193,6 +193,7 @@ class ComposeViewModelTest {
             val fake = server()
             val vm = viewModel(fake)
             vm.editing()
+            vm.idle()
             val requestsBefore = fake.requestCount
 
             vm.send()

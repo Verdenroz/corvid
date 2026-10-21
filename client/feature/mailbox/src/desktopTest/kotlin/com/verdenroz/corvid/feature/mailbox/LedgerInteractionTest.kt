@@ -42,6 +42,7 @@ import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.LocalWideLayout
 import com.verdenroz.corvid.core.testing.FakeEmail
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.FakeMailbox
@@ -49,7 +50,6 @@ import com.verdenroz.corvid.core.testing.client
 import com.verdenroz.corvid.core.ui.EntryHandlers
 import com.verdenroz.corvid.core.ui.LocalEntryHandlers
 import com.verdenroz.corvid.core.ui.LocalTopEntryKeys
-import com.verdenroz.corvid.core.ui.LocalWideLayout
 import kotlinx.coroutines.runBlocking
 import kotlin.test.AfterTest
 import kotlin.test.Test

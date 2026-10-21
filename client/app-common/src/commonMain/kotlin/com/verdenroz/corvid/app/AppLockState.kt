@@ -13,9 +13,11 @@ sealed interface AppLockState {
     /** Repositories live in the unlocked Koin scope, not here; [hosts] are the servers this session signed in to. */
     data class Unlocked(val hosts: AccountHosts) : AppLockState
 
-    /** Covers a network failure and a damaged key file: neither wipes anything or reads as
-     *  Revoked, so they share one pane. */
+    /** The server or the key could not be reached; nothing is wiped, and it does not read as Revoked. */
     data class Unreachable(val reason: UiText) : AppLockState
+
+    /** The server answered with a key this app cannot read; nothing is wiped, and it does not read as Revoked. */
+    data object KeyDamaged : AppLockState
 
     /** The server answered but serves no device routes, so no key can be asked for. */
     data object DeviceApprovalOff : AppLockState

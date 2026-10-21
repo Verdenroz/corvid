@@ -15,6 +15,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -26,16 +27,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalAccessibilityManager
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.LocalWideLayout
 import com.verdenroz.corvid.core.designsystem.component.ActionIcon
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
+import com.verdenroz.corvid.core.designsystem.focusRing
+import com.verdenroz.corvid.core.designsystem.touchTarget
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.DiscardQuestion
-import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.action_destroy_confirm
 import com.verdenroz.corvid.feature.mailbox.resources.action_destroy_question
@@ -55,10 +63,6 @@ private val NOTICE_LIFETIME = 8.seconds
 private const val NARROW_SHOWN = 2
 
 private val ROW_BUTTON = 34.dp
-
-/** Touch targets stay 48dp when narrow; wide, the pointer gets the denser 40dp. */
-@Composable
-internal fun touchTarget(): Dp = if (LocalWideLayout.current) 40.dp else 48.dp
 
 @Composable
 private fun ConversationActionIcon(
@@ -212,7 +216,7 @@ internal fun TickRing(selected: Boolean) {
             Icon(CorvidIcons.Check, null, tint = colors.onAccent, modifier = Modifier.size(15.dp))
         }
     } else {
-        Box(ring.border(1.5.dp, colors.inkFaint, CircleShape))
+        Box(ring.border(1.5.dp, colors.outline, CircleShape))
     }
 }
 
@@ -223,12 +227,21 @@ fun ActionNoticeBar(
     notice: ActionNotice,
     modifier: Modifier = Modifier,
 ) {
+    val accessibility = LocalAccessibilityManager.current
     LaunchedEffect(notice) {
-        delay(NOTICE_LIFETIME)
+        val lifetime = NOTICE_LIFETIME.inWholeMilliseconds
+        // A screen reader can stretch this, or hold it open while Undo is on offer.
+        delay(accessibility?.calculateRecommendedTimeoutMillis(lifetime, true, true, notice.undo != null) ?: lifetime)
         actions.dismiss()
     }
     val colors = CorvidTheme.colors
-    Surface(shape = CorvidShape.medium, color = colors.ink, contentColor = colors.surface, shadowElevation = 6.dp, modifier = modifier) {
+    Surface(
+        shape = CorvidShape.medium,
+        color = colors.ink,
+        contentColor = colors.surface,
+        shadowElevation = 6.dp,
+        modifier = modifier.semantics { liveRegion = LiveRegionMode.Polite },
+    ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -247,9 +260,12 @@ fun ActionNoticeBar(
                     fontWeight = FontWeight.Bold,
                     color = colors.surface,
                     modifier =
-                        Modifier.clip(
-                            CorvidShape.small,
-                        ).clickable(onClick = actions::undo).padding(horizontal = 12.dp, vertical = 10.dp),
+                        Modifier
+                            .minimumInteractiveComponentSize()
+                            .focusRing(CorvidShape.small)
+                            .clip(CorvidShape.small)
+                            .clickable(role = Role.Button, onClick = actions::undo)
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
                 )
             }
             ActionIcon(stringResource(Res.string.action_dismiss), CorvidIcons.Close, actions::dismiss, tint = colors.surface)

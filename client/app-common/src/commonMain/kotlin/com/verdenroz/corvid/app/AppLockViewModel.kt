@@ -7,7 +7,6 @@ import com.verdenroz.corvid.appcommon.resources.enroll_self_failed_not_accepted
 import com.verdenroz.corvid.appcommon.resources.enroll_self_failed_refused
 import com.verdenroz.corvid.appcommon.resources.enroll_self_failed_upstream
 import com.verdenroz.corvid.appcommon.resources.unreachable_heartbeat
-import com.verdenroz.corvid.appcommon.resources.unreachable_key_damaged
 import com.verdenroz.corvid.appcommon.resources.unreachable_key_unreachable
 import com.verdenroz.corvid.appcommon.resources.unreachable_request_failed
 import com.verdenroz.corvid.appcommon.resources.unreachable_server
@@ -183,7 +182,7 @@ class AppLockViewModel(
                 } else {
                     askForKey(name)
                 }
-            is DeviceKeyLookup.Damaged -> _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_key_damaged))
+            is DeviceKeyLookup.Damaged -> _state.value = AppLockState.KeyDamaged
             is DeviceKeyLookup.ApprovalOff -> _state.value = AppLockState.DeviceApprovalOff
             is DeviceKeyLookup.Unreachable -> _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_key_unreachable))
         }

@@ -38,6 +38,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -46,8 +47,10 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.clockTime
+import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
+import com.verdenroz.corvid.core.designsystem.touchTarget
 import com.verdenroz.corvid.core.model.Conversation
 import com.verdenroz.corvid.core.model.CorvidKeywords
 import com.verdenroz.corvid.core.model.EmailSummary
@@ -59,6 +62,9 @@ import com.verdenroz.corvid.core.ui.provenance.SenderAvatar
 import com.verdenroz.corvid.core.ui.provenance.TrackerCount
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.has_attachments
+import com.verdenroz.corvid.feature.mailbox.resources.ledger_state_starred
+import com.verdenroz.corvid.feature.mailbox.resources.ledger_state_suspect
+import com.verdenroz.corvid.feature.mailbox.resources.ledger_state_unread
 import com.verdenroz.corvid.feature.mailbox.resources.ledger_thread_messages
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_no_subject
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_separator
@@ -105,11 +111,13 @@ internal fun LedgerRow(
             else -> colors.surface
         }
     val accent = colors.accent
+    val status = rowStatus(conversation)
     Column(
         modifier
             .fillMaxWidth()
             .background(background)
             .then(if (focused) Modifier.border(FOCUS_RING, accent) else Modifier)
+            .semantics { if (status.isNotEmpty()) stateDescription = status }
             .hoverable(interaction)
             .combinedClickable(
                 interactionSource = interaction,
@@ -138,7 +146,7 @@ internal fun LedgerRow(
                 } else {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (CorvidKeywords.FLAGGED in email.keywords) StarMark()
-                        (email.provenance.rewrite as? Rewrite.Stripped)?.takeIf { it.stripped > 0 }?.let { TrackerCount(it.stripped) }
+                        Trackers(email)
                     }
                 }
             }
@@ -162,7 +170,10 @@ private fun WideRow(
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
-        modifier = Modifier.heightIn(min = 64.dp).padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
+        modifier =
+            Modifier
+                .heightIn(min = 64.dp)
+                .padding(start = CorvidSpacing.gutter(wide = true), end = 16.dp, top = 6.dp, bottom = 6.dp),
     ) {
         Time(conversation, zone, Modifier.width(58.dp))
         leading()
@@ -188,11 +199,32 @@ private fun NarrowRow(
             Row(verticalAlignment = Alignment.Top) {
                 SenderName(conversation, Modifier.weight(1f), openSender = null, onLongPress = null)
                 if (CorvidKeywords.FLAGGED in conversation.latest.keywords) StarMark(Modifier.padding(start = 6.dp, top = 3.dp))
+                Trackers(conversation.latest, Modifier.padding(start = 8.dp, top = 3.dp))
                 Time(conversation, zone, Modifier.padding(start = 8.dp, top = 2.dp))
             }
             Summary(conversation, Modifier.fillMaxWidth())
         }
     }
+}
+
+/** What the unread dot, the star and the suspect tint show, in words, for a screen reader. */
+@Composable
+private fun rowStatus(conversation: Conversation): String {
+    val parts =
+        listOfNotNull(
+            Res.string.ledger_state_unread.takeIf { conversation.unread },
+            Res.string.ledger_state_starred.takeIf { CorvidKeywords.FLAGGED in conversation.latest.keywords },
+            Res.string.ledger_state_suspect.takeIf { conversation.latest.provenance.suspect },
+        )
+    return parts.map { stringResource(it) }.joinToString(", ")
+}
+
+@Composable
+private fun Trackers(
+    email: EmailSummary,
+    modifier: Modifier = Modifier,
+) {
+    (email.provenance.rewrite as? Rewrite.Stripped)?.takeIf { it.stripped > 0 }?.let { TrackerCount(it.stripped, modifier) }
 }
 
 @Composable
