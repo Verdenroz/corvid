@@ -27,6 +27,7 @@ import com.verdenroz.corvid.feature.aliases.resources.aliases_failed_session
 import com.verdenroz.corvid.feature.aliases.resources.aliases_off
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 private const val LABEL_MAX = 20
@@ -85,7 +86,7 @@ class AliasesViewModel(
     }
 
     fun refresh() {
-        _state.value = _state.value.copy(list = AliasList.Loading)
+        _state.update { it.copy(list = AliasList.Loading) }
         viewModelScope.launch {
             val list =
                 try {
@@ -97,19 +98,19 @@ class AliasesViewModel(
                 } catch (e: JmapException) {
                     AliasList.Failed(e.userMessage())
                 }
-            _state.value = _state.value.copy(list = list)
+            _state.update { it.copy(list = list) }
         }
     }
 
     /** Keeps only what a label may hold, lowercased, up to the server's length. */
     fun setLabel(text: String) {
-        _state.value = _state.value.copy(label = text.lowercase().filter { it in LABEL_CHARS }.take(LABEL_MAX))
+        _state.update { state -> state.copy(label = text.lowercase().filter { it in LABEL_CHARS }.take(LABEL_MAX)) }
     }
 
     fun mint() {
         val label = _state.value.label
         if (_state.value.busy || label.isEmpty()) return
-        _state.value = _state.value.copy(step = AliasStep.Minting)
+        _state.update { it.copy(step = AliasStep.Minting) }
         viewModelScope.launch {
             val step =
                 try {
@@ -122,24 +123,24 @@ class AliasesViewModel(
                 } catch (e: JmapException) {
                     AliasStep.Failed(e.userMessage())
                 }
-            _state.value = _state.value.copy(step = step)
+            _state.update { it.copy(step = step) }
             if (step is AliasStep.Minted) {
-                _state.value = _state.value.copy(label = "")
+                _state.update { it.copy(label = "") }
                 refresh()
             }
         }
     }
 
     fun askDisable(name: String) {
-        if (!_state.value.busy) _state.value = _state.value.copy(disabling = name, step = AliasStep.Idle)
+        _state.update { if (it.busy) it else it.copy(disabling = name, step = AliasStep.Idle) }
     }
 
     fun keep() {
-        _state.value = _state.value.copy(disabling = null)
+        _state.update { it.copy(disabling = null) }
     }
 
     fun disable(name: String) {
-        _state.value = _state.value.copy(disabling = null)
+        _state.update { it.copy(disabling = null) }
         withApprover { token -> repository.disable(name, token).toStep() }
     }
 
@@ -149,16 +150,16 @@ class AliasesViewModel(
 
     private fun withApprover(act: suspend (String) -> AliasStep) {
         if (_state.value.busy) return
-        _state.value = _state.value.copy(step = AliasStep.SigningIn)
+        _state.update { it.copy(step = AliasStep.SigningIn) }
         viewModelScope.launch {
             val step =
                 catchingSignIn(AliasStep::Failed) {
                     approveWithKey.withAdminToken { token ->
-                        _state.value = _state.value.copy(step = AliasStep.Working)
+                        _state.update { it.copy(step = AliasStep.Working) }
                         act(token)
                     }
                 }
-            _state.value = _state.value.copy(step = step)
+            _state.update { it.copy(step = step) }
             if (step is AliasStep.Switched || step == GONE) refresh()
         }
     }
