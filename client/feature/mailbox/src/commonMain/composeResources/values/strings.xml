@@ -10,6 +10,7 @@
     <string name="mailbox_from">From: %1$s</string>
     <string name="reader_to">to %1$s</string>
     <string name="reader_cc">cc %1$s</string>
+    <string name="reader_via">via %1$s</string>
     <string name="reader_newer">Newer</string>
     <string name="reader_older">Older</string>
     <string name="summary_caveat">Written from the messages below; it can be wrong or misled by them.</string>

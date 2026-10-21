@@ -25,6 +25,25 @@ private suspend fun repository(fake: FakeJmapServer): MailboxRepository {
     return MailboxRepository(client)
 }
 
+private const val ALIAS = "shop-k3x9@example.test"
+
+private fun FakeJmapServer.withAlias(vararg deliveredTo: String): FakeJmapServer {
+    withSendableAccount()
+    identities += FakeIdentity(id = "i2", email = ALIAS)
+    emails +=
+        FakeEmail(
+            "e1",
+            "t1",
+            setOf("inbox"),
+            "hello",
+            "a@example.test",
+            "2024-01-01T00:00:00Z",
+            body = "hi",
+            headers = mapOf("Delivered-To" to deliveredTo.toList()),
+        )
+    return this
+}
+
 class MailboxRepositoryTest {
     @Test
     fun `the inbox mailbox is found by role`() =
@@ -368,6 +387,56 @@ class MailboxRepositoryTest {
             fake.identities.add(0, FakeIdentity(id = "i0", email = "postmaster@example.test"))
 
             assertEquals(SENDABLE_ACCOUNT_EMAIL, repository(fake).identity()?.email)
+        }
+
+    @Test
+    fun `a message delivered to an alias names the alias it arrived on`() =
+        runTest {
+            val fake = FakeJmapServer().withAlias(ALIAS)
+
+            val detail = assertIs<EmailLookup.Found>(repository(fake).getEmail("e1")).detail
+
+            assertEquals(ALIAS, detail.arrivedVia)
+        }
+
+    @Test
+    fun `every message of a thread names the alias it arrived on`() =
+        runTest {
+            val fake = FakeJmapServer().withAlias(ALIAS)
+
+            val lookup = assertIs<ThreadLookup.Found>(repository(fake).thread("e1"))
+
+            assertEquals(listOf(ALIAS), lookup.messages.map { it.arrivedVia })
+        }
+
+    @Test
+    fun `a message delivered to the main address names no alias`() =
+        runTest {
+            val fake = FakeJmapServer().withAlias(SENDABLE_ACCOUNT_EMAIL)
+
+            val detail = assertIs<EmailLookup.Found>(repository(fake).getEmail("e1")).detail
+
+            assertNull(detail.arrivedVia)
+        }
+
+    @Test
+    fun `a forged delivered-to after the server's own names no alias`() =
+        runTest {
+            val fake = FakeJmapServer().withAlias(SENDABLE_ACCOUNT_EMAIL, ALIAS)
+
+            val detail = assertIs<EmailLookup.Found>(repository(fake).getEmail("e1")).detail
+
+            assertNull(detail.arrivedVia)
+        }
+
+    @Test
+    fun `a delivered-to naming an address the account does not hold names no alias`() =
+        runTest {
+            val fake = FakeJmapServer().withAlias("stranger@elsewhere.test")
+
+            val detail = assertIs<EmailLookup.Found>(repository(fake).getEmail("e1")).detail
+
+            assertNull(detail.arrivedVia)
         }
 
     @Test
