@@ -45,7 +45,7 @@ sealed interface SwitchOutcome {
 }
 
 /** A mint, or an enable, past the server's cap on enabled, minted or hourly aliases. */
-data object AtCap : MintOutcome, SwitchOutcome
+data object AliasCap : MintOutcome, SwitchOutcome
 
 /** What any alias route answers in place of its result. */
 sealed interface AliasRefusal : AliasListing, MintOutcome, SwitchOutcome {
@@ -98,7 +98,7 @@ class AliasRepository(private val jmapClient: JmapClient) {
         return reply.refusal() ?: when (reply.status) {
             HttpStatusCode.NotFound -> AliasRefusal.Off
             HttpStatusCode.BadRequest -> MintOutcome.BadLabel
-            HttpStatusCode.TooManyRequests -> AtCap
+            HttpStatusCode.TooManyRequests -> AliasCap
             else -> MintOutcome.Minted(reply.body.orEmpty().toAlias())
         }
     }
@@ -127,7 +127,7 @@ class AliasRepository(private val jmapClient: JmapClient) {
             )
         return reply.refusal() ?: when (reply.status) {
             HttpStatusCode.NotFound -> SwitchOutcome.Gone
-            HttpStatusCode.TooManyRequests -> AtCap
+            HttpStatusCode.TooManyRequests -> AliasCap
             else -> SwitchOutcome.Switched(reply.body.orEmpty().toAlias())
         }
     }

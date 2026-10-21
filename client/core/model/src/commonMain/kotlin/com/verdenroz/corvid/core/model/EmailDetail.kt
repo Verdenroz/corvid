@@ -11,7 +11,7 @@ import kotlin.time.Instant
  * mailboxIds are the mailboxes it is filed in, which decide whether it can be archived or only deleted for good.
  * attachments are the files it carries, leaving out the inline images its HTML draws by `cid:`;
  * inlineImages are those, by content id in lower case, without its angle brackets.
- * arrivedVia is the alias it was delivered to, null when it came to the main address or the server named no alias.
+ * arrivedVia is the alias the server's own Delivered-To names, null unless that is one of the account's current identities other than the main one.
  */
 data class EmailDetail(
     val id: String,

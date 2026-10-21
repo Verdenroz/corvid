@@ -100,7 +100,7 @@ class AliasRepositoryTest {
         runTest {
             fake.aliases.atCap = true
 
-            assertEquals(AtCap, repository().mint("shop"))
+            assertEquals(AliasCap, repository().mint("shop"))
         }
 
     @Test
@@ -132,7 +132,7 @@ class AliasRepositoryTest {
             fake.aliases.aliases += FakeAlias("shop.abcd2345", enabled = false)
             fake.aliases.atCap = true
 
-            assertEquals(AtCap, repository().enable("shop.abcd2345", "master-token"))
+            assertEquals(AliasCap, repository().enable("shop.abcd2345", "master-token"))
 
             assertEquals(listOf(false), fake.aliases.aliases.map { it.enabled })
         }

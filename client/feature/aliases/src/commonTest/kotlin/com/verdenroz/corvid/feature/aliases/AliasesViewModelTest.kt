@@ -184,6 +184,14 @@ class AliasesViewModelTest {
         }
 
     @Test
+    fun `a list the sentinel refuses the session for is reported as the session`() =
+        runViewModelTest {
+            val r = rig { aliases.dailyRefused = true }
+
+            assertEquals(AliasList.Failed(uiText(Res.string.aliases_failed_session)), r.viewModel.loaded())
+        }
+
+    @Test
     fun `a mint the sentinel refuses the session for is reported as the session`() =
         runViewModelTest {
             val r = rig()

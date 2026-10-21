@@ -38,7 +38,7 @@ class FakeAliases {
     /** Answers every route the mail server's 404, as a web tier without the alias routes does. */
     var unrouted: Boolean = false
 
-    /** Answers every route 503 `aliases_off`, as a sentinel without the alias routes does. */
+    /** Answers every route 503 `aliases_off`, as a sentinel without both `devices` and `auth` configured does. */
     var off: Boolean = false
 
     /** Answers every route an empty 503, as the sentinel does once Stalwart has answered 429 twice. */

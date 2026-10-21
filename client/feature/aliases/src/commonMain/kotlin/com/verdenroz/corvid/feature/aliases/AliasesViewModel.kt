@@ -3,10 +3,10 @@ package com.verdenroz.corvid.feature.aliases
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.core.data.Alias
+import com.verdenroz.corvid.core.data.AliasCap
 import com.verdenroz.corvid.core.data.AliasListing
 import com.verdenroz.corvid.core.data.AliasRefusal
 import com.verdenroz.corvid.core.data.AliasRepository
-import com.verdenroz.corvid.core.data.AtCap
 import com.verdenroz.corvid.core.data.MintOutcome
 import com.verdenroz.corvid.core.data.SwitchOutcome
 import com.verdenroz.corvid.core.data.catchingSignIn
@@ -116,7 +116,7 @@ class AliasesViewModel(
                     when (val outcome = repository.mint(label)) {
                         is MintOutcome.Minted -> AliasStep.Minted(outcome.alias)
                         MintOutcome.BadLabel -> AliasStep.Failed(uiText(Res.string.aliases_failed_label))
-                        AtCap -> AliasStep.Failed(uiText(Res.string.aliases_failed_cap))
+                        AliasCap -> AliasStep.Failed(uiText(Res.string.aliases_failed_cap))
                         is AliasRefusal -> AliasStep.Failed(outcome.message(switching = false))
                     }
                 } catch (e: JmapException) {
@@ -170,7 +170,7 @@ private fun SwitchOutcome.toStep(): AliasStep =
     when (this) {
         is SwitchOutcome.Switched -> AliasStep.Switched(alias)
         SwitchOutcome.Gone -> GONE
-        AtCap -> AliasStep.Failed(uiText(Res.string.aliases_failed_enabled_cap))
+        AliasCap -> AliasStep.Failed(uiText(Res.string.aliases_failed_enabled_cap))
         is AliasRefusal -> AliasStep.Failed(message(switching = true))
     }
 
