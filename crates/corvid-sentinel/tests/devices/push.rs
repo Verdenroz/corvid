@@ -308,6 +308,25 @@ async fn new_inbox_mail_reaches_the_device_encrypted_with_its_sender_subject_and
 }
 
 #[tokio::test]
+async fn mail_that_arrived_on_an_alias_is_pushed_like_any_other() {
+    let rig = push_rig().await;
+    rig.rig.approved("phone").await;
+    let phone = Phone::new();
+    rig.register("phone", &phone.registration(&format!("{BASE}/upAbC123")))
+        .await;
+
+    let mut shop = email("shop", INBOX, json!({}));
+    shop["to"] = json!([{"name": null, "email": "shop.k2mq7x4p@rig.test"}]);
+    shop["header:Delivered-To:asText:all"] = json!(["shop.k2mq7x4p@rig.test"]);
+    rig.rig.stalwart.deliver(shop);
+    rig.arrived().await;
+    rig.fcm.wait_for(1).await;
+
+    let posted = rig.fcm.posted.lock().unwrap().remove(0);
+    assert_eq!(phone.decrypt(&posted.body)["id"], "shop");
+}
+
+#[tokio::test]
 async fn mail_already_read_or_filed_outside_the_inbox_is_not_pushed() {
     let rig = push_rig().await;
     rig.rig.approved("phone").await;
