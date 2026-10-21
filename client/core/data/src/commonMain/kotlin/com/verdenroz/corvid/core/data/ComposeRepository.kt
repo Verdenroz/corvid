@@ -42,7 +42,8 @@ sealed interface SendUnavailable : StartResult, SendResult, DraftSaveResult {
 }
 
 sealed interface StartResult {
-    data class Ready(val draft: Draft) : StartResult
+    /** [mainEmail] is the account's main address, the one a draft with no [Draft.from] is sent from. */
+    data class Ready(val draft: Draft, val mainEmail: String) : StartResult
 
     /** The message a reply or forward answers was deleted or moved before compose opened. */
     data object OriginalGone : StartResult
@@ -108,15 +109,19 @@ class ComposeRepository(
     suspend fun start(intent: ComposeIntent): StartResult =
         load().fold({ it }) { sending ->
             when (intent) {
-                is ComposeIntent.New -> StartResult.Ready(Draft())
-                is ComposeIntent.To -> StartResult.Ready(Draft(to = listOf(EmailAddress(null, intent.address)), subject = intent.subject))
+                is ComposeIntent.New -> StartResult.Ready(Draft(), sending.identity.email)
+                is ComposeIntent.To ->
+                    StartResult.Ready(
+                        Draft(to = listOf(EmailAddress(null, intent.address)), subject = intent.subject),
+                        sending.identity.email,
+                    )
                 is ComposeIntent.Reply ->
-                    withOriginal(intent.emailId) {
+                    withOriginal(intent.emailId, sending.identity.email) {
                         replyDraft(it, sending.ownEmails, intent.all, textResolver.resolve(replyAttribution(it, zone, clock.now())))
                     }
                 is ComposeIntent.Draft -> loadDraft(intent.emailId, sending.identity.email)
                 is ComposeIntent.Forward ->
-                    withOriginal(intent.emailId) {
+                    withOriginal(intent.emailId, sending.identity.email) {
                         forwardDraft(
                             it,
                             textResolver.resolve(uiText(Res.string.forwarded_message)),
@@ -128,10 +133,11 @@ class ComposeRepository(
 
     private suspend fun withOriginal(
         emailId: String,
+        mainEmail: String,
         draft: suspend (EmailDetail) -> Draft,
     ): StartResult =
         when (val lookup = mailboxRepository.getEmail(emailId)) {
-            is EmailLookup.Found -> StartResult.Ready(draft(lookup.detail))
+            is EmailLookup.Found -> StartResult.Ready(draft(lookup.detail), mainEmail)
             is EmailLookup.NotFound -> StartResult.OriginalGone
         }
 
@@ -147,7 +153,7 @@ class ComposeRepository(
             }
         val found = jmapClient.callOne("Email/get", arguments).getValue("list").jsonArray.firstOrNull()?.jsonObject
         return if (found != null && CorvidKeywords.DRAFT in found.getValue("keywords").jsonObject) {
-            StartResult.Ready(found.toDraft(mainEmail))
+            StartResult.Ready(found.toDraft(mainEmail), mainEmail)
         } else {
             StartResult.DraftGone
         }

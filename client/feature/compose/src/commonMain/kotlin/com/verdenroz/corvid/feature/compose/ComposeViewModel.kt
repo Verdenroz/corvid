@@ -74,6 +74,7 @@ class ComposeViewModel(
                                 seed = start.draft,
                                 form = restored?.form ?: start.draft.toForm(),
                                 stored = start.draft.toForm(),
+                                mainEmail = start.mainEmail,
                                 draftId = (target as? ComposeIntent.Draft)?.emailId,
                             )
                         is StartResult.DraftGone -> restoredAsNew() ?: ComposeUiState.Failed(uiText(Res.string.compose_draft_gone))
@@ -100,8 +101,11 @@ class ComposeViewModel(
     /** The restored text outlives a draft that was replaced or sent in the meantime; it saves as a new one. */
     private suspend fun restoredAsNew(): ComposeUiState.Editing? {
         val form = restored?.form?.takeUnless { it.isBlank() } ?: return null
-        val seed = (composeRepository.start(intent) as? StartResult.Ready)?.draft ?: Draft()
-        return ComposeUiState.Editing(seed = seed, form = form, stored = seed.toForm())
+        val start =
+            composeRepository.start(intent) as? StartResult.Ready
+                ?: composeRepository.start(ComposeIntent.New) as? StartResult.Ready
+                ?: return null
+        return ComposeUiState.Editing(seed = start.draft, form = form, stored = start.draft.toForm(), mainEmail = start.mainEmail)
     }
 
     fun edit(change: ComposeForm.() -> ComposeForm) {
@@ -346,6 +350,7 @@ private fun Draft.toForm() =
         subject = subject,
         body = body,
         attachments = attachments,
+        from = from,
     )
 
 private fun ComposeForm.applyTo(seed: Draft) =
@@ -356,4 +361,5 @@ private fun ComposeForm.applyTo(seed: Draft) =
         subject = subject,
         body = body,
         attachments = attachments,
+        from = from,
     )

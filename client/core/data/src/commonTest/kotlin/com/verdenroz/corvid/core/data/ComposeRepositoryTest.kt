@@ -88,7 +88,7 @@ class ComposeRepositoryTest {
         runTest {
             val (_, compose) = repositories(server())
 
-            assertEquals(StartResult.Ready(Draft()), compose.start(ComposeIntent.New))
+            assertEquals(StartResult.Ready(Draft(), OWN), compose.start(ComposeIntent.New))
         }
 
     @Test

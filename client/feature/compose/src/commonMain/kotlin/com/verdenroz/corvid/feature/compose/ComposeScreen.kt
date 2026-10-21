@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -43,6 +45,7 @@ import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.ActionIcon
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
+import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.designsystem.component.PrimaryButton
 import com.verdenroz.corvid.core.designsystem.component.inlineLabel
 import com.verdenroz.corvid.core.designsystem.focusRing
@@ -62,6 +65,7 @@ import com.verdenroz.corvid.feature.compose.resources.compose_cc
 import com.verdenroz.corvid.feature.compose.resources.compose_close
 import com.verdenroz.corvid.feature.compose.resources.compose_discard_draft_question
 import com.verdenroz.corvid.feature.compose.resources.compose_discard_question
+import com.verdenroz.corvid.feature.compose.resources.compose_from
 import com.verdenroz.corvid.feature.compose.resources.compose_message
 import com.verdenroz.corvid.feature.compose.resources.compose_not_saved
 import com.verdenroz.corvid.feature.compose.resources.compose_retry_save
@@ -194,6 +198,7 @@ private fun Fields(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
         }
+        state.alias?.let { alias -> From(state.form.from, state.mainEmail, alias) { onEdit { copy(from = it) } } }
         var copies by rememberSaveable { mutableStateOf(state.form.cc.isNotEmpty() || state.form.bcc.isNotEmpty()) }
         RecipientInput(
             stringResource(Res.string.compose_to),
@@ -210,6 +215,43 @@ private fun Fields(
         Field(stringResource(Res.string.compose_subject), state.form.subject) { onEdit { copy(subject = it) } }
         Attachments(state, onDetach)
         Body(state.form.body) { onEdit { copy(body = it) } }
+    }
+}
+
+/** Offers only the main address and the draft's own alias, never the account's other identities. */
+@Composable
+private fun From(
+    from: String?,
+    mainEmail: String,
+    alias: String,
+    onPick: (String?) -> Unit,
+) {
+    val colors = CorvidTheme.colors
+    var expanded by remember { mutableStateOf(false) }
+    Column(Modifier.padding(horizontal = 16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().heightIn(min = 42.dp)) {
+            Text(
+                stringResource(Res.string.compose_from),
+                style = CorvidTheme.type.name,
+                color = colors.inkMuted,
+                modifier = Modifier.width(64.dp),
+            )
+            Box {
+                PillButton(from ?: mainEmail, CorvidIcons.ChevronDown, { expanded = true }, height = 32.dp)
+                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                    listOf(null, alias).forEach { option ->
+                        DropdownMenuItem(
+                            text = { Text(option ?: mainEmail, style = CorvidTheme.type.name) },
+                            onClick = {
+                                expanded = false
+                                onPick(option)
+                            },
+                        )
+                    }
+                }
+            }
+        }
+        HorizontalDivider(color = colors.line)
     }
 }
 

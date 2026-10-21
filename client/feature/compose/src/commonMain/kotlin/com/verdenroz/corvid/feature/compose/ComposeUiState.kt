@@ -6,7 +6,10 @@ import com.verdenroz.corvid.core.model.Attachment
 import com.verdenroz.corvid.core.model.Draft
 import com.verdenroz.corvid.core.text.UiText
 
-/** Recipients are the raw comma-separated text of each field; [attachments] are already uploaded. */
+/**
+ * Recipients are the raw comma-separated text of each field; [attachments] are already uploaded.
+ * [from] is the alias the message is sent from, null for the main address.
+ */
 data class ComposeForm(
     val to: String,
     val cc: String,
@@ -14,6 +17,7 @@ data class ComposeForm(
     val subject: String,
     val body: String,
     val attachments: List<Attachment> = emptyList(),
+    val from: String? = null,
 )
 
 enum class RecipientField { To, Cc, Bcc }
@@ -48,15 +52,15 @@ data class ComposeRestore(
     val draftId: String?,
 )
 
-private const val SAVED_FIELDS = 6
+private const val SAVED_FIELDS = 7
 private const val SAVED_ATTACHMENT_FIELDS = 4
 
-/** Six fields, then four per attachment: blob id, name, type and size. */
+/** Seven fields, then four per attachment: blob id, name, type and size. */
 val ComposeRestoreSaver: Saver<ComposeRestore?, List<String>> =
     Saver(
         save = { restore ->
             restore?.let {
-                listOf(it.form.to, it.form.cc, it.form.bcc, it.form.subject, it.form.body, it.draftId.orEmpty()) +
+                listOf(it.form.to, it.form.cc, it.form.bcc, it.form.subject, it.form.body, it.draftId.orEmpty(), it.form.from.orEmpty()) +
                     it.form.attachments.flatMap { file -> listOf(file.blobId, file.name.orEmpty(), file.type, file.size.toString()) }
             }
         },
@@ -65,7 +69,10 @@ val ComposeRestoreSaver: Saver<ComposeRestore?, List<String>> =
                 saved.drop(SAVED_FIELDS).chunked(SAVED_ATTACHMENT_FIELDS).map { (blobId, name, type, size) ->
                     Attachment(blobId, name.ifEmpty { null }, type, size.toLong())
                 }
-            ComposeRestore(ComposeForm(saved[0], saved[1], saved[2], saved[3], saved[4], attachments), saved[5].ifEmpty { null })
+            ComposeRestore(
+                ComposeForm(saved[0], saved[1], saved[2], saved[3], saved[4], attachments, saved[6].ifEmpty { null }),
+                saved[5].ifEmpty { null },
+            )
         },
     )
 
@@ -81,12 +88,15 @@ sealed interface ComposeUiState {
      * the last save was refused or never arrived. [confirmingDiscard] while a back press waits on
      * Discard or Keep editing. [suggestions] while a recipient field is being typed in and contacts match.
      * [uploading] names the files still on their way to the server, and
-     * [attachError] is why the last one that failed was not attached.
+     * [attachError] is why the last one that failed was not attached. [alias] is the one address
+     * besides [mainEmail] the From picker offers, null when the draft names none.
      */
     data class Editing(
         val seed: Draft,
         val form: ComposeForm,
         val stored: ComposeForm,
+        val mainEmail: String,
+        val alias: String? = form.from ?: seed.from,
         val draftId: String? = null,
         val saveFailed: Boolean = false,
         val sending: Boolean = false,
