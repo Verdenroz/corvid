@@ -1,6 +1,7 @@
 package com.verdenroz.corvid.core.data.di
 
 import com.verdenroz.corvid.core.common.di.UnlockedScopeMarker
+import com.verdenroz.corvid.core.data.AliasRepository
 import com.verdenroz.corvid.core.data.AppReleaseRepository
 import com.verdenroz.corvid.core.data.ComposeRepository
 import com.verdenroz.corvid.core.data.DigestRepository
@@ -28,5 +29,6 @@ val dataModule =
             scoped { DigestRepository(jmapClient = get()) }
             scoped { SuggestedRules(suggestions = get(), filters = get(), mailboxes = get()) }
             scoped { SenderRepository(jmapClient = get(), mailboxRepository = get()) }
+            scoped { AliasRepository(jmapClient = get()) }
         }
     }

@@ -107,6 +107,9 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
     /** `/corvid/auth` behind the session gate: the passkey list, removals and enrollment codes. */
     val passkeys = FakePasskeys()
 
+    /** `/corvid/aliases` behind the session gate: the minted aliases, mints and switches. */
+    val aliases = FakeAliases()
+
     /** Bodies served under `/i/`, as the image proxy serves them, keyed by the path after it. */
     val proxiedImages: MutableMap<String, ByteArray> = mutableMapOf()
 
@@ -185,6 +188,7 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
             path.startsWith("/jmap/download/") -> downloadResponse(path)
             path.startsWith("/corvid/devices") -> devices.handle(this, request)
             path.startsWith("/corvid/auth/") -> passkeys.handle(this, request)
+            path.startsWith("/corvid/aliases") -> aliases.handle(this, request)
             path == "/corvid/push/vapid" -> devices.vapid(this)
             path.startsWith("/corvid/suggestions") -> suggestions.handle(this, request)
             path.startsWith("/corvid/summaries/") -> summaries.handle(this, request)
