@@ -36,6 +36,7 @@ import com.verdenroz.corvid.core.data.Contact
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.inlineLabel
+import com.verdenroz.corvid.core.designsystem.focusRing
 import com.verdenroz.corvid.feature.compose.resources.Res
 import com.verdenroz.corvid.feature.compose.resources.compose_show_copies
 import org.jetbrains.compose.resources.stringResource
@@ -91,7 +92,7 @@ internal fun RecipientInput(
                     stringResource(Res.string.compose_show_copies),
                     style = CorvidTheme.type.meta,
                     color = colors.inkMuted,
-                    modifier = Modifier.clickable(onClick = it).padding(8.dp),
+                    modifier = Modifier.focusRing(CorvidShape.small).clickable(onClick = it).padding(8.dp),
                 )
             }
         }

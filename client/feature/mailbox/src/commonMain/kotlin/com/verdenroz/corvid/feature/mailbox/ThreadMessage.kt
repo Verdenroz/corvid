@@ -35,6 +35,7 @@ import com.verdenroz.corvid.core.designsystem.component.ActionIcon
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.designsystem.focusRing
+import com.verdenroz.corvid.core.designsystem.focusRingInset
 import com.verdenroz.corvid.core.model.Attachment
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.model.EmailAddress
@@ -134,7 +135,7 @@ private fun ExpandedMessage(
             headers != null,
             onHeaders,
             onOpenSender,
-            if (threaded) Modifier.clickable(onClick = onToggle) else Modifier,
+            if (threaded) Modifier.focusRingInset().clickable(onClick = onToggle) else Modifier,
         )
         headers?.let { HeadersPanel(it, Modifier.padding(bottom = 16.dp)) }
         Custody(email, wide) { guess -> TeachControls(guess, teach.answering, teach.error, onAnswer) }
@@ -191,7 +192,7 @@ private fun CollapsedMessage(
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(vertical = 12.dp),
+        modifier = Modifier.fillMaxWidth().focusRingInset().clickable(onClick = onToggle).padding(vertical = 12.dp),
     ) {
         SenderAvatar(email.from.displayName(), email.provenance.sender, email.provenance.seal, size = 28.dp)
         Text(

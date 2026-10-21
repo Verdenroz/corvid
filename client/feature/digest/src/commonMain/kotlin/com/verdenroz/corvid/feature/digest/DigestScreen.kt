@@ -41,6 +41,7 @@ import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.LocalWideLayout
+import com.verdenroz.corvid.core.designsystem.focusRingInset
 import com.verdenroz.corvid.core.model.DigestItem
 import com.verdenroz.corvid.core.model.ListedItem
 import com.verdenroz.corvid.core.model.items
@@ -195,6 +196,7 @@ private fun Person(
             Modifier
                 .widthIn(max = COLUMN_WIDTH)
                 .fillMaxWidth()
+                .focusRingInset()
                 .clickable(role = Role.Button, onClick = onOpen)
                 .semantics { spoken?.let { contentDescription = it } }
                 .padding(vertical = 10.dp),
@@ -215,6 +217,7 @@ private fun Listed(
                 .widthIn(max = COLUMN_WIDTH)
                 .fillMaxWidth()
                 .heightIn(min = 44.dp)
+                .focusRingInset()
                 .clickable(role = Role.Button, onClick = onOpen),
     ) {
         InitialsTile(row.item.displayName, 22.dp)
@@ -249,7 +252,7 @@ private fun More(
         modifier =
             Modifier.widthIn(
                 max = COLUMN_WIDTH,
-            ).fillMaxWidth().heightIn(min = 44.dp).clickable(role = Role.Button, onClick = onExpand),
+            ).fillMaxWidth().heightIn(min = 44.dp).focusRingInset().clickable(role = Role.Button, onClick = onExpand),
     ) {
         Box(
             contentAlignment = Alignment.Center,

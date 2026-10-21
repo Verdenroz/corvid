@@ -32,6 +32,7 @@ import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.LocalWideLayout
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.focusRing
+import com.verdenroz.corvid.core.designsystem.focusRingInset
 
 @Composable
 internal fun SettingsSection(
@@ -126,7 +127,7 @@ internal fun LinkRow(
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick).padding(vertical = 14.dp),
+        modifier = Modifier.fillMaxWidth().focusRingInset().clickable(role = Role.Button, onClick = onClick).padding(vertical = 14.dp),
     ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(title, style = CorvidTheme.type.name)

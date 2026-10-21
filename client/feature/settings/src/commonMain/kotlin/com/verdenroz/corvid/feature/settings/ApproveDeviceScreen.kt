@@ -28,6 +28,7 @@ import com.verdenroz.corvid.core.designsystem.LocalWideLayout
 import com.verdenroz.corvid.core.designsystem.component.CorvidTextField
 import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.designsystem.component.PrimaryButton
+import com.verdenroz.corvid.core.designsystem.focusRingInset
 import com.verdenroz.corvid.core.keyring.PendingRequest
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.PageHeader
@@ -131,6 +132,7 @@ private fun RequestRow(
         modifier =
             Modifier
                 .fillMaxWidth()
+                .focusRingInset(CorvidShape.pill)
                 .clip(CorvidShape.pill)
                 .then(if (highlighted) Modifier.background(colors.accentSoft) else Modifier)
                 .selectable(selected = highlighted, enabled = !expired, role = Role.RadioButton, onClick = onClick)

@@ -42,6 +42,7 @@ import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.designsystem.component.PrimaryButton
+import com.verdenroz.corvid.core.designsystem.focusRingInset
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.core.model.SenderKind
@@ -246,7 +247,7 @@ private fun History(
         }
         items(recent, key = { it.id }) { email ->
             Row(
-                Modifier.fillMaxWidth().clickable { onOpen(email) }.padding(vertical = 10.dp),
+                Modifier.fillMaxWidth().focusRingInset().clickable { onOpen(email) }.padding(vertical = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text(

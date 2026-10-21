@@ -25,6 +25,7 @@ import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.LocalWideLayout
 import com.verdenroz.corvid.core.designsystem.component.ActionIcon
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
+import com.verdenroz.corvid.core.designsystem.focusRingInset
 import com.verdenroz.corvid.core.model.Digest
 import com.verdenroz.corvid.core.model.items
 import com.verdenroz.corvid.core.model.lists
@@ -105,9 +106,11 @@ internal fun OvernightBlock(offer: OvernightOffer) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             modifier =
-                Modifier.weight(
-                    1f,
-                ).clickable(role = Role.Button, onClick = offer.onOpen).padding(start = 14.dp, top = 12.dp, end = 4.dp, bottom = 12.dp),
+                Modifier
+                    .weight(1f)
+                    .focusRingInset(CorvidShape.medium)
+                    .clickable(role = Role.Button, onClick = offer.onOpen)
+                    .padding(start = 14.dp, top = 12.dp, end = 4.dp, bottom = 12.dp),
         ) {
             Column(Modifier.weight(1f)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Bottom) {

@@ -21,6 +21,7 @@ import com.verdenroz.corvid.core.data.LabelCount
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.LocalWideLayout
+import com.verdenroz.corvid.core.designsystem.focusRingInset
 import com.verdenroz.corvid.core.model.Label
 import com.verdenroz.corvid.core.ui.provenance.LabelChip
 import com.verdenroz.corvid.feature.mailbox.resources.Res
@@ -81,7 +82,7 @@ private fun LabelRow(
     count: LabelCount,
     onClick: () -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+    Column(Modifier.fillMaxWidth().focusRingInset().clickable(onClick = onClick)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),

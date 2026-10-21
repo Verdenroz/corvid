@@ -32,6 +32,7 @@ import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.LocalWideLayout
 import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.designsystem.component.QuietLink
+import com.verdenroz.corvid.core.designsystem.focusRingInset
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.DiscardQuestion
 import com.verdenroz.corvid.core.ui.PageHeader
@@ -195,7 +196,11 @@ private fun ActionRow(
     onClick: () -> Unit,
 ) {
     Column(
-        Modifier.fillMaxWidth().clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(vertical = 12.dp),
+        Modifier
+            .fillMaxWidth()
+            .focusRingInset()
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Text(stringResource(title), style = CorvidTheme.type.name, fontWeight = FontWeight.SemiBold, color = CorvidTheme.colors.ink)
