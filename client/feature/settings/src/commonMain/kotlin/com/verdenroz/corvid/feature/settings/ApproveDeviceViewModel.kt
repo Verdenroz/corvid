@@ -21,6 +21,7 @@ import com.verdenroz.corvid.feature.settings.resources.approve_failed_upstream
 import com.verdenroz.corvid.feature.settings.resources.approve_not_a_link
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 private const val CODE_LENGTH = 6
@@ -76,7 +77,7 @@ class ApproveDeviceViewModel(
     }
 
     fun refresh() {
-        _state.value = _state.value.copy(pending = PendingList.Loading)
+        _state.update { it.copy(pending = PendingList.Loading) }
         viewModelScope.launch {
             val pending =
                 try {
@@ -87,7 +88,7 @@ class ApproveDeviceViewModel(
                 } catch (e: JmapException) {
                     PendingList.Failed(e.userMessage())
                 }
-            _state.value = _state.value.copy(pending = pending)
+            _state.update { it.copy(pending = pending) }
         }
     }
 
@@ -115,7 +116,7 @@ class ApproveDeviceViewModel(
         _state.value = current.copy(step = ApproveStep.SigningIn)
         viewModelScope.launch {
             val step = send(current.id, current.code)
-            _state.value = _state.value.copy(step = step)
+            _state.update { it.copy(step = step) }
             if (step is ApproveStep.Approved) refresh()
         }
     }
@@ -126,7 +127,7 @@ class ApproveDeviceViewModel(
     ): ApproveStep {
         return catchingSignIn(ApproveStep::Failed) {
             approveWithKey.withAdminToken { token ->
-                _state.value = _state.value.copy(step = ApproveStep.Sending)
+                _state.update { it.copy(step = ApproveStep.Sending) }
                 when (repository.approve(id, code, token)) {
                     ApproveOutcome.Approved -> ApproveStep.Approved(id.take(SHORT_ID_LENGTH))
                     ApproveOutcome.NotAccepted -> ApproveStep.Failed(uiText(Res.string.approve_failed_not_accepted))
