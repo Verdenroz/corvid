@@ -64,8 +64,14 @@ sealed interface AliasRefusal : AliasListing, MintOutcome, SwitchOutcome {
 
 private const val MASTER_HEADER = "X-Corvid-Master"
 private const val ALIASES_PATH = "/corvid/aliases"
-private val REFUSALS =
-    setOf(HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden, HttpStatusCode.ServiceUnavailable, HttpStatusCode.BadGateway)
+private val PASSED =
+    setOf(
+        HttpStatusCode.Unauthorized,
+        HttpStatusCode.Forbidden,
+        HttpStatusCode.ServiceUnavailable,
+        HttpStatusCode.BadGateway,
+        HttpStatusCode.NotFound,
+    )
 
 /**
  * The alias routes behind the web tier's session gate. Disabling and enabling need a fresh admin
@@ -73,7 +79,7 @@ private val REFUSALS =
  */
 class AliasRepository(private val jmapClient: JmapClient) {
     suspend fun list(): AliasListing {
-        val reply = jmapClient.webSend(HttpMethod.Get, ALIASES_PATH, passThrough = REFUSALS + HttpStatusCode.NotFound)
+        val reply = jmapClient.webSend(HttpMethod.Get, ALIASES_PATH, passThrough = PASSED)
         return reply.refusal() ?: when (reply.status) {
             // A web tier without the alias routes passes this path to the mail server's 404.
             HttpStatusCode.NotFound -> AliasRefusal.Off
@@ -87,7 +93,7 @@ class AliasRepository(private val jmapClient: JmapClient) {
                 HttpMethod.Post,
                 ALIASES_PATH,
                 buildJsonObject { put("label", label) },
-                passThrough = REFUSALS + HttpStatusCode.NotFound + HttpStatusCode.BadRequest + HttpStatusCode.TooManyRequests,
+                passThrough = PASSED + HttpStatusCode.BadRequest + HttpStatusCode.TooManyRequests,
             )
         return reply.refusal() ?: when (reply.status) {
             HttpStatusCode.NotFound -> AliasRefusal.Off
@@ -117,7 +123,7 @@ class AliasRepository(private val jmapClient: JmapClient) {
                 HttpMethod.Post,
                 "$ALIASES_PATH/$name/$action",
                 headers = mapOf(MASTER_HEADER to adminToken),
-                passThrough = REFUSALS + HttpStatusCode.NotFound + HttpStatusCode.TooManyRequests,
+                passThrough = PASSED + HttpStatusCode.TooManyRequests,
             )
         return reply.refusal() ?: when (reply.status) {
             HttpStatusCode.NotFound -> SwitchOutcome.Gone

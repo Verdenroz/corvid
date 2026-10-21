@@ -122,8 +122,11 @@ class AliasesViewModel(
                 } catch (e: JmapException) {
                     AliasStep.Failed(e.userMessage())
                 }
-            _state.value = _state.value.copy(step = step, label = if (step is AliasStep.Minted) "" else label)
-            if (step is AliasStep.Minted) refresh()
+            _state.value = _state.value.copy(step = step)
+            if (step is AliasStep.Minted) {
+                _state.value = _state.value.copy(label = "")
+                refresh()
+            }
         }
     }
 
