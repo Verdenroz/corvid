@@ -31,11 +31,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.LocalWideLayout
 import com.verdenroz.corvid.core.designsystem.component.ActionIcon
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
+import com.verdenroz.corvid.core.designsystem.touchTarget
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.DiscardQuestion
-import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.action_destroy_confirm
 import com.verdenroz.corvid.feature.mailbox.resources.action_destroy_question
@@ -55,10 +56,6 @@ private val NOTICE_LIFETIME = 8.seconds
 private const val NARROW_SHOWN = 2
 
 private val ROW_BUTTON = 34.dp
-
-/** Touch targets stay 48dp when narrow; wide, the pointer gets the denser 40dp. */
-@Composable
-internal fun touchTarget(): Dp = if (LocalWideLayout.current) 40.dp else 48.dp
 
 @Composable
 private fun ConversationActionIcon(

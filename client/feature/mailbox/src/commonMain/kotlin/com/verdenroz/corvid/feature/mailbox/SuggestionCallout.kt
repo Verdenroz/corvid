@@ -65,14 +65,16 @@ internal fun SuggestionCallout(
             val enabled = !offer.working
             SuggestionButton(
                 stringResource(Res.string.offer_not_now),
-                { if (enabled) actions.dismiss(suggestion) },
+                { actions.dismiss(suggestion) },
                 ink = colors.onAccentSoft,
+                enabled = enabled,
             )
             SuggestionButton(
                 suggestion.accepts(offer.folders).asString(),
-                { if (enabled) actions.accept(suggestion) },
+                { actions.accept(suggestion) },
                 ink = colors.accentSoft,
                 fill = colors.onAccentSoft,
+                enabled = enabled,
             )
         }
     }

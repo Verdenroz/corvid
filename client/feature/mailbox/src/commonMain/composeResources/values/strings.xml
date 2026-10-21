@@ -108,6 +108,7 @@
     <string name="card_unsubscribe">Unsubscribe</string>
     <string name="card_make_filter">Make a filter</string>
     <string name="card_close">Close</string>
+    <string name="card_open">Open card for %1$s</string>
     <plurals name="card_signed_of">
         <item quantity="one">Signed on %1$d of %2$d message</item>
         <item quantity="other">Signed on %1$d of %2$d messages</item>

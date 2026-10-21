@@ -193,7 +193,7 @@ private fun RuleRow(
         }
         Text(rule.summary(), style = CorvidTheme.type.meta, color = CorvidTheme.colors.inkMuted)
         if (enabledControls) {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 PillButton(stringResource(Res.string.filters_edit), null, onEdit, height = 28.dp)
                 PillButton(stringResource(Res.string.filters_up), null, onUp, height = 28.dp)
                 PillButton(stringResource(Res.string.filters_down), null, onDown, height = 28.dp)

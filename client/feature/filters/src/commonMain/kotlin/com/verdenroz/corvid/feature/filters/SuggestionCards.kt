@@ -55,7 +55,7 @@ internal fun LazyListScope.suggestionCards(
     }
     val enabled = state.save !is SaveStatus.Saving
     items(state.suggestions, key = { it.id }) { suggestion ->
-        SuggestionCard(suggestion, state.folders, onAccept = { if (enabled) onAccept(suggestion) }, onDismiss = { onDismiss(suggestion) })
+        SuggestionCard(suggestion, state.folders, enabled, onAccept = { onAccept(suggestion) }, onDismiss = { onDismiss(suggestion) })
     }
 }
 
@@ -63,6 +63,7 @@ internal fun LazyListScope.suggestionCards(
 private fun SuggestionCard(
     suggestion: RuleSuggestion,
     folders: List<MailboxRef>,
+    acceptEnabled: Boolean,
     onAccept: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -83,7 +84,13 @@ private fun SuggestionCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             SuggestionButton(stringResource(Res.string.suggestion_dismiss), onDismiss, ink = colors.inkMuted)
-            SuggestionButton(stringResource(Res.string.suggestion_add), onAccept, ink = colors.surface, fill = colors.ink)
+            SuggestionButton(
+                stringResource(Res.string.suggestion_add),
+                onAccept,
+                ink = colors.surface,
+                fill = colors.ink,
+                enabled = acceptEnabled,
+            )
         }
     }
 }

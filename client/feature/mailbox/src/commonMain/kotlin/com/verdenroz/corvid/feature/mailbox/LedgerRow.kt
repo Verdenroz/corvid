@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.clockTime
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
+import com.verdenroz.corvid.core.designsystem.touchTarget
 import com.verdenroz.corvid.core.model.Conversation
 import com.verdenroz.corvid.core.model.CorvidKeywords
 import com.verdenroz.corvid.core.model.EmailSummary

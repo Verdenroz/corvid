@@ -71,13 +71,13 @@ import com.verdenroz.corvid.core.data.SuggestedRules
 import com.verdenroz.corvid.core.designsystem.CorvidFloating
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.LocalWideLayout
+import com.verdenroz.corvid.core.designsystem.WIDE_LAYOUT
 import com.verdenroz.corvid.core.jmap.JmapClient
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.prefs.DevicePreferences
 import com.verdenroz.corvid.core.ui.LocalEntryHandlers
 import com.verdenroz.corvid.core.ui.LocalTopEntryKeys
-import com.verdenroz.corvid.core.ui.LocalWideLayout
-import com.verdenroz.corvid.core.ui.WIDE_LAYOUT
 import com.verdenroz.corvid.feature.compose.ComposeScreen
 import com.verdenroz.corvid.feature.compose.ComposeViewModel
 import com.verdenroz.corvid.feature.digest.DigestScreen

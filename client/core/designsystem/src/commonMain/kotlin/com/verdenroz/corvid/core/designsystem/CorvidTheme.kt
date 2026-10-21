@@ -11,7 +11,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 
-private val LocalCorvidColors = staticCompositionLocalOf { LightCorvidColors }
+internal val LocalCorvidColors = staticCompositionLocalOf { LightCorvidColors }
 private val LocalCorvidType = staticCompositionLocalOf<CorvidType> { error("CorvidType read outside CorvidTheme") }
 
 /** Material supplies behaviour and accessibility underneath; colour, type and shape are Corvid's. */

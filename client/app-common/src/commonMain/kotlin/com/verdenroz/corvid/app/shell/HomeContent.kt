@@ -21,9 +21,9 @@ import com.verdenroz.corvid.appcommon.resources.write
 import com.verdenroz.corvid.core.designsystem.CorvidFloating
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.LocalWideLayout
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.model.EmailSummary
-import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.feature.mailbox.LabelsScreen
 import com.verdenroz.corvid.feature.mailbox.LedgerScreen
 import com.verdenroz.corvid.feature.mailbox.LedgerTab

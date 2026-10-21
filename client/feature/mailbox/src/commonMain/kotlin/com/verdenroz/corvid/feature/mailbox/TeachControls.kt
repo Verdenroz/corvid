@@ -46,19 +46,21 @@ internal fun TeachControls(
 ) {
     var changing by rememberSaveable(guess) { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             val enabled = !answering
             PillButton(
                 stringResource(Res.string.teach_right),
                 CorvidIcons.Check,
-                { if (enabled) onAnswer(Correction.Right(guess)) },
+                { onAnswer(Correction.Right(guess)) },
                 height = 28.dp,
+                enabled = enabled,
             )
             PillButton(
                 stringResource(Res.string.teach_wrong),
                 CorvidIcons.Close,
-                { if (enabled) onAnswer(Correction.Wrong(guess)) },
+                { onAnswer(Correction.Wrong(guess)) },
                 height = 28.dp,
+                enabled = enabled,
             )
             PillButton(stringResource(Res.string.teach_change), CorvidIcons.Tag, { changing = !changing }, height = 28.dp)
         }
@@ -99,6 +101,12 @@ private fun ChangeField(
                 field()
             },
         )
-        PillButton(stringResource(Res.string.teach_apply), null, { if (enabled && keyword != null) onApply(keyword) }, height = 28.dp)
+        PillButton(
+            stringResource(Res.string.teach_apply),
+            null,
+            { keyword?.let(onApply) },
+            height = 28.dp,
+            enabled = enabled && keyword != null,
+        )
     }
 }

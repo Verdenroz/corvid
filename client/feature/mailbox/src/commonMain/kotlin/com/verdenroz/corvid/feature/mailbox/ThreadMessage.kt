@@ -19,6 +19,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -41,6 +42,7 @@ import com.verdenroz.corvid.core.ui.provenance.sealDescription
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.action_headers
 import com.verdenroz.corvid.feature.mailbox.resources.action_hide_headers
+import com.verdenroz.corvid.feature.mailbox.resources.card_open
 import com.verdenroz.corvid.feature.mailbox.resources.has_attachments
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_forward
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_reply
@@ -235,12 +237,22 @@ private fun SenderLine(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         modifier = modifier.fillMaxWidth().padding(bottom = 16.dp),
     ) {
-        SenderAvatar(email.from.displayName(), email.provenance.sender, seal, onClick = open)
+        val openLabel = stringResource(Res.string.card_open, email.from.displayName())
+        SenderAvatar(email.from.displayName(), email.provenance.sender, seal, onClick = open, onClickLabel = openLabel)
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
                     email.from.displayName(),
-                    modifier = if (open == null) Modifier else Modifier.clickable(onClick = open),
+                    modifier =
+                        if (open == null) {
+                            Modifier
+                        } else {
+                            Modifier.clickable(
+                                onClickLabel = openLabel,
+                                role = Role.Button,
+                                onClick = open,
+                            )
+                        },
                     style = CorvidTheme.type.name,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,

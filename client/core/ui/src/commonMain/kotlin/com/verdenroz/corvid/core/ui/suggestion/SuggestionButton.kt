@@ -11,12 +11,14 @@ import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.focusRing
 
 /** A suggestion's action: filled with [fill], or bare text when it is null. The colors are the card's, which is not always on paper. */
 @Composable
@@ -25,6 +27,7 @@ fun SuggestionButton(
     onClick: () -> Unit,
     ink: Color,
     fill: Color? = null,
+    enabled: Boolean = true,
 ) {
     val shaped = if (fill == null) Modifier else Modifier.background(fill, CorvidShape.medium)
     Box(
@@ -32,11 +35,13 @@ fun SuggestionButton(
         modifier =
             Modifier
                 .minimumInteractiveComponentSize()
+                .focusRing(CorvidShape.medium)
+                .alpha(if (enabled) 1f else 0.45f)
                 .then(shaped)
                 .clip(CorvidShape.medium)
                 .height(36.dp)
                 .defaultMinSize(minWidth = 36.dp)
-                .clickable(role = Role.Button, onClick = onClick)
+                .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
                 .padding(horizontal = if (fill == null) 10.dp else 14.dp),
     ) {
         Text(text, style = CorvidTheme.type.action, color = ink)

@@ -37,6 +37,7 @@ import com.verdenroz.corvid.core.data.stamp
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.LocalWideLayout
 import com.verdenroz.corvid.core.model.DigestItem
 import com.verdenroz.corvid.core.model.ListedItem
 import com.verdenroz.corvid.core.model.items
@@ -44,7 +45,6 @@ import com.verdenroz.corvid.core.model.lists
 import com.verdenroz.corvid.core.model.people
 import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.asString
-import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.core.ui.PageHeader
 import com.verdenroz.corvid.core.ui.QuietPane
 import com.verdenroz.corvid.core.ui.provenance.InitialsTile

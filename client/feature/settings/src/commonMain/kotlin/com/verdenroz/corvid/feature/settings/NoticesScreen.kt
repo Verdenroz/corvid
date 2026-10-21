@@ -21,9 +21,9 @@ import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.stamp
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.LocalWideLayout
 import com.verdenroz.corvid.core.model.Notice
 import com.verdenroz.corvid.core.text.asString
-import com.verdenroz.corvid.core.ui.LocalWideLayout
 import com.verdenroz.corvid.core.ui.PageHeader
 import com.verdenroz.corvid.core.ui.QuietPane
 import com.verdenroz.corvid.feature.settings.resources.Res
