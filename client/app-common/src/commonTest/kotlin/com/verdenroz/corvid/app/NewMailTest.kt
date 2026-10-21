@@ -150,6 +150,28 @@ class NewMailTest {
         }
 
     @Test
+    fun `mail that arrived on an alias is new mail like any other`() =
+        runTest {
+            val rig = mailRig()
+            rig.fake.identities += FakeIdentity(id = "i2", email = "shop.abcd2345@corvid.test")
+            rig.started("old" to 10)
+
+            rig.arrive("shop", 30)
+            rig.fake.emails.replaceAll {
+                if (it.id == "shop") {
+                    it.copy(
+                        headers = mapOf("Delivered-To" to listOf("shop.abcd2345@corvid.test")),
+                    )
+                } else {
+                    it
+                }
+            }
+            rig.newMail.check()
+
+            assertEquals(listOf("new_mail_title" to "new_mail_count[1]"), rig.notifier.shown)
+        }
+
+    @Test
     fun `older mail moved back into the inbox is not new`() =
         runTest {
             val rig = mailRig().started("recent" to 50)
