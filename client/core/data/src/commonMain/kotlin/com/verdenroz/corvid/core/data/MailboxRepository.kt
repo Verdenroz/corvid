@@ -337,8 +337,9 @@ class MailboxRepository(
         val thread = outcomes.thread.resultOrThrow().getValue("list").jsonArray.single().jsonObject
         val order = thread.idList("emailIds")
         val domain = ownDomain()
-        val aliases = aliasEmails()
-        val messages = outcomes.messages.resultOrThrow().getValue("list").jsonArray.map { it.jsonObject.toEmailDetail(domain, aliases) }
+        val list = outcomes.messages.resultOrThrow().getValue("list").jsonArray.map { it.jsonObject }
+        val aliases = aliasEmails(list)
+        val messages = list.map { it.toEmailDetail(domain, aliases) }
         return ThreadLookup.Found(thread.getValue("id").jsonPrimitive.content, messages.sortedBy { order.indexOf(it.id) })
     }
 
@@ -353,7 +354,8 @@ class MailboxRepository(
             }
         val result = jmapClient.callOne("Email/get", arguments)
         if (result.getValue("notFound").jsonArray.isNotEmpty()) return EmailLookup.NotFound
-        return EmailLookup.Found(result.getValue("list").jsonArray.first().jsonObject.toEmailDetail(ownDomain(), aliasEmails()))
+        val email = result.getValue("list").jsonArray.first().jsonObject
+        return EmailLookup.Found(email.toEmailDetail(ownDomain(), aliasEmails(listOf(email))))
     }
 
     /** One message's keywords alone; null when it is gone. */
@@ -590,9 +592,16 @@ class MailboxRepository(
 
     internal suspend fun ownDomain(): String? = identity()?.email?.substringAfterLast('@')
 
-    /** Every identity's address but the main one, in lower case; none while the main one is unknown. */
-    private suspend fun aliasEmails(): Set<String> {
-        val all = identities()
+    /**
+     * Every identity's address but the main one, in lower case; none while the main one is unknown.
+     * An alias minted or enabled since the identities were fetched has an identity only the server
+     * knows, so a Delivered-To of [emails] that names no known address refetches them once.
+     */
+    private suspend fun aliasEmails(emails: List<JsonObject>): Set<String> {
+        val cached = identities()
+        val known = cached.map { it.email.lowercase() }.toSet()
+        val unknown = emails.any { email -> email.texts(DELIVERED_TO).firstOrNull()?.lowercase()?.let { it !in known } == true }
+        val all = if (unknown) identityLock.withLock { fetchIdentities().also { identities = it } } else cached
         val main = all.mainIdentity(jmapClient.session.accountName) ?: return emptySet()
         return all.map { it.email.lowercase() }.toSet() - main.email.lowercase()
     }

@@ -430,6 +430,20 @@ class MailboxRepositoryTest {
         }
 
     @Test
+    fun `an alias minted after the identities were read still names the alias it arrived on`() =
+        runTest {
+            val fake = FakeJmapServer().withAlias(ALIAS)
+            fake.identities.removeAll { it.email == ALIAS }
+            val repository = repository(fake)
+            repository.identity()
+            fake.identities += FakeIdentity(id = "i2", email = ALIAS)
+
+            val detail = assertIs<EmailLookup.Found>(repository.getEmail("e1")).detail
+
+            assertEquals(ALIAS, detail.arrivedVia)
+        }
+
+    @Test
     fun `a delivered-to naming an address the account does not hold names no alias`() =
         runTest {
             val fake = FakeJmapServer().withAlias("stranger@elsewhere.test")
