@@ -20,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -51,6 +52,7 @@ import com.verdenroz.corvid.feature.aliases.resources.Res
 import com.verdenroz.corvid.feature.aliases.resources.aliases_added_on
 import com.verdenroz.corvid.feature.aliases.resources.aliases_back
 import com.verdenroz.corvid.feature.aliases.resources.aliases_copied
+import com.verdenroz.corvid.feature.aliases.resources.aliases_copied_named
 import com.verdenroz.corvid.feature.aliases.resources.aliases_copy
 import com.verdenroz.corvid.feature.aliases.resources.aliases_copy_named
 import com.verdenroz.corvid.feature.aliases.resources.aliases_detail
@@ -95,7 +97,8 @@ fun AliasesScreen(
     val gutter = CorvidSpacing.gutter(LocalWideLayout.current)
     val copy = rememberCopyText()
     var copied by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(copied) {
+    var copies by remember { mutableIntStateOf(0) }
+    LaunchedEffect(copied, copies) {
         if (copied != null) {
             delay(2.seconds)
             copied = null
@@ -124,6 +127,7 @@ fun AliasesScreen(
             aliases(state, viewModel, copied) { alias ->
                 copy(alias.address)
                 copied = alias.name
+                copies++
             }
         }
     }
@@ -136,11 +140,21 @@ private fun LazyListScope.aliases(
     onCopy: (Alias) -> Unit,
 ) {
     when (val list = state.list) {
-        AliasList.Loading -> item { Text(stringResource(Res.string.aliases_loading), style = CorvidTheme.type.body) }
-        AliasList.Off -> item { Text(stringResource(Res.string.aliases_off), style = CorvidTheme.type.body) }
+        AliasList.Loading ->
+            item {
+                Text(
+                    stringResource(Res.string.aliases_loading),
+                    style = CorvidTheme.type.body,
+                    modifier = Modifier.widthIn(max = PAGE_WIDTH),
+                )
+            }
+        AliasList.Off ->
+            item {
+                Text(stringResource(Res.string.aliases_off), style = CorvidTheme.type.body, modifier = Modifier.widthIn(max = PAGE_WIDTH))
+            }
         is AliasList.Failed ->
             item {
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Column(Modifier.widthIn(max = PAGE_WIDTH), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text(list.message.asString(), style = CorvidTheme.type.body)
                     PillButton(stringResource(Res.string.aliases_refresh), null, onClick = viewModel::refresh)
                 }
@@ -211,7 +225,7 @@ private fun RowActions(
     onCopy: () -> Unit,
     viewModel: AliasesViewModel,
 ) {
-    val copyName = stringResource(Res.string.aliases_copy_named, alias.address)
+    val copyName = stringResource(if (copied) Res.string.aliases_copied_named else Res.string.aliases_copy_named, alias.address)
     QuietLink(
         stringResource(if (copied) Res.string.aliases_copied else Res.string.aliases_copy),
         onClick = onCopy,

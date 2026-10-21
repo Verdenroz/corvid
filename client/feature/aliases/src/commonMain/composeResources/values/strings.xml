@@ -13,6 +13,7 @@
     <string name="aliases_copy">Copy</string>
     <string name="aliases_copied">Copied</string>
     <string name="aliases_copy_named">Copy %1$s</string>
+    <string name="aliases_copied_named">Copied %1$s</string>
     <string name="aliases_turn_off_named">Turn off %1$s</string>
     <string name="aliases_turn_on_named">Turn on %1$s</string>
     <string name="aliases_turn_off">Turn off</string>
