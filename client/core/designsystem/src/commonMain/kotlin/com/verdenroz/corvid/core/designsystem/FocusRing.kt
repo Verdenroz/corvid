@@ -4,6 +4,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusEventModifierNode
 import androidx.compose.ui.focus.FocusState
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
@@ -25,26 +26,38 @@ private val RingGap = 2.dp
  * An accent ring [RingGap] outside [shape] while the focus target after it holds focus in keyboard
  * mode, so pointer and touch never show it. Place it before any clip, which would cut the ring off.
  */
-fun Modifier.focusRing(shape: Shape): Modifier = this then FocusRingElement(shape)
+fun Modifier.focusRing(shape: Shape): Modifier = this then FocusRingElement(shape, inset = false)
+
+/**
+ * [focusRing] drawn inside the bounds, over the content, for edge-to-edge rows and bars where a
+ * ring outside would be clipped by the screen or the list.
+ */
+fun Modifier.focusRingInset(shape: Shape = RectangleShape): Modifier = this then FocusRingElement(shape, inset = true)
 
 private data class FocusRingElement(
     val shape: Shape,
+    val inset: Boolean,
 ) : ModifierNodeElement<FocusRingNode>() {
-    override fun create() = FocusRingNode(shape)
+    override fun create() = FocusRingNode(shape, inset)
 
-    override fun update(node: FocusRingNode) = node.update(shape)
+    override fun update(node: FocusRingNode) = node.update(shape, inset)
 }
 
 private class FocusRingNode(
     private var shape: Shape,
+    private var inset: Boolean,
 ) : Modifier.Node(),
     FocusEventModifierNode,
     DrawModifierNode,
     CompositionLocalConsumerModifierNode {
     private var focused = false
 
-    fun update(shape: Shape) {
+    fun update(
+        shape: Shape,
+        inset: Boolean,
+    ) {
         this.shape = shape
+        this.inset = inset
         invalidateDraw()
     }
 
@@ -57,7 +70,7 @@ private class FocusRingNode(
     override fun ContentDrawScope.draw() {
         drawContent()
         if (!focused || currentValueOf(LocalInputModeManager).inputMode != InputMode.Keyboard) return
-        val reach = (RingGap + RingWidth / 2).toPx()
+        val reach = if (inset) -(RingWidth / 2).toPx() else (RingGap + RingWidth / 2).toPx()
         val outline = shape.createOutline(Size(size.width + reach * 2, size.height + reach * 2), layoutDirection, this)
         translate(-reach, -reach) {
             drawOutline(outline, currentValueOf(LocalCorvidColors).accent, style = Stroke(RingWidth.toPx()))
