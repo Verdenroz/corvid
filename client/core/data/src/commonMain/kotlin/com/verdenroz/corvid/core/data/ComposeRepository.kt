@@ -77,6 +77,20 @@ private sealed interface Loaded {
     data class Unavailable(val reason: SendUnavailable) : Loaded
 }
 
+/**
+ * An address on the account's own domain that is neither the main address nor a current identity:
+ * an alias disabled since the mail arrived. A reply keeps it, so sending is refused rather than
+ * going out from the main address.
+ */
+private fun Loaded.Ready.isFormerAlias(address: String): Boolean {
+    val main = identity.email.lowercase()
+    val lower = address.lowercase()
+    return lower.substringAfterLast('@') == main.substringAfterLast('@') && lower != main &&
+        ownEmails.none {
+            it.equals(lower, ignoreCase = true)
+        }
+}
+
 private inline fun <R> Loaded.fold(
     onUnavailable: (SendUnavailable) -> R,
     onReady: (Loaded.Ready) -> R,
@@ -117,7 +131,9 @@ class ComposeRepository(
                     )
                 is ComposeIntent.Reply ->
                     withOriginal(intent.emailId, sending.identity.email) {
-                        replyDraft(it, sending.ownEmails, intent.all, textResolver.resolve(replyAttribution(it, zone, clock.now())))
+                        val reply =
+                            replyDraft(it, sending.ownEmails, intent.all, textResolver.resolve(replyAttribution(it, zone, clock.now())))
+                        reply.copy(from = reply.from ?: it.deliveredTo?.takeIf { to -> sending.isFormerAlias(to) })
                     }
                 is ComposeIntent.Draft -> loadDraft(intent.emailId, sending.identity.email)
                 is ComposeIntent.Forward ->

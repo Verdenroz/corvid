@@ -28,7 +28,12 @@ fun replyDraft(
 ): Draft {
     val sender = listOfNotNull(original.from)
     val to = original.replyTo.ifEmpty { sender }
-    val skipped = (to.map { it.email } + ownEmails + listOfNotNull(original.arrivedVia)).mapTo(HashSet()) { it.lowercase() }
+    val skipped =
+        (
+            to.map {
+                it.email
+            } + ownEmails + listOfNotNull(original.arrivedVia, original.deliveredTo)
+        ).mapTo(HashSet()) { it.lowercase() }
     val others = original.to + original.cc + sender
     val cc = if (all) others.filterNot { it.email.lowercase() in skipped }.distinctBy { it.email.lowercase() } else emptyList()
     val quoted = original.body.lines().joinToString("\n") { if (it.isEmpty()) ">" else "> $it" }

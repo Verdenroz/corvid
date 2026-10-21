@@ -62,7 +62,7 @@ private suspend fun ComposeRepository.sendNew(draft: Draft): SendResult =
         is SendUnavailable -> saved
     }
 
-private const val ALIAS = "shop.abcd2345@corvid.test"
+private const val ALIAS = "shop.abcd2345@example.test"
 
 private class AliasRig(val fake: FakeJmapServer, val compose: ComposeRepository, val aliases: AliasRepository) {
     suspend fun reply(): Draft = assertIs<StartResult.Ready>(compose.start(ComposeIntent.Reply("orig", all = false))).draft
@@ -73,6 +73,7 @@ private class AliasRig(val fake: FakeJmapServer, val compose: ComposeRepository,
 /** An account with a minted alias, whose message arrived on it under the Delivered-To [deliveredTo]. */
 private suspend fun aliasRig(deliveredTo: String = ALIAS): AliasRig {
     val fake = server()
+    fake.aliases.domain = OWN.substringAfter('@')
     val client = fake.client()
     val aliases = AliasRepository(client)
     assertIs<MintOutcome.Minted>(aliases.mint("shop"))
@@ -514,6 +515,26 @@ class ComposeRepositoryTest {
             assertEquals(SendResult.Sent, compose.sendNew(Draft(to = dan, from = OWN.uppercase())))
 
             assertEquals("i1", fake.submissions.single().identityId)
+        }
+
+    @Test
+    fun `a reply started after its alias was disabled is still from the alias and is refused`() =
+        runTest {
+            val rig = aliasRig()
+            assertIs<SwitchOutcome.Switched>(rig.aliases.disable("shop.abcd2345", "master-token"))
+
+            val reply = rig.reply()
+
+            assertEquals(ALIAS, reply.from)
+            assertEquals(AliasGone(ALIAS), rig.compose.sendNew(reply))
+            assertTrue(rig.fake.submissions.isEmpty())
+        }
+
+    @Test
+    fun `a reply to mail delivered to another domain or to the main address is from the main address`() =
+        runTest {
+            assertNull(aliasRig(deliveredTo = "list@lists.example.test").reply().from)
+            assertNull(aliasRig(deliveredTo = OWN.uppercase()).reply().from)
         }
 
     @Test

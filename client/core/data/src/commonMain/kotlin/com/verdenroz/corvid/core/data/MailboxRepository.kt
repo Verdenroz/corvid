@@ -702,6 +702,7 @@ private fun JsonObject.toEmailDetail(
         attachments = attachmentList(html?.html),
         inlineImages = inlineImages(html?.html),
         arrivedVia = texts(DELIVERED_TO).firstOrNull()?.takeIf { it.lowercase() in aliases },
+        deliveredTo = texts(DELIVERED_TO).firstOrNull(),
     )
 }
 
