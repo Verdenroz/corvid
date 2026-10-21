@@ -30,7 +30,7 @@ fun CorvidTextField(
         colors =
             OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = colors.accent,
-                unfocusedBorderColor = colors.line,
+                unfocusedBorderColor = colors.outline,
                 focusedLabelColor = colors.accent,
                 unfocusedLabelColor = colors.inkMuted,
                 cursorColor = colors.accent,

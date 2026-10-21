@@ -38,7 +38,7 @@ fun LabelChip(
         when (label) {
             is Label.Yours -> modifier.background(colors.accentSoft, CorvidShape.small)
             is Label.Labeler -> modifier.background(colors.chip, CorvidShape.small)
-            is Label.Guess -> modifier.dashedOutline(colors.inkFaint)
+            is Label.Guess -> modifier.dashedOutline(colors.outline)
             is Label.Rule -> modifier.border(1.dp, colors.line, CorvidShape.small)
         }
     val ink = if (label is Label.Yours || label is Label.Labeler) colors.onAccentSoft else colors.inkMuted

@@ -12,7 +12,9 @@ private const val CHROMA = 0.16f
 /**
  * The Raven palette: ink and paper tinted toward the feather's violet, with [sheenStart] and
  * [sheenEnd] as the violet-to-green throw that only the mark, the key ring and the chain of
- * custody edge may use. [rail] sits one step off [surface] for bars and side sheets.
+ * custody edge may use. [rail] sits one step off [surface] for bars and side sheets. [inkFaint]
+ * is the faintest text that still reads at meta size on [hover]; [outline] is the faintest
+ * boundary that still marks a control, for rings, field borders and disabled icons, never text.
  */
 @Immutable
 data class CorvidColors(
@@ -23,6 +25,7 @@ data class CorvidColors(
     val ink: Color,
     val inkMuted: Color,
     val inkFaint: Color,
+    val outline: Color,
     val accent: Color,
     val accentSoft: Color,
     val onAccentSoft: Color,
@@ -46,7 +49,8 @@ val DarkCorvidColors =
         line = oklch(0.30f, 0.012f, BRAND_HUE),
         ink = oklch(0.93f, 0.008f, BRAND_HUE),
         inkMuted = oklch(0.73f, 0.012f, BRAND_HUE),
-        inkFaint = oklch(0.58f, 0.012f, BRAND_HUE),
+        inkFaint = oklch(0.65f, 0.012f, BRAND_HUE),
+        outline = oklch(0.58f, 0.012f, BRAND_HUE),
         accent = oklch(0.76f, CHROMA * 0.72f, BRAND_HUE),
         accentSoft = oklch(0.34f, CHROMA * 0.36f, BRAND_HUE),
         onAccentSoft = oklch(0.92f, CHROMA * 0.28f, BRAND_HUE),
@@ -70,7 +74,8 @@ val LightCorvidColors =
         line = oklch(0.905f, 0.01f, BRAND_HUE),
         ink = oklch(0.24f, 0.02f, BRAND_HUE),
         inkMuted = oklch(0.47f, 0.02f, BRAND_HUE),
-        inkFaint = oklch(0.62f, 0.015f, BRAND_HUE),
+        inkFaint = oklch(0.525f, 0.015f, BRAND_HUE),
+        outline = oklch(0.62f, 0.015f, BRAND_HUE),
         accent = oklch(0.52f, CHROMA, BRAND_HUE),
         accentSoft = oklch(0.92f, CHROMA * 0.30f, BRAND_HUE),
         onAccentSoft = oklch(0.30f, CHROMA * 0.75f, BRAND_HUE),
@@ -111,7 +116,7 @@ internal fun CorvidColors.toMaterial(): ColorScheme {
         surfaceContainer = rail,
         surfaceContainerHigh = hover,
         surfaceContainerHighest = hover,
-        outline = inkFaint,
+        outline = outline,
         outlineVariant = line,
         error = danger,
         onError = onAccent,

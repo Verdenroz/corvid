@@ -150,7 +150,7 @@ private fun AccountAvatar(
             Modifier
                 .size(36.dp)
                 .clip(CircleShape)
-                .border(1.5.dp, colors.inkFaint, CircleShape)
+                .border(1.5.dp, colors.outline, CircleShape)
                 .clickable(onClickLabel = stringResource(Res.string.settings_open), role = Role.Button, onClick = onClick),
     ) {
         if (identity == null) {

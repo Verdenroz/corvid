@@ -32,7 +32,7 @@ internal fun HistoryStrip(
     ) {
         history.forEach { matched ->
             val square = Modifier.weight(1f).height(10.dp)
-            Box(if (matched) square.background(colors.accent, SQUARE) else square.border(1.5.dp, colors.inkFaint, SQUARE))
+            Box(if (matched) square.background(colors.accent, SQUARE) else square.border(1.5.dp, colors.outline, SQUARE))
         }
         repeat(SLOTS - history.size) { Box(Modifier.weight(1f)) }
     }

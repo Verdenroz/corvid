@@ -38,7 +38,7 @@ fun ActionIcon(
         modifier = modifier,
     ) {
         IconButton(onClick, Modifier.size(size), enabled = enabled) {
-            Icon(icon, label, tint = if (enabled) tint else CorvidTheme.colors.inkFaint, modifier = Modifier.size(iconSize))
+            Icon(icon, label, tint = if (enabled) tint else CorvidTheme.colors.outline, modifier = Modifier.size(iconSize))
         }
     }
 }

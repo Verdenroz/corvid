@@ -212,7 +212,7 @@ internal fun TickRing(selected: Boolean) {
             Icon(CorvidIcons.Check, null, tint = colors.onAccent, modifier = Modifier.size(15.dp))
         }
     } else {
-        Box(ring.border(1.5.dp, colors.inkFaint, CircleShape))
+        Box(ring.border(1.5.dp, colors.outline, CircleShape))
     }
 }
 
