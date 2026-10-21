@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
@@ -40,6 +39,7 @@ import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.ActionIcon
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.PrimaryButton
+import com.verdenroz.corvid.core.designsystem.component.inlineLabel
 import com.verdenroz.corvid.core.model.Attachment
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.text.asString
@@ -253,7 +253,6 @@ private fun Field(
     val colors = CorvidTheme.colors
     Column(Modifier.padding(horizontal = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().heightIn(min = 42.dp)) {
-            Text(label, style = CorvidTheme.type.name, color = colors.inkMuted, modifier = Modifier.width(64.dp))
             BasicTextField(
                 value = value,
                 onValueChange = onChange,
@@ -261,6 +260,7 @@ private fun Field(
                 textStyle = CorvidTheme.type.name.copy(color = colors.ink),
                 cursorBrush = SolidColor(colors.accent),
                 modifier = Modifier.weight(1f),
+                decorationBox = inlineLabel(label),
             )
         }
         HorizontalDivider(color = colors.line)

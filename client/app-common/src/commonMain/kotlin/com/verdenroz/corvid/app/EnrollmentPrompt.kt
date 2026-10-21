@@ -33,6 +33,7 @@ import com.verdenroz.corvid.core.designsystem.component.PrimaryButton
 import com.verdenroz.corvid.core.keyring.approvalLink
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.StatePane
+import com.verdenroz.corvid.core.ui.StatusLine
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -95,7 +96,7 @@ private fun OpenRequest(
         SelfApproval.Idle -> PillButton(stringResource(Res.string.enroll_self_approve), icon = null, onClick = onApproveSelf)
         is SelfApproval.Failed -> {
             PillButton(stringResource(Res.string.enroll_self_approve), icon = null, onClick = onApproveSelf)
-            Text(self.message.asString(), style = CorvidTheme.type.body, color = colors.ink)
+            StatusLine(self.message.asString(), failed = true)
         }
     }
 }

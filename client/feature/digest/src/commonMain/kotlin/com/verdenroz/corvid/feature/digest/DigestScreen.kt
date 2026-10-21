@@ -27,6 +27,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -158,7 +160,7 @@ private fun Section(
         horizontalArrangement = Arrangement.SpaceBetween,
         modifier = Modifier.widthIn(max = COLUMN_WIDTH).fillMaxWidth().padding(top = 20.dp, bottom = 8.dp),
     ) {
-        Text(title, style = CorvidTheme.type.dayHeader)
+        Text(title, style = CorvidTheme.type.dayHeader, modifier = Modifier.semantics { heading() })
         aside?.let { Text(it, style = CorvidTheme.type.meta, color = CorvidTheme.colors.inkFaint) }
     }
 }

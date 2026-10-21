@@ -13,6 +13,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidTextField
@@ -52,7 +54,7 @@ internal fun RuleEditor(
         }
         ConditionsSection(rule.conditions) { onChange(rule.copy(conditions = it)) }
 
-        Text(stringResource(Res.string.filters_then), style = CorvidTheme.type.dayHeader)
+        Text(stringResource(Res.string.filters_then), style = CorvidTheme.type.dayHeader, modifier = Modifier.semantics { heading() })
         ActionsSection(rule.actions, folders) { onChange(rule.copy(actions = it)) }
 
         Row(verticalAlignment = Alignment.CenterVertically) {

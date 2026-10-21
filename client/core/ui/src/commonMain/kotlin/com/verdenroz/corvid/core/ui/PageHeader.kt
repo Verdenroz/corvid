@@ -8,6 +8,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
@@ -22,6 +24,6 @@ fun PageHeader(
         IconButton(onClick = onBack) {
             Icon(CorvidIcons.Back, backLabel, tint = CorvidTheme.colors.inkMuted)
         }
-        title?.let { Text(it, style = CorvidTheme.type.headline) }
+        title?.let { Text(it, style = CorvidTheme.type.headline, modifier = Modifier.semantics { heading() }) }
     }
 }

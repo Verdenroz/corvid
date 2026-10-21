@@ -14,6 +14,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.LabelCount
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
@@ -65,7 +67,12 @@ private fun SectionTitle(title: String) {
         title.uppercase(),
         style = CorvidTheme.type.label,
         color = CorvidTheme.colors.inkFaint,
-        modifier = Modifier.padding(start = CorvidSpacing.gutter(LocalWideLayout.current), top = 18.dp, bottom = 6.dp),
+        modifier =
+            Modifier.padding(
+                start = CorvidSpacing.gutter(LocalWideLayout.current),
+                top = 18.dp,
+                bottom = 6.dp,
+            ).semantics { heading() },
     )
 }
 

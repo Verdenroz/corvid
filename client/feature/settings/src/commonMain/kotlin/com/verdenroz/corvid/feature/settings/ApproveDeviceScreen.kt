@@ -31,6 +31,7 @@ import com.verdenroz.corvid.core.designsystem.component.PrimaryButton
 import com.verdenroz.corvid.core.keyring.PendingRequest
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.PageHeader
+import com.verdenroz.corvid.core.ui.StatusLine
 import com.verdenroz.corvid.feature.settings.resources.Res
 import com.verdenroz.corvid.feature.settings.resources.approve_action
 import com.verdenroz.corvid.feature.settings.resources.approve_approved
@@ -147,5 +148,5 @@ private fun StepText(step: ApproveStep) {
             is ApproveStep.Approved -> stringResource(Res.string.approve_approved, step.shortId)
             is ApproveStep.Failed -> step.message.asString()
         }
-    Text(text, style = CorvidTheme.type.body, color = CorvidTheme.colors.ink)
+    StatusLine(text, failed = step is ApproveStep.Failed)
 }

@@ -18,6 +18,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.designsystem.CorvidShape
@@ -56,7 +58,7 @@ fun StatePane(
     ) {
         Column(Modifier.widthIn(max = 380.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             CorvidMark(width = 48.dp)
-            Text(headline, style = CorvidTheme.type.display, color = headlineColor)
+            Text(headline, style = CorvidTheme.type.display, color = headlineColor, modifier = Modifier.semantics { heading() })
             Box(Modifier.width(120.dp).height(3.dp).background(colors.accent, CorvidShape.pill))
             detail?.let { Text(it, style = CorvidTheme.type.body, color = colors.inkMuted) }
             if (facts.isNotEmpty()) {

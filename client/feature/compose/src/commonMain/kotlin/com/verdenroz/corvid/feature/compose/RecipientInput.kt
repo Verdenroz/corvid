@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
@@ -36,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.Contact
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
+import com.verdenroz.corvid.core.designsystem.component.inlineLabel
 import com.verdenroz.corvid.feature.compose.resources.Res
 import com.verdenroz.corvid.feature.compose.resources.compose_show_copies
 import org.jetbrains.compose.resources.stringResource
@@ -69,7 +69,6 @@ internal fun RecipientInput(
     val shown = suggestions?.takeIf { it.field == field }
     Column(Modifier.padding(horizontal = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().heightIn(min = 42.dp)) {
-            Text(label, style = CorvidTheme.type.name, color = colors.inkMuted, modifier = Modifier.width(LABEL_WIDTH))
             BasicTextField(
                 value = editing,
                 onValueChange = {
@@ -85,6 +84,7 @@ internal fun RecipientInput(
                         .weight(1f)
                         .onFocusChanged { if (!it.isFocused && shown != null) actions.onDismiss() }
                         .onPreviewKeyEvent { shown != null && it.steer(actions) },
+                decorationBox = inlineLabel(label, LABEL_WIDTH),
             )
             onShowCopies?.let {
                 Text(

@@ -22,6 +22,7 @@ import com.verdenroz.corvid.core.model.hostOf
 import com.verdenroz.corvid.core.prefs.RememberedAccount
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.StatePane
+import com.verdenroz.corvid.core.ui.StatusLine
 import com.verdenroz.corvid.feature.signin.resources.Res
 import com.verdenroz.corvid.feature.signin.resources.signin_advanced
 import com.verdenroz.corvid.feature.signin.resources.signin_another
@@ -256,5 +257,5 @@ private fun Confirmation(discovery: Discovery) {
 
 @Composable
 private fun Problem(message: String) {
-    Text(message, style = CorvidTheme.type.meta, color = CorvidTheme.colors.danger)
+    StatusLine(message, failed = true, style = CorvidTheme.type.meta)
 }

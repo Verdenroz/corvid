@@ -29,6 +29,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -239,7 +241,7 @@ private fun History(
                 stringResource(Res.string.card_recent).uppercase(),
                 style = CorvidTheme.type.label,
                 color = colors.inkFaint,
-                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp).semantics { heading() },
             )
         }
         items(recent, key = { it.id }) { email ->

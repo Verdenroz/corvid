@@ -15,6 +15,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.designsystem.CorvidShape
@@ -109,7 +111,11 @@ internal fun OvernightBlock(offer: OvernightOffer) {
         ) {
             Column(Modifier.weight(1f)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Bottom) {
-                    Text(stringResource(Res.string.overnight_title), style = CorvidTheme.type.dayHeader)
+                    Text(
+                        stringResource(Res.string.overnight_title),
+                        style = CorvidTheme.type.dayHeader,
+                        modifier = Modifier.semantics { heading() },
+                    )
                     Text(entry.count.toString(), style = CorvidTheme.type.meta, color = colors.inkMuted)
                 }
                 Row {
