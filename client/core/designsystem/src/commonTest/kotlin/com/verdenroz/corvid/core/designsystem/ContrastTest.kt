@@ -20,6 +20,15 @@ class ContrastTest {
     }
 
     @Test
+    fun `danger reads as small text on paper and on its own tints`() {
+        themes.forEach { (theme, colors) ->
+            (papers(colors) + listOf("dangerSoft" to colors.dangerSoft, "dangerTint" to colors.dangerTint)).forEach { (paper, background) ->
+                assertAtLeast(4.5, colors.danger, background, "$theme danger on $paper")
+            }
+        }
+    }
+
+    @Test
     fun `the outline marks a control on every paper it sits on`() {
         themes.forEach { (theme, colors) ->
             papers(colors).forEach { (paper, background) -> assertAtLeast(3.0, colors.outline, background, "$theme outline on $paper") }
