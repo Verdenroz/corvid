@@ -4,16 +4,20 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -21,6 +25,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.Alias
 import com.verdenroz.corvid.core.designsystem.CorvidShape
@@ -40,6 +52,7 @@ import com.verdenroz.corvid.feature.aliases.resources.aliases_added_on
 import com.verdenroz.corvid.feature.aliases.resources.aliases_back
 import com.verdenroz.corvid.feature.aliases.resources.aliases_copied
 import com.verdenroz.corvid.feature.aliases.resources.aliases_copy
+import com.verdenroz.corvid.feature.aliases.resources.aliases_copy_named
 import com.verdenroz.corvid.feature.aliases.resources.aliases_detail
 import com.verdenroz.corvid.feature.aliases.resources.aliases_is_off
 import com.verdenroz.corvid.feature.aliases.resources.aliases_keep_on
@@ -60,10 +73,18 @@ import com.verdenroz.corvid.feature.aliases.resources.aliases_switched_off
 import com.verdenroz.corvid.feature.aliases.resources.aliases_switched_on
 import com.verdenroz.corvid.feature.aliases.resources.aliases_title
 import com.verdenroz.corvid.feature.aliases.resources.aliases_turn_off
+import com.verdenroz.corvid.feature.aliases.resources.aliases_turn_off_named
 import com.verdenroz.corvid.feature.aliases.resources.aliases_turn_off_question
 import com.verdenroz.corvid.feature.aliases.resources.aliases_turn_on
+import com.verdenroz.corvid.feature.aliases.resources.aliases_turn_on_named
 import com.verdenroz.corvid.feature.aliases.resources.aliases_working
+import kotlinx.coroutines.delay
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
+import kotlin.time.Duration.Companion.seconds
+
+private val PAGE_WIDTH = 640.dp
 
 @Composable
 fun AliasesScreen(
@@ -72,55 +93,66 @@ fun AliasesScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val gutter = CorvidSpacing.gutter(LocalWideLayout.current)
+    val copy = rememberCopyText()
+    var copied by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(copied) {
+        if (copied != null) {
+            delay(2.seconds)
+            copied = null
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize().background(CorvidTheme.colors.surface)) {
         PageHeader(stringResource(Res.string.aliases_title), stringResource(Res.string.aliases_back), onBack)
-        Column(
-            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = gutter).padding(top = 24.dp, bottom = 48.dp),
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = gutter, end = gutter, top = 24.dp, bottom = 48.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Column(Modifier.widthIn(max = 640.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text(stringResource(Res.string.aliases_detail), style = CorvidTheme.type.body, color = CorvidTheme.colors.inkMuted)
-                Aliases(state, viewModel)
-                if (state.list is AliasList.Listed) {
-                    MintForm(state, viewModel)
-                    StepText(state.step)
-                }
+            item {
+                Text(
+                    stringResource(Res.string.aliases_detail),
+                    style = CorvidTheme.type.body,
+                    color = CorvidTheme.colors.inkMuted,
+                    modifier = Modifier.widthIn(max = PAGE_WIDTH),
+                )
+            }
+            if (state.list is AliasList.Listed) {
+                item { MintForm(state, viewModel) }
+                item { StepText(state.step) }
+            }
+            aliases(state, viewModel, copied) { alias ->
+                copy(alias.address)
+                copied = alias.name
             }
         }
     }
 }
 
-@Composable
-private fun Aliases(
+private fun LazyListScope.aliases(
     state: AliasesState,
     viewModel: AliasesViewModel,
+    copied: String?,
+    onCopy: (Alias) -> Unit,
 ) {
     when (val list = state.list) {
-        AliasList.Loading -> Text(stringResource(Res.string.aliases_loading), style = CorvidTheme.type.body)
-        AliasList.Off -> Text(stringResource(Res.string.aliases_off), style = CorvidTheme.type.body)
-        is AliasList.Failed -> {
-            Text(list.message.asString(), style = CorvidTheme.type.body)
-            PillButton(stringResource(Res.string.aliases_refresh), null, onClick = viewModel::refresh)
-        }
+        AliasList.Loading -> item { Text(stringResource(Res.string.aliases_loading), style = CorvidTheme.type.body) }
+        AliasList.Off -> item { Text(stringResource(Res.string.aliases_off), style = CorvidTheme.type.body) }
+        is AliasList.Failed ->
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text(list.message.asString(), style = CorvidTheme.type.body)
+                    PillButton(stringResource(Res.string.aliases_refresh), null, onClick = viewModel::refresh)
+                }
+            }
         is AliasList.Listed ->
             if (list.aliases.isEmpty()) {
-                Text(stringResource(Res.string.aliases_none), style = CorvidTheme.type.body)
+                item { Text(stringResource(Res.string.aliases_none), style = CorvidTheme.type.body, color = CorvidTheme.colors.inkMuted) }
             } else {
-                val copy = rememberCopyText()
-                var copied by remember { mutableStateOf<String?>(null) }
-                Column {
-                    HorizontalDivider(color = CorvidTheme.colors.line)
-                    list.aliases.forEach { alias ->
-                        AliasRow(
-                            alias,
-                            confirming = state.disabling == alias.name,
-                            copied = copied == alias.name,
-                            onCopy = {
-                                copy(alias.address)
-                                copied = alias.name
-                            },
-                            viewModel,
-                        )
+                item { HorizontalDivider(Modifier.widthIn(max = PAGE_WIDTH), color = CorvidTheme.colors.line) }
+                items(list.aliases, key = { it.name }) { alias ->
+                    Column(Modifier.widthIn(max = PAGE_WIDTH)) {
+                        AliasRow(alias, state.disabling == alias.name, copied == alias.name, { onCopy(alias) }, viewModel)
                         HorizontalDivider(color = CorvidTheme.colors.line)
                     }
                 }
@@ -136,6 +168,7 @@ private fun AliasRow(
     onCopy: () -> Unit,
     viewModel: AliasesViewModel,
 ) {
+    val wide = LocalWideLayout.current
     Column(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -153,14 +186,10 @@ private fun AliasRow(
                     Text(stringResource(Res.string.aliases_missing), style = CorvidTheme.type.meta, color = CorvidTheme.colors.ink)
                 }
             }
-            if (!alias.missing && !confirming) {
-                QuietLink(stringResource(if (copied) Res.string.aliases_copied else Res.string.aliases_copy), onClick = onCopy)
-                if (alias.enabled) {
-                    QuietLink(stringResource(Res.string.aliases_turn_off), onClick = { viewModel.askDisable(alias.name) })
-                } else {
-                    QuietLink(stringResource(Res.string.aliases_turn_on), onClick = { viewModel.enable(alias.name) })
-                }
-            }
+            if (wide && !alias.missing && !confirming) RowActions(alias, copied, onCopy, viewModel)
+        }
+        if (!wide && !alias.missing && !confirming) {
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) { RowActions(alias, copied, onCopy, viewModel) }
         }
         if (confirming) {
             DiscardQuestion(
@@ -174,13 +203,44 @@ private fun AliasRow(
     }
 }
 
+/** Every row has the same links, so each names its alias for a screen reader. */
+@Composable
+private fun RowActions(
+    alias: Alias,
+    copied: Boolean,
+    onCopy: () -> Unit,
+    viewModel: AliasesViewModel,
+) {
+    val copyName = stringResource(Res.string.aliases_copy_named, alias.address)
+    QuietLink(
+        stringResource(if (copied) Res.string.aliases_copied else Res.string.aliases_copy),
+        onClick = onCopy,
+        modifier = Modifier.semantics { contentDescription = copyName },
+    )
+    if (alias.enabled) {
+        val offName = stringResource(Res.string.aliases_turn_off_named, alias.address)
+        QuietLink(
+            stringResource(Res.string.aliases_turn_off),
+            onClick = { viewModel.askDisable(alias.name) },
+            modifier = Modifier.semantics { contentDescription = offName },
+        )
+    } else {
+        val onName = stringResource(Res.string.aliases_turn_on_named, alias.address)
+        QuietLink(
+            stringResource(Res.string.aliases_turn_on),
+            onClick = { viewModel.enable(alias.name) },
+            modifier = Modifier.semantics { contentDescription = onName },
+        )
+    }
+}
+
 @Composable
 private fun meta(alias: Alias): String {
     val added = alias.createdAt ?: return alias.label
     return stringResource(
         Res.string.aliases_row_meta,
         alias.label,
-        stringResource(Res.string.aliases_added_on, added.toString().substringBefore('T')),
+        stringResource(Res.string.aliases_added_on, added.toLocalDateTime(TimeZone.currentSystemDefault()).date.toString()),
     )
 }
 
@@ -199,9 +259,26 @@ private fun MintForm(
     state: AliasesState,
     viewModel: AliasesViewModel,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(stringResource(Res.string.aliases_make_heading), style = CorvidTheme.type.dayHeader, color = CorvidTheme.colors.ink)
-        CorvidTextField(state.label, viewModel::setLabel, stringResource(Res.string.aliases_label), Modifier.fillMaxWidth())
+    Column(Modifier.widthIn(max = PAGE_WIDTH), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            stringResource(Res.string.aliases_make_heading),
+            style = CorvidTheme.type.dayHeader,
+            color = CorvidTheme.colors.ink,
+            modifier = Modifier.semantics { heading() },
+        )
+        CorvidTextField(
+            state.label,
+            viewModel::setLabel,
+            stringResource(Res.string.aliases_label),
+            Modifier.fillMaxWidth(),
+            keyboardOptions =
+                KeyboardOptions(
+                    capitalization = KeyboardCapitalization.None,
+                    autoCorrectEnabled = false,
+                    keyboardType = KeyboardType.Ascii,
+                    imeAction = ImeAction.Done,
+                ),
+        )
         Text(stringResource(Res.string.aliases_label_hint), style = CorvidTheme.type.meta, color = CorvidTheme.colors.inkMuted)
         PrimaryButton(stringResource(Res.string.aliases_make), viewModel::mint, enabled = !state.busy && state.label.isNotEmpty())
     }
@@ -223,5 +300,10 @@ private fun StepText(step: AliasStep) {
                 )
             is AliasStep.Failed -> step.message.asString()
         }
-    Text(text, style = CorvidTheme.type.body, color = CorvidTheme.colors.ink)
+    Text(
+        text,
+        style = CorvidTheme.type.body,
+        color = CorvidTheme.colors.ink,
+        modifier = Modifier.widthIn(max = PAGE_WIDTH).semantics { liveRegion = LiveRegionMode.Polite },
+    )
 }

@@ -5,13 +5,16 @@
     <string name="aliases_detail">Each alias is its own address that delivers here. Give one to a single site, and turn it off when that site leaks it. Turning one off or on asks for a key that approves devices.</string>
     <string name="aliases_loading">Loading.</string>
     <string name="aliases_refresh">Try again</string>
-    <string name="aliases_none">No aliases yet.</string>
+    <string name="aliases_none">No aliases yet. Make one for the next site that asks for your address.</string>
     <string name="aliases_added_on">Added %1$s</string>
     <string name="aliases_row_meta">%1$s · %2$s</string>
     <string name="aliases_is_off">Off</string>
     <string name="aliases_missing">Missing. The server no longer has it, so mail to it is refused.</string>
     <string name="aliases_copy">Copy</string>
     <string name="aliases_copied">Copied</string>
+    <string name="aliases_copy_named">Copy %1$s</string>
+    <string name="aliases_turn_off_named">Turn off %1$s</string>
+    <string name="aliases_turn_on_named">Turn on %1$s</string>
     <string name="aliases_turn_off">Turn off</string>
     <string name="aliases_turn_on">Turn on</string>
     <string name="aliases_keep_on">Keep it on</string>
