@@ -42,7 +42,12 @@ val LedgerSource.kind: ListKind
 sealed interface LedgerUiState {
     data object Loading : LedgerUiState
 
-    data class Loaded(val conversations: List<Conversation>, val canLoadMore: Boolean) : LedgerUiState
+    /** [moreFailed] says why the page after the last row did not load; the rows above it stay. */
+    data class Loaded(
+        val conversations: List<Conversation>,
+        val canLoadMore: Boolean,
+        val moreFailed: UiText? = null,
+    ) : LedgerUiState
 
     data class Failed(val message: UiText) : LedgerUiState
 }

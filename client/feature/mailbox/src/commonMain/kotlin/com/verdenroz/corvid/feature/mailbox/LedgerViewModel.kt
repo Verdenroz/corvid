@@ -10,6 +10,7 @@ import com.verdenroz.corvid.core.data.MoveEvent
 import com.verdenroz.corvid.core.data.userMessage
 import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.model.Conversation
+import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.uiText
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_no_mailbox
@@ -49,6 +50,7 @@ class LedgerViewModel(
     private var queryState: String? = null
     private var conversations: List<Conversation> = emptyList()
     private var canLoadMore = false
+    private var moreFailed: UiText? = null
     private var hidden: Set<String> = emptySet()
     private var settled: Set<String> = emptySet()
     private var paging: Job? = null
@@ -65,6 +67,10 @@ class LedgerViewModel(
     fun loadMore() {
         if (paging?.isActive == true) return
         val anchor = conversations.lastOrNull()?.latest?.id ?: return
+        if (moreFailed != null) {
+            moreFailed = null
+            publish()
+        }
         paging = viewModelScope.launch { loadPage(anchor) }
     }
 
@@ -80,8 +86,8 @@ class LedgerViewModel(
         _selected.value = emptySet()
     }
 
-    /** A list whose mailbox did not exist yet looks for it again, as archiving makes one on first use. */
-    fun refresh(): Job? = if (_state.value is LedgerUiState.Loaded) reload() else null
+    /** A list whose mailbox did not exist yet looks for it again, as archiving makes one on first use; a failed one tries again. */
+    fun refresh(): Job? = if (_state.value is LedgerUiState.Loading) null else reload()
 
     fun retry() {
         _state.value = LedgerUiState.Loading
@@ -126,7 +132,7 @@ class LedgerViewModel(
     }
 
     private fun publish() {
-        _state.value = LedgerUiState.Loaded(conversations.filter { it.emailIds.none(hidden::contains) }, canLoadMore)
+        _state.value = LedgerUiState.Loaded(conversations.filter { it.emailIds.none(hidden::contains) }, canLoadMore, moreFailed)
     }
 
     private suspend fun start() {
@@ -170,6 +176,7 @@ class LedgerViewModel(
                         return
                     }
                     conversations = if (anchor == null) page.conversations else conversations + page.conversations
+                    moreFailed = null
                     if (anchor == null) {
                         hidden = hidden - settled
                         settled = emptySet()
@@ -182,7 +189,12 @@ class LedgerViewModel(
                 }
             }
         } catch (e: JmapException) {
-            _state.value = LedgerUiState.Failed(e.userMessage())
+            if (anchor != null && _state.value is LedgerUiState.Loaded) {
+                moreFailed = e.userMessage()
+                publish()
+            } else {
+                _state.value = LedgerUiState.Failed(e.userMessage())
+            }
         }
     }
 

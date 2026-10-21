@@ -1,7 +1,9 @@
 package com.verdenroz.corvid.core.ui
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
@@ -38,6 +40,23 @@ fun QuietPane(
             Text(text, style = CorvidTheme.type.body, color = CorvidTheme.colors.inkMuted)
             onRetry?.let { QuietLink(stringResource(Res.string.try_again), it) }
         }
+    }
+}
+
+/** One muted line under content that did load, saying what did not, with Try again. */
+@Composable
+fun FailedLine(
+    text: String,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = modifier,
+    ) {
+        Text(text, style = CorvidTheme.type.meta, color = CorvidTheme.colors.inkMuted, modifier = Modifier.weight(1f, fill = false))
+        QuietLink(stringResource(Res.string.try_again), onRetry)
     }
 }
 

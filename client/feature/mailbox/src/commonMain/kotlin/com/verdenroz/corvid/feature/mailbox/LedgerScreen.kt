@@ -50,6 +50,7 @@ import com.verdenroz.corvid.core.designsystem.touchTarget
 import com.verdenroz.corvid.core.model.Conversation
 import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.core.text.asString
+import com.verdenroz.corvid.core.ui.FailedLine
 import com.verdenroz.corvid.core.ui.GuardBack
 import com.verdenroz.corvid.core.ui.HandleKeys
 import com.verdenroz.corvid.core.ui.LoadingPane
@@ -63,6 +64,7 @@ import com.verdenroz.corvid.feature.mailbox.resources.ledger_empty_junk
 import com.verdenroz.corvid.feature.mailbox.resources.ledger_empty_sent
 import com.verdenroz.corvid.feature.mailbox.resources.ledger_empty_starred
 import com.verdenroz.corvid.feature.mailbox.resources.ledger_empty_trash
+import com.verdenroz.corvid.feature.mailbox.resources.ledger_more_failed
 import com.verdenroz.corvid.feature.mailbox.resources.selection_all
 import com.verdenroz.corvid.feature.mailbox.resources.selection_clear
 import com.verdenroz.corvid.feature.mailbox.resources.selection_count
@@ -225,7 +227,10 @@ internal fun LedgerContent(
         ) {
             when (val current = state) {
                 is LedgerUiState.Loading -> LoadingPane()
-                is LedgerUiState.Failed -> QuietPane(current.message.asString(), onRetry = viewModel::retry)
+                is LedgerUiState.Failed ->
+                    LazyColumn(Modifier.fillMaxSize()) {
+                        item { QuietPane(current.message.asString(), Modifier.fillParentMaxSize(), onRetry = viewModel::retry) }
+                    }
                 is LedgerUiState.Loaded ->
                     if (current.conversations.isEmpty()) {
                         LazyColumn(Modifier.fillMaxSize()) { item { QuietPane(emptyText, Modifier.fillParentMaxSize()) } }
@@ -306,7 +311,7 @@ private fun Ledger(
     val listState = rememberLazyListState()
     val nearEnd by remember { derivedStateOf { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 } }
     LaunchedEffect(nearEnd, conversations.size) {
-        if (state.canLoadMore && nearEnd >= listState.layoutInfo.totalItemsCount - LOAD_AHEAD) onLoadMore()
+        if (state.canLoadMore && state.moreFailed == null && nearEnd >= listState.layoutInfo.totalItemsCount - LOAD_AHEAD) onLoadMore()
     }
     val wide = LocalWideLayout.current
     val selecting = selected.isNotEmpty()
@@ -335,6 +340,15 @@ private fun Ledger(
                     )
                 }
                 if (wide) row() else SwipeRow(kind, enabled = !selecting, onSwipe = { onRowAct(Act.Do(it), conversation) }, content = row)
+            }
+        }
+        state.moreFailed?.let { reason ->
+            item(key = "more-failed") {
+                FailedLine(
+                    stringResource(Res.string.ledger_more_failed, reason.asString()),
+                    onLoadMore,
+                    Modifier.padding(horizontal = CorvidSpacing.gutter(wide), vertical = 8.dp),
+                )
             }
         }
     }

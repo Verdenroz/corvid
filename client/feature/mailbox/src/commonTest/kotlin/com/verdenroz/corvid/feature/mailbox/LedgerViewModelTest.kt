@@ -230,6 +230,46 @@ class LedgerViewModelTest {
         }
 
     @Test
+    fun `a later page that fails keeps the rows already loaded and says so`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
+            repeat(EMAIL_COUNT) { i ->
+                val receivedAt = Instant.fromEpochSeconds((1000 - i).toLong()).toString()
+                fake.emails += FakeEmail("e$i", "e$i", setOf("inbox"), "subject $i", "s$i@x.test", receivedAt)
+            }
+            val vm = track(LedgerViewModel(repository(fake), LedgerTab.Inbox))
+            vm.state.first { it is LedgerUiState.Loaded }
+
+            fake.apiProblem = "urn:ietf:params:jmap:error:limit"
+            vm.loadMore()
+            val kept = vm.state.first { it is LedgerUiState.Loaded && it.moreFailed != null } as LedgerUiState.Loaded
+            assertEquals(50, kept.conversations.size)
+
+            fake.apiProblem = null
+            vm.loadMore()
+            val whole = vm.state.first { it is LedgerUiState.Loaded && it.conversations.size == EMAIL_COUNT } as LedgerUiState.Loaded
+            assertNull(whole.moreFailed)
+        }
+
+    @Test
+    fun `refreshing a failed list loads it once the server answers`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.emails += FakeEmail("a", "a", setOf("inbox"), "Invoice March", "a@x.test", "2024-01-01T00:00:00Z")
+            val repository = repository(fake)
+            fake.apiProblem = "urn:ietf:params:jmap:error:limit"
+            val vm = track(LedgerViewModel(repository, LedgerSource.Search("invoice")))
+            vm.state.first { it is LedgerUiState.Failed }
+
+            fake.apiProblem = null
+            vm.refresh()?.join()
+
+            val loaded = vm.state.value as LedgerUiState.Loaded
+            assertEquals(listOf("a"), loaded.conversations.map { it.latest.id })
+        }
+
+    @Test
     fun `refreshing a loaded ledger picks up a message that arrived since`() =
         runViewModelTest {
             val fake = FakeJmapServer()
