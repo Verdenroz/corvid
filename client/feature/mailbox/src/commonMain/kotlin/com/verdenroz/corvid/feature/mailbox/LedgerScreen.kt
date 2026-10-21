@@ -50,6 +50,7 @@ import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.GuardBack
 import com.verdenroz.corvid.core.ui.HandleKeys
+import com.verdenroz.corvid.core.ui.LoadingPane
 import com.verdenroz.corvid.core.ui.LocalTopEntryKeys
 import com.verdenroz.corvid.core.ui.QuietPane
 import com.verdenroz.corvid.feature.mailbox.resources.Res
@@ -221,8 +222,8 @@ internal fun LedgerContent(
             modifier = Modifier.weight(1f),
         ) {
             when (val current = state) {
-                is LedgerUiState.Loading -> Unit
-                is LedgerUiState.Failed -> QuietPane(current.message.asString())
+                is LedgerUiState.Loading -> LoadingPane()
+                is LedgerUiState.Failed -> QuietPane(current.message.asString(), onRetry = viewModel::retry)
                 is LedgerUiState.Loaded ->
                     if (current.conversations.isEmpty()) {
                         LazyColumn(Modifier.fillMaxSize()) { item { QuietPane(emptyText, Modifier.fillParentMaxSize()) } }

@@ -46,6 +46,7 @@ import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.AttachmentTile
 import com.verdenroz.corvid.core.ui.DiscardQuestion
 import com.verdenroz.corvid.core.ui.GuardBack
+import com.verdenroz.corvid.core.ui.LoadingPane
 import com.verdenroz.corvid.core.ui.QuietPane
 import com.verdenroz.corvid.feature.compose.resources.Res
 import com.verdenroz.corvid.feature.compose.resources.compose_attach
@@ -109,7 +110,7 @@ fun ComposeScreen(
             onSend = viewModel::send,
         )
         when (val current = state) {
-            is ComposeUiState.Loading -> Unit
+            is ComposeUiState.Loading -> LoadingPane()
             is ComposeUiState.Sent -> LaunchedEffect(Unit) { onClose() }
             is ComposeUiState.Failed -> QuietPane(current.message.asString())
             is ComposeUiState.Editing -> {

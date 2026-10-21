@@ -213,6 +213,23 @@ class LedgerViewModelTest {
         }
 
     @Test
+    fun `retrying a failed list loads it once the server answers`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.emails += FakeEmail("a", "a", setOf("inbox"), "Invoice March", "a@x.test", "2024-01-01T00:00:00Z")
+            val repository = repository(fake)
+            fake.apiProblem = "urn:ietf:params:jmap:error:limit"
+            val vm = track(LedgerViewModel(repository, LedgerSource.Search("invoice")))
+            vm.state.first { it is LedgerUiState.Failed }
+
+            fake.apiProblem = null
+            vm.retry()
+
+            val loaded = vm.state.first { it is LedgerUiState.Loaded } as LedgerUiState.Loaded
+            assertEquals(listOf("a"), loaded.conversations.map { it.latest.id })
+        }
+
+    @Test
     fun `refreshing a loaded ledger picks up a message that arrived since`() =
         runViewModelTest {
             val fake = FakeJmapServer()

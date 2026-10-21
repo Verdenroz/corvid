@@ -31,6 +31,7 @@ import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.LocalWideLayout
 import com.verdenroz.corvid.core.text.asString
+import com.verdenroz.corvid.core.ui.LoadingPane
 import com.verdenroz.corvid.core.ui.QuietPane
 import com.verdenroz.corvid.feature.mailbox.resources.Res
 import com.verdenroz.corvid.feature.mailbox.resources.directory_window
@@ -55,8 +56,8 @@ internal fun DirectoryList(
     }
     val state by viewModel.state.collectAsState()
     when (val current = state) {
-        is DirectoryUiState.Loading -> Unit
-        is DirectoryUiState.Failed -> QuietPane(current.message.asString())
+        is DirectoryUiState.Loading -> LoadingPane()
+        is DirectoryUiState.Failed -> QuietPane(current.message.asString(), onRetry = viewModel::retry)
         is DirectoryUiState.Loaded -> {
             val directory = current.directory
             LazyColumn(Modifier.fillMaxSize().background(CorvidTheme.colors.surface)) {

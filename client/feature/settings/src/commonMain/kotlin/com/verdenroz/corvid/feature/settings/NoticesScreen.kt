@@ -24,6 +24,7 @@ import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.LocalWideLayout
 import com.verdenroz.corvid.core.model.Notice
 import com.verdenroz.corvid.core.text.asString
+import com.verdenroz.corvid.core.ui.LoadingPane
 import com.verdenroz.corvid.core.ui.PageHeader
 import com.verdenroz.corvid.core.ui.QuietPane
 import com.verdenroz.corvid.feature.settings.resources.Res
@@ -45,9 +46,9 @@ fun NoticesScreen(
     Column(modifier = Modifier.fillMaxSize().background(CorvidTheme.colors.surface)) {
         PageHeader(stringResource(Res.string.notices_title), stringResource(Res.string.settings_back), onBack)
         when (val current = state) {
-            is NoticesState.Loading -> Unit
+            is NoticesState.Loading -> LoadingPane()
             is NoticesState.Unsupported -> QuietPane(stringResource(Res.string.notices_unsupported))
-            is NoticesState.Failed -> QuietPane(current.message.asString())
+            is NoticesState.Failed -> QuietPane(current.message.asString(), onRetry = viewModel::retry)
             is NoticesState.Ready ->
                 if (current.notices.isEmpty()) QuietPane(stringResource(Res.string.notices_empty)) else NoticeList(current.notices)
         }

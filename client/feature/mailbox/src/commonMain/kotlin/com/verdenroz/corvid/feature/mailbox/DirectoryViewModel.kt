@@ -42,6 +42,11 @@ class DirectoryViewModel(private val repository: MailboxRepository) : ViewModel(
         if (onScreen && stale) load()
     }
 
+    fun retry() {
+        _state.value = DirectoryUiState.Loading
+        load()
+    }
+
     private fun load() {
         stale = false
         loading?.cancel()

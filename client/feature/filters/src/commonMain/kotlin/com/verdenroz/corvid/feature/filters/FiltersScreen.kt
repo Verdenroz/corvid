@@ -35,6 +35,7 @@ import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.ConfirmReplace
 import com.verdenroz.corvid.core.ui.DiscardQuestion
 import com.verdenroz.corvid.core.ui.GuardBack
+import com.verdenroz.corvid.core.ui.LoadingPane
 import com.verdenroz.corvid.core.ui.PageHeader
 import com.verdenroz.corvid.core.ui.QuietPane
 import com.verdenroz.corvid.feature.filters.resources.Res
@@ -69,9 +70,9 @@ fun FiltersScreen(
             stringResource(Res.string.filters_back),
         ) { if (!viewModel.back()) onBack() }
         when (val current = state) {
-            is FiltersUiState.Loading -> Unit
+            is FiltersUiState.Loading -> LoadingPane()
             is FiltersUiState.Failed ->
-                QuietPane(current.message.asString())
+                QuietPane(current.message.asString(), onRetry = viewModel::retry)
             is FiltersUiState.Ready -> {
                 val draft = current.editing
                 if (current.save is SaveStatus.Confirming) {

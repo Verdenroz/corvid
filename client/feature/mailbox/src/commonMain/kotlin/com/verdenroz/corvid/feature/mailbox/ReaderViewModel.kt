@@ -40,6 +40,16 @@ class ReaderViewModel(
     val state: StateFlow<ReaderUiState> = _state
 
     init {
+        open()
+        viewModelScope.launch { repository.keywordPatches.collect(::apply) }
+    }
+
+    fun retry() {
+        _state.value = ReaderUiState.Loading
+        open()
+    }
+
+    private fun open() {
         viewModelScope.launch {
             try {
                 load()
@@ -47,7 +57,6 @@ class ReaderViewModel(
                 _state.value = ReaderUiState.Failed(e.userMessage())
             }
         }
-        viewModelScope.launch { repository.keywordPatches.collect(::apply) }
     }
 
     /** Shows or hides one message's headers; the first show fetches them. */

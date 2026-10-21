@@ -98,6 +98,19 @@ class DigestViewModelTest {
         }
 
     @Test
+    fun `retrying a failed digest reads it again`() =
+        runViewModelTest {
+            fake.digests.malformed = true
+            val vm = viewModel(fake, null)
+            assertIs<DigestState.Failed>(vm.settled())
+
+            fake.digests.malformed = false
+            vm.retry()
+
+            assertEquals("d2", assertIs<DigestState.Ready>(vm.settled()).digest.id)
+        }
+
+    @Test
     fun `a digest with no mail is empty`() =
         runViewModelTest {
             val quiet = FakeJmapServer().apply { digests.serve(FakeDigest("d1", groups = listOf("Work" to emptyList()))) }

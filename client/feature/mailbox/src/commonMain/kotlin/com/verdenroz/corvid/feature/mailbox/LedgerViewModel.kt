@@ -83,6 +83,12 @@ class LedgerViewModel(
     /** A list whose mailbox did not exist yet looks for it again, as archiving makes one on first use. */
     fun refresh(): Job? = if (_state.value is LedgerUiState.Loaded) reload() else null
 
+    fun retry() {
+        if (_state.value !is LedgerUiState.Failed) return
+        _state.value = LedgerUiState.Loading
+        reload()
+    }
+
     /** The mailbox changed on the server: a list on screen refetches now, one off screen when it is next shown. */
     fun mailChanged() {
         if (onScreen) refresh() else stale = true

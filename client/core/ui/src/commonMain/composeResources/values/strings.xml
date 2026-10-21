@@ -26,6 +26,8 @@
     <string name="device_approval_off_detail">This server signs you in but does not hand out device keys yet. Its administrator turns this on in the server's settings, then you can ask again.</string>
     <string name="device_approval_off_ask_again">Ask again</string>
     <string name="state_sign_out">Sign out</string>
+    <string name="pane_try_again">Try again</string>
+    <string name="pane_waiting">Waiting for the server…</string>
     <string name="app_update_available">Corvid %1$s is available</string>
     <string name="app_update_action">Update</string>
     <string name="app_update_retry">Try again</string>

@@ -38,6 +38,11 @@ class FiltersViewModel(
         viewModelScope.launch { load() }
     }
 
+    fun retry() {
+        _state.value = FiltersUiState.Loading
+        viewModelScope.launch { load() }
+    }
+
     /** A null [index] starts a new rule. */
     fun startEdit(index: Int?) = update { it.copy(editing = RuleDraft(index, index?.let { i -> it.rules[i] } ?: FilterRule.blank())) }
 

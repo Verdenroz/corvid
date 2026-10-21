@@ -45,6 +45,7 @@ import com.verdenroz.corvid.core.model.lists
 import com.verdenroz.corvid.core.model.people
 import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.asString
+import com.verdenroz.corvid.core.ui.LoadingPane
 import com.verdenroz.corvid.core.ui.PageHeader
 import com.verdenroz.corvid.core.ui.QuietPane
 import com.verdenroz.corvid.core.ui.provenance.InitialsTile
@@ -78,9 +79,9 @@ fun DigestScreen(
     Column(modifier = Modifier.fillMaxSize().background(CorvidTheme.colors.surface)) {
         PageHeader(null, stringResource(Res.string.digest_back), onBack)
         when (val current = state) {
-            is DigestState.Loading -> Unit
+            is DigestState.Loading -> LoadingPane()
             is DigestState.Empty -> NoDigest(current.quiet)
-            is DigestState.Failed -> QuietPane(current.message.asString())
+            is DigestState.Failed -> QuietPane(current.message.asString(), onRetry = viewModel::retry)
             is DigestState.Ready -> Briefing(current, onOpenEmail)
         }
     }
