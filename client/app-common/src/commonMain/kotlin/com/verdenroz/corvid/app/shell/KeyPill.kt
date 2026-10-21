@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -42,22 +43,22 @@ private fun KeyState.remaining(): Duration? = rememberRemaining(locksAt.collectA
 @Composable
 internal fun KeyPill(key: KeyState) {
     val remaining = key.remaining() ?: return
+    val status = spokenStatus(key.host, remaining)
     PillButton(
         onClick = key.onLock,
+        modifier = Modifier.semantics { contentDescription = status },
         onClickLabel = stringResource(Res.string.key_lock_now),
         contentPadding = PaddingValues(start = 7.dp, end = 13.dp),
     ) {
         KeyRing(fraction(remaining, key.timeout))
-        KeyStatus(key.host, remaining)
+        KeyStatus(key.host, remaining, Modifier.clearAndSetSemantics {})
     }
 }
 
 @Composable
 internal fun KeyRingButton(key: KeyState) {
     val remaining = key.remaining() ?: return
-    // Whole minutes, so the description holds still while TalkBack has the ring focused.
-    val minutes = remaining.inWholeMinutes.toInt() + 1
-    val status = pluralStringResource(Res.plurals.key_status_spoken, minutes, key.host, minutes)
+    val status = spokenStatus(key.host, remaining)
     Box(
         contentAlignment = Alignment.Center,
         modifier =
@@ -69,6 +70,16 @@ internal fun KeyRingButton(key: KeyState) {
                 .clickable(onClickLabel = stringResource(Res.string.key_lock_now), role = Role.Button, onClick = key.onLock)
                 .semantics { contentDescription = status },
     ) { KeyRing(fraction(remaining, key.timeout)) }
+}
+
+// Whole minutes, so the description holds still while TalkBack has the control focused.
+@Composable
+private fun spokenStatus(
+    host: String,
+    remaining: Duration,
+): String {
+    val minutes = remaining.inWholeMinutes.toInt() + 1
+    return pluralStringResource(Res.plurals.key_status_spoken, minutes, host, minutes)
 }
 
 @Composable
@@ -83,8 +94,9 @@ internal fun KeyStatusLine(key: KeyState) {
 private fun KeyStatus(
     host: String,
     remaining: Duration,
+    modifier: Modifier = Modifier,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(host, style = CorvidTheme.type.meta, fontWeight = FontWeight.SemiBold, color = CorvidTheme.colors.ink)
         Text(
             stringResource(Res.string.key_status, countdown(remaining)),
