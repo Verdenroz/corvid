@@ -278,26 +278,35 @@ impl Keys {
     /// Method calls in one request, named `c0`, `c1`, and so on. The answers come back as sent,
     /// errors included, so a refusal is read before the answer to the call that depended on it.
     pub(crate) async fn batch(&self, calls: &[(&str, Value)]) -> Result<Vec<Value>, Error> {
-        let calls: Vec<Value> = calls
-            .iter()
-            .enumerate()
-            .map(|(index, (method, arguments))| json!([method, arguments, format!("c{index}")]))
-            .collect();
-        let response = self
-            .http
-            .post(format!("{}/jmap", self.url))
-            .bearer_auth(&self.token)
-            .json(&json!({"using": USING, "methodCalls": calls}))
-            .send()
-            .await?
-            .error_for_status()?;
-        let mut answer: Value = response.json().await?;
-        Ok(answer["methodResponses"]
-            .take()
-            .as_array()
-            .cloned()
-            .unwrap_or_default())
+        Ok(batch(&self.http, &self.url, &self.token, calls).await?)
     }
+}
+
+/// [`Keys::batch`] over any client, so a caller can set its own timeout.
+pub(crate) async fn batch(
+    http: &reqwest::Client,
+    url: &str,
+    token: &str,
+    calls: &[(&str, Value)],
+) -> Result<Vec<Value>, reqwest::Error> {
+    let calls: Vec<Value> = calls
+        .iter()
+        .enumerate()
+        .map(|(index, (method, arguments))| json!([method, arguments, format!("c{index}")]))
+        .collect();
+    let response = http
+        .post(format!("{url}/jmap"))
+        .bearer_auth(token)
+        .json(&json!({"using": USING, "methodCalls": calls}))
+        .send()
+        .await?
+        .error_for_status()?;
+    let mut answer: Value = response.json().await?;
+    Ok(answer["methodResponses"]
+        .take()
+        .as_array()
+        .cloned()
+        .unwrap_or_default())
 }
 
 /// A reference to `path` in the answer of call `call` of the same batch. Stalwart resolves

@@ -16,6 +16,7 @@ pub const KEYS_ACCOUNT: &str = "keys-id";
 pub const MAIL_ACCOUNT: &str = "mail-id";
 pub const INBOX: &str = "inbox-id";
 pub const ARCHIVE: &str = "archive-id";
+pub const MAIL_DOMAIN: &str = "dom-id";
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Node {
@@ -48,11 +49,50 @@ struct Mail {
     state: u64,
 }
 
+/// What becomes of the next request that carries an `x:Account/set`.
+#[derive(Clone, Copy, PartialEq)]
+enum NextSet {
+    HangBefore,
+    HangAfter,
+    /// Applies, then a wipe takes every alias past abuse.
+    Wipe,
+    /// Refused the way a name another account holds is refused.
+    Refuse,
+}
+
+fn refusal() -> Value {
+    json!({"type": "invalidPatch", "description": "update failed"})
+}
+
+/// The mail account's `aliases`, in list order, and the names other accounts hold.
+struct Aliases {
+    list: Vec<Value>,
+    held: Vec<String>,
+    gap: Option<usize>,
+}
+
+impl Default for Aliases {
+    fn default() -> Self {
+        Self {
+            list: vec![
+                json!({"name": "postmaster", "domainId": MAIL_DOMAIN, "enabled": true}),
+                json!({"name": "abuse", "domainId": MAIL_DOMAIN, "enabled": true}),
+            ],
+            held: Vec::new(),
+            gap: None,
+        }
+    }
+}
+
 #[derive(Clone)]
 struct Shared {
     mail: Arc<Mutex<Mail>>,
     files: Arc<Mutex<Files>>,
+    aliases: Arc<Mutex<Aliases>>,
     refuse_creates: Arc<AtomicBool>,
+    hang: Arc<AtomicBool>,
+    next_set: Arc<Mutex<Option<NextSet>>>,
+    busy: Arc<AtomicU64>,
     calls: Arc<AtomicU64>,
 }
 
@@ -61,7 +101,11 @@ impl Stalwart {
         let shared = Shared {
             mail: Arc::default(),
             files: Arc::default(),
+            aliases: Arc::default(),
             refuse_creates: Arc::default(),
+            hang: Arc::default(),
+            next_set: Arc::default(),
+            busy: Arc::default(),
             calls: Arc::default(),
         };
         let app = Router::new()
@@ -84,6 +128,92 @@ impl Stalwart {
 
     pub fn refuse_creates(&self) {
         self.shared.refuse_creates.store(true, Ordering::SeqCst);
+    }
+
+    /// Every later JMAP request waits an hour before it is answered.
+    pub fn hang(&self) {
+        self.shared.hang.store(true, Ordering::SeqCst);
+    }
+
+    /// The next `x:Account/set` waits an hour without applying.
+    pub fn hang_before_next_set(&self) {
+        self.next_set(NextSet::HangBefore);
+    }
+
+    /// The next `x:Account/set` applies, then waits an hour before it answers.
+    pub fn hang_after_next_set(&self) {
+        self.next_set(NextSet::HangAfter);
+    }
+
+    /// The next `x:Account/set` applies, then a wipe takes every alias past abuse.
+    pub fn wipe_after_next_set(&self) {
+        self.next_set(NextSet::Wipe);
+    }
+
+    /// The next `x:Account/set` is refused, as a name another account holds is.
+    pub fn refuse_next_set(&self) {
+        self.next_set(NextSet::Refuse);
+    }
+
+    fn next_set(&self, next: NextSet) {
+        *self.shared.next_set.lock().unwrap() = Some(next);
+    }
+
+    /// The next `count` JMAP requests are answered 429.
+    pub fn busy(&self, count: u64) {
+        self.shared.busy.store(count, Ordering::SeqCst);
+    }
+
+    /// The mail account's aliases as `(name, enabled)`, in list order.
+    pub fn aliases(&self) -> Vec<(String, bool)> {
+        self.shared
+            .aliases
+            .lock()
+            .unwrap()
+            .list
+            .iter()
+            .map(|alias| {
+                (
+                    alias["name"].as_str().unwrap().to_owned(),
+                    alias["enabled"] != false,
+                )
+            })
+            .collect()
+    }
+
+    /// Appends an alias as an admin would by hand, duplicates included.
+    pub fn add_alias(&self, name: &str, enabled: bool) {
+        self.shared
+            .aliases
+            .lock()
+            .unwrap()
+            .list
+            .push(json!({"name": name, "domainId": MAIL_DOMAIN, "enabled": enabled}));
+    }
+
+    /// What a deploy of a plan that sets `aliases` wholesale leaves behind.
+    pub fn wipe_aliases(&self) {
+        self.shared.aliases.lock().unwrap().list.truncate(2);
+    }
+
+    /// Moves the alias at `index` to a key one past the end, leaving a gap in the keys.
+    pub fn gap_alias(&self, index: usize) {
+        self.shared.aliases.lock().unwrap().gap = Some(index);
+    }
+
+    /// Drops the alias at `index`, which moves every later alias down one, as Stalwart does.
+    pub fn remove_alias(&self, index: usize) {
+        self.shared.aliases.lock().unwrap().list.remove(index);
+    }
+
+    /// Makes `name` one that another account holds, so the mail account cannot take it.
+    pub fn hold(&self, name: &str) {
+        self.shared
+            .aliases
+            .lock()
+            .unwrap()
+            .held
+            .push(name.to_owned());
     }
 
     pub fn calls(&self) -> u64 {
@@ -177,6 +307,30 @@ async fn jmap(
         return Err(StatusCode::UNAUTHORIZED);
     }
     shared.calls.fetch_add(1, Ordering::SeqCst);
+    if shared.hang.load(Ordering::SeqCst) {
+        tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+    }
+    let busy = shared
+        .busy
+        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
+            left.checked_sub(1)
+        });
+    if busy.is_ok() {
+        return Err(StatusCode::TOO_MANY_REQUESTS);
+    }
+    let sets = request["methodCalls"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|call| call[0] == "x:Account/set");
+    let next = if sets {
+        shared.next_set.lock().unwrap().take()
+    } else {
+        None
+    };
+    if next == Some(NextSet::HangBefore) {
+        tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+    }
     let mut responses: Vec<Value> = Vec::new();
     for call in request["methodCalls"].as_array().unwrap() {
         let [method, arguments, id] = &call.as_array().unwrap()[..] else {
@@ -185,7 +339,8 @@ async fn jmap(
         let arguments = resolve(arguments, &responses);
         let answer = match method.as_str().unwrap() {
             "x:Account/query" => query_account(&arguments),
-            "x:Account/get" => get_accounts(&arguments),
+            "x:Account/get" => get_accounts(&shared, &arguments),
+            "x:Account/set" => set_account(&shared, &arguments, next == Some(NextSet::Refuse)),
             "FileNode/query" => query_nodes(&shared, &arguments),
             "FileNode/get" => get_nodes(&shared, &arguments),
             "FileNode/set" => set_nodes(&shared, &arguments),
@@ -202,6 +357,11 @@ async fn jmap(
             other => panic!("unexpected method {other}"),
         };
         responses.push(json!([method, answer, id]));
+    }
+    match next {
+        Some(NextSet::HangAfter) => tokio::time::sleep(std::time::Duration::from_secs(3600)).await,
+        Some(NextSet::Wipe) => shared.aliases.lock().unwrap().list.truncate(2),
+        _ => {}
     }
     Ok(Json(json!({"methodResponses": responses})))
 }
@@ -244,14 +404,83 @@ fn query_account(arguments: &Value) -> Value {
     json!({"ids": ids})
 }
 
-fn get_accounts(arguments: &Value) -> Value {
+fn get_accounts(shared: &Shared, arguments: &Value) -> Value {
     let wanted = arguments["ids"].as_array().unwrap();
     let list: Vec<Value> = ACCOUNTS
         .iter()
         .filter(|(id, _, _)| wanted.contains(&json!(id)))
-        .map(|(id, _, address)| json!({"id": id, "emailAddress": address}))
+        .map(|(id, _, address)| {
+            let mut account = json!({"id": id, "emailAddress": address});
+            if *id == MAIL_ACCOUNT {
+                let aliases = shared.aliases.lock().unwrap();
+                let map: serde_json::Map<String, Value> = aliases
+                    .list
+                    .iter()
+                    .enumerate()
+                    .map(|(index, alias)| {
+                        let key = if aliases.gap == Some(index) {
+                            index + 1
+                        } else {
+                            index
+                        };
+                        (key.to_string(), alias.clone())
+                    })
+                    .collect();
+                account["domainId"] = json!(MAIL_DOMAIN);
+                account["aliases"] = Value::Object(map);
+            }
+            account
+        })
         .collect();
     json!({"list": list})
+}
+
+/// Patches the mail account's aliases by position: a key past the end appends, an existing key
+/// is overwritten, and a pointer into a missing key's field fails, as on Stalwart.
+fn set_account(shared: &Shared, arguments: &Value, refuse: bool) -> Value {
+    let mut answer = json!({"updated": {}, "notUpdated": {}});
+    for (id, patch) in arguments["update"].as_object().into_iter().flatten() {
+        assert_eq!(
+            id, MAIL_ACCOUNT,
+            "only the mail account's aliases are patched"
+        );
+        let mut aliases = shared.aliases.lock().unwrap();
+        let mut list = aliases.list.clone();
+        let mut refused = refuse.then(refusal);
+        for (pointer, value) in patch.as_object().unwrap() {
+            let path: Vec<&str> = pointer.split('/').collect();
+            let index: usize = path[1].parse().unwrap();
+            match path[..] {
+                ["aliases", _] => {
+                    if aliases
+                        .held
+                        .iter()
+                        .any(|held| value["name"] == held.as_str())
+                    {
+                        refused = Some(refusal());
+                    } else if index < list.len() {
+                        list[index] = value.clone();
+                    } else {
+                        list.push(value.clone());
+                    }
+                }
+                ["aliases", _, field] if index < list.len() => list[index][field] = value.clone(),
+                ["aliases", _, _] => {
+                    refused = Some(json!({"type": "validationFailed",
+                                          "description": "Required name, domainId"}));
+                }
+                _ => panic!("unexpected patch {pointer}"),
+            }
+        }
+        match refused {
+            Some(refusal) => answer["notUpdated"][id] = refusal,
+            None => {
+                aliases.list = list;
+                answer["updated"][id] = Value::Null;
+            }
+        }
+    }
+    answer
 }
 
 fn get_emails(shared: &Shared, arguments: &Value) -> Value {

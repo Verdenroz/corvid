@@ -20,6 +20,7 @@ pub fn config(state_path: &Path, update_dir: &Path) -> Config {
         devices: None,
         auth: None,
         scribe: None,
+        aliases: None,
     }
 }
 

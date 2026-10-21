@@ -8,7 +8,7 @@ use axum::routing::{delete, get, post};
 use serde::{Deserialize, Serialize};
 
 use super::state::{Auth, CODE_LIFETIME_SECONDS, Code};
-use super::{Shared, codes, commit, master_status};
+use super::{Shared, codes, commit, require_master};
 use crate::dates;
 
 pub fn routes() -> Router<Shared> {
@@ -50,18 +50,6 @@ fn passkeys(auth: &Auth) -> Vec<Passkey> {
 
 async fn list(State(state): State<Shared>) -> Json<Vec<Passkey>> {
     Json(state.auth.read(passkeys))
-}
-
-/// Accepts an admin token in `X-Corvid-Master`, which is spent by this one request.
-fn require_master(state: &Shared, headers: &HeaderMap) -> Result<(), StatusCode> {
-    let token = headers
-        .get("X-Corvid-Master")
-        .and_then(|value| value.to_str().ok())
-        .ok_or(StatusCode::UNAUTHORIZED)?;
-    state
-        .issuer
-        .verify_master(token, &state.master_user, dates::now_secs())
-        .map_err(master_status)
 }
 
 /// How the host proves itself: the webhook secret signs what it asks for.
@@ -118,7 +106,7 @@ async fn enroll(
     headers: HeaderMap,
     Json(minting): Json<Minting>,
 ) -> Result<Json<Minted>, StatusCode> {
-    require_master(&state, &headers)?;
+    require_master(&state.issuer, &headers, &state.master_user)?;
     mint(&state, minting.approves).await
 }
 
@@ -169,7 +157,7 @@ async fn remove(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
-    require_master(&state, &headers)?;
+    require_master(&state.issuer, &headers, &state.master_user)?;
     forget(&state, id).await
 }
 

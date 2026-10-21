@@ -1,3 +1,4 @@
+pub mod aliases;
 pub mod auth;
 mod dates;
 mod decide;

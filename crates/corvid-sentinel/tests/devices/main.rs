@@ -3,6 +3,7 @@ mod common;
 mod digest;
 mod digest_push;
 mod push;
+#[allow(dead_code)]
 mod stalwart;
 
 use std::path::PathBuf;
