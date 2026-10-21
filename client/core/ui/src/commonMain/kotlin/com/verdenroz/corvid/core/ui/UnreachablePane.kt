@@ -12,10 +12,9 @@ import com.verdenroz.corvid.core.ui.resources.unreachable_title
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * Shown for a network failure, a damaged key file or an ambiguous device
- * folder set. Nothing is wiped for any of the three: only a confirmed
- * Missing lookup (RevokedPane) means the device actually lost access. A server that never answers
- * as hoped, or the wrong account, leaves [onSignOut] as the way out.
+ * Shown when the server or the device key could not be reached. Nothing is wiped: only a confirmed Missing lookup
+ * (RevokedPane) means the device actually lost access. A server that never answers as hoped, or the wrong account,
+ * leaves [onSignOut] as the way out.
  */
 @Composable
 fun UnreachablePane(

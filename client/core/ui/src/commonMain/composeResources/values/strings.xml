@@ -5,8 +5,10 @@
     <string name="locked_title">Locked</string>
     <string name="locked_unlock">Unlock</string>
     <string name="revoked_title">Revoked</string>
-    <string name="revoked_detail">This device's key is gone from the server. Enroll it again from a device that still has access.</string>
+    <string name="revoked_detail">This device's key is gone from the server. Close Corvid completely (on a phone, swipe it away), then reopen it to sign in and approve this device again.</string>
     <string name="unreachable_title">Unreachable</string>
+    <string name="key_damaged_title">Key damaged</string>
+    <string name="key_damaged_detail">The server returned a device key this app cannot read. Nothing was wiped.</string>
     <string name="label_guess">%1$s?</string>
     <string name="seal_signed_by">Signed by %1$s</string>
     <string name="seal_signed">Signed</string>

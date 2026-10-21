@@ -4,7 +4,6 @@ import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.appcommon.resources.Res
 import com.verdenroz.corvid.appcommon.resources.enroll_self_failed_not_accepted
 import com.verdenroz.corvid.appcommon.resources.unreachable_heartbeat
-import com.verdenroz.corvid.appcommon.resources.unreachable_key_damaged
 import com.verdenroz.corvid.appcommon.resources.unreachable_key_unreachable
 import com.verdenroz.corvid.appcommon.resources.unreachable_request_failed
 import com.verdenroz.corvid.core.auth.AuthState
@@ -466,7 +465,7 @@ class AppLockViewModelTest {
         }
 
     @Test
-    fun `a damaged key file reads as unreachable, not revoked, and nothing is wiped`() =
+    fun `a damaged key file reads as damaged, not unreachable or revoked, and nothing is wiped`() =
         runTest(testDispatcher) {
             val fake = FakeJmapServer()
             val harness = harness(backgroundScope, fake)
@@ -476,9 +475,7 @@ class AppLockViewModelTest {
 
             fake.blobs[fake.devices.blobIdOf("laptop-1")] = ByteArray(10)
             harness.viewModel.unlock()
-            val unreachable = assertIs<AppLockState.Unreachable>(harness.viewModel.state.awaitState { it is AppLockState.Unreachable })
-
-            assertEquals(uiText(Res.string.unreachable_key_damaged), unreachable.reason)
+            harness.viewModel.state.awaitState { it is AppLockState.KeyDamaged }
         }
 
     @Test

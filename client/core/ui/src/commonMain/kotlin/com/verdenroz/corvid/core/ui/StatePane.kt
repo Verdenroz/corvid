@@ -1,5 +1,8 @@
 package com.verdenroz.corvid.core.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,6 +18,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -30,6 +35,9 @@ import com.verdenroz.corvid.core.ui.resources.Res
 import com.verdenroz.corvid.core.ui.resources.state_sign_out
 import org.jetbrains.compose.resources.stringResource
 
+private val EYE_LINE_WIDTH = 120.dp
+private const val EYE_LINE_MILLIS = 360
+
 /** A labelled fact under a state's statement, such as the server or the device. */
 class StateFact(
     val label: String,
@@ -39,7 +47,8 @@ class StateFact(
 /**
  * The full-screen states the gate swaps in (locked, unreachable, revoked, signing in): the mark,
  * one statement, the eye line, what is true, and whatever the user can do about it. [onSignOut]
- * adds Sign out under the actions, the way to another account or server from a state that holds.
+ * adds Sign out under the actions, the way to another account or server from a state that holds. [drawEyeLine] draws
+ * the accent line in from nothing, for the lock.
  */
 @Composable
 fun StatePane(
@@ -49,9 +58,12 @@ fun StatePane(
     facts: List<StateFact> = emptyList(),
     headlineColor: Color = CorvidTheme.colors.ink,
     onSignOut: (() -> Unit)? = null,
+    drawEyeLine: Boolean = false,
     content: @Composable ColumnScope.() -> Unit = {},
 ) {
     val colors = CorvidTheme.colors
+    val eyeLine = remember { Animatable(if (drawEyeLine) 0f else 1f) }
+    if (drawEyeLine) LaunchedEffect(Unit) { eyeLine.animateTo(1f, tween(EYE_LINE_MILLIS, easing = FastOutSlowInEasing)) }
     Box(
         modifier.fillMaxSize().background(colors.surface).verticalScroll(rememberScrollState()).padding(24.dp),
         contentAlignment = Alignment.Center,
@@ -59,7 +71,7 @@ fun StatePane(
         Column(Modifier.widthIn(max = 380.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             CorvidMark(width = 48.dp)
             Text(headline, style = CorvidTheme.type.display, color = headlineColor, modifier = Modifier.semantics { heading() })
-            Box(Modifier.width(120.dp).height(3.dp).background(colors.accent, CorvidShape.pill))
+            Box(Modifier.width(EYE_LINE_WIDTH * eyeLine.value).height(3.dp).background(colors.accent, CorvidShape.pill))
             detail?.let { Text(it, style = CorvidTheme.type.body, color = colors.inkMuted) }
             if (facts.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {

@@ -2,7 +2,6 @@
 <resources>
     <string name="unreachable_server">Could not reach the server.</string>
     <string name="unreachable_session">The server's session response is unusable.</string>
-    <string name="unreachable_key_damaged">The device key is damaged.</string>
     <string name="unreachable_key_unreachable">The device key could not be reached.</string>
     <string name="unreachable_heartbeat">The server stopped answering.</string>
     <string name="device_name_title">Name this device</string>

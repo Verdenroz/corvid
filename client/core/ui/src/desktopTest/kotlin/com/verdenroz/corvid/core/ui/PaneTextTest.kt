@@ -26,7 +26,8 @@ class PaneTextTest {
     fun `the revoked pane resolves with its apostrophe intact`() =
         runTest {
             assertEquals(
-                "This device's key is gone from the server. Enroll it again from a device that still has access.",
+                "This device's key is gone from the server. Close Corvid completely (on a phone, swipe it away), " +
+                    "then reopen it to sign in and approve this device again.",
                 uiText(Res.string.revoked_detail).resolve(environment),
             )
         }
