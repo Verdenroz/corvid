@@ -81,6 +81,7 @@ fun ApproveDeviceScreen(
                     stringResource(Res.string.approve_code),
                     Modifier.fillMaxWidth(),
                     KeyboardOptions(keyboardType = KeyboardType.Number),
+                    onSubmit = { if (state.canApprove) viewModel.approve() },
                 )
                 PrimaryButton(stringResource(Res.string.approve_action), viewModel::approve, enabled = state.canApprove)
                 StepText(state.step)
