@@ -55,7 +55,12 @@ class CustodyCellTest {
     @Test
     fun `a signed sender names the signer when the verdict does`() {
         assertEquals(
-            CustodyCell.Sender(uiText(Res.string.custody_signed_by, "x.test"), uiText(Res.string.custody_dmarc_passed), danger = false),
+            CustodyCell.Sender(
+                uiText(Res.string.custody_signed_by, "x.test"),
+                uiText(Res.string.custody_dmarc_passed),
+                danger = false,
+                signed = true,
+            ),
             sender(Seal.Signed("x.test")),
         )
         assertEquals(uiText(Res.string.custody_signed), sender(Seal.Signed(null)).value)
@@ -75,7 +80,12 @@ class CustodyCellTest {
     @Test
     fun `an unsigned sender is plain, not danger`() {
         assertEquals(
-            CustodyCell.Sender(uiText(Res.string.custody_unsigned), uiText(Res.string.custody_unsigned_detail), danger = false),
+            CustodyCell.Sender(
+                uiText(Res.string.custody_unsigned),
+                uiText(Res.string.custody_unsigned_detail),
+                danger = false,
+                signed = false,
+            ),
             sender(Seal.Unsigned),
         )
     }

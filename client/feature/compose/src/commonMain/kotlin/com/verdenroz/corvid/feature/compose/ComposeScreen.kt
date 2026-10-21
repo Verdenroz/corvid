@@ -31,15 +31,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.AttachmentFiles
 import com.verdenroz.corvid.core.data.fileSize
+import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.ActionIcon
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.PrimaryButton
 import com.verdenroz.corvid.core.designsystem.component.inlineLabel
+import com.verdenroz.corvid.core.designsystem.focusRing
 import com.verdenroz.corvid.core.model.Attachment
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.text.asString
@@ -48,6 +54,7 @@ import com.verdenroz.corvid.core.ui.DiscardQuestion
 import com.verdenroz.corvid.core.ui.GuardBack
 import com.verdenroz.corvid.core.ui.LoadingPane
 import com.verdenroz.corvid.core.ui.QuietPane
+import com.verdenroz.corvid.core.ui.StatusLine
 import com.verdenroz.corvid.feature.compose.resources.Res
 import com.verdenroz.corvid.feature.compose.resources.compose_attach
 import com.verdenroz.corvid.feature.compose.resources.compose_bcc
@@ -180,10 +187,10 @@ private fun Fields(
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         if (state.saveFailed) NotSaved(onRetrySave)
         state.error?.let {
-            Text(
+            StatusLine(
                 it.asString(),
+                failed = true,
                 style = CorvidTheme.type.meta,
-                color = CorvidTheme.colors.danger,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
         }
@@ -234,12 +241,21 @@ private fun NotSaved(onRetry: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
     ) {
-        Text(stringResource(Res.string.compose_not_saved), style = CorvidTheme.type.meta, color = colors.inkMuted)
+        Text(
+            stringResource(Res.string.compose_not_saved),
+            style = CorvidTheme.type.meta,
+            color = colors.inkMuted,
+            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+        )
         Text(
             stringResource(Res.string.compose_retry_save),
             style = CorvidTheme.type.metaStrong,
             color = colors.accent,
-            modifier = Modifier.clickable(onClick = onRetry).padding(horizontal = 12.dp, vertical = 8.dp),
+            modifier =
+                Modifier
+                    .focusRing(CorvidShape.small)
+                    .clickable(role = Role.Button, onClick = onRetry)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
         )
     }
 }

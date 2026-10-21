@@ -15,12 +15,13 @@ fun StatusLine(
     text: String,
     failed: Boolean,
     style: TextStyle = CorvidTheme.type.body,
+    modifier: Modifier = Modifier,
 ) {
     val colors = CorvidTheme.colors
     Text(
         text,
         style = style,
         color = if (failed) colors.danger else colors.ink,
-        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+        modifier = modifier.semantics { liveRegion = LiveRegionMode.Polite },
     )
 }

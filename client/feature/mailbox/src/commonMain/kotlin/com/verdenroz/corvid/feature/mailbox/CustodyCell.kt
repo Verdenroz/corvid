@@ -29,7 +29,8 @@ import com.verdenroz.corvid.feature.mailbox.resources.custody_unsigned
 import com.verdenroz.corvid.feature.mailbox.resources.custody_unsigned_detail
 
 internal sealed interface CustodyCell {
-    data class Sender(val value: UiText, val detail: UiText, val danger: Boolean) : CustodyCell
+    /** [signed] is a DMARC pass; only it earns the seal glyph. */
+    data class Sender(val value: UiText, val detail: UiText, val danger: Boolean, val signed: Boolean) : CustodyCell
 
     data class WayIn(val value: UiText, val detail: UiText?) : CustodyCell
 
@@ -57,6 +58,7 @@ private fun senderCell(seal: Seal): CustodyCell.Sender =
                 seal.signer?.let { uiText(Res.string.custody_signed_by, it) } ?: uiText(Res.string.custody_signed),
                 uiText(Res.string.custody_dmarc_passed),
                 danger = false,
+                signed = true,
             )
         is Seal.Failed -> {
             val claimed = seal.claimed
@@ -67,13 +69,14 @@ private fun senderCell(seal: Seal): CustodyCell.Sender =
                     claimed != null -> uiText(Res.string.custody_claims_unsigned, claimed)
                     else -> uiText(Res.string.custody_dmarc_failed)
                 }
-            CustodyCell.Sender(uiText(Res.string.custody_not_authenticated), detail, danger = true)
+            CustodyCell.Sender(uiText(Res.string.custody_not_authenticated), detail, danger = true, signed = false)
         }
         is Seal.Unsigned ->
             CustodyCell.Sender(
                 uiText(Res.string.custody_unsigned),
                 uiText(Res.string.custody_unsigned_detail),
                 danger = false,
+                signed = false,
             )
     }
 

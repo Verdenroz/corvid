@@ -41,7 +41,10 @@ internal fun summarisedValue(
     return if (summary.model.isEmpty()) at else uiText(Res.string.custody_summarised_by, summary.model, at)
 }
 
-/** The thread's summary in the custody strip's own look. The text is model output derived from the mail, so it is a plain `Text`. */
+/**
+ * The thread's summary in the custody strip's cell look, edged by a hairline since the sheen marks provenance and this
+ * is model output. Derived from the mail, it is a plain `Text`.
+ */
 @Composable
 internal fun ThreadSummaryCard(
     summary: ThreadSummary,
@@ -56,7 +59,7 @@ internal fun ThreadSummaryCard(
             .widthIn(max = 860.dp)
             .fillMaxWidth()
             .clip(CorvidShape.medium)
-            .border(1.dp, CorvidTheme.sheen, CorvidShape.medium),
+            .border(1.dp, colors.line, CorvidShape.medium),
     ) {
         Cell(CorvidIcons.Headers, stringResource(Res.string.custody_summarised), value.asString(), null, Modifier.fillMaxWidth())
         HorizontalDivider(color = colors.line)
