@@ -13,6 +13,7 @@ import com.verdenroz.corvid.core.text.uiText
 import com.verdenroz.corvid.feature.aliases.resources.Res
 import com.verdenroz.corvid.feature.aliases.resources.aliases_failed_busy
 import com.verdenroz.corvid.feature.aliases.resources.aliases_failed_cap
+import com.verdenroz.corvid.feature.aliases.resources.aliases_failed_enabled_cap
 import com.verdenroz.corvid.feature.aliases.resources.aliases_failed_gone
 import com.verdenroz.corvid.feature.aliases.resources.aliases_failed_not_accepted
 import com.verdenroz.corvid.feature.aliases.resources.aliases_failed_session
@@ -247,7 +248,7 @@ class AliasesViewModelTest {
 
             r.viewModel.enable("news.wxyz6789")
 
-            assertEquals(AliasStep.Failed(uiText(Res.string.aliases_failed_cap)), r.viewModel.settled().step)
+            assertEquals(AliasStep.Failed(uiText(Res.string.aliases_failed_enabled_cap)), r.viewModel.settled().step)
             assertEquals(listOf(true, false), r.fake.aliases.aliases.map { it.enabled })
         }
 

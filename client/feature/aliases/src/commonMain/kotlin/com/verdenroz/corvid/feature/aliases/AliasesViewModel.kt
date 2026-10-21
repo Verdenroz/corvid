@@ -18,6 +18,7 @@ import com.verdenroz.corvid.core.text.uiText
 import com.verdenroz.corvid.feature.aliases.resources.Res
 import com.verdenroz.corvid.feature.aliases.resources.aliases_failed_busy
 import com.verdenroz.corvid.feature.aliases.resources.aliases_failed_cap
+import com.verdenroz.corvid.feature.aliases.resources.aliases_failed_enabled_cap
 import com.verdenroz.corvid.feature.aliases.resources.aliases_failed_gone
 import com.verdenroz.corvid.feature.aliases.resources.aliases_failed_label
 import com.verdenroz.corvid.feature.aliases.resources.aliases_failed_not_accepted
@@ -166,7 +167,7 @@ private fun SwitchOutcome.toStep(): AliasStep =
     when (this) {
         is SwitchOutcome.Switched -> AliasStep.Switched(alias)
         SwitchOutcome.Gone -> GONE
-        AtCap -> AliasStep.Failed(uiText(Res.string.aliases_failed_cap))
+        AtCap -> AliasStep.Failed(uiText(Res.string.aliases_failed_enabled_cap))
         is AliasRefusal -> AliasStep.Failed(message(switching = true))
     }
 
