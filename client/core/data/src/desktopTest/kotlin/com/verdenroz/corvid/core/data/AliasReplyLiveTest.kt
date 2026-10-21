@@ -52,6 +52,7 @@ class AliasReplyLiveTest {
             val client = JmapClient.connect(createJmapHttpClient(), AuthLatch(), url) { token }
             val aliases = AliasRepository(client)
             val alias = assertIs<MintOutcome.Minted>(aliases.mint("live")).alias
+            var disabled = false
             try {
                 val subject = "live reply ${alias.name}"
                 deliver(smtpPort, alias.address, subject)
@@ -69,6 +70,7 @@ class AliasReplyLiveTest {
 
                 val heldId = assertIs<DraftSaveResult.Saved>(compose.save(reply.copy(body = "held"), replacing = null)).emailId
                 assertIs<SwitchOutcome.Switched>(aliases.disable(alias.name, master))
+                disabled = true
                 assertEquals(AliasGone(alias.address), compose.send(heldId, reply.from))
                 assertTrue(isDraft(client, heldId), "the refused reply is no longer a draft")
                 assertEquals(listOf(alias.address), fromOf(client, heldId))
@@ -76,7 +78,7 @@ class AliasReplyLiveTest {
                 assertNull(reread.arrivedVia)
                 compose.discard(heldId)
             } finally {
-                assertIs<SwitchOutcome.Switched>(aliases.enable(alias.name, masterAgain))
+                if (disabled) assertIs<SwitchOutcome.Switched>(aliases.enable(alias.name, masterAgain))
             }
         }
     }

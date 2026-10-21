@@ -684,6 +684,18 @@ class ComposeViewModelTest {
         }
 
     @Test
+    fun `restored text switched to the main address whose drafts are both gone still offers the alias`() =
+        runViewModelTest {
+            val fake = aliasServer()
+            val typed = ComposeForm(to = "ada@x.test", cc = "", bcc = "", subject = "", body = "half a thought")
+            val vm = viewModel(fake, ComposeIntent.Draft("x"), restored = ComposeRestore(typed, draftId = "y", alias = ALIAS))
+
+            val editing = vm.editing()
+            assertNull(editing.form.from)
+            assertEquals(ALIAS, editing.alias)
+        }
+
+    @Test
     fun `a reply switched to the main address still offers the alias after the screen is rebuilt`() =
         runViewModelTest {
             val fake = aliasServer()
