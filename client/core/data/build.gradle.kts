@@ -29,3 +29,8 @@ kotlin {
         }
     }
 }
+
+// AliasReplyLiveTest reads this; a run against a rig must not be served to a run without one.
+tasks.withType<Test>().configureEach {
+    inputs.property("aliasLive", providers.environmentVariable("CORVID_ALIAS_LIVE").orElse(""))
+}
