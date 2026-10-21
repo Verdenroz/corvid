@@ -75,7 +75,16 @@ class FiltersViewModel(
         )
     }
 
-    fun delete(index: Int) = edit { rules -> rules.removedAt(index) }
+    /** Deleting saves to the server at once with no undo, so it asks first; [confirmDelete] does it. */
+    fun delete(index: Int) = update { if (it.save is SaveStatus.Saving) it else it.copy(confirmingDelete = index) }
+
+    fun confirmDelete() {
+        val index = (_state.value as? FiltersUiState.Ready)?.confirmingDelete ?: return
+        keepRule()
+        edit { rules -> rules.removedAt(index) }
+    }
+
+    fun keepRule() = update { it.copy(confirmingDelete = null) }
 
     fun toggle(index: Int) = edit { rules -> rules.replaced(index, rules[index].copy(enabled = !rules[index].enabled)) }
 

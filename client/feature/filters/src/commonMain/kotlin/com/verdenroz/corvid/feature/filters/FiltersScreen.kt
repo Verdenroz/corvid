@@ -11,9 +11,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
@@ -23,14 +25,19 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.LocalWideLayout
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.designsystem.component.PrimaryButton
+import com.verdenroz.corvid.core.designsystem.focusRing
 import com.verdenroz.corvid.core.model.FilterRule
 import com.verdenroz.corvid.core.model.RuleSuggestion
 import com.verdenroz.corvid.core.text.asString
@@ -40,18 +47,26 @@ import com.verdenroz.corvid.core.ui.GuardBack
 import com.verdenroz.corvid.core.ui.LoadingPane
 import com.verdenroz.corvid.core.ui.PageHeader
 import com.verdenroz.corvid.core.ui.QuietPane
+import com.verdenroz.corvid.core.ui.StatusLine
 import com.verdenroz.corvid.feature.filters.resources.Res
 import com.verdenroz.corvid.feature.filters.resources.filters_add_rule
 import com.verdenroz.corvid.feature.filters.resources.filters_back
 import com.verdenroz.corvid.feature.filters.resources.filters_delete
+import com.verdenroz.corvid.feature.filters.resources.filters_delete_named
+import com.verdenroz.corvid.feature.filters.resources.filters_delete_question
 import com.verdenroz.corvid.feature.filters.resources.filters_discard_question
 import com.verdenroz.corvid.feature.filters.resources.filters_down
+import com.verdenroz.corvid.feature.filters.resources.filters_down_named
 import com.verdenroz.corvid.feature.filters.resources.filters_edit
+import com.verdenroz.corvid.feature.filters.resources.filters_edit_named
 import com.verdenroz.corvid.feature.filters.resources.filters_empty
 import com.verdenroz.corvid.feature.filters.resources.filters_foreign_active
 import com.verdenroz.corvid.feature.filters.resources.filters_intro
+import com.verdenroz.corvid.feature.filters.resources.filters_keep
 import com.verdenroz.corvid.feature.filters.resources.filters_title
 import com.verdenroz.corvid.feature.filters.resources.filters_up
+import com.verdenroz.corvid.feature.filters.resources.filters_up_named
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
 /** [model] gives the back-stack entry's view model, made on first call from the rule being edited before the screen was recreated. */
@@ -85,6 +100,15 @@ fun FiltersScreen(
                     )
                 }
                 if (draft == null) {
+                    current.confirmingDelete?.let { index -> current.rules.getOrNull(index) }?.let { rule ->
+                        DiscardQuestion(
+                            stringResource(Res.string.filters_delete_question, rule.name),
+                            viewModel::confirmDelete,
+                            viewModel::keepRule,
+                            confirmLabel = stringResource(Res.string.filters_delete),
+                            cancelLabel = stringResource(Res.string.filters_keep),
+                        )
+                    }
                     RuleList(
                         state = current,
                         onAdd = { viewModel.startEdit(null) },
@@ -138,11 +162,7 @@ private fun RuleList(
                     )
                 }
                 (state.save as? SaveStatus.Failed)?.let {
-                    Text(
-                        it.message.asString(),
-                        style = CorvidTheme.type.meta,
-                        color = CorvidTheme.colors.danger,
-                    )
+                    StatusLine(it.message.asString(), failed = true, style = CorvidTheme.type.meta)
                 }
                 PrimaryButton(
                     stringResource(Res.string.filters_add_rule),
@@ -171,6 +191,8 @@ private fun RuleList(
         itemsIndexed(state.rules) { index, rule ->
             RuleRow(
                 rule = rule,
+                first = index == 0,
+                last = index == state.rules.lastIndex,
                 enabledControls = state.save !is SaveStatus.Saving,
                 onToggle = { onToggle(index) },
                 onEdit = { onEdit(index) },
@@ -183,9 +205,12 @@ private fun RuleList(
     }
 }
 
+/** While a save runs every control stays in place, disabled, so the list does not jump under the finger. */
 @Composable
 private fun RuleRow(
     rule: FilterRule,
+    first: Boolean,
+    last: Boolean,
     enabledControls: Boolean,
     onToggle: () -> Unit,
     onEdit: () -> Unit,
@@ -197,18 +222,43 @@ private fun RuleRow(
         Modifier.fillMaxWidth().padding(horizontal = CorvidSpacing.gutter(LocalWideLayout.current), vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Switch(checked = rule.enabled, onCheckedChange = { onToggle() }, enabled = enabledControls)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier =
+                Modifier
+                    .focusRing(CorvidShape.small)
+                    .toggleable(rule.enabled, enabled = enabledControls, role = Role.Switch) { onToggle() },
+        ) {
+            Switch(rule.enabled, onCheckedChange = null, Modifier.minimumInteractiveComponentSize(), enabled = enabledControls)
             Text(rule.name, style = CorvidTheme.type.name, fontWeight = FontWeight.SemiBold)
         }
         Text(rule.summary(), style = CorvidTheme.type.meta, color = CorvidTheme.colors.inkMuted)
-        if (enabledControls) {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                PillButton(stringResource(Res.string.filters_edit), null, onEdit, height = 28.dp)
-                PillButton(stringResource(Res.string.filters_up), null, onUp, height = 28.dp)
-                PillButton(stringResource(Res.string.filters_down), null, onDown, height = 28.dp)
-                PillButton(stringResource(Res.string.filters_delete), null, onDelete, height = 28.dp)
-            }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            RuleAction(Res.string.filters_edit, Res.string.filters_edit_named, rule.name, enabledControls, onEdit)
+            RuleAction(Res.string.filters_up, Res.string.filters_up_named, rule.name, enabledControls && !first, onUp)
+            RuleAction(Res.string.filters_down, Res.string.filters_down_named, rule.name, enabledControls && !last, onDown)
+            RuleAction(Res.string.filters_delete, Res.string.filters_delete_named, rule.name, enabledControls, onDelete)
         }
     }
+}
+
+/** A pill that shows [text] and names the rule it acts on to a screen reader, since every row repeats the same four. */
+@Composable
+private fun RuleAction(
+    text: StringResource,
+    named: StringResource,
+    ruleName: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val description = stringResource(named, ruleName)
+    PillButton(
+        stringResource(text),
+        null,
+        onClick,
+        Modifier.semantics { contentDescription = description },
+        height = 28.dp,
+        enabled = enabled,
+    )
 }

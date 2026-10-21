@@ -36,6 +36,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 private fun rule(
@@ -289,10 +290,27 @@ class FiltersViewModelTest {
             vm.toggle(0)
             vm.ready()
             vm.delete(1)
+            vm.confirmDelete()
             vm.ready()
 
             val reloaded = viewModel(fake).ready()
             assertEquals(listOf("a" to false), reloaded.rules.map { it.name to it.enabled })
+        }
+
+    @Test
+    fun `deleting a rule asks first, and keeping it saves nothing`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            val vm = viewModel(fake)
+            vm.save(null, rule("a"))
+            vm.ready()
+
+            vm.delete(0)
+            assertEquals(0, vm.ready().confirmingDelete)
+            vm.keepRule()
+
+            assertNull(vm.ready().confirmingDelete)
+            assertEquals(listOf("a"), viewModel(fake).ready().rules.map { it.name })
         }
 
     @Test
