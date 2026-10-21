@@ -64,7 +64,10 @@ sealed interface SendResult {
     data class Rejected(val reason: String) : SendResult
 }
 
-/** The draft is from an alias with no identity any more, as a disabled one has; it is never sent from the main address instead. */
+/**
+ * The draft is from an alias with no identity any more, as a disabled one has;
+ * it is never sent from the main address instead.
+ */
 data class AliasGone(val email: String) : SendResult, DraftSaveResult
 
 private sealed interface Loaded {
