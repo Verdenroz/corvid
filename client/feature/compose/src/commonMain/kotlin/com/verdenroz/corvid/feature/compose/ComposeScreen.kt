@@ -93,7 +93,7 @@ fun ComposeScreen(
     DisposableEffect(viewModel) { onDispose(viewModel::release) }
     val state by viewModel.state.collectAsState()
     (state as? ComposeUiState.Editing)?.let { editing ->
-        val current = ComposeRestore(editing.form, editing.draftId)
+        val current = ComposeRestore(editing.form, editing.draftId, editing.alias)
         if (current != restore) SideEffect { restore = current }
     }
     val close = { if (viewModel.requestClose()) onClose() }

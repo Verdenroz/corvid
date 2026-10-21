@@ -46,21 +46,22 @@ data class Suggestions(
     val highlighted: Int = 0,
 )
 
-/** [draftId] is the server draft the form was last saved as, if any. */
+/** [draftId] is the server draft the form was last saved as, if any; [alias] is what the From picker offered. */
 data class ComposeRestore(
     val form: ComposeForm,
     val draftId: String?,
+    val alias: String? = form.from,
 )
 
-private const val SAVED_FIELDS = 7
+private const val SAVED_FIELDS = 8
 private const val SAVED_ATTACHMENT_FIELDS = 4
 
-/** Seven fields, then four per attachment: blob id, name, type and size. */
+/** Eight fields, then four per attachment: blob id, name, type and size. */
 val ComposeRestoreSaver: Saver<ComposeRestore?, List<String>> =
     Saver(
         save = { restore ->
             restore?.let {
-                listOf(it.form.to, it.form.cc, it.form.bcc, it.form.subject, it.form.body, it.draftId.orEmpty(), it.form.from.orEmpty()) +
+                with(it.form) { listOf(to, cc, bcc, subject, body, it.draftId.orEmpty(), from.orEmpty(), it.alias.orEmpty()) } +
                     it.form.attachments.flatMap { file -> listOf(file.blobId, file.name.orEmpty(), file.type, file.size.toString()) }
             }
         },
@@ -72,6 +73,7 @@ val ComposeRestoreSaver: Saver<ComposeRestore?, List<String>> =
             ComposeRestore(
                 ComposeForm(saved[0], saved[1], saved[2], saved[3], saved[4], attachments, saved[6].ifEmpty { null }),
                 saved[5].ifEmpty { null },
+                saved[7].ifEmpty { null },
             )
         },
     )

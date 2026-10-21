@@ -69,14 +69,17 @@ class ComposeViewModel(
             try {
                 _state.value =
                     when (val start = composeRepository.start(target)) {
-                        is StartResult.Ready ->
+                        is StartResult.Ready -> {
+                            val form = restored?.form ?: start.draft.toForm()
                             ComposeUiState.Editing(
                                 seed = start.draft,
-                                form = restored?.form ?: start.draft.toForm(),
+                                form = form,
                                 stored = start.draft.toForm(),
                                 mainEmail = start.mainEmail,
+                                alias = restored?.alias ?: form.from ?: start.draft.from,
                                 draftId = (target as? ComposeIntent.Draft)?.emailId,
                             )
+                        }
                         is StartResult.DraftGone -> restoredAsNew() ?: ComposeUiState.Failed(uiText(Res.string.compose_draft_gone))
                         is StartResult.OriginalGone -> ComposeUiState.Failed(uiText(Res.string.compose_original_gone))
                         is SendUnavailable -> ComposeUiState.Failed(start.message())
@@ -100,12 +103,18 @@ class ComposeViewModel(
 
     /** The restored text outlives a draft that was replaced or sent in the meantime; it saves as a new one. */
     private suspend fun restoredAsNew(): ComposeUiState.Editing? {
-        val form = restored?.form?.takeUnless { it.isBlank() } ?: return null
+        val kept = restored?.takeUnless { it.form.isBlank() } ?: return null
         val start =
-            composeRepository.start(intent) as? StartResult.Ready
+            intent.takeUnless { it is ComposeIntent.Draft }?.let { composeRepository.start(it) as? StartResult.Ready }
                 ?: composeRepository.start(ComposeIntent.New) as? StartResult.Ready
                 ?: return null
-        return ComposeUiState.Editing(seed = start.draft, form = form, stored = start.draft.toForm(), mainEmail = start.mainEmail)
+        return ComposeUiState.Editing(
+            seed = start.draft,
+            form = kept.form,
+            stored = start.draft.toForm(),
+            mainEmail = start.mainEmail,
+            alias = kept.alias,
+        )
     }
 
     fun edit(change: ComposeForm.() -> ComposeForm) {

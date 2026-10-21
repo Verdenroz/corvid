@@ -684,8 +684,25 @@ class ComposeViewModelTest {
         }
 
     @Test
+    fun `a reply switched to the main address still offers the alias after the screen is rebuilt`() =
+        runViewModelTest {
+            val fake = aliasServer()
+            val first = viewModel(fake, ComposeIntent.Reply("orig", all = false))
+            first.editing()
+            first.edit { copy(from = null) }
+            first.idle()
+            val saved = first.editing()
+            val restore = ComposeRestore(saved.form, saved.draftId, saved.alias)
+            val vm = viewModel(fake, ComposeIntent.Reply("orig", all = false), restored = restore)
+
+            val editing = vm.editing()
+            assertNull(editing.form.from)
+            assertEquals(ALIAS, editing.alias)
+        }
+
+    @Test
     fun `the saved form carries the alias through a rebuilt screen`() {
-        val restore = ComposeRestore(ComposeForm("a@x.test", "", "", "Hi", "body", from = ALIAS), draftId = "d1")
+        val restore = ComposeRestore(ComposeForm("a@x.test", "", "", "Hi", "body"), draftId = "d1", alias = ALIAS)
 
         val saved = with(ComposeRestoreSaver) { SaverScope { true }.save(restore) }
 
