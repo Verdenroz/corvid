@@ -15,6 +15,6 @@ class AppTextTest {
     @Test
     fun `the enrollment prompt names the device in quotes`() =
         runTest {
-            assertEquals("Approve \"laptop-1\" from another device", uiText(Res.string.enroll_title, "laptop-1").resolve(environment))
+            assertEquals("Approve “laptop-1” from another device", uiText(Res.string.enroll_title, "laptop-1").resolve(environment))
         }
 }
