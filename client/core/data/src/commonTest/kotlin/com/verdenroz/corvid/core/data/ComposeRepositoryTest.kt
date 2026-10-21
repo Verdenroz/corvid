@@ -449,6 +449,18 @@ class ComposeRepositoryTest {
         }
 
     @Test
+    fun `reply all leaves out the alias the original arrived on even before it is a known identity`() =
+        runTest {
+            val (mailboxes, _) = repositories(server())
+            val to = listOf(EmailAddress(null, ALIAS), EmailAddress(null, "bob@example.test"))
+            val original = mailboxes.original().copy(to = to, arrivedVia = ALIAS)
+
+            val reply = replyDraft(original, setOf(OWN), all = true, attribution = "")
+
+            assertEquals(listOf("bob@example.test", "carol@example.test"), reply.cc.map { it.email })
+        }
+
+    @Test
     fun `a reply to a message that arrived on an alias is sent from that alias`() =
         runTest {
             val rig = aliasRig()

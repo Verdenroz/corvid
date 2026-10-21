@@ -30,7 +30,7 @@ kotlin {
     }
 }
 
-// AliasReplyLiveTest reads this; a run against a rig must not be served to a run without one.
+// AliasReplyLiveTest reads this, so Gradle never reuses a rig run's result for a run without a rig.
 tasks.withType<Test>().configureEach {
     inputs.property("aliasLive", providers.environmentVariable("CORVID_ALIAS_LIVE").orElse(""))
 }

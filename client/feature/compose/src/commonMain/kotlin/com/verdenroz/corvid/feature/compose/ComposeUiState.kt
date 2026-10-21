@@ -98,7 +98,7 @@ sealed interface ComposeUiState {
         val form: ComposeForm,
         val stored: ComposeForm,
         val mainEmail: String,
-        val alias: String? = form.from ?: seed.from,
+        val alias: String?,
         val draftId: String? = null,
         val saveFailed: Boolean = false,
         val sending: Boolean = false,

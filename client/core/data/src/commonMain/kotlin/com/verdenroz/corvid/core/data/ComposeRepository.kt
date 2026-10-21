@@ -66,8 +66,8 @@ sealed interface SendResult {
 }
 
 /**
- * The draft is from an alias with no identity any more, as a disabled one has;
- * it is never sent from the main address instead.
+ * The draft is from an alias that no longer has an identity, as happens once it is
+ * disabled; it is never sent from the main address instead.
  */
 data class AliasGone(val email: String) : SendResult, DraftSaveResult
 
@@ -168,7 +168,7 @@ class ComposeRepository(
         replacing: String?,
     ): DraftSaveResult =
         load().fold({ it }) { sending ->
-            val identity = draft.from?.let { from -> sending.sendingAs(from) ?: return@fold AliasGone(from) } ?: sending.identity
+            val identity = draft.from?.let { sending.sendingAs(it) ?: return@fold AliasGone(it) } ?: sending.identity
             val arguments = createEmail(identity, draft, sending.draftsId)
             val outcome = jmapClient.call(listOf(Invocation("Email/set", arguments, "c0"))).getValue("c0")
             outcome.refusal("draft")?.let { return@fold DraftSaveResult.Rejected(it) }
