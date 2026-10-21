@@ -64,6 +64,9 @@ sealed interface SendResult {
     data class Rejected(val reason: String) : SendResult
 }
 
+/** The draft is from an alias with no identity any more, as a disabled one has; it is never sent from the main address instead. */
+data class AliasGone(val email: String) : SendResult, DraftSaveResult
+
 private sealed interface Loaded {
     data class Ready(val identity: Identity, val ownEmails: Set<String>, val draftsId: String, val sentId: String) : Loaded
 
@@ -80,8 +83,10 @@ private inline fun <R> Loaded.fold(
     }
 
 /**
- * The identity and the Drafts and Sent mailboxes are fetched once, in one
- * request, and kept for as long as the repository lives. A message is always a
+ * The main identity and the Drafts and Sent mailboxes are fetched once, in one
+ * request, and kept for as long as the repository lives. A draft from an alias
+ * reads the identities again at each save and send, since disabling the alias
+ * removes its identity and enabling it again makes a new one. A message is always a
  * server draft before it is sent: [save] files it, [send] submits that draft
  * and moves it to Sent, so a refused submission leaves the draft in place. A
  * refusal comes back as [SendResult.Rejected] or [DraftSaveResult.Rejected] rather
@@ -106,7 +111,7 @@ class ComposeRepository(
                     withOriginal(intent.emailId) {
                         replyDraft(it, sending.ownEmails, intent.all, textResolver.resolve(replyAttribution(it, zone, clock.now())))
                     }
-                is ComposeIntent.Draft -> loadDraft(intent.emailId)
+                is ComposeIntent.Draft -> loadDraft(intent.emailId, sending.identity.email)
                 is ComposeIntent.Forward ->
                     withOriginal(intent.emailId) {
                         forwardDraft(
@@ -127,7 +132,10 @@ class ComposeRepository(
             is EmailLookup.NotFound -> StartResult.OriginalGone
         }
 
-    private suspend fun loadDraft(emailId: String): StartResult {
+    private suspend fun loadDraft(
+        emailId: String,
+        mainEmail: String,
+    ): StartResult {
         val arguments =
             buildJsonObject {
                 putJsonArray("ids") { add(JsonPrimitive(emailId)) }
@@ -136,7 +144,7 @@ class ComposeRepository(
             }
         val found = jmapClient.callOne("Email/get", arguments).getValue("list").jsonArray.firstOrNull()?.jsonObject
         return if (found != null && CorvidKeywords.DRAFT in found.getValue("keywords").jsonObject) {
-            StartResult.Ready(found.toDraft())
+            StartResult.Ready(found.toDraft(mainEmail))
         } else {
             StartResult.DraftGone
         }
@@ -151,7 +159,8 @@ class ComposeRepository(
         replacing: String?,
     ): DraftSaveResult =
         load().fold({ it }) { sending ->
-            val arguments = createEmail(sending.identity, draft, sending.draftsId)
+            val identity = draft.from?.let { from -> sending.sendingAs(from) ?: return@fold AliasGone(from) } ?: sending.identity
+            val arguments = createEmail(identity, draft, sending.draftsId)
             val outcome = jmapClient.call(listOf(Invocation("Email/set", arguments, "c0"))).getValue("c0")
             outcome.refusal("draft")?.let { return@fold DraftSaveResult.Rejected(it) }
             try {
@@ -162,9 +171,14 @@ class ComposeRepository(
             DraftSaveResult.Saved(outcome.createdDraftId())
         }
 
-    suspend fun send(emailId: String): SendResult =
+    /** [from] is the saved draft's [Draft.from], which picks the identity the submission names. */
+    suspend fun send(
+        emailId: String,
+        from: String?,
+    ): SendResult =
         load().fold({ it }) { sending ->
-            val arguments = submit(sending.identity, emailId, sending.draftsId, sending.sentId)
+            val identity = from?.let { sending.sendingAs(it) ?: return@fold AliasGone(it) } ?: sending.identity
+            val arguments = submit(identity, emailId, sending.draftsId, sending.sentId)
             val outcome = jmapClient.call(listOf(Invocation("EmailSubmission/set", arguments, "c0"))).getValue("c0")
             outcome.refusal("submission")?.let { SendResult.Rejected(it) } ?: SendResult.Sent
         }
@@ -183,6 +197,16 @@ class ComposeRepository(
         val arguments = buildJsonObject { putJsonArray("destroy") { add(JsonPrimitive(emailId)) } }
         jmapClient.callOne("Email/set", arguments)
     }
+
+    /** Identity/get lists at most 500, newest first, so an alias older than that reads as gone. */
+    private suspend fun Loaded.Ready.sendingAs(email: String): Identity? =
+        if (email.equals(identity.email, ignoreCase = true)) {
+            identity
+        } else {
+            jmapClient.callOne("Identity/get", JsonObject(emptyMap())).getValue("list").jsonArray
+                .map { it.jsonObject.toIdentity() }
+                .firstOrNull { it.email.equals(email, ignoreCase = true) }
+        }
 
     private suspend fun load(): Loaded =
         mutex.withLock {

@@ -8,6 +8,7 @@
     <string name="compose_message">Message</string>
     <string name="compose_no_identity">This account has no sending identity.</string>
     <string name="compose_no_drafts_mailbox">This account has no Drafts mailbox.</string>
+    <string name="compose_alias_gone">%1$s is disabled, so nothing can be sent from it.</string>
     <string name="compose_no_sent_mailbox">This account has no Sent mailbox.</string>
     <string name="compose_original_gone">The message you were answering no longer exists.</string>
     <string name="compose_draft_gone">This draft no longer exists.</string>

@@ -25,8 +25,11 @@ data class FakeAlias(
 private val LABEL = Regex("[a-z0-9-]{1,20}")
 private val SWITCHES = setOf("disable", "enable")
 
-/** `/corvid/aliases` behind the session gate: the list and mints any session allows, and the switches only an admin token allows. */
-class FakeAliases {
+/**
+ * `/corvid/aliases` behind the session gate: the list and mints any session allows, and the switches only an admin token allows.
+ * An enabled alias has an identity in [identities], listed first under a new id each time it is enabled; a disabled one has none, as in Stalwart.
+ */
+class FakeAliases(private val identities: MutableList<FakeIdentity>) {
     /** The only `X-Corvid-Master` value a switch accepts. */
     var masterToken: String = "master-token"
 
@@ -60,6 +63,8 @@ class FakeAliases {
 
     /** The admin header each switch carried, null where there was none. */
     val masters: MutableList<String?> = mutableListOf()
+
+    private var nextIdentityId = 1
 
     internal fun handle(
         scope: MockRequestHandleScope,
@@ -97,6 +102,7 @@ class FakeAliases {
         if (atCap) return scope.respond("", HttpStatusCode.TooManyRequests)
         val alias = FakeAlias("${label.lowercase()}.$nextTag", createdAt = "2030-01-02T00:00:00Z")
         aliases += alias
+        identities.add(0, alias.identity())
         return json(scope, HttpStatusCode.Created, alias.toJson())
     }
 
@@ -111,14 +117,21 @@ class FakeAliases {
         if (enabled && !aliases[index].enabled && atCap) return scope.respond("", HttpStatusCode.TooManyRequests)
         masters += request.headers["X-Corvid-Master"]
         if (request.headers["X-Corvid-Master"] != masterToken) return scope.respond("", HttpStatusCode.Unauthorized)
-        aliases[index] = aliases[index].copy(enabled = enabled)
+        val was = aliases[index]
+        aliases[index] = was.copy(enabled = enabled)
+        if (enabled && !was.enabled) identities.add(0, was.identity())
+        if (!enabled) identities.removeAll { it.email.equals(was.address(), ignoreCase = true) }
         return json(scope, HttpStatusCode.OK, aliases[index].toJson())
     }
+
+    private fun FakeAlias.address() = "$name@$domain"
+
+    private fun FakeAlias.identity() = FakeIdentity(id = "alias-${nextIdentityId++}", email = address())
 
     private fun FakeAlias.toJson(): JsonObject =
         buildJsonObject {
             put("name", name)
-            put("address", "$name@$domain")
+            put("address", address())
             put("label", name.substringBeforeLast('.'))
             put("enabled", enabled)
             put("createdAt", createdAt)

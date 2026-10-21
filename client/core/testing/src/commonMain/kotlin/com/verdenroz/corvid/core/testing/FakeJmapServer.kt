@@ -108,7 +108,7 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
     val passkeys = FakePasskeys()
 
     /** `/corvid/aliases` behind the session gate: the minted aliases, mints and switches. */
-    val aliases = FakeAliases()
+    val aliases = FakeAliases(identities)
 
     /** Bodies served under `/i/`, as the image proxy serves them, keyed by the path after it. */
     val proxiedImages: MutableMap<String, ByteArray> = mutableMapOf()

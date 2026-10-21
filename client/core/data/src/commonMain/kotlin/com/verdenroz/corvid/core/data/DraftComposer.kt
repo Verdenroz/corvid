@@ -39,6 +39,7 @@ fun replyDraft(
         body = "\n\n$attribution\n$quoted",
         inReplyTo = original.messageId,
         references = original.references + original.messageId,
+        from = original.arrivedVia,
     )
 }
 

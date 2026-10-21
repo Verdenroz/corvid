@@ -9,6 +9,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.time.Instant
 
 private const val BASE_URL = "http://127.0.0.1:9999"
@@ -184,5 +185,20 @@ class AliasRepositoryTest {
 
             assertEquals(AliasRefusal.Off, repository().mint("shop"))
             assertEquals(AliasRefusal.Off, repository().disable("shop.abcd2345", "master-token"))
+        }
+
+    @Test
+    fun `a minted alias has an identity, disabling drops it and enabling again gives a new one`() =
+        runTest {
+            val aliases = repository()
+            aliases.mint("shop")
+            val minted = fake.identities.single().id
+
+            aliases.disable("shop.abcd2345", "master-token")
+            assertEquals(emptyList(), fake.identities)
+
+            aliases.enable("shop.abcd2345", "master-token")
+            assertEquals(listOf("shop.abcd2345@corvid.test"), fake.identities.map { it.email })
+            assertNotEquals(minted, fake.identities.single().id)
         }
 }

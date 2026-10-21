@@ -115,7 +115,7 @@ class AttachmentsTest {
             val draft = Draft(to = listOf(EmailAddress(null, "dan@example.test")), body = "see attached", attachments = listOf(uploaded))
 
             val saved = assertIs<DraftSaveResult.Saved>(compose.save(draft, replacing = null))
-            assertEquals(SendResult.Sent, compose.send(saved.emailId))
+            assertEquals(SendResult.Sent, compose.send(saved.emailId, from = null))
 
             val sent = fake.emails.single { it.id == fake.submissions.single().emailId }
             assertEquals(listOf(FakeAttachment(uploaded.blobId, "notes.txt", "text/plain", 7)), sent.attachments)
