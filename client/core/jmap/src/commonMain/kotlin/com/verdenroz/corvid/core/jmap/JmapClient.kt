@@ -443,6 +443,7 @@ private fun parseSession(
         maxCallsInRequest = core["maxCallsInRequest"]?.jsonPrimitive?.contentOrNull?.toIntOrNull(),
         maxObjectsInGet = core["maxObjectsInGet"]?.jsonPrimitive?.contentOrNull?.toIntOrNull(),
         maxSizeUpload = core["maxSizeUpload"]?.jsonPrimitive?.contentOrNull?.toLongOrNull(),
+        accountName = ((body["accounts"] as? JsonObject)?.get(accountId) as? JsonObject)?.get("name")?.jsonPrimitive?.contentOrNull,
     )
 }
 

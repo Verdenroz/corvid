@@ -65,7 +65,7 @@ sealed interface SendResult {
 }
 
 private sealed interface Loaded {
-    data class Ready(val identity: Identity, val draftsId: String, val sentId: String) : Loaded
+    data class Ready(val identity: Identity, val ownEmails: Set<String>, val draftsId: String, val sentId: String) : Loaded
 
     data class Unavailable(val reason: SendUnavailable) : Loaded
 }
@@ -104,7 +104,7 @@ class ComposeRepository(
                 is ComposeIntent.To -> StartResult.Ready(Draft(to = listOf(EmailAddress(null, intent.address)), subject = intent.subject))
                 is ComposeIntent.Reply ->
                     withOriginal(intent.emailId) {
-                        replyDraft(it, sending.identity.email, intent.all, textResolver.resolve(replyAttribution(it, zone, clock.now())))
+                        replyDraft(it, sending.ownEmails, intent.all, textResolver.resolve(replyAttribution(it, zone, clock.now())))
                     }
                 is ComposeIntent.Draft -> loadDraft(intent.emailId)
                 is ComposeIntent.Forward ->
@@ -201,18 +201,21 @@ class ComposeRepository(
                     ),
                 ),
             )
-        val identity =
-            outcomes.getValue("c0").resultOrThrow().getValue("list").jsonArray.firstOrNull()?.jsonObject?.toIdentity()
-                ?: return Loaded.Unavailable(SendUnavailable.NoIdentity)
+        val identities = outcomes.getValue("c0").resultOrThrow().getValue("list").jsonArray.map { it.jsonObject.toIdentity() }
+        val identity = identities.mainIdentity(jmapClient.session.accountName) ?: return Loaded.Unavailable(SendUnavailable.NoIdentity)
         val roles =
             outcomes.getValue("c1").resultOrThrow().getValue("list").jsonArray
                 .map { it.jsonObject }
                 .associate { it["role"]?.jsonPrimitive?.contentOrNull to it.getValue("id").jsonPrimitive.content }
         val draftsId = roles[DRAFTS] ?: return Loaded.Unavailable(SendUnavailable.NoMailbox(DRAFTS))
         val sentId = roles[SENT] ?: return Loaded.Unavailable(SendUnavailable.NoMailbox(SENT))
-        return Loaded.Ready(identity, draftsId, sentId)
+        return Loaded.Ready(identity, identities.map { it.email }.toSet(), draftsId, sentId)
     }
 }
+
+/** The identity for the account's own address, which the session names in full; an alias is never the sender. */
+internal fun List<Identity>.mainIdentity(accountName: String?): Identity? =
+    accountName?.let { name -> firstOrNull { it.email.equals(name, ignoreCase = true) } }
 
 internal fun JsonObject.toIdentity() =
     Identity(

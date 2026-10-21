@@ -22,13 +22,13 @@ fun replyAttribution(
 
 fun replyDraft(
     original: EmailDetail,
-    ownEmail: String,
+    ownEmails: Set<String>,
     all: Boolean,
     attribution: String,
 ): Draft {
     val sender = listOfNotNull(original.from)
     val to = original.replyTo.ifEmpty { sender }
-    val skipped = (to.map { it.email } + ownEmail).map { it.lowercase() }
+    val skipped = (to.map { it.email } + ownEmails).mapTo(HashSet()) { it.lowercase() }
     val others = original.to + original.cc + sender
     val cc = if (all) others.filterNot { it.email.lowercase() in skipped }.distinctBy { it.email.lowercase() } else emptyList()
     val quoted = original.body.lines().joinToString("\n") { if (it.isEmpty()) ">" else "> $it" }

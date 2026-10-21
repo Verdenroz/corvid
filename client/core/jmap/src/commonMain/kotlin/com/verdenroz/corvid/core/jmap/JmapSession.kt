@@ -15,4 +15,5 @@ data class JmapSession(
     val maxCallsInRequest: Int?,
     val maxObjectsInGet: Int?,
     val maxSizeUpload: Long? = null,
+    val accountName: String? = null,
 )

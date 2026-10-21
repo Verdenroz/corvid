@@ -64,6 +64,7 @@ private suspend fun mailRig(): MailRig {
     val fake = FakeJmapServer()
     fake.withRoleMailboxes(INBOX, ARCHIVE)
     fake.identities += FakeIdentity(id = "i1", email = OWN)
+    fake.accountName = OWN
     val notifier = RecordingNewMailNotifier()
     val newMail = NewMail(MailboxRepository(fake.client())::inboxArrivals, notifier, KeyedTextResolver)
     return MailRig(fake, notifier, newMail)

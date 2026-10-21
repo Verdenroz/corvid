@@ -566,8 +566,8 @@ class MailboxRepository(
             created?.getValue("id")?.jsonPrimitive?.content?.also { roleIds = roleIds.orEmpty() + (ARCHIVE to it) }
         }
 
-    /** The account's first identity: who the account avatar is, and which senders are its own server. */
-    suspend fun identity(): Identity? = identities().firstOrNull()
+    /** The identity for the account's own address: who the account avatar is, and which senders are its own server. */
+    suspend fun identity(): Identity? = identities().mainIdentity(jmapClient.session.accountName)
 
     /** Everyone the newest messages name, ranked by [rankContacts], from the same fetch search completion reads. */
     suspend fun contacts(): List<Contact> = rankContacts(sample.emails(), identities().map { it.email }.toSet())

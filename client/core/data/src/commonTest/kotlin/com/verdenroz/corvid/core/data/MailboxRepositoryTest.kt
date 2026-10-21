@@ -3,6 +3,7 @@ package com.verdenroz.corvid.core.data
 import com.verdenroz.corvid.core.model.EmailSummary
 import com.verdenroz.corvid.core.model.HtmlBody
 import com.verdenroz.corvid.core.testing.FakeEmail
+import com.verdenroz.corvid.core.testing.FakeIdentity
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.FakeMailbox
 import com.verdenroz.corvid.core.testing.SENDABLE_ACCOUNT_EMAIL
@@ -358,6 +359,15 @@ class MailboxRepositoryTest {
             assertEquals(SENDABLE_ACCOUNT_EMAIL, first?.email)
             assertEquals(first, second)
             assertEquals(requests, fake.requestCount)
+        }
+
+    @Test
+    fun `the account identity is the main address even when aliases come first`() =
+        runTest {
+            val fake = FakeJmapServer().withSendableAccount()
+            fake.identities.add(0, FakeIdentity(id = "i0", email = "postmaster@example.test"))
+
+            assertEquals(SENDABLE_ACCOUNT_EMAIL, repository(fake).identity()?.email)
         }
 
     @Test
