@@ -249,6 +249,27 @@ for d in rows(sys.stdin.read()):
         print(d["id"], d["@type"], d["selector"])' "$1" <<<"$keys"
 }
 
+# The id of the first OBJECT whose FIELD equals VALUE. Fails, saying so, when none does.
+stalwart_id() {
+  local rows
+  rows="$(${STALWART_CLI:-stalwart-cli} query "$1" --json)" || return 1
+  python3 -c '
+import json, sys
+kind, field, value = sys.argv[1:]
+found = next((o["id"] for o in map(json.loads, filter(str.strip, sys.stdin)) if o.get(field) == value), None)
+if found is None:
+    sys.exit(f"no {kind} with {field} {value}")
+print(found)' "$@" <<<"$rows"
+}
+
+# The catch-all address of domain NAME, or empty when it has none. Read by get, since a query
+# carries only some fields and would report every domain as having none.
+catch_all_address() {
+  local id
+  id="$(stalwart_id Domain name "$1")" || return 1
+  ${STALWART_CLI:-stalwart-cli} get Domain "$id" --json | python3 -c 'import json, sys; print(json.load(sys.stdin).get("catchAllAddress") or "")'
+}
+
 # The DNS form of a DKIM key's public half. Only a get carries it, never a query.
 dkim_public_key() {
   local key
