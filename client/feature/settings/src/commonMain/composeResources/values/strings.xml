@@ -84,6 +84,7 @@
     <string name="approve_off">Device approval is switched off on this server.</string>
     <string name="approve_refresh">Refresh</string>
     <string name="approve_expires_in">Expires in %1$d min</string>
+    <string name="approve_request_expired">Expired</string>
     <string name="approve_enter_id">Enter a request id instead</string>
     <string name="approve_scan">Scan the QR code</string>
     <string name="approve_id">Request id</string>

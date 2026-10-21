@@ -8,6 +8,8 @@
     </plurals>
     <string name="digest_people">From people</string>
     <string name="digest_caveat">model summary, can be wrong</string>
+    <string name="digest_subject_quoted">“%1$s”</string>
+    <string name="digest_summary_spoken">%1$s. Model summary, can be wrong: %2$s</string>
     <string name="digest_lists">Lists and services</string>
     <string name="digest_more_count">+%1$d</string>
     <plurals name="digest_more">

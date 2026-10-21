@@ -27,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
@@ -61,6 +62,8 @@ import com.verdenroz.corvid.feature.digest.resources.digest_more_count
 import com.verdenroz.corvid.feature.digest.resources.digest_people
 import com.verdenroz.corvid.feature.digest.resources.digest_quiet
 import com.verdenroz.corvid.feature.digest.resources.digest_span
+import com.verdenroz.corvid.feature.digest.resources.digest_subject_quoted
+import com.verdenroz.corvid.feature.digest.resources.digest_summary_spoken
 import com.verdenroz.corvid.feature.digest.resources.digest_title
 import kotlinx.datetime.TimeZone
 import org.jetbrains.compose.resources.pluralStringResource
@@ -165,28 +168,36 @@ private fun Section(
     }
 }
 
-/** Plain `Text` with no links. Muted text is always the model's summary; a subject, the sender's own words, is in ink. */
+/**
+ * Plain `Text` with no links. Muted text is always the model's summary; a subject, the sender's own words, is in ink and
+ * in quotes, and a screen reader hears a summary named as one.
+ */
 @Composable
 private fun Person(
     item: DigestItem,
     onOpen: () -> Unit,
 ) {
     val colors = CorvidTheme.colors
+    val summary = item.summary
+    val subject = stringResource(Res.string.digest_subject_quoted, item.subject)
     val paragraph =
         buildAnnotatedString {
             withStyle(SpanStyle(color = colors.ink, fontWeight = FontWeight.SemiBold)) { append(item.displayName) }
             append(' ')
-            val summary = item.summary
-            if (summary != null) append(summary) else withStyle(SpanStyle(color = colors.ink)) { append(item.subject) }
+            if (summary != null) append(summary) else withStyle(SpanStyle(color = colors.ink)) { append(subject) }
         }
+    val spoken = summary?.let { stringResource(Res.string.digest_summary_spoken, item.displayName, it) }
     Text(
         paragraph,
         style = CorvidTheme.type.body,
         color = colors.inkMuted,
         modifier =
-            Modifier.widthIn(
-                max = COLUMN_WIDTH,
-            ).fillMaxWidth().clickable(role = Role.Button, onClick = onOpen).padding(vertical = 10.dp),
+            Modifier
+                .widthIn(max = COLUMN_WIDTH)
+                .fillMaxWidth()
+                .clickable(role = Role.Button, onClick = onOpen)
+                .semantics { spoken?.let { contentDescription = it } }
+                .padding(vertical = 10.dp),
     )
 }
 
@@ -200,9 +211,11 @@ private fun Listed(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         modifier =
-            Modifier.widthIn(
-                max = COLUMN_WIDTH,
-            ).fillMaxWidth().heightIn(min = 44.dp).clickable(role = Role.Button, onClick = onOpen),
+            Modifier
+                .widthIn(max = COLUMN_WIDTH)
+                .fillMaxWidth()
+                .heightIn(min = 44.dp)
+                .clickable(role = Role.Button, onClick = onOpen),
     ) {
         InitialsTile(row.item.displayName, 22.dp)
         Text(

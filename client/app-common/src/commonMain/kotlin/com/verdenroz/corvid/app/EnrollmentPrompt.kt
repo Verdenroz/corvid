@@ -13,7 +13,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.verdenroz.corvid.app.shell.countdown
-import com.verdenroz.corvid.app.shell.rememberRemaining
 import com.verdenroz.corvid.appcommon.resources.Res
 import com.verdenroz.corvid.appcommon.resources.enroll_ask_again
 import com.verdenroz.corvid.appcommon.resources.enroll_code
@@ -34,6 +33,7 @@ import com.verdenroz.corvid.core.keyring.approvalLink
 import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.StatePane
 import com.verdenroz.corvid.core.ui.StatusLine
+import com.verdenroz.corvid.core.ui.rememberRemaining
 import org.jetbrains.compose.resources.stringResource
 
 /**

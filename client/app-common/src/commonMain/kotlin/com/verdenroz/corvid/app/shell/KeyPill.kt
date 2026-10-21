@@ -13,7 +13,6 @@ import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,25 +31,9 @@ import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.designsystem.focusRing
 import com.verdenroz.corvid.core.ui.provenance.KeyRing
-import kotlinx.coroutines.delay
+import com.verdenroz.corvid.core.ui.rememberRemaining
 import org.jetbrains.compose.resources.stringResource
-import kotlin.time.Clock
 import kotlin.time.Duration
-import kotlin.time.Duration.Companion.seconds
-import kotlin.time.Instant
-
-/** What is left of the idle window, ticking once a second; null while no deadline is set. */
-@Composable
-internal fun rememberRemaining(locksAt: Instant?): Duration? {
-    val remaining by produceState<Duration?>(null, locksAt) {
-        while (locksAt != null) {
-            value = (locksAt - Clock.System.now()).coerceAtLeast(Duration.ZERO)
-            delay(1.seconds)
-        }
-        value = null
-    }
-    return remaining
-}
 
 @Composable
 private fun KeyState.remaining(): Duration? = rememberRemaining(locksAt.collectAsState().value)
