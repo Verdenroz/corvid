@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
@@ -250,6 +251,26 @@ class LedgerViewModelTest {
             vm.loadMore()
             val whole = vm.state.first { it is LedgerUiState.Loaded && it.conversations.size == EMAIL_COUNT } as LedgerUiState.Loaded
             assertNull(whole.moreFailed)
+        }
+
+    @Test
+    fun `a refresh that fails keeps the rows already loaded and says so`() =
+        runViewModelTest {
+            val fake = FakeJmapServer()
+            fake.mailboxes += FakeMailbox(id = "inbox", name = "Inbox", role = "inbox")
+            fake.emails += FakeEmail("a", "a", setOf("inbox"), "subject", "a@x.test", "2024-01-01T00:00:00Z")
+            val vm = track(LedgerViewModel(repository(fake), LedgerTab.Inbox))
+            vm.state.first { it is LedgerUiState.Loaded }
+
+            fake.apiProblem = "urn:ietf:params:jmap:error:limit"
+            vm.refresh()?.join()
+            val kept = vm.state.value as LedgerUiState.Loaded
+            assertEquals(listOf("a"), kept.conversations.map { it.latest.id })
+            assertNotNull(kept.refreshFailed)
+
+            fake.apiProblem = null
+            vm.refresh()?.join()
+            assertNull((vm.state.value as LedgerUiState.Loaded).refreshFailed)
         }
 
     @Test

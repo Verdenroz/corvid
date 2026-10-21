@@ -26,6 +26,7 @@
     <string name="ledger_empty_sent">Nothing sent from here yet.</string>
     <string name="ledger_empty_drafts">No drafts.</string>
     <string name="ledger_more_failed">Older mail not loaded: %1$s</string>
+    <string name="ledger_refresh_failed">List not refreshed: %1$s</string>
     <string name="ledger_state_unread">Unread</string>
     <string name="ledger_state_starred">Starred</string>
     <string name="ledger_state_suspect">Failed authentication</string>

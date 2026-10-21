@@ -9,6 +9,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
@@ -25,12 +28,18 @@ fun DiscardQuestion(
     onCancel: () -> Unit,
     confirmLabel: String = stringResource(Res.string.discard),
     cancelLabel: String = stringResource(Res.string.keep_editing),
+    confirmEnabled: Boolean = true,
 ) {
     val colors = CorvidTheme.colors
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.fillMaxWidth().background(colors.dangerSoft).padding(horizontal = 16.dp),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(colors.dangerSoft)
+                .padding(horizontal = 16.dp)
+                .semantics { liveRegion = LiveRegionMode.Polite },
     ) {
         Text(
             question,
@@ -38,7 +47,7 @@ fun DiscardQuestion(
             color = colors.onDangerSoft,
             modifier = Modifier.weight(1f).padding(vertical = 8.dp),
         )
-        PillButton(onConfirm, height = 30.dp, borderColor = colors.danger) {
+        PillButton(onConfirm, height = 30.dp, enabled = confirmEnabled, borderColor = colors.danger) {
             Text(confirmLabel, style = CorvidTheme.type.action, fontWeight = FontWeight.SemiBold, color = colors.danger)
         }
         PillButton(cancelLabel, null, onCancel, height = 30.dp)

@@ -14,8 +14,8 @@ import com.verdenroz.corvid.core.designsystem.CorvidTheme
 fun StatusLine(
     text: String,
     failed: Boolean,
-    style: TextStyle = CorvidTheme.type.body,
     modifier: Modifier = Modifier,
+    style: TextStyle = CorvidTheme.type.body,
 ) {
     val colors = CorvidTheme.colors
     Text(

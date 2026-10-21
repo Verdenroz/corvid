@@ -100,13 +100,14 @@ fun FiltersScreen(
                     )
                 }
                 if (draft == null) {
-                    current.confirmingDelete?.let { index -> current.rules.getOrNull(index) }?.let { rule ->
+                    current.confirmingDelete?.takeIf { it in current.rules }?.let { rule ->
                         DiscardQuestion(
                             stringResource(Res.string.filters_delete_question, rule.name),
                             viewModel::confirmDelete,
                             viewModel::keepRule,
                             confirmLabel = stringResource(Res.string.filters_delete),
                             cancelLabel = stringResource(Res.string.filters_keep),
+                            confirmEnabled = current.save !is SaveStatus.Saving,
                         )
                     }
                     RuleList(

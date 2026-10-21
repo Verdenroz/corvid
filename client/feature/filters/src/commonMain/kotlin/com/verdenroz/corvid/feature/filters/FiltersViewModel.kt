@@ -44,7 +44,10 @@ class FiltersViewModel(
     }
 
     /** A null [index] starts a new rule. */
-    fun startEdit(index: Int?) = update { it.copy(editing = RuleDraft(index, index?.let { i -> it.rules[i] } ?: FilterRule.blank())) }
+    fun startEdit(index: Int?) =
+        update {
+            it.copy(editing = RuleDraft(index, index?.let { i -> it.rules[i] } ?: FilterRule.blank()), confirmingDelete = null)
+        }
 
     fun changeDraft(rule: FilterRule) = update { it.copy(editing = it.editing?.copy(rule = rule)) }
 
@@ -76,17 +79,27 @@ class FiltersViewModel(
     }
 
     /** Deleting saves to the server at once with no undo, so it asks first; [confirmDelete] does it. */
-    fun delete(index: Int) = update { if (it.save is SaveStatus.Saving) it else it.copy(confirmingDelete = index) }
+    fun delete(index: Int) = update { if (it.save is SaveStatus.Saving) it else it.copy(confirmingDelete = it.rules[index]) }
 
+    /** Does nothing while a save runs: the question stays open with its Delete disabled. */
     fun confirmDelete() {
-        val index = (_state.value as? FiltersUiState.Ready)?.confirmingDelete ?: return
+        val ready = _state.value as? FiltersUiState.Ready ?: return
+        val asked = ready.confirmingDelete ?: return
+        if (ready.save is SaveStatus.Saving) return
         keepRule()
-        edit { rules -> rules.removedAt(index) }
+        persist(ready.rules - asked, replaceForeign = false)
     }
 
     fun keepRule() = update { it.copy(confirmingDelete = null) }
 
-    fun toggle(index: Int) = edit { rules -> rules.replaced(index, rules[index].copy(enabled = !rules[index].enabled)) }
+    fun toggle(index: Int) {
+        val ready = _state.value as? FiltersUiState.Ready ?: return
+        if (ready.save is SaveStatus.Saving) return
+        val rule = ready.rules[index]
+        val toggled = rule.copy(enabled = !rule.enabled)
+        if (ready.confirmingDelete == rule) update { it.copy(confirmingDelete = toggled) }
+        persist(ready.rules.replaced(index, toggled), replaceForeign = false)
+    }
 
     fun move(
         index: Int,

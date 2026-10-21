@@ -32,6 +32,7 @@ import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.designsystem.focusRing
 import com.verdenroz.corvid.core.ui.provenance.KeyRing
 import com.verdenroz.corvid.core.ui.rememberRemaining
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Duration
 
@@ -54,7 +55,9 @@ internal fun KeyPill(key: KeyState) {
 @Composable
 internal fun KeyRingButton(key: KeyState) {
     val remaining = key.remaining() ?: return
-    val status = stringResource(Res.string.key_status_spoken, key.host, countdown(remaining))
+    // Whole minutes, so the description holds still while TalkBack has the ring focused.
+    val minutes = remaining.inWholeMinutes.toInt() + 1
+    val status = pluralStringResource(Res.plurals.key_status_spoken, minutes, key.host, minutes)
     Box(
         contentAlignment = Alignment.Center,
         modifier =

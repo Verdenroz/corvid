@@ -23,7 +23,7 @@ sealed interface FiltersUiState {
         val save: SaveStatus = SaveStatus.Idle,
         val suggestions: List<RuleSuggestion> = emptyList(),
         val confirmingSuggestion: RuleSuggestion? = null,
-        val confirmingDelete: Int? = null,
+        val confirmingDelete: FilterRule? = null,
     ) : FiltersUiState
 }
 

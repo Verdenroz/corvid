@@ -124,7 +124,7 @@ private fun SearchHints(modifier: Modifier = Modifier) {
             verticalArrangement = Arrangement.spacedBy(6.dp),
             modifier = Modifier.widthIn(max = 520.dp),
         ) {
-            // Unbordered, so the examples read as text to copy rather than chips to tap.
+            // Unbordered, so the examples read as text to type rather than chips to tap.
             stringArrayResource(Res.array.search_hint_examples).forEach { example ->
                 Text(example, style = CorvidTheme.type.chip, color = colors.inkMuted)
             }

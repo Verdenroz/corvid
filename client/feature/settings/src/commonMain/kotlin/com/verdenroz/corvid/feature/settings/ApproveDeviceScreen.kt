@@ -63,6 +63,8 @@ fun ApproveDeviceScreen(
     val state by viewModel.state.collectAsState()
     val scan = rememberQrScanLauncher(viewModel::scanned)
     val gutter = CorvidSpacing.gutter(LocalWideLayout.current)
+    val picked = (state.pending as? PendingList.Listed)?.requests?.find { it.id == state.id }
+    val canApprove = state.canApprove && rememberRemaining(picked?.expiresAt) != Duration.ZERO
 
     Column(modifier = Modifier.fillMaxSize().background(CorvidTheme.colors.surface)) {
         PageHeader(stringResource(Res.string.approve_title), stringResource(Res.string.settings_back), onBack)
@@ -84,9 +86,9 @@ fun ApproveDeviceScreen(
                     stringResource(Res.string.approve_code),
                     Modifier.fillMaxWidth(),
                     KeyboardOptions(keyboardType = KeyboardType.Number),
-                    onSubmit = { if (state.canApprove) viewModel.approve() },
+                    onSubmit = { if (canApprove) viewModel.approve() },
                 )
-                PrimaryButton(stringResource(Res.string.approve_action), viewModel::approve, enabled = state.canApprove)
+                PrimaryButton(stringResource(Res.string.approve_action), viewModel::approve, enabled = canApprove)
                 StepText(state.step)
             }
         }
@@ -122,15 +124,16 @@ private fun RequestRow(
     val colors = CorvidTheme.colors
     val remaining = rememberRemaining(request.expiresAt) ?: Duration.ZERO
     val expired = remaining == Duration.ZERO
-    val ink = if (selected) colors.onAccentSoft else colors.ink
-    val meta = if (selected) colors.onAccentSoft else colors.inkMuted
+    val highlighted = selected && !expired
+    val ink = if (highlighted) colors.onAccentSoft else colors.ink
+    val meta = if (highlighted) colors.onAccentSoft else colors.inkMuted
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .clip(CorvidShape.pill)
-                .then(if (selected) Modifier.background(colors.accentSoft) else Modifier)
-                .selectable(selected = selected, enabled = !expired, role = Role.RadioButton, onClick = onClick)
+                .then(if (highlighted) Modifier.background(colors.accentSoft) else Modifier)
+                .selectable(selected = highlighted, enabled = !expired, role = Role.RadioButton, onClick = onClick)
                 .padding(horizontal = 16.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {

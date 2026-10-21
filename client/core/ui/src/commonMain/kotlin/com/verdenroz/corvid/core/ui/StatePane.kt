@@ -22,12 +22,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.CorvidMark
 import com.verdenroz.corvid.core.designsystem.component.QuietLink
@@ -71,7 +72,12 @@ fun StatePane(
         Column(Modifier.widthIn(max = 380.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             CorvidMark(width = 48.dp)
             Text(headline, style = CorvidTheme.type.display, color = headlineColor, modifier = Modifier.semantics { heading() })
-            Box(Modifier.width(EYE_LINE_WIDTH * eyeLine.value).height(3.dp).background(colors.accent, CorvidShape.pill))
+            Box(
+                Modifier.width(EYE_LINE_WIDTH).height(3.dp).drawBehind {
+                    val grown = size.copy(width = size.width * eyeLine.value)
+                    drawRoundRect(colors.accent, size = grown, cornerRadius = CornerRadius(size.height / 2))
+                },
+            )
             detail?.let { Text(it, style = CorvidTheme.type.body, color = colors.inkMuted) }
             if (facts.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {

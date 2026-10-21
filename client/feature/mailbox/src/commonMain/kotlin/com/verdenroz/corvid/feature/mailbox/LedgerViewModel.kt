@@ -51,6 +51,7 @@ class LedgerViewModel(
     private var conversations: List<Conversation> = emptyList()
     private var canLoadMore = false
     private var moreFailed: UiText? = null
+    private var refreshFailed: UiText? = null
     private var hidden: Set<String> = emptySet()
     private var settled: Set<String> = emptySet()
     private var paging: Job? = null
@@ -87,7 +88,14 @@ class LedgerViewModel(
     }
 
     /** A list whose mailbox did not exist yet looks for it again, as archiving makes one on first use; a failed one tries again. */
-    fun refresh(): Job? = if (_state.value is LedgerUiState.Loading) null else reload()
+    fun refresh(): Job? {
+        if (_state.value is LedgerUiState.Loading) return null
+        if (refreshFailed != null && _state.value is LedgerUiState.Loaded) {
+            refreshFailed = null
+            publish()
+        }
+        return reload()
+    }
 
     fun retry() {
         _state.value = LedgerUiState.Loading
@@ -110,7 +118,7 @@ class LedgerViewModel(
     /** One refetch from the top at a time: a newer one cancels the one in flight, whose answer it would supersede. */
     private fun reload(): Job {
         reload?.cancel()
-        return viewModelScope.launch { if (filter == null) start() else restartFromTop() }.also { reload = it }
+        return viewModelScope.launch { if (filter == null) start() else loadPage(anchor = null) }.also { reload = it }
     }
 
     private fun apply(patch: KeywordPatch) {
@@ -132,7 +140,8 @@ class LedgerViewModel(
     }
 
     private fun publish() {
-        _state.value = LedgerUiState.Loaded(conversations.filter { it.emailIds.none(hidden::contains) }, canLoadMore, moreFailed)
+        _state.value =
+            LedgerUiState.Loaded(conversations.filter { it.emailIds.none(hidden::contains) }, canLoadMore, moreFailed, refreshFailed)
     }
 
     private suspend fun start() {
@@ -168,16 +177,17 @@ class LedgerViewModel(
         val current = filter ?: return
         try {
             when (val page = repository.page(current, anchor)) {
-                is EmailPage.AnchorNotFound -> restartFromTop()
+                is EmailPage.AnchorNotFound -> loadPage(anchor = null)
                 is EmailPage.Found -> {
                     val staleAnchor = anchor != null && queryState != null && page.queryState != queryState
                     if (staleAnchor) {
-                        restartFromTop()
+                        loadPage(anchor = null)
                         return
                     }
                     conversations = if (anchor == null) page.conversations else conversations + page.conversations
                     moreFailed = null
                     if (anchor == null) {
+                        refreshFailed = null
                         hidden = hidden - settled
                         settled = emptySet()
                     }
@@ -189,18 +199,12 @@ class LedgerViewModel(
                 }
             }
         } catch (e: JmapException) {
-            if (anchor != null && _state.value is LedgerUiState.Loaded) {
-                moreFailed = e.userMessage()
+            if (_state.value is LedgerUiState.Loaded && conversations.isNotEmpty()) {
+                if (anchor == null) refreshFailed = e.userMessage() else moreFailed = e.userMessage()
                 publish()
             } else {
                 _state.value = LedgerUiState.Failed(e.userMessage())
             }
         }
-    }
-
-    private suspend fun restartFromTop() {
-        conversations = emptyList()
-        queryState = null
-        loadPage(anchor = null)
     }
 }

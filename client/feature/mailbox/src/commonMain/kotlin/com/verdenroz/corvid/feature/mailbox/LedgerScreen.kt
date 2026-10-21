@@ -65,6 +65,7 @@ import com.verdenroz.corvid.feature.mailbox.resources.ledger_empty_sent
 import com.verdenroz.corvid.feature.mailbox.resources.ledger_empty_starred
 import com.verdenroz.corvid.feature.mailbox.resources.ledger_empty_trash
 import com.verdenroz.corvid.feature.mailbox.resources.ledger_more_failed
+import com.verdenroz.corvid.feature.mailbox.resources.ledger_refresh_failed
 import com.verdenroz.corvid.feature.mailbox.resources.selection_all
 import com.verdenroz.corvid.feature.mailbox.resources.selection_clear
 import com.verdenroz.corvid.feature.mailbox.resources.selection_count
@@ -244,6 +245,7 @@ internal fun LedgerContent(
                             menu,
                             onAct,
                             viewModel::loadMore,
+                            { viewModel.refresh() },
                             overnight,
                         )
                     }
@@ -302,6 +304,7 @@ private fun Ledger(
     menu: MoveMenu,
     onAct: (Act, ActionTarget) -> Unit,
     onLoadMore: () -> Unit,
+    onRefresh: () -> Unit,
     overnight: OvernightOffer?,
 ) {
     val conversations = state.conversations
@@ -318,6 +321,15 @@ private fun Ledger(
     val onRowAct = remember(onAct) { { act: Act, row: Conversation -> onAct(act, listOf(row).target()) } }
     val bottom = CorvidFloating.listClearance(noticeOverWrite = noticeShown && !wide)
     LazyColumn(state = listState, contentPadding = PaddingValues(bottom = bottom), modifier = Modifier.fillMaxSize()) {
+        state.refreshFailed?.let { reason ->
+            item(key = "refresh-failed") {
+                FailedLine(
+                    stringResource(Res.string.ledger_refresh_failed, reason.asString()),
+                    onRefresh,
+                    Modifier.padding(horizontal = CorvidSpacing.gutter(wide), vertical = 8.dp),
+                )
+            }
+        }
         overnight?.let { offer -> item(key = "overnight") { OvernightBlock(offer) } }
         days.forEach { day ->
             stickyHeader(key = day.date.toString()) { DayHeader(day, wide) }

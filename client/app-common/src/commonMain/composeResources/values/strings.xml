@@ -42,7 +42,10 @@
     <string name="app_update_corrupt">The download did not match what the server lists. Nothing was installed.</string>
     <string name="app_update_no_build">This server has no build for this device.</string>
     <string name="key_status">· key held · locks in %1$s</string>
-    <string name="key_status_spoken">%1$s, key held, locks in %2$s</string>
+    <plurals name="key_status_spoken">
+        <item quantity="one">%1$s, key held, locks within %2$d minute</item>
+        <item quantity="other">%1$s, key held, locks within %2$d minutes</item>
+    </plurals>
     <string name="key_countdown">%1$s:%2$s</string>
     <string name="key_lock_now">Lock now</string>
     <string name="tab_inbox">Inbox</string>
