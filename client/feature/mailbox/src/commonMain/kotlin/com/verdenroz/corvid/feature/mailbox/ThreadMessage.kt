@@ -54,6 +54,7 @@ import com.verdenroz.corvid.feature.mailbox.resources.mailbox_reply
 import com.verdenroz.corvid.feature.mailbox.resources.mailbox_reply_all
 import com.verdenroz.corvid.feature.mailbox.resources.reader_cc
 import com.verdenroz.corvid.feature.mailbox.resources.reader_to
+import com.verdenroz.corvid.feature.mailbox.resources.reader_via
 import kotlinx.datetime.TimeZone
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -285,6 +286,15 @@ private fun SenderLine(
             }
             RecipientLine(Res.string.reader_to, email.to)
             RecipientLine(Res.string.reader_cc, email.cc)
+            email.arrivedVia?.let {
+                Text(
+                    stringResource(Res.string.reader_via, it),
+                    style = CorvidTheme.type.meta,
+                    color = colors.inkMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         Text(stamp(email.receivedAt, zone, Clock.System.now()).asString(), style = CorvidTheme.type.meta, color = colors.inkMuted)
         ActionIcon(

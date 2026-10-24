@@ -81,7 +81,8 @@ internal fun sidebarPlace(
 ): SidebarPlace =
     when {
         top == Route.Filters -> SidebarPlace.Filters
-        top == Route.Settings || top == Route.Notices || top == Route.ApproveDevice || top == Route.Passkeys -> SidebarPlace.Settings
+        top == Route.Settings || top == Route.Notices || top == Route.ApproveDevice || top == Route.Passkeys || top == Route.Aliases ->
+            SidebarPlace.Settings
         searching -> SidebarPlace.Search
         else -> SidebarPlace.Tab(root)
     }

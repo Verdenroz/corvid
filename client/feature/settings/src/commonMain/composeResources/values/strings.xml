@@ -8,6 +8,8 @@
     <string name="settings_server">Server</string>
     <string name="settings_passkeys_row">Passkeys</string>
     <string name="settings_passkeys_detail">The passkeys that sign in to this account, and adding or removing one.</string>
+    <string name="settings_aliases_row">Aliases</string>
+    <string name="settings_aliases_detail">Addresses that deliver here, one for each site you give an address to.</string>
     <string name="passkeys_title">Passkeys</string>
     <string name="passkeys_detail">These passkeys sign in to your mail. Changing them asks for a key that approves devices.</string>
     <string name="passkeys_loading">Loading.</string>

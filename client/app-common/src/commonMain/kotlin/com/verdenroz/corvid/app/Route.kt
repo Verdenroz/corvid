@@ -42,6 +42,9 @@ sealed interface Route {
     @Serializable
     data object Passkeys : Route
 
+    @Serializable
+    data object Aliases : Route
+
     /** The card for one sender; a side sheet when wide, a page when narrow. */
     @Serializable
     data class Sender(val address: String) : Route

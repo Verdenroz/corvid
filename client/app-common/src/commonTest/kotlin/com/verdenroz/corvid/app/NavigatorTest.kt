@@ -145,6 +145,7 @@ class NavigatorTest {
     @Test
     fun `the sidebar marks the page at its foot, and the tab underneath anything else`() {
         assertEquals(SidebarPlace.Settings, sidebarPlace(HomeTab.Inbox, Route.Notices, searching = false))
+        assertEquals(SidebarPlace.Settings, sidebarPlace(HomeTab.Inbox, Route.Aliases, searching = false))
         assertEquals(SidebarPlace.Filters, sidebarPlace(HomeTab.Inbox, Route.Filters, searching = false))
         assertEquals(SidebarPlace.Tab(HomeTab.Junk), sidebarPlace(HomeTab.Junk, Route.Reader("m1"), searching = false))
     }

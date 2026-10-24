@@ -51,6 +51,7 @@ kotlin {
             implementation(projects.feature.filters)
             implementation(projects.feature.digest)
             implementation(projects.feature.settings)
+            implementation(projects.feature.aliases)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.koin.core)

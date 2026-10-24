@@ -55,12 +55,15 @@ const val ARCHIVE = "archive"
 const val JUNK = "junk"
 private val MAILBOX_PROPERTIES = listOf("id", "name", "role", "parentId", "totalEmails", "unreadEmails")
 private const val MAX_BODY_VALUE_BYTES = 262_144
+
+// Stalwart prepends its own Delivered-To, so only the first is the server's; a later one came with the message.
+private const val DELIVERED_TO = "header:Delivered-To:asText:all"
 internal val EMAIL_PROPERTIES =
     listOf("id", "threadId", "subject", "from", "receivedAt", "keywords", "preview", "hasAttachment") + PROVENANCE_PROPERTIES
 private val EMAIL_DETAIL_PROPERTIES =
     listOf(
         "id", "subject", "from", "to", "cc", "replyTo", "messageId", "references", "receivedAt", "keywords", "preview",
-        "textBody", "htmlBody", "bodyValues", "mailboxIds", "attachments",
+        "textBody", "htmlBody", "bodyValues", "mailboxIds", "attachments", DELIVERED_TO,
     ) + PROVENANCE_PROPERTIES
 
 /** What a list shows: one mailbox, every starred message wherever it is filed, or every message matching a text search. */
@@ -334,7 +337,9 @@ class MailboxRepository(
         val thread = outcomes.thread.resultOrThrow().getValue("list").jsonArray.single().jsonObject
         val order = thread.idList("emailIds")
         val domain = ownDomain()
-        val messages = outcomes.messages.resultOrThrow().getValue("list").jsonArray.map { it.jsonObject.toEmailDetail(domain) }
+        val list = outcomes.messages.resultOrThrow().getValue("list").jsonArray.map { it.jsonObject }
+        val aliases = aliasEmails(list)
+        val messages = list.map { it.toEmailDetail(domain, aliases) }
         return ThreadLookup.Found(thread.getValue("id").jsonPrimitive.content, messages.sortedBy { order.indexOf(it.id) })
     }
 
@@ -349,7 +354,8 @@ class MailboxRepository(
             }
         val result = jmapClient.callOne("Email/get", arguments)
         if (result.getValue("notFound").jsonArray.isNotEmpty()) return EmailLookup.NotFound
-        return EmailLookup.Found(result.getValue("list").jsonArray.first().jsonObject.toEmailDetail(ownDomain()))
+        val email = result.getValue("list").jsonArray.first().jsonObject
+        return EmailLookup.Found(email.toEmailDetail(ownDomain(), aliasEmails(listOf(email))))
     }
 
     /** One message's keywords alone; null when it is gone. */
@@ -586,6 +592,20 @@ class MailboxRepository(
 
     internal suspend fun ownDomain(): String? = identity()?.email?.substringAfterLast('@')
 
+    /**
+     * Every identity's address but the main one, in lower case; none while the main one is unknown.
+     * An alias minted or enabled since the identities were fetched has an identity only the server
+     * knows, so a Delivered-To of [emails] that names no known address refetches them once.
+     */
+    private suspend fun aliasEmails(emails: List<JsonObject>): Set<String> {
+        val cached = identities()
+        val known = cached.map { it.email.lowercase() }.toSet()
+        val unknown = emails.any { email -> email.texts(DELIVERED_TO).firstOrNull()?.lowercase()?.let { it !in known } == true }
+        val all = if (unknown) identityLock.withLock { fetchIdentities().also { identities = it } } else cached
+        val main = all.mainIdentity(jmapClient.session.accountName) ?: return emptySet()
+        return all.map { it.email.lowercase() }.toSet() - main.email.lowercase()
+    }
+
     private suspend fun fetchIdentities(): List<Identity> =
         jmapClient.callOne("Identity/get", JsonObject(emptyMap())).getValue("list").jsonArray.map { it.jsonObject.toIdentity() }
 }
@@ -645,7 +665,10 @@ private fun List<Mailbox>.roleIds(): Map<String, String> = mapNotNull { box -> b
  * HTML-only message arrives here as one text/html part, flattened for the plain
  * body and kept as-is in [EmailDetail.html] for the reader to render.
  */
-private fun JsonObject.toEmailDetail(ownDomain: String?): EmailDetail {
+private fun JsonObject.toEmailDetail(
+    ownDomain: String?,
+    aliases: Set<String>,
+): EmailDetail {
     val bodyValues = getValue("bodyValues").jsonObject
     val parts =
         getValue("textBody").jsonArray.map { part ->
@@ -678,6 +701,7 @@ private fun JsonObject.toEmailDetail(ownDomain: String?): EmailDetail {
         mailboxIds = (get("mailboxIds") as? JsonObject)?.keys.orEmpty(),
         attachments = attachmentList(html?.html),
         inlineImages = inlineImages(html?.html),
+        arrivedVia = texts(DELIVERED_TO).firstOrNull()?.takeIf { it.lowercase() in aliases },
     )
 }
 

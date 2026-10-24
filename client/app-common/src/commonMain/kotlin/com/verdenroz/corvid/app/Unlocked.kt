@@ -406,6 +406,7 @@ private fun Page(
         is Route.Settings -> SettingsPage(scope, pages.session, navigator, models, entryKey)
         is Route.ApproveDevice -> ApproveDevicePage(scope, navigator, models, entryKey)
         is Route.Passkeys -> PasskeysPage(scope, navigator, models, entryKey)
+        is Route.Aliases -> AliasesPage(scope, navigator, models, entryKey)
         is Route.Notices -> {
             val viewModel = models.of(entryKey, NoticesViewModel::class) { NoticesViewModel(scope.get<NoticeRepository>()) }
             NoticesScreen(viewModel, onBack = navigator::back)

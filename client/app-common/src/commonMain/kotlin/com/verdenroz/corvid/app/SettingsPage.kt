@@ -7,6 +7,7 @@ import androidx.compose.runtime.remember
 import com.verdenroz.corvid.core.auth.AuthState
 import com.verdenroz.corvid.core.auth.PasskeyRepository
 import com.verdenroz.corvid.core.auth.TokenSource
+import com.verdenroz.corvid.core.data.AliasRepository
 import com.verdenroz.corvid.core.data.DigestRepository
 import com.verdenroz.corvid.core.data.UpdateRepository
 import com.verdenroz.corvid.core.domain.ApproveWithKey
@@ -16,6 +17,8 @@ import com.verdenroz.corvid.core.keyring.DeviceApprovalRepository
 import com.verdenroz.corvid.core.keyring.PushEndpointRepository
 import com.verdenroz.corvid.core.model.Identity
 import com.verdenroz.corvid.core.prefs.DevicePreferences
+import com.verdenroz.corvid.feature.aliases.AliasesScreen
+import com.verdenroz.corvid.feature.aliases.AliasesViewModel
 import com.verdenroz.corvid.feature.settings.AboutViewModel
 import com.verdenroz.corvid.feature.settings.AccountFacts
 import com.verdenroz.corvid.feature.settings.ApproveDeviceScreen
@@ -88,6 +91,7 @@ internal fun SettingsPage(
         onOpenDigest = { navigator.push(Route.Digest()) }.takeIf { digestOffered },
         onOpenApproveDevice = { navigator.push(Route.ApproveDevice) },
         onOpenPasskeys = { navigator.push(Route.Passkeys) },
+        onOpenAliases = { navigator.push(Route.Aliases) },
     )
 }
 
@@ -120,4 +124,16 @@ internal fun PasskeysPage(
             PasskeysViewModel(scope.get<PasskeyRepository>(), approveWithKey, enrollPasskey, server)
         }
     PasskeysScreen(viewModel, onBack = navigator::back)
+}
+
+@Composable
+internal fun AliasesPage(
+    scope: Scope,
+    navigator: Navigator,
+    models: EntryModels,
+    entryKey: String,
+    approveWithKey: ApproveWithKey = koinInject(),
+) {
+    val viewModel = models.of(entryKey, AliasesViewModel::class) { AliasesViewModel(scope.get<AliasRepository>(), approveWithKey) }
+    AliasesScreen(viewModel, onBack = navigator::back)
 }
