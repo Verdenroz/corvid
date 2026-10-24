@@ -1,10 +1,12 @@
 package com.verdenroz.corvid.feature.compose
 
+import androidx.compose.runtime.saveable.SaverScope
 import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.core.data.ComposeRepository
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.testing.FakeEmail
+import com.verdenroz.corvid.core.testing.FakeIdentity
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.KeyedTextResolver
 import com.verdenroz.corvid.core.testing.SENDABLE_ACCOUNT_EMAIL
@@ -16,6 +18,7 @@ import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.uiText
 import com.verdenroz.corvid.feature.compose.resources.Res
 import com.verdenroz.corvid.feature.compose.resources.compose_add_recipient
+import com.verdenroz.corvid.feature.compose.resources.compose_alias_gone
 import com.verdenroz.corvid.feature.compose.resources.compose_draft_gone
 import com.verdenroz.corvid.feature.compose.resources.compose_no_identity
 import com.verdenroz.corvid.feature.compose.resources.compose_not_sent
@@ -26,10 +29,13 @@ import kotlinx.coroutines.job
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
 private const val OWN = SENDABLE_ACCOUNT_EMAIL
+private const val ALIAS = "shop.abcd2345@example.test"
 
 private val ORIGINAL =
     FakeEmail(
@@ -46,6 +52,12 @@ private val ORIGINAL =
 
 class ComposeViewModelTest {
     private fun server(original: FakeEmail = ORIGINAL) = FakeJmapServer().withSendableAccount().also { it.emails += original }
+
+    /** An account with the alias [ALIAS], on which the original arrived. */
+    private fun aliasServer() =
+        server(ORIGINAL.copy(headers = mapOf("Delivered-To" to listOf(ALIAS)))).also {
+            it.identities.add(0, FakeIdentity(id = "alias-1", email = ALIAS))
+        }
 
     private suspend fun ViewModelTestScope.viewModel(
         fake: FakeJmapServer,
@@ -569,6 +581,145 @@ class ComposeViewModelTest {
             assertIs<ComposeUiState.Editing>(vm.settled())
             assertEquals(listOf("hello"), drafts(fake).map { it.body })
         }
+
+    @Test
+    fun `a reply to a message that arrived on an alias is from that alias and offers the main address`() =
+        runViewModelTest {
+            val editing = viewModel(aliasServer(), ComposeIntent.Reply("orig", all = false)).editing()
+
+            assertEquals(ALIAS, editing.form.from)
+            assertEquals(ALIAS, editing.alias)
+            assertEquals(OWN, editing.mainEmail)
+        }
+
+    @Test
+    fun `a forward of a message that arrived on an alias offers no from picker`() =
+        runViewModelTest {
+            val editing = viewModel(aliasServer(), ComposeIntent.Forward("orig")).editing()
+
+            assertNull(editing.form.from)
+            assertNull(editing.alias)
+        }
+
+    @Test
+    fun `a reply from an alias is sent under the alias identity`() =
+        runViewModelTest {
+            val fake = aliasServer()
+            val vm = viewModel(fake, ComposeIntent.Reply("orig", all = false))
+            vm.editing()
+
+            vm.send()
+
+            assertEquals(ComposeUiState.Sent, vm.settled())
+            val submission = fake.submissions.single()
+            assertEquals("alias-1", submission.identityId)
+            assertEquals(ALIAS, fake.emails.single { it.id == submission.emailId }.from)
+        }
+
+    @Test
+    fun `a reply switched back to the main address is sent from it and still offers the alias`() =
+        runViewModelTest {
+            val fake = aliasServer()
+            val vm = viewModel(fake, ComposeIntent.Reply("orig", all = false))
+            vm.editing()
+
+            vm.edit { copy(from = null) }
+            assertEquals(ALIAS, vm.editing().alias)
+            vm.send()
+
+            assertEquals(ComposeUiState.Sent, vm.settled())
+            val submission = fake.submissions.single()
+            assertEquals("i1", submission.identityId)
+            assertEquals(OWN, fake.emails.single { it.id == submission.emailId }.from)
+        }
+
+    @Test
+    fun `a reply from an alias disabled before its first save says so and keeps the text`() =
+        runViewModelTest {
+            val fake = aliasServer()
+            val vm = viewModel(fake, ComposeIntent.Reply("orig", all = false))
+            val typed = vm.editing().form
+            fake.identities.removeAll { it.email == ALIAS }
+
+            vm.send()
+
+            val editing = assertIs<ComposeUiState.Editing>(vm.settled())
+            assertEquals(uiText(Res.string.compose_not_sent, uiText(Res.string.compose_alias_gone, ALIAS)), editing.error)
+            assertEquals(typed, editing.form)
+            assertTrue(fake.submissions.isEmpty())
+        }
+
+    @Test
+    fun `a saved reply from an alias disabled before sending says so and keeps the draft`() =
+        runViewModelTest {
+            val fake = aliasServer()
+            val vm = viewModel(fake, ComposeIntent.Reply("orig", all = false))
+            vm.editing()
+            vm.edit { copy(body = "on my way\n" + body) }
+            vm.idle()
+            val draftId = vm.editing().draftId
+            fake.identities.removeAll { it.email == ALIAS }
+
+            vm.send()
+
+            val editing = assertIs<ComposeUiState.Editing>(vm.settled())
+            assertEquals(uiText(Res.string.compose_not_sent, uiText(Res.string.compose_alias_gone, ALIAS)), editing.error)
+            assertTrue(fake.submissions.isEmpty())
+            assertEquals(listOf(draftId), drafts(fake).map { it.id })
+            assertEquals(ALIAS, drafts(fake).single().from)
+        }
+
+    @Test
+    fun `restored text from an alias whose drafts are both gone still saves from that alias`() =
+        runViewModelTest {
+            val fake = aliasServer()
+            val typed = ComposeForm(to = "ada@x.test", cc = "", bcc = "", subject = "", body = "half a thought", from = ALIAS)
+            val vm = viewModel(fake, ComposeIntent.Draft("x"), restored = ComposeRestore(typed, draftId = "y"))
+
+            val editing = vm.editing()
+            assertEquals(ALIAS, editing.alias)
+            vm.idle()
+
+            assertEquals(listOf(ALIAS), drafts(fake).map { it.from })
+        }
+
+    @Test
+    fun `restored text switched to the main address whose drafts are both gone still offers the alias`() =
+        runViewModelTest {
+            val fake = aliasServer()
+            val typed = ComposeForm(to = "ada@x.test", cc = "", bcc = "", subject = "", body = "half a thought")
+            val vm = viewModel(fake, ComposeIntent.Draft("x"), restored = ComposeRestore(typed, draftId = "y", alias = ALIAS))
+
+            val editing = vm.editing()
+            assertNull(editing.form.from)
+            assertEquals(ALIAS, editing.alias)
+        }
+
+    @Test
+    fun `a reply switched to the main address still offers the alias after the screen is rebuilt`() =
+        runViewModelTest {
+            val fake = aliasServer()
+            val first = viewModel(fake, ComposeIntent.Reply("orig", all = false))
+            first.editing()
+            first.edit { copy(from = null) }
+            first.idle()
+            val saved = first.editing()
+            val restore = ComposeRestore(saved.form, saved.draftId, saved.alias)
+            val vm = viewModel(fake, ComposeIntent.Reply("orig", all = false), restored = restore)
+
+            val editing = vm.editing()
+            assertNull(editing.form.from)
+            assertEquals(ALIAS, editing.alias)
+        }
+
+    @Test
+    fun `the saved form carries the alias through a rebuilt screen`() {
+        val restore = ComposeRestore(ComposeForm("a@x.test", "", "", "Hi", "body"), draftId = "d1", alias = ALIAS)
+
+        val saved = with(ComposeRestoreSaver) { SaverScope { true }.save(restore) }
+
+        assertEquals(restore, ComposeRestoreSaver.restore(assertNotNull(saved)))
+    }
 }
 
 private fun drafts(fake: FakeJmapServer) = fake.emails.filter { "\$draft" in it.keywords }

@@ -2,6 +2,7 @@ package com.verdenroz.corvid.feature.compose
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.verdenroz.corvid.core.data.AliasGone
 import com.verdenroz.corvid.core.data.ComposeRepository
 import com.verdenroz.corvid.core.data.Contact
 import com.verdenroz.corvid.core.data.DRAFTS
@@ -24,6 +25,7 @@ import com.verdenroz.corvid.core.text.uiText
 import com.verdenroz.corvid.core.ui.launchToEnd
 import com.verdenroz.corvid.feature.compose.resources.Res
 import com.verdenroz.corvid.feature.compose.resources.compose_add_recipient
+import com.verdenroz.corvid.feature.compose.resources.compose_alias_gone
 import com.verdenroz.corvid.feature.compose.resources.compose_draft_gone
 import com.verdenroz.corvid.feature.compose.resources.compose_no_drafts_mailbox
 import com.verdenroz.corvid.feature.compose.resources.compose_no_identity
@@ -67,13 +69,17 @@ class ComposeViewModel(
             try {
                 _state.value =
                     when (val start = composeRepository.start(target)) {
-                        is StartResult.Ready ->
+                        is StartResult.Ready -> {
+                            val form = restored?.form ?: start.draft.toForm()
                             ComposeUiState.Editing(
                                 seed = start.draft,
-                                form = restored?.form ?: start.draft.toForm(),
+                                form = form,
                                 stored = start.draft.toForm(),
+                                mainEmail = start.mainEmail,
+                                alias = restored?.alias ?: form.from ?: start.draft.from,
                                 draftId = (target as? ComposeIntent.Draft)?.emailId,
                             )
+                        }
                         is StartResult.DraftGone -> restoredAsNew() ?: ComposeUiState.Failed(uiText(Res.string.compose_draft_gone))
                         is StartResult.OriginalGone -> ComposeUiState.Failed(uiText(Res.string.compose_original_gone))
                         is SendUnavailable -> ComposeUiState.Failed(start.message())
@@ -97,9 +103,18 @@ class ComposeViewModel(
 
     /** The restored text outlives a draft that was replaced or sent in the meantime; it saves as a new one. */
     private suspend fun restoredAsNew(): ComposeUiState.Editing? {
-        val form = restored?.form?.takeUnless { it.isBlank() } ?: return null
-        val seed = (composeRepository.start(intent) as? StartResult.Ready)?.draft ?: Draft()
-        return ComposeUiState.Editing(seed = seed, form = form, stored = seed.toForm())
+        val kept = restored?.takeUnless { it.form.isBlank() } ?: return null
+        val start =
+            intent.takeUnless { it is ComposeIntent.Draft }?.let { composeRepository.start(it) as? StartResult.Ready }
+                ?: composeRepository.start(ComposeIntent.New) as? StartResult.Ready
+                ?: return null
+        return ComposeUiState.Editing(
+            seed = start.draft,
+            form = kept.form,
+            stored = start.draft.toForm(),
+            mainEmail = start.mainEmail,
+            alias = kept.alias,
+        )
     }
 
     fun edit(change: ComposeForm.() -> ComposeForm) {
@@ -250,9 +265,10 @@ class ComposeViewModel(
             try {
                 persist(sending = true)?.let { return@launchToEnd fail(it) }
                 val draftId = checkNotNull((_state.value as ComposeUiState.Editing).draftId)
-                when (val result = composeRepository.send(draftId)) {
+                when (val result = composeRepository.send(draftId, draft.from)) {
                     is SendResult.Sent -> _state.value = ComposeUiState.Sent
                     is SendResult.Rejected -> fail(UiText.FromServer(result.reason))
+                    is AliasGone -> fail(result.message())
                     is SendUnavailable -> fail(result.message())
                 }
             } catch (e: JmapException) {
@@ -306,6 +322,7 @@ class ComposeViewModel(
                 null
             }
             is DraftSaveResult.Rejected -> UiText.FromServer(saved.reason)
+            is AliasGone -> saved.message()
             is SendUnavailable -> saved.message()
         }
     }
@@ -322,6 +339,8 @@ private const val SUGGESTION_LIMIT = 6
 private class Typing(val field: RecipientField, val caret: Int)
 
 private fun ComposeForm.isBlank() = listOf(to, cc, bcc, subject, body).all { it.isBlank() } && attachments.isEmpty()
+
+private fun AliasGone.message() = uiText(Res.string.compose_alias_gone, email)
 
 private fun SendUnavailable.message() =
     when (this) {
@@ -340,6 +359,7 @@ private fun Draft.toForm() =
         subject = subject,
         body = body,
         attachments = attachments,
+        from = from,
     )
 
 private fun ComposeForm.applyTo(seed: Draft) =
@@ -350,4 +370,5 @@ private fun ComposeForm.applyTo(seed: Draft) =
         subject = subject,
         body = body,
         attachments = attachments,
+        from = from,
     )

@@ -12,6 +12,7 @@ import kotlin.time.Instant
  * attachments are the files it carries, leaving out the inline images its HTML draws by `cid:`;
  * inlineImages are those, by content id in lower case, without its angle brackets.
  * arrivedVia is the alias the server's own Delivered-To names, null unless that is one of the account's current identities other than the main one.
+ * deliveredTo is that Delivered-To as the server wrote it, an identity or not.
  */
 data class EmailDetail(
     val id: String,
@@ -33,6 +34,7 @@ data class EmailDetail(
     val attachments: List<Attachment> = emptyList(),
     val inlineImages: Map<String, Attachment> = emptyMap(),
     val arrivedVia: String? = null,
+    val deliveredTo: String? = null,
 )
 
 /** [truncated] is the server's own flag, as for [EmailDetail.bodyTruncated]. */

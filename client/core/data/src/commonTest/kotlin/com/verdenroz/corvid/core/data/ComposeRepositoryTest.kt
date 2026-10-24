@@ -21,6 +21,8 @@ import kotlinx.datetime.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
@@ -54,10 +56,30 @@ private suspend fun repositories(fake: FakeJmapServer): Pair<MailboxRepository, 
 
 private suspend fun ComposeRepository.sendNew(draft: Draft): SendResult =
     when (val saved = save(draft, replacing = null)) {
-        is DraftSaveResult.Saved -> send(saved.emailId)
+        is DraftSaveResult.Saved -> send(saved.emailId, draft.from)
         is DraftSaveResult.Rejected -> SendResult.Rejected(saved.reason)
+        is AliasGone -> saved
         is SendUnavailable -> saved
     }
+
+private const val ALIAS = "shop.abcd2345@example.test"
+
+private class AliasRig(val fake: FakeJmapServer, val compose: ComposeRepository, val aliases: AliasRepository) {
+    suspend fun reply(): Draft = assertIs<StartResult.Ready>(compose.start(ComposeIntent.Reply("orig", all = false))).draft
+
+    fun aliasIdentityId(): String = fake.identities.single { it.email == ALIAS }.id
+}
+
+/** An account with a minted alias, whose message arrived on it under the Delivered-To [deliveredTo]. */
+private suspend fun aliasRig(deliveredTo: String = ALIAS): AliasRig {
+    val fake = server()
+    fake.aliases.domain = OWN.substringAfter('@')
+    val client = fake.client()
+    val aliases = AliasRepository(client)
+    assertIs<MintOutcome.Minted>(aliases.mint("shop"))
+    fake.emails.replaceAll { it.copy(headers = mapOf("Delivered-To" to listOf(deliveredTo))) }
+    return AliasRig(fake, ComposeRepository(client, MailboxRepository(client), KeyedTextResolver, TimeZone.UTC), aliases)
+}
 
 private suspend fun MailboxRepository.original(): EmailDetail = assertIs<EmailLookup.Found>(getEmail("orig")).detail
 
@@ -67,7 +89,7 @@ class ComposeRepositoryTest {
         runTest {
             val (_, compose) = repositories(server())
 
-            assertEquals(StartResult.Ready(Draft()), compose.start(ComposeIntent.New))
+            assertEquals(StartResult.Ready(Draft(), OWN), compose.start(ComposeIntent.New))
         }
 
     @Test
@@ -398,7 +420,7 @@ class ComposeRepositoryTest {
             val (_, compose) = repositories(fake)
             val saved = assertIs<DraftSaveResult.Saved>(compose.save(Draft(to = dan, body = "hello"), replacing = null))
 
-            assertEquals(SendResult.Sent, compose.send(saved.emailId))
+            assertEquals(SendResult.Sent, compose.send(saved.emailId, from = null))
 
             assertEquals(saved.emailId, fake.submissions.single().emailId)
             assertTrue(fake.emails.none { "\$draft" in it.keywords })
@@ -415,5 +437,145 @@ class ComposeRepositoryTest {
             assertIs<DraftSaveResult.Rejected>(compose.save(Draft(to = dan, body = "two"), replacing = first.emailId))
 
             assertEquals(listOf("one"), fake.emails.filter { "\$draft" in it.keywords }.map { it.body })
+        }
+
+    @Test
+    fun `a reply is from the alias the original arrived on, and from the main address otherwise`() =
+        runTest {
+            val (mailboxes, _) = repositories(server())
+            val original = mailboxes.original()
+
+            assertEquals(ALIAS, replyDraft(original.copy(arrivedVia = ALIAS), setOf(OWN), all = true, attribution = "").from)
+            assertNull(replyDraft(original, setOf(OWN), all = true, attribution = "").from)
+        }
+
+    @Test
+    fun `reply all leaves out the alias the original arrived on even before it is a known identity`() =
+        runTest {
+            val (mailboxes, _) = repositories(server())
+            val to = listOf(EmailAddress(null, ALIAS), EmailAddress(null, "bob@example.test"))
+            val original = mailboxes.original().copy(to = to, arrivedVia = ALIAS)
+
+            val reply = replyDraft(original, setOf(OWN), all = true, attribution = "")
+
+            assertEquals(listOf("bob@example.test", "carol@example.test"), reply.cc.map { it.email })
+        }
+
+    @Test
+    fun `a reply to a message that arrived on an alias is sent from that alias`() =
+        runTest {
+            val rig = aliasRig()
+            val reply = rig.reply()
+
+            assertEquals(SendResult.Sent, rig.compose.sendNew(reply))
+
+            assertEquals(ALIAS, reply.from)
+            val submission = rig.fake.submissions.single()
+            assertEquals(rig.aliasIdentityId(), submission.identityId)
+            assertEquals(ALIAS, rig.fake.emails.single { it.id == submission.emailId }.from)
+        }
+
+    @Test
+    fun `an alias named in another case than its identity still sends from it`() =
+        runTest {
+            val rig = aliasRig(deliveredTo = ALIAS.uppercase())
+
+            assertEquals(SendResult.Sent, rig.compose.sendNew(rig.reply()))
+
+            assertEquals(rig.aliasIdentityId(), rig.fake.submissions.single().identityId)
+        }
+
+    @Test
+    fun `a forward and a new message are from the main address even when the original arrived on an alias`() =
+        runTest {
+            val rig = aliasRig()
+
+            assertNull(assertIs<StartResult.Ready>(rig.compose.start(ComposeIntent.Forward("orig"))).draft.from)
+            assertNull(assertIs<StartResult.Ready>(rig.compose.start(ComposeIntent.New)).draft.from)
+        }
+
+    @Test
+    fun `a reply switched back to the main address is sent from the main identity`() =
+        runTest {
+            val rig = aliasRig()
+
+            assertEquals(SendResult.Sent, rig.compose.sendNew(rig.reply().copy(from = null)))
+
+            val submission = rig.fake.submissions.single()
+            assertEquals("i1", submission.identityId)
+            assertEquals(OWN, rig.fake.emails.single { it.id == submission.emailId }.from)
+        }
+
+    @Test
+    fun `a draft naming the main address in another case is sent from the main identity`() =
+        runTest {
+            val fake = server()
+            val (_, compose) = repositories(fake)
+
+            assertEquals(SendResult.Sent, compose.sendNew(Draft(to = dan, from = OWN.uppercase())))
+
+            assertEquals("i1", fake.submissions.single().identityId)
+        }
+
+    @Test
+    fun `a reply started after its alias was disabled is still from the alias and is refused`() =
+        runTest {
+            val rig = aliasRig()
+            assertIs<SwitchOutcome.Switched>(rig.aliases.disable("shop.abcd2345", "master-token"))
+
+            val reply = rig.reply()
+
+            assertEquals(ALIAS, reply.from)
+            assertEquals(AliasGone(ALIAS), rig.compose.sendNew(reply))
+            assertTrue(rig.fake.submissions.isEmpty())
+        }
+
+    @Test
+    fun `a reply to mail delivered to another domain or to the main address is from the main address`() =
+        runTest {
+            assertNull(aliasRig(deliveredTo = "list@lists.example.test").reply().from)
+            assertNull(aliasRig(deliveredTo = OWN.uppercase()).reply().from)
+        }
+
+    @Test
+    fun `a reply from an alias disabled since it arrived is refused and never sent from the main address`() =
+        runTest {
+            val rig = aliasRig()
+            val reply = rig.reply()
+            val saved = assertIs<DraftSaveResult.Saved>(rig.compose.save(reply, replacing = null))
+
+            assertIs<SwitchOutcome.Switched>(rig.aliases.disable("shop.abcd2345", "master-token"))
+
+            assertEquals(AliasGone(ALIAS), rig.compose.send(saved.emailId, reply.from))
+            assertEquals(AliasGone(ALIAS), rig.compose.save(reply.copy(body = "edited"), replacing = saved.emailId))
+            assertTrue(rig.fake.submissions.isEmpty())
+            assertEquals(listOf(saved.emailId), rig.fake.emails.filter { "\$draft" in it.keywords }.map { it.id })
+        }
+
+    @Test
+    fun `a reply from an alias enabled again is sent under its new identity`() =
+        runTest {
+            val rig = aliasRig()
+            val reply = rig.reply()
+            val before = rig.aliasIdentityId()
+            assertIs<SwitchOutcome.Switched>(rig.aliases.disable("shop.abcd2345", "master-token"))
+            assertIs<SwitchOutcome.Switched>(rig.aliases.enable("shop.abcd2345", "master-token"))
+
+            assertEquals(SendResult.Sent, rig.compose.sendNew(reply))
+
+            assertNotEquals(before, rig.aliasIdentityId())
+            assertEquals(rig.aliasIdentityId(), rig.fake.submissions.single().identityId)
+        }
+
+    @Test
+    fun `a saved reply from an alias reopens from that alias`() =
+        runTest {
+            val rig = aliasRig()
+            val reply = rig.reply()
+            val saved = assertIs<DraftSaveResult.Saved>(rig.compose.save(reply, replacing = null))
+
+            val reopened = assertIs<StartResult.Ready>(rig.compose.start(ComposeIntent.Draft(saved.emailId))).draft
+
+            assertEquals(reply, reopened)
         }
 }

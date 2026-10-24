@@ -28,7 +28,12 @@ fun replyDraft(
 ): Draft {
     val sender = listOfNotNull(original.from)
     val to = original.replyTo.ifEmpty { sender }
-    val skipped = (to.map { it.email } + ownEmails).mapTo(HashSet()) { it.lowercase() }
+    val skipped =
+        (
+            to.map {
+                it.email
+            } + ownEmails + listOfNotNull(original.arrivedVia, original.deliveredTo)
+        ).mapTo(HashSet()) { it.lowercase() }
     val others = original.to + original.cc + sender
     val cc = if (all) others.filterNot { it.email.lowercase() in skipped }.distinctBy { it.email.lowercase() } else emptyList()
     val quoted = original.body.lines().joinToString("\n") { if (it.isEmpty()) ">" else "> $it" }
@@ -39,6 +44,7 @@ fun replyDraft(
         body = "\n\n$attribution\n$quoted",
         inReplyTo = original.messageId,
         references = original.references + original.messageId,
+        from = original.arrivedVia,
     )
 }
 

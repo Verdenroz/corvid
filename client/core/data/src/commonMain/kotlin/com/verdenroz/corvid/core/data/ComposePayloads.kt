@@ -88,9 +88,10 @@ internal fun submit(
     }
 
 internal val DRAFT_PROPERTIES =
-    listOf("to", "cc", "bcc", "subject", "inReplyTo", "references", "keywords", "textBody", "bodyValues", "attachments")
+    listOf("from", "to", "cc", "bcc", "subject", "inReplyTo", "references", "keywords", "textBody", "bodyValues", "attachments")
 
-internal fun JsonObject.toDraft(): Draft {
+/** A draft from [mainEmail] reads back with no alias, as one made here would. */
+internal fun JsonObject.toDraft(mainEmail: String): Draft {
     val values = getValue("bodyValues").jsonObject
     val body =
         getValue("textBody").jsonArray.joinToString("\n\n") {
@@ -105,6 +106,7 @@ internal fun JsonObject.toDraft(): Draft {
         inReplyTo = idList("inReplyTo"),
         references = idList("references"),
         attachments = attachmentList(html = null),
+        from = addressList("from").firstOrNull()?.email?.takeUnless { it.equals(mainEmail, ignoreCase = true) },
     )
 }
 

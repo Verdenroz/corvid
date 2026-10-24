@@ -6,16 +6,22 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -34,8 +40,10 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.AttachmentFiles
 import com.verdenroz.corvid.core.data.fileSize
@@ -43,6 +51,7 @@ import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.component.ActionIcon
 import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
+import com.verdenroz.corvid.core.designsystem.component.PillButton
 import com.verdenroz.corvid.core.designsystem.component.PrimaryButton
 import com.verdenroz.corvid.core.designsystem.component.inlineLabel
 import com.verdenroz.corvid.core.designsystem.focusRing
@@ -62,6 +71,8 @@ import com.verdenroz.corvid.feature.compose.resources.compose_cc
 import com.verdenroz.corvid.feature.compose.resources.compose_close
 import com.verdenroz.corvid.feature.compose.resources.compose_discard_draft_question
 import com.verdenroz.corvid.feature.compose.resources.compose_discard_question
+import com.verdenroz.corvid.feature.compose.resources.compose_from
+import com.verdenroz.corvid.feature.compose.resources.compose_from_change
 import com.verdenroz.corvid.feature.compose.resources.compose_message
 import com.verdenroz.corvid.feature.compose.resources.compose_not_saved
 import com.verdenroz.corvid.feature.compose.resources.compose_retry_save
@@ -89,7 +100,7 @@ fun ComposeScreen(
     DisposableEffect(viewModel) { onDispose(viewModel::release) }
     val state by viewModel.state.collectAsState()
     (state as? ComposeUiState.Editing)?.let { editing ->
-        val current = ComposeRestore(editing.form, editing.draftId)
+        val current = ComposeRestore(editing.form, editing.draftId, editing.alias)
         if (current != restore) SideEffect { restore = current }
     }
     val close = { if (viewModel.requestClose()) onClose() }
@@ -194,6 +205,7 @@ private fun Fields(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
         }
+        state.alias?.let { alias -> From(state.form.from, state.mainEmail, alias) { onEdit { copy(from = it) } } }
         var copies by rememberSaveable { mutableStateOf(state.form.cc.isNotEmpty() || state.form.bcc.isNotEmpty()) }
         RecipientInput(
             stringResource(Res.string.compose_to),
@@ -210,6 +222,61 @@ private fun Fields(
         Field(stringResource(Res.string.compose_subject), state.form.subject) { onEdit { copy(subject = it) } }
         Attachments(state, onDetach)
         Body(state.form.body) { onEdit { copy(body = it) } }
+    }
+}
+
+/** Offers only the main address and the draft's own alias, never the account's other identities. */
+@Composable
+private fun From(
+    from: String?,
+    mainEmail: String,
+    alias: String,
+    onPick: (String?) -> Unit,
+) {
+    val colors = CorvidTheme.colors
+    var expanded by remember { mutableStateOf(false) }
+    Column(Modifier.padding(horizontal = 16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().heightIn(min = 42.dp)) {
+            Text(
+                stringResource(Res.string.compose_from),
+                style = CorvidTheme.type.name,
+                color = colors.inkMuted,
+                modifier = Modifier.width(64.dp),
+            )
+            Box(Modifier.weight(1f, fill = false)) {
+                PillButton(
+                    { expanded = true },
+                    height = 32.dp,
+                    onClickLabel = stringResource(Res.string.compose_from_change),
+                    contentPadding = PaddingValues(start = 14.dp, end = 16.dp),
+                ) {
+                    Icon(CorvidIcons.ChevronDown, contentDescription = null, tint = colors.ink, modifier = Modifier.size(16.dp))
+                    Text(
+                        from ?: mainEmail,
+                        style = CorvidTheme.type.action,
+                        fontWeight = FontWeight.Medium,
+                        color = colors.ink,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                    listOf(null, alias).forEach { option ->
+                        val chosen = option == from
+                        DropdownMenuItem(
+                            text = { Text(option ?: mainEmail, style = CorvidTheme.type.name) },
+                            trailingIcon = { if (chosen) Icon(CorvidIcons.Check, contentDescription = null, tint = colors.ink) },
+                            onClick = {
+                                expanded = false
+                                onPick(option)
+                            },
+                            modifier = Modifier.semantics { selected = chosen },
+                        )
+                    }
+                }
+            }
+        }
+        HorizontalDivider(color = colors.line)
     }
 }
 
