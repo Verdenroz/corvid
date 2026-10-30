@@ -1,0 +1,9 @@
+{
+  "binds": {
+    "client/core/html/src/commonMain/kotlin/com/verdenroz/corvid/core/html/HtmlToBlocks.kt#Flow.image": "33b46e40513d4905",
+    "client/core/html/src/commonMain/kotlin/com/verdenroz/corvid/core/html/LinkMismatch.kt#mismatchedHost": "0d7a4a8212a4ca44",
+    "corvid_rewrite::Report": "f801deab195bd24b",
+    "corvid_rewrite::Rewriter": "2e9fbf78bf8ca358"
+  },
+  "version": 2
+}
