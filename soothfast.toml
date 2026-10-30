@@ -2,3 +2,17 @@
 # which halves the merge-base rounds a gate measures.
 [gate]
 walltime = "advisory"
+
+[[project]]
+dir = "client"
+ecosystem = "gradle"
+bench_cmd = "rm -rf benchmarks/build/reports && ./gradlew :benchmarks:mainBenchmark --max-workers=2 && cp benchmarks/build/reports/benchmarks/main/*/main.json {out}"
+bench_out = "benchmarks/build/soothfast-bench.json"
+from = "jmh"
+walltime = "hard"
+
+[runner]
+labels = ["self-hosted","linux","x64","corvid"]
+
+[test]
+ci = false
