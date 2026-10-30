@@ -16,3 +16,6 @@ labels = ["self-hosted","linux","x64","corvid"]
 
 [test]
 ci = false
+
+[docs]
+package = ["corvid-rewrite"]
