@@ -1,0 +1,4 @@
+# Counters (callgrind or perf) gate; walltime is reported and never fails,
+# which halves the merge-base rounds a gate measures.
+[gate]
+walltime = "advisory"

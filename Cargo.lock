@@ -691,6 +691,7 @@ version = "0.1.0"
 dependencies = [
  "corvid-sign",
  "lol_html",
+ "soothfast",
  "url",
 ]
 
@@ -2081,6 +2082,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
 
 [[package]]
+name = "linkme"
+version = "0.3.37"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3045e122bd98aef8ec3ad58ce84f0791f64e70163d1a02710af4aa11a4d54cc5"
+dependencies = [
+ "linkme-impl",
+]
+
+[[package]]
+name = "linkme-impl"
+version = "0.3.37"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77060ebe535362c3da75682cd17b0431017b6e7c5661e714fc69a7ad017d1301"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.5",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3346,6 +3367,47 @@ checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "soothfast"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5de1c718fabdcce128e9e0a62301f9a5af8bbc63cb5a6fabf4c91225d714554b"
+dependencies = [
+ "soothfast-macros",
+ "soothfast-measure",
+ "soothfast-registry",
+]
+
+[[package]]
+name = "soothfast-macros"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fc9d7cd707672d88a124f8b131b4a1df04b8cfa2fbc8b23d41f7f1570567732d"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.5",
+]
+
+[[package]]
+name = "soothfast-measure"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "067b6cadfa304b9c04144c2f12234de67861d226c22b8a4a7bf73f4dc05a4b4d"
+dependencies = [
+ "libc",
+ "soothfast-registry",
+]
+
+[[package]]
+name = "soothfast-registry"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b8d0f806aa744402ecf269363695e84146f27457bdf59d6c0454f4f01d66e465"
+dependencies = [
+ "linkme",
 ]
 
 [[package]]
