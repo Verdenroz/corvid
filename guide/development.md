@@ -25,8 +25,8 @@ records it again:
 ```sh
 cargo install cargo-soothfast --version 0.5.0 --locked
 export SOOTHFAST_RUSTDOC_TOOLCHAIN=nightly-2026-08-07
-cargo soothfast docs check -p corvid-config -p corvid-mirror -p corvid-sentinel --skip-claims
-cargo soothfast docs accept -p corvid-config -p corvid-mirror -p corvid-sentinel   # after rereading
+cargo soothfast docs check -p corvid-config -p corvid-mirror -p corvid-rewrite -p corvid-sentinel --skip-claims
+cargo soothfast docs accept -p corvid-config -p corvid-mirror -p corvid-rewrite -p corvid-sentinel   # after rereading
 cargo soothfast docs serve
 ```
 
