@@ -1,0 +1,12 @@
+{
+  "binds": {
+    "corvid_config::LocalPart": "9f3d64af6b956f38",
+    "corvid_config::Model": "07ce68fe7842262d",
+    "corvid_config::POD_PORTS": "37850c8776597d76",
+    "corvid_config::WebPort": "eb7bfebe909e81fc",
+    "corvid_mirror::restore": "b99465a071834d44",
+    "corvid_mirror::verify_deep": "ea813fae0f459ba8",
+    "corvid_sentinel::devices::routes": "7a8910bbf3bcd8b9"
+  },
+  "version": 2
+}

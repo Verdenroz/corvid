@@ -629,6 +629,6 @@ cat <<EOF
 
 Done. Your address is $mail_user@$domain.
   IMAP  $hostname:993 (TLS)      SMTP  $hostname:465 (TLS) or :587 (STARTTLS)
-Send yourself a message from another provider and reply to it, then read deploy/RUNBOOK.md
-for app passwords, the labeler and backups. New domains land in spam at first; replies fix it.
+Send yourself a message from another provider and reply to it, then read https://verdenroz.github.io/corvid/
+for the app, other devices and backups. New domains land in spam at first; replies fix it.
 EOF

@@ -1,0 +1,36 @@
+@import url("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Hanken+Grotesk:ital,wght@0,400;0,500;0,600;1,400&display=swap");
+
+:root {
+  --serif: "Hanken Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --display: "Bricolage Grotesque", "Hanken Grotesk", system-ui, sans-serif;
+}
+/* Raven ink and paper: soothfast's background seed tints only the ground, not the text roles. */
+:root {
+  --background: #F7F5FA; --surface: #FCFBFE; --surface-variant: #EEEAF4;
+  --on-background: #15111D; --on-surface: #15111D; --on-surface-variant: #5E566B;
+  --outline: #CBC4D6; --line: #E4DFEC; --faint: #6E6680; --accent-border: #C9BEEA;
+  --bg: var(--background); --panel: var(--surface); --ink: var(--on-background); --muted: var(--on-surface-variant);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+  --background: #141019; --surface: #1B1622; --surface-variant: #251E2E;
+  --on-background: #EEEBF2; --on-surface: #EEEBF2; --on-surface-variant: #A9A1B5;
+  --outline: #3E3549; --line: #2A2333; --faint: #8E859B; --accent-border: #4A3F6E;
+  --primary: #8F76DD; --on-primary: #15111D; --primary-container: #2A2140; --on-primary-container: #C9BEF0;
+  --bg: var(--background); --panel: var(--surface); --ink: var(--on-background); --muted: var(--on-surface-variant);
+  }
+}
+:root[data-theme="dark"] {
+  --background: #141019; --surface: #1B1622; --surface-variant: #251E2E;
+  --on-background: #EEEBF2; --on-surface: #EEEBF2; --on-surface-variant: #A9A1B5;
+  --outline: #3E3549; --line: #2A2333; --faint: #8E859B; --accent-border: #4A3F6E;
+  --primary: #8F76DD; --on-primary: #15111D; --primary-container: #2A2140; --on-primary-container: #C9BEF0;
+  --bg: var(--background); --panel: var(--surface); --ink: var(--on-background); --muted: var(--on-surface-variant);
+}
+
+body { font-size: 16.5px; }
+h1, h2, h3, .brand-name { font-family: var(--display); }
+h1 { font-weight: 700; letter-spacing: -.02em; }
+h2, h3 { font-weight: 600; }
+.brand-name { font-size: 21px; letter-spacing: -.01em; }
+.brand-mark img { border-radius: 6px; }
