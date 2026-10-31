@@ -1,3 +1,8 @@
+# Counters (callgrind or perf) gate; walltime is reported and never fails,
+# which halves the merge-base rounds a gate measures.
+[gate]
+walltime = "advisory"
+
 [site]
 name = "Corvid"
 repo = "https://github.com/Verdenroz/corvid"
@@ -17,8 +22,19 @@ pages = ["index.md", "setup.md", "devices.md", "apps.md", "configuration.md", "u
 
 [[site.nav]]
 title = "Contributing"
-pages = ["development.md"]
+pages = ["development.md", "performance.md"]
 
 [docs]
 paths = ["README.md", "guide"]
-package = ["corvid-config", "corvid-mirror", "corvid-sentinel"]
+package = ["corvid-config", "corvid-mirror", "corvid-rewrite", "corvid-sentinel"]
+
+[[project]]
+dir = "client"
+ecosystem = "gradle"
+bench_cmd = "rm -rf benchmarks/build/reports && ./gradlew :benchmarks:mainBenchmark --max-workers=2 && cp benchmarks/build/reports/benchmarks/main/*/main.json {out}"
+bench_out = "benchmarks/build/soothfast-bench.json"
+from = "jmh"
+walltime = "hard"
+
+[test]
+ci = false

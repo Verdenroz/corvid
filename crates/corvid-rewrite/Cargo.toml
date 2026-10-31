@@ -9,3 +9,10 @@ repository.workspace = true
 corvid-sign.workspace = true
 lol_html = "3.0.1"
 url = "2.5.8"
+
+[[bench]]
+name = "soothfast"
+harness = false
+
+[dev-dependencies]
+soothfast = { version = "0.5.2", features = ["runner"] }

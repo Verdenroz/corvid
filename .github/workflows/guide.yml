@@ -26,9 +26,9 @@ jobs:
         with:
           cache-directories: .soothfast/rustdoc
       - name: Install cargo-soothfast
-        run: cargo install cargo-soothfast --version 0.5.0 --locked
+        run: cargo install cargo-soothfast --version 0.5.2 --locked
       - name: Check bound prose against the code
-        run: cargo soothfast docs check -p corvid-config -p corvid-mirror -p corvid-sentinel --skip-claims
+        run: cargo soothfast docs check -p corvid-config -p corvid-mirror -p corvid-rewrite -p corvid-sentinel --skip-claims
       - name: Build the site
         run: cargo soothfast docs build
       - uses: actions/upload-pages-artifact@v3
