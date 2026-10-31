@@ -15,4 +15,4 @@ name = "soothfast"
 harness = false
 
 [dev-dependencies]
-soothfast = { version = "0.4.4", features = ["runner"] }
+soothfast = { version = "0.5.0", features = ["runner"] }
