@@ -41,7 +41,7 @@ step() { echo; echo "== $* =="; }
 # interrupts mail, so unmasking it is a deliberate step.
 if unit_masked corvid-pod.service; then
   echo "corvid-pod.service is masked: retire the container holding the mail ports first" >&2
-  echo "see deploy/RUNBOOK.md, 'Replacing an existing Stalwart container'" >&2
+  echo "see https://verdenroz.github.io/corvid/troubleshooting/#replacing-an-existing-stalwart-container" >&2
   exit 69
 fi
 

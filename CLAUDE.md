@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Corvid is a self-hosted, single-mailbox email deployment built around Stalwart Mail Server, plus
 Rust services that sit beside it: a tracker-stripping milter and image proxy, a labeler, and an
-off-host mirror. `deploy/RUNBOOK.md` covers the steps a deploy cannot automate.
+off-host mirror. `guide/`, published to https://verdenroz.github.io/corvid/, covers running it.
 
 Site-specific values live only on the target host under `/opt/corvid/`: settings in
 `config.yaml`, secrets in env files. Nothing in this repo names a real deployment, and nothing
@@ -23,6 +23,7 @@ cargo clippy --workspace --all-targets -- -D warnings   # currently clean; keep 
 ./deploy/check-plan.py                       # plan field shapes vs the pinned Stalwart schema; no server needed
 ./deploy/check-env.sh                        # every secret read appears in deploy/env/*.example or a unit
 ./deploy/apply-plan.sh --dry-run             # syntax only, needs live credentials; see traps
+SOOTHFAST_RUSTDOC_TOOLCHAIN=nightly-2026-08-07 cargo soothfast docs check -p corvid-config -p corvid-mirror -p corvid-sentinel --skip-claims   # guide/ prose bound to code
 podman build -f deploy/Containerfile -t localhost/corvid:latest .   # the image the pod runs
 podman save localhost/corvid:latest | ssh <host> podman load        # a small mail host cannot build it
 ./scripts/vet-ip.sh <ip>                     # run on a candidate VPS, off any VPN, before choosing it

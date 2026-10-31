@@ -1,7 +1,8 @@
 Corvid is starting as {{ include "corvid.fullname" . }}.
 
 Before mail flows, Stalwart needs its one-time bootstrap and the configuration plan. Both run
-from a checkout of the repository against a port-forward; see charts/corvid/README.md.
+from a checkout of the repository against a port-forward; see
+https://verdenroz.github.io/corvid/kubernetes/.
 
   kubectl port-forward deploy/{{ include "corvid.fullname" . }} 8080:8080
 

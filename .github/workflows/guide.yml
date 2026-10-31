@@ -1,0 +1,50 @@
+name: guide
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: guide-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  SOOTHFAST_RUSTDOC_TOOLCHAIN: nightly-2026-08-07
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the rustdoc toolchain
+        run: rustup toolchain install "$SOOTHFAST_RUSTDOC_TOOLCHAIN" --profile minimal
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-directories: .soothfast/rustdoc
+      - name: Install cargo-soothfast
+        run: cargo install cargo-soothfast --version 0.5.0 --locked
+      - name: Check bound prose against the code
+        run: cargo soothfast docs check -p corvid-config -p corvid-mirror -p corvid-sentinel --skip-claims
+      - name: Build the site
+        run: cargo soothfast docs build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

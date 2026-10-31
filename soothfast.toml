@@ -3,6 +3,31 @@
 [gate]
 walltime = "advisory"
 
+[site]
+name = "Corvid"
+repo = "https://github.com/Verdenroz/corvid"
+docs_dir = "guide"
+out_dir = "site"
+logo = "assets/mark.svg"
+favicon = "assets/logo.svg"
+extra_css = ["guide/assets/corvid.css"]
+
+[site.theme]
+primary = "#6A4FC0"
+background = "#F7F5FA"
+
+[[site.nav]]
+title = "Guide"
+pages = ["index.md", "setup.md", "devices.md", "apps.md", "configuration.md", "updates.md", "backups.md", "kubernetes.md", "troubleshooting.md"]
+
+[[site.nav]]
+title = "Contributing"
+pages = ["development.md", "performance.md"]
+
+[docs]
+paths = ["README.md", "guide"]
+package = ["corvid-config", "corvid-mirror", "corvid-rewrite", "corvid-sentinel"]
+
 [[project]]
 dir = "client"
 ecosystem = "gradle"
@@ -13,6 +38,3 @@ walltime = "hard"
 
 [test]
 ci = false
-
-[docs]
-package = ["corvid-rewrite"]

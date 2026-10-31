@@ -75,10 +75,10 @@ render() {
 }
 
 # A supplied credentials map replaces the stored one, wiping every app password while apply
-# reports success. Credentials are set out of band; see RUNBOOK.md.
+# reports success. Credentials are set out of band by set-password.sh.
 if render | grep -n '"object":"Account"' | grep -q '"credentials"'; then
   echo "the plan sets credentials on an Account, which would replace every existing one" >&2
-  echo "set the initial password out of band instead; see deploy/RUNBOOK.md" >&2
+  echo "set the password with deploy/set-password.sh instead" >&2
   exit 65
 fi
 
