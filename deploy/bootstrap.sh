@@ -54,7 +54,7 @@ for p in "${HOST_PORTS[@]}" "${LOOPBACK_PORTS[@]}"; do
   replaced+=("$owner")
 done
 if (( ${#replaced[@]} )); then
-  printf '  NOTE %s must be retired before the pod starts; see RUNBOOK.md\n' \
+  printf '  NOTE %s must be retired before the pod starts; see https://verdenroz.github.io/corvid/troubleshooting/\n' \
     "$(printf '%s\n' "${replaced[@]}" | sort -u | paste -sd, -)"
 fi
 
@@ -146,7 +146,7 @@ ok "units installed from $CORVID_IMAGE, pod publishing web port $WEB_PORT"
 # holding the ports. Mask, not disable: the generator restores enable symlinks on every reload.
 if (( ${#replaced[@]} )); then
   systemctl mask corvid-pod.service >/dev/null
-  echo "  NOTE corvid-pod.service is masked until ${replaced[0]} is retired; RUNBOOK.md unmasks it"
+  echo "  NOTE corvid-pod.service is masked until ${replaced[0]} is retired; the guide's Troubleshooting page unmasks it"
 fi
 
 echo "[5/6] firewall"
@@ -203,5 +203,5 @@ fi
 
 Next: edit /opt/corvid/config.yaml (rerun this script if server.web_port changes), write the
 Cloudflare token, and fill in the env files listed above (templates in deploy/env/, see
-RUNBOOK.md). Then run ./deploy.sh
+https://verdenroz.github.io/corvid/configuration/). Then run ./deploy.sh
 NEXT

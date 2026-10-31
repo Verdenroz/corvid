@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Sets up the managed Linux desktop install from a corvid-linux-x64.tar.gz you already fetched:
 #   scripts/install-desktop.sh [--version-code N] corvid-linux-x64.tar.gz
-# The app updates itself from there; see "Desktop app" in deploy/RUNBOOK.md.
+# The app updates itself from there; see https://verdenroz.github.io/corvid/apps/.
 set -euo pipefail
 
 code=0

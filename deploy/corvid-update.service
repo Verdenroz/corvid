@@ -1,6 +1,6 @@
 [Unit]
 Description=Update Corvid to the release its image tag points at
-Documentation=https://github.com/Verdenroz/corvid/blob/main/deploy/RUNBOOK.md
+Documentation=https://verdenroz.github.io/corvid/updates/
 After=network-online.target
 Wants=network-online.target
 
