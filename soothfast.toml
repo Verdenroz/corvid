@@ -11,9 +11,6 @@ bench_out = "benchmarks/build/soothfast-bench.json"
 from = "jmh"
 walltime = "hard"
 
-[runner]
-labels = ["self-hosted","linux","x64","corvid"]
-
 [test]
 ci = false
 

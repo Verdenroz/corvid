@@ -24,4 +24,3 @@ jobs:
     uses: Verdenroz/soothfast/.github/workflows/run.yml@db5df2c43c4861d0734f111fa765c6bf776a6fb1 # v0.5.0
     with:
       soothfast_ref: "db5df2c43c4861d0734f111fa765c6bf776a6fb1"
-      runs_on: '["self-hosted","linux","x64","corvid"]'
