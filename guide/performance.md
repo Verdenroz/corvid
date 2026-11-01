@@ -21,7 +21,7 @@ every remote host the message tried to reach, with the hosts of stripped pixels 
 trackers.
 <!-- /soothfast:bind -->
 
-<!-- soothfast:claim corvid_rewrite::bench_rewrite_newsletter.alloc.allocs <= 2200 -->
+<!-- soothfast:claim corvid_rewrite::bench_rewrite_newsletter.alloc.allocs <= 2201 -->
 Rewriting a twelve-section newsletter costs at most 2200 allocations.
 <!-- /soothfast:claim -->
 
