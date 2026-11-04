@@ -79,6 +79,7 @@ data class PushSettings(
 /**
  * Choices that belong to this device and hold no mail, so they live in a plain file. [noticesSeen] is the newest
  * server notice id shown here and [digestSeen] the newest digest id; [newMailNotifications] says whether new Inbox mail posts a content-free notification.
+ * [outboxKey] is the public key queued messages are sealed to, base64, fixed on the first unlock.
  */
 data class DeviceSettings(
     val theme: ThemeChoice = ThemeChoice.System,
@@ -88,4 +89,5 @@ data class DeviceSettings(
     val newMailNotifications: Boolean = true,
     val account: RememberedAccount? = null,
     val push: PushSettings = PushSettings(),
+    val outboxKey: String? = null,
 )

@@ -31,6 +31,7 @@ private val PUSH_P256DH = stringPreferencesKey("push_p256dh")
 private val PUSH_AUTH = stringPreferencesKey("push_auth")
 private val PUSH_TOKEN = stringPreferencesKey("push_token")
 private val STREAM_CURSOR = stringPreferencesKey("stream_cursor")
+private val OUTBOX_KEY = stringPreferencesKey("outbox_key")
 
 private fun deviceNameKey(server: String) = stringPreferencesKey("device_name.$server")
 
@@ -122,6 +123,12 @@ class DevicePreferences(
         store.edit { if (decodePush(it).status == PushStatus.Removing) it.writePush(PushSettings()) }
     }
 
+    /** Keeps [key] unless one is already held, and returns the one in force. */
+    suspend fun adoptOutboxKey(key: String): String {
+        val held = store.edit { if (OUTBOX_KEY !in it) it[OUTBOX_KEY] = key }
+        return held[OUTBOX_KEY] ?: key
+    }
+
     suspend fun deviceName(server: String): String? = store.data.first()[deviceNameKey(server)]
 
     suspend fun setDeviceName(
@@ -142,6 +149,7 @@ internal fun decode(preferences: Preferences): DeviceSettings {
         newMailNotifications = preferences[NEW_MAIL_NOTIFICATIONS] ?: defaults.newMailNotifications,
         account = decodeAccount(preferences),
         push = decodePush(preferences),
+        outboxKey = preferences[OUTBOX_KEY],
     )
 }
 

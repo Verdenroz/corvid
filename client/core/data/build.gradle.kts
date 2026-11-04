@@ -18,6 +18,15 @@ kotlin {
             implementation(libs.koin.core)
             implementation(libs.kotlinx.serialization.json)
         }
+        androidMain.dependencies {
+            implementation(libs.tink.android)
+        }
+        // tink and tink-android carry the same classes, so each target takes exactly one.
+        val desktopMain by getting {
+            dependencies {
+                implementation(libs.tink)
+            }
+        }
         commonTest.dependencies {
             implementation(projects.core.testing)
         }
