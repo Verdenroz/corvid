@@ -13,9 +13,9 @@ import com.google.crypto.tink.subtle.Hkdf
 import com.google.crypto.tink.subtle.X25519
 import com.google.crypto.tink.util.Bytes
 import com.google.crypto.tink.util.SecretBytes
+import com.verdenroz.corvid.core.common.sha256Hex
 import kotlinx.serialization.SerializationException
 import java.security.GeneralSecurityException
-import java.security.MessageDigest
 import java.util.Base64
 
 private const val KEY_BYTES = 32
@@ -23,7 +23,7 @@ private val DERIVATION_INFO = "corvid-outbox-seal-v1".toByteArray()
 
 /** The public half of the key a device seals its outbox to; the private half is derived again on every unlock. */
 class SealKey(val publicKey: ByteArray) {
-    val fingerprint: String = MessageDigest.getInstance("SHA-256").digest(publicKey).take(8).joinToString("") { "%02x".format(it) }
+    val fingerprint: String = sha256Hex(publicKey).take(16)
 
     fun encoded(): String = Base64.getEncoder().encodeToString(publicKey)
 
@@ -41,9 +41,6 @@ sealed interface OpenResult {
     data object Corrupt : OpenResult
 }
 
-/** [persist] says the stored copy of the key, which seals mail queued while locked, should become [sealTo]. */
-class SealDecision(val sealTo: SealKey, val persist: Boolean)
-
 /** HPKE (X25519, HKDF-SHA256, AES-256-GCM) to a keypair derived from the device key. */
 object OutboxSealer {
     init {
@@ -51,18 +48,18 @@ object OutboxSealer {
     }
 
     /**
-     * New mail is always sealed to the key [deviceKey] derives, since the private half of any other is
-     * unavailable. The [stored] key is replaced by it unless unsent mail is still sealed to the stored one.
+     * New mail is always sealed to [keyFor] the current device key, since the private half of any other is
+     * unavailable. This says whether the [stored] key, which seals mail queued while locked, should be
+     * replaced by it: not while unsent mail is still sealed to the stored one.
      */
-    fun sealKeyFor(
+    fun shouldStoreKey(
         deviceKey: ByteArray,
         stored: String?,
         store: OutboxStore,
-    ): SealDecision {
-        val current = keyFor(deviceKey)
+    ): Boolean {
         val held = stored?.let(SealKey::decode)
-        val inUse = held != null && store.list().items.any { it.keyFingerprint == held.fingerprint && it.state !is OutboxState.Sent }
-        return SealDecision(current, persist = held?.fingerprint != current.fingerprint && !inUse)
+        if (held?.fingerprint == keyFor(deviceKey).fingerprint) return false
+        return held == null || store.list().items.none { it.keyFingerprint == held.fingerprint && it.state !is OutboxState.Sent }
     }
 
     fun keyFor(deviceKey: ByteArray): SealKey = SealKey(X25519.publicFromPrivate(privateKeyFor(deviceKey)))

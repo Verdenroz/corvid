@@ -106,7 +106,10 @@ internal fun findByKeyword(keyword: String): List<Invocation> =
             "Email/get",
             buildJsonObject {
                 put("#ids", resultReference("find", "Email/query", "/ids"))
-                putJsonArray("properties") { listOf("mailboxIds", "keywords").forEach { add(JsonPrimitive(it)) } }
+                putJsonArray("properties") {
+                    add(JsonPrimitive("mailboxIds"))
+                    add(JsonPrimitive("keywords"))
+                }
             },
             "read",
         ),

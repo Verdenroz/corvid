@@ -93,9 +93,10 @@ class OutboxSender(
 
     suspend fun drain(): List<Drained> =
         mutex.withLock {
-            store.list().items.filter { (it.state as? OutboxState.Sent)?.tidy != null }.forEach { tidy(it) }
+            val items = store.list().items
+            items.filter { (it.state as? OutboxState.Sent)?.tidy != null }.forEach { tidy(it) }
             val drained = mutableListOf<Drained>()
-            for (item in store.list().items.filter { it.state.isPending }) {
+            for (item in items.filter { it.state.isPending }) {
                 val result = send(item)
                 drained += Drained(item.id, result)
                 if (result.stopsDrain) break
@@ -106,7 +107,7 @@ class OutboxSender(
     /** The user's decision to send an [OutboxState.Unconfirmed] message again, accepting a possible duplicate. */
     suspend fun resend(id: String) {
         mutex.withLock {
-            store.list().items.firstOrNull { it.id == id && it.state == OutboxState.Unconfirmed }
+            store.read(id)?.takeIf { it.state == OutboxState.Unconfirmed }
                 ?.let { store.save(it.copy(state = OutboxState.Queued)) }
         }
     }
@@ -118,7 +119,7 @@ class OutboxSender(
      */
     suspend fun discard(id: String): Boolean =
         mutex.withLock {
-            val item = store.list().items.firstOrNull { it.id == id } ?: return@withLock false
+            val item = store.read(id) ?: return@withLock false
             val discardable =
                 when (item.state) {
                     is OutboxState.Rejected, is OutboxState.Unconfirmed -> true
@@ -157,7 +158,7 @@ class OutboxSender(
         val reply = bestEffort { jmapClient.callOne("Email/set", payload) } ?: return
         val left =
             Tidy(
-                keyword = pending.keyword.takeUnless { reply.cleared("updated", "notUpdated", sent.serverEmailId) },
+                keyword = pending.keyword.takeUnless { reply.updated(sent.serverEmailId) },
                 replacesDraftId = pending.replacesDraftId?.takeUnless { reply.destroyed(it) },
             )
         store.save(item.copy(state = sent.copy(tidy = left.takeUnless { it.keyword == null && it.replacesDraftId == null })))
@@ -169,6 +170,8 @@ class OutboxSender(
         private val message: OutboxMessage,
         private val recovering: Boolean,
     ) {
+        private val untouched = original.state == OutboxState.Queued && original.attempt == 0
+
         suspend fun run(): ItemResult {
             val route =
                 try {
@@ -178,7 +181,7 @@ class OutboxSender(
                 }
             if (route !is Route.Ready) return refuse(route)
             val found =
-                if (original.state == OutboxState.Queued && original.attempt == 0) {
+                if (untouched) {
                     Probe.None
                 } else {
                     try {
@@ -293,7 +296,6 @@ class OutboxSender(
             error: JmapError,
             phase: Phase,
         ): ItemResult {
-            val untouched = original.state == OutboxState.Queued && original.attempt == 0
             return when (error) {
                 is JmapError.Unauthorized -> {
                     store.save(original)
@@ -338,11 +340,7 @@ private fun MethodOutcome.refusal(creationId: String): Refusal? =
             }
     }
 
-private fun JsonObject.cleared(
-    done: String,
-    failed: String,
-    id: String,
-): Boolean = this[done]?.jsonObject?.containsKey(id) == true || gone(failed, id)
+private fun JsonObject.updated(id: String): Boolean = this["updated"]?.jsonObject?.containsKey(id) == true || gone("notUpdated", id)
 
 private fun JsonObject.destroyed(id: String): Boolean =
     this["destroyed"]?.jsonArray?.any { it.jsonPrimitive.content == id } == true || gone("notDestroyed", id)

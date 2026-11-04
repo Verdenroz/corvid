@@ -1,6 +1,6 @@
 package com.verdenroz.corvid.core.data.outbox
 
-import java.security.MessageDigest
+import com.verdenroz.corvid.core.common.sha256Hex
 import java.util.Base64
 
 private const val ENVELOPE_SCHEMA = "1"
@@ -17,7 +17,7 @@ internal fun encodeEnvelope(message: SealedMessage): ByteArray =
     listOf(
         "corvid-outbox $ENVELOPE_SCHEMA",
         "key ${message.keyFingerprint}",
-        "sha256 ${sha256(message.bytes)}",
+        "sha256 ${sha256Hex(message.bytes)}",
         Base64.getEncoder().encodeToString(message.bytes),
     ).joinToString("\n", postfix = "\n").toByteArray()
 
@@ -28,7 +28,7 @@ internal fun decodeEnvelope(bytes: ByteArray): EnvelopeRead {
     val key = lines.value(1, "key")
     val checksum = lines.value(2, "sha256")
     val sealed = lines.getOrNull(3)?.let { runCatching { Base64.getDecoder().decode(it) }.getOrNull() }
-    return if (key == null || sealed == null || checksum != sha256(sealed)) {
+    return if (key == null || sealed == null || checksum != sha256Hex(sealed)) {
         EnvelopeRead.Corrupt
     } else {
         EnvelopeRead.Valid(SealedMessage(key, sealed))
@@ -39,5 +39,3 @@ private fun List<String>.value(
     index: Int,
     name: String,
 ): String? = getOrNull(index)?.takeIf { it.startsWith("$name ") }?.removePrefix("$name ")
-
-private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }

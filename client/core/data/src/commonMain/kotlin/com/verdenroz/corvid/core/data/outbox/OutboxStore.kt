@@ -3,6 +3,7 @@ package com.verdenroz.corvid.core.data.outbox
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -78,14 +79,17 @@ class OutboxStore private constructor(private val directory: File, private val l
 
     override fun close() = lock.close()
 
+    /** The item named [id], or null if it has no state file or the file was unreadable. */
+    fun read(id: String): OutboxItem? = file(id, STATE_SUFFIX).takeIf { it.exists() }?.let { (readState(it) as? StateRead.Item)?.item }
+
     private fun readState(file: File): StateRead {
         val id = file.name.removeSuffix(STATE_SUFFIX)
-        val text = file.readText()
-        val schema = schemaOf(text)
+        val parsed = parse(file.readText())
+        val schema = parsed?.get("schema")?.jsonPrimitive?.intOrNull
         val record =
-            if (schema == STATE_SCHEMA) {
+            if (parsed != null && schema == STATE_SCHEMA) {
                 try {
-                    Json.decodeFromString(StateFile.serializer(), text)
+                    Json.decodeFromJsonElement(StateFile.serializer(), parsed)
                 } catch (_: SerializationException) {
                     null
                 }
@@ -105,9 +109,9 @@ class OutboxStore private constructor(private val directory: File, private val l
         return StateRead.Item(OutboxItem(id, record.createdAt, record.attempt, record.key, record.state))
     }
 
-    private fun schemaOf(text: String): Int? =
+    private fun parse(text: String): JsonObject? =
         try {
-            Json.parseToJsonElement(text).jsonObject["schema"]?.jsonPrimitive?.intOrNull
+            Json.parseToJsonElement(text).jsonObject
         } catch (_: IllegalArgumentException) {
             null
         }

@@ -17,34 +17,25 @@ class OutboxSealKeyTest {
 
     @Test
     fun `a first unlock stores the key its device key derives`() {
-        val decision = OutboxSealer.sealKeyFor(OLD_DEVICE_KEY, stored = null, store)
-
-        assertEquals(old.fingerprint, decision.sealTo.fingerprint)
-        assertEquals(true, decision.persist)
+        assertEquals(true, OutboxSealer.shouldStoreKey(OLD_DEVICE_KEY, stored = null, store))
     }
 
     @Test
     fun `an unchanged device key keeps the stored key`() {
-        val decision = OutboxSealer.sealKeyFor(OLD_DEVICE_KEY, stored = old.encoded(), store)
-
-        assertEquals(false, decision.persist)
+        assertEquals(false, OutboxSealer.shouldStoreKey(OLD_DEVICE_KEY, stored = old.encoded(), store))
     }
 
     @Test
     fun `a new device key replaces the stored key when nothing is sealed to the old one`() {
-        val decision = OutboxSealer.sealKeyFor(NEW_DEVICE_KEY, stored = old.encoded(), store)
-
-        assertEquals(current.fingerprint, decision.sealTo.fingerprint)
-        assertEquals(true, decision.persist)
+        assertEquals(true, OutboxSealer.shouldStoreKey(NEW_DEVICE_KEY, stored = old.encoded(), store))
     }
 
     @Test
     fun `a new device key seals new mail to a key it can open while old mail stays sealed to the old one`() {
         val oldId = OutboxQueue(store, old, "example.test").enqueue(Draft(subject = "old"), null)
-        val decision = OutboxSealer.sealKeyFor(NEW_DEVICE_KEY, stored = old.encoded(), store)
-        val newId = OutboxQueue(store, decision.sealTo, "example.test").enqueue(Draft(subject = "new"), null)
+        val newId = OutboxQueue(store, current, "example.test").enqueue(Draft(subject = "new"), null)
 
-        assertEquals(false, decision.persist)
+        assertEquals(false, OutboxSealer.shouldStoreKey(NEW_DEVICE_KEY, stored = old.encoded(), store))
         val fresh = assertIs<MessageRead.Found>(store.readMessage(newId)).message
         assertIs<OpenResult.Opened>(OutboxSealer.open(newId, fresh, NEW_DEVICE_KEY))
         val stale = assertIs<MessageRead.Found>(store.readMessage(oldId)).message
