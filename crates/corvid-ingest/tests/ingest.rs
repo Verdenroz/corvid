@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use corvid_ingest::{Ingest, NAMESPACE, sender_key};
+use corvid_ingest::{Ingest, NAMESPACE, is_prior_keyword, sender_key};
 use corvid_label::{Abstain, SenderKey};
 
 const OURS: &str = "mail.corvid.test; spf=pass; dmarc=pass header.from=news.example";
@@ -78,6 +78,22 @@ fn never_writes_a_label_that_lands_in_a_reserved_namespace() {
         ingest.label("m1", &acme(), 12.0),
         keywords(&["corvid-receipts"])
     );
+}
+
+#[test]
+fn an_outbox_keyword_is_not_a_prior_keyword() {
+    assert!(!is_prior_keyword("corvid-outbox-1f"));
+    assert!(is_prior_keyword("corvid-receipts"));
+}
+
+#[test]
+fn an_outbox_keyword_never_trains_the_prior() {
+    let mut ingest = Ingest::default();
+    teach(&mut ingest, &acme(), &["receipts"], 12);
+
+    ingest.reconcile("m1", &acme(), &keywords_of(&["corvid-outbox-1f"]), 12.0);
+
+    assert_eq!(ingest.corrections(), 0);
 }
 
 #[test]

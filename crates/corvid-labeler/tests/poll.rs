@@ -61,6 +61,20 @@ fn a_poll_leaves_rule_and_model_keywords_alone() {
 }
 
 #[test]
+fn a_poll_leaves_an_outbox_keyword_alone() {
+    let (_dir, path) = scratch();
+    let mailbox = Fake::default();
+    taught(&path, &mailbox);
+    mailbox.deliver("new", "billing@acme.test", &["corvid-outbox-1f"], 12.0);
+
+    poll(&path, &mailbox).unwrap();
+
+    let kept = mailbox.keywords_of("new");
+    assert!(kept.contains("corvid-outbox-1f"), "stripped");
+    assert!(kept.contains("corvid-receipts"));
+}
+
+#[test]
 fn a_refused_write_stops_the_poll_before_the_cursor_moves() {
     let (_dir, path) = scratch();
     let mailbox = Fake::default();
