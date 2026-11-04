@@ -311,6 +311,11 @@ Caddyfile built from the same env vars as everything else. `core/discovery` hold
   `com.google.android.gms` has a package, so a phone that disabled it was sent down the Google path and
   registration failed. The app also requires the package to be enabled, and a failed Google registration lets the
   row keep an own connection instead.
+- **A 404 on `GET /corvid/devices/<name>` is revocation only with `{"error":"unknown_device"}`.** The web tier's
+  fallthrough 404 for a request that never reached the sentinel is also a bare 404, so the app reads a bare one as
+  unreachable and keeps its key and session. Measured by `tests/devices` in `corvid-sentinel`, which pins the body.
+  An app older than this answers any 404 as revoked; a sentinel older than this makes a new app read a revoked
+  device as unreachable.
 - **A config key a host's running image does not know exits every service 78.** `sentinel.push: {}` is
   safe in `deploy/config.yaml` and unsafe in a host's `/opt/corvid/config.yaml` until that host runs an
   image that parses it.
