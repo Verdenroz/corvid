@@ -41,10 +41,28 @@ sealed interface OpenResult {
     data object Corrupt : OpenResult
 }
 
+/** [persist] says the stored copy of the key, which seals mail queued while locked, should become [sealTo]. */
+class SealDecision(val sealTo: SealKey, val persist: Boolean)
+
 /** HPKE (X25519, HKDF-SHA256, AES-256-GCM) to a keypair derived from the device key. */
 object OutboxSealer {
     init {
         HybridConfig.register()
+    }
+
+    /**
+     * New mail is always sealed to the key [deviceKey] derives, since the private half of any other is
+     * unavailable. The [stored] key is replaced by it unless unsent mail is still sealed to the stored one.
+     */
+    fun sealKeyFor(
+        deviceKey: ByteArray,
+        stored: String?,
+        store: OutboxStore,
+    ): SealDecision {
+        val current = keyFor(deviceKey)
+        val held = stored?.let(SealKey::decode)
+        val inUse = held != null && store.list().items.any { it.keyFingerprint == held.fingerprint && it.state !is OutboxState.Sent }
+        return SealDecision(current, persist = held?.fingerprint != current.fingerprint && !inUse)
     }
 
     fun keyFor(deviceKey: ByteArray): SealKey = SealKey(X25519.publicFromPrivate(privateKeyFor(deviceKey)))

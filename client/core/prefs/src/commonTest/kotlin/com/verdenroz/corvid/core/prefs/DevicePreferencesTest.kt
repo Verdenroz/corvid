@@ -99,15 +99,17 @@ class DevicePreferencesTest {
         }
 
     @Test
-    fun `the outbox key is fixed by the first device key and later ones do not replace it`() =
+    fun `the outbox key starts absent and a newer one replaces it`() =
         runTest {
             val prefs = preferences()
+            runCurrent()
+            assertNull(prefs.settings.value.outboxKey)
 
-            assertEquals("first", prefs.adoptOutboxKey("first"))
-            assertEquals("first", prefs.adoptOutboxKey("second"))
+            prefs.setOutboxKey("first")
+            prefs.setOutboxKey("second")
             runCurrent()
 
-            assertEquals("first", prefs.settings.value.outboxKey)
+            assertEquals("second", prefs.settings.value.outboxKey)
         }
 
     @Test

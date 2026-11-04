@@ -123,10 +123,8 @@ class DevicePreferences(
         store.edit { if (decodePush(it).status == PushStatus.Removing) it.writePush(PushSettings()) }
     }
 
-    /** Keeps [key] unless one is already held, and returns the one in force. */
-    suspend fun adoptOutboxKey(key: String): String {
-        val held = store.edit { if (OUTBOX_KEY !in it) it[OUTBOX_KEY] = key }
-        return held[OUTBOX_KEY] ?: key
+    suspend fun setOutboxKey(key: String) {
+        store.edit { it[OUTBOX_KEY] = key }
     }
 
     suspend fun deviceName(server: String): String? = store.data.first()[deviceNameKey(server)]
