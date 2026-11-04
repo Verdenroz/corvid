@@ -5,6 +5,7 @@ import io.ktor.client.HttpClientConfig
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.api.createClientPlugin
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
@@ -28,7 +29,7 @@ val JmapJson =
  * deliberately no `Auth` plugin: the bearer header is attached per call, so
  * the [AuthLatch] sees every 401 before Ktor would think to retry one.
  */
-fun HttpClientConfig<*>.applyJmapDefaults() {
+internal fun HttpClientConfig<*>.applyJmapDefaults() {
     expectSuccess = false
     followRedirects = false
     install(HttpTimeout) {
@@ -40,9 +41,15 @@ fun HttpClientConfig<*>.applyJmapDefaults() {
     }
 }
 
-fun createJmapHttpClient(engine: HttpClientEngine = singleAttemptEngine()): HttpClient =
-    HttpClient(engine) {
+fun createJmapHttpClient(engine: HttpClientEngine? = null): HttpClient =
+    HttpClient(engine ?: singleAttemptEngine()) {
         applyJmapDefaults()
+        if (engine != null) install(WithoutSingleAttemptHeader)
+    }
+
+private val WithoutSingleAttemptHeader =
+    createClientPlugin("WithoutSingleAttemptHeader") {
+        onRequest { request, _ -> request.headers.remove(SINGLE_ATTEMPT_HEADER) }
     }
 
 internal const val SINGLE_ATTEMPT_HEADER = "X-Corvid-Single-Attempt"
@@ -57,9 +64,12 @@ private fun singleAttemptEngine(): HttpClientEngine {
 
 /**
  * OkHttp resends a request on a fresh connection when the old one drops mid-flight, unless its body
- * is one-shot, and a request on a stale pooled connection is never resent that way. A request marked
- * with [SINGLE_ATTEMPT_HEADER] is one the server may already have run and must not be sent twice, so
- * it gets a one-shot body and a connection opened for it; the header never leaves the process.
+ * is one-shot, and it resends on a stale pooled connection too. A request marked with
+ * [SINGLE_ATTEMPT_HEADER] is one the server may already have run and must not be sent twice: it gets
+ * a one-shot body, and idle pooled connections are evicted first so it does not start on a stale one.
+ * A connection with a stream in flight, such as a shared HTTP/2 connection, is not evicted and may
+ * carry it; if that breaks after the request is written, the request is not resent. The header never
+ * leaves the process: this interceptor strips it, and any other engine has it stripped before sending.
  */
 private fun singleAttempts(pool: ConnectionPool) =
     Interceptor { chain ->

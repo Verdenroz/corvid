@@ -82,7 +82,7 @@ class JmapClient private constructor(
      * Runs one batch of calls and matches each response back to its callId.
      * A method error inside the batch is [MethodOutcome.Failure] for that
      * one callId, not a thrown exception: the rest of the batch still ran.
-     * With [singleAttempt] the transport never resends the request after it has begun to send it.
+     * With [singleAttempt] the default transport never resends the request once it has begun to send it.
      */
     suspend fun call(
         invocations: List<Invocation>,

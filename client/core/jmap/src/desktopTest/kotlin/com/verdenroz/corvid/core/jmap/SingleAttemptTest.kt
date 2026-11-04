@@ -1,5 +1,6 @@
 package com.verdenroz.corvid.core.jmap
 
+import io.ktor.client.engine.okhttp.OkHttp
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
 import java.io.BufferedInputStream
@@ -15,6 +16,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 private val ECHO = listOf(Invocation("Core/echo", JsonObject(emptyMap()), "c0"))
 
@@ -23,6 +25,7 @@ private class CuttingServer : AutoCloseable {
     private val socket = ServerSocket().apply { bind(InetSocketAddress("127.0.0.1", 0)) }
     val posts = AtomicInteger()
     val cutNext = AtomicInteger()
+    val heads = CopyOnWriteArrayList<String>()
     val closeAfterAnswer = AtomicBoolean()
     val baseUrl = "http://127.0.0.1:${socket.localPort}"
     private val open = CopyOnWriteArrayList<Socket>()
@@ -41,6 +44,7 @@ private class CuttingServer : AutoCloseable {
         val input = BufferedInputStream(client.getInputStream())
         while (true) {
             val head = readHead(input) ?: return
+            heads += head
             input.readNBytes(contentLength(head))
             if (head.startsWith("GET")) return respond(client, SESSION, "close")
             posts.incrementAndGet()
@@ -128,6 +132,24 @@ class SingleAttemptTest {
             client.call(ECHO)
 
             assertEquals(3, server.posts.get())
+        }
+
+    @Test
+    fun `the single-attempt header never reaches the wire on the default engine`() =
+        runTest {
+            connect().call(ECHO, singleAttempt = true)
+
+            assertTrue(server.heads.none { it.contains("Single-Attempt", ignoreCase = true) })
+        }
+
+    @Test
+    fun `the single-attempt header never reaches the wire on an engine without the interceptor`() =
+        runTest {
+            val client = JmapClient.connect(createJmapHttpClient(OkHttp.create()), AuthLatch(), server.baseUrl)
+
+            client.call(ECHO, singleAttempt = true)
+
+            assertTrue(server.heads.none { it.contains("Single-Attempt", ignoreCase = true) })
         }
 
     @Test
