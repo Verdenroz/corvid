@@ -20,5 +20,6 @@ val appModules: List<Module> =
         dataModule,
         keyringModule,
         appLockModule,
+        outboxModule,
         signInFeatureModule,
     )

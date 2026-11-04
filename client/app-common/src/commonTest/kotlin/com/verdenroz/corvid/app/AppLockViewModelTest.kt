@@ -81,6 +81,7 @@ private class Harness(
             unlockedScopeHolder = UnlockedScopeHolder(koinApplication {}.koin),
             approveWithKey = approveWithKey,
             devicePreferences = devicePreferences,
+            outboxUnlock = OutboxUnlock { _, _, _ -> },
         )
 
     fun signIn() = tokenSource.adopt(authTokens(), ServerAddress(BASE_URL))

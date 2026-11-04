@@ -21,6 +21,7 @@ import com.verdenroz.corvid.core.data.AttachmentFiles
 import com.verdenroz.corvid.core.discovery.platformDiscoveryModule
 import com.verdenroz.corvid.core.keyring.KeyHolder
 import com.verdenroz.corvid.core.prefs.DevicePreferences
+import com.verdenroz.corvid.core.prefs.platformOutboxDirectoryModule
 import com.verdenroz.corvid.core.prefs.platformPreferencesModule
 import com.verdenroz.corvid.feature.settings.BackgroundPush
 import kotlinx.coroutines.CoroutineScope
@@ -50,7 +51,7 @@ class CorvidApplication : Application() {
             startKoin {
                 androidLogger()
                 androidContext(this@CorvidApplication)
-                modules(appModules + platformDiscoveryModule + platformPreferencesModule + notices)
+                modules(appModules + platformDiscoveryModule + platformPreferencesModule + platformOutboxDirectoryModule + notices)
             }.koin
         val keyHolder = koin.get<KeyHolder>()
         registerNetworkLossTrigger(keyHolder)

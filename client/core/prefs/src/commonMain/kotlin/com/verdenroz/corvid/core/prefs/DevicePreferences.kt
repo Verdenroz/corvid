@@ -127,6 +127,9 @@ class DevicePreferences(
         store.edit { it[OUTBOX_KEY] = key }
     }
 
+    /** Read from the store itself, since [settings] may not have caught up with a write made a moment ago. */
+    suspend fun outboxKey(): String? = store.data.first()[OUTBOX_KEY]
+
     suspend fun deviceName(server: String): String? = store.data.first()[deviceNameKey(server)]
 
     suspend fun setDeviceName(
