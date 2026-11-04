@@ -34,7 +34,8 @@ private fun server() =
 class ComposeSuggestionsTest {
     private suspend fun ViewModelTestScope.viewModel(fake: FakeJmapServer = server()): ComposeViewModel {
         val client = fake.client()
-        val vm = track(ComposeViewModel(ComposeRepository(client, MailboxRepository(client), KeyedTextResolver), ComposeIntent.New))
+        val compose = ComposeRepository(client, MailboxRepository(client), KeyedTextResolver)
+        val vm = track(ComposeViewModel(compose, TestOutbox(client, compose).outbox, ComposeIntent.New))
         vm.state.first { it is ComposeUiState.Editing }
         vm.idle()
         return vm

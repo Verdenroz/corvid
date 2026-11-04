@@ -47,7 +47,8 @@ class ComposeAttachmentsTest {
         intent: ComposeIntent = ComposeIntent.New,
     ): ComposeViewModel {
         val client = fake.client()
-        return track(ComposeViewModel(ComposeRepository(client, MailboxRepository(client), KeyedTextResolver), intent))
+        val compose = ComposeRepository(client, MailboxRepository(client), KeyedTextResolver)
+        return track(ComposeViewModel(compose, TestOutbox(client, compose).outbox, intent, sendWait = null))
     }
 
     private suspend fun ComposeViewModel.editing() = editingWhere { true }

@@ -110,4 +110,7 @@ sealed interface ComposeUiState {
     ) : ComposeUiState
 
     data object Sent : ComposeUiState
+
+    /** The message is in the outbox and not yet sent; [needsDecision] when it may already have gone out. */
+    data class Queued(val needsDecision: Boolean) : ComposeUiState
 }

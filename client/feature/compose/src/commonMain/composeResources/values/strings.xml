@@ -16,6 +16,8 @@
     <string name="compose_draft_gone">This draft no longer exists.</string>
     <string name="compose_add_recipient">Add a recipient.</string>
     <string name="compose_not_sent">Not sent: %1$s</string>
+    <string name="compose_queued">Waiting to send. It will go out as soon as it can, and the outbox shows where it stands.</string>
+    <string name="compose_queued_unconfirmed">This message may already have been sent. Open the outbox to send it again or discard it.</string>
     <string name="compose_close">Close</string>
     <string name="compose_title_new">New message</string>
     <string name="compose_title_reply">Reply</string>

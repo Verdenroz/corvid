@@ -68,6 +68,7 @@ import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.data.NoticeRepository
 import com.verdenroz.corvid.core.data.SenderRepository
 import com.verdenroz.corvid.core.data.SuggestedRules
+import com.verdenroz.corvid.core.data.outbox.Outbox
 import com.verdenroz.corvid.core.designsystem.CorvidFloating
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
@@ -395,7 +396,9 @@ private fun Page(
             )
         is Route.Compose ->
             ComposeScreen(files, route.intent, onClose = navigator::back) { restore ->
-                models.of(entryKey, ComposeViewModel::class) { ComposeViewModel(scope.get<ComposeRepository>(), route.intent, restore) }
+                models.of(entryKey, ComposeViewModel::class) {
+                    ComposeViewModel(scope.get<ComposeRepository>(), scope.get<Outbox>(), route.intent, restore)
+                }
             }
         is Route.Filters ->
             FiltersScreen(onBack = navigator::back) { draft ->

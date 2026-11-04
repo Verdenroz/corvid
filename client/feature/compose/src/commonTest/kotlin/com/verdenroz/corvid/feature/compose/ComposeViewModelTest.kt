@@ -4,6 +4,7 @@ import androidx.compose.runtime.saveable.SaverScope
 import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.core.data.ComposeRepository
 import com.verdenroz.corvid.core.data.MailboxRepository
+import com.verdenroz.corvid.core.data.outbox.OutboxState
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.testing.FakeEmail
 import com.verdenroz.corvid.core.testing.FakeIdentity
@@ -23,15 +24,18 @@ import com.verdenroz.corvid.feature.compose.resources.compose_draft_gone
 import com.verdenroz.corvid.feature.compose.resources.compose_no_identity
 import com.verdenroz.corvid.feature.compose.resources.compose_not_sent
 import com.verdenroz.corvid.feature.compose.resources.compose_original_gone
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.job
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 private const val OWN = SENDABLE_ACCOUNT_EMAIL
@@ -51,6 +55,12 @@ private val ORIGINAL =
     )
 
 class ComposeViewModelTest {
+    private val outboxes = mutableListOf<TestOutbox>()
+    private val store get() = outboxes.last().store
+
+    @AfterTest
+    fun closeOutboxes() = outboxes.forEach(TestOutbox::close)
+
     private fun server(original: FakeEmail = ORIGINAL) = FakeJmapServer().withSendableAccount().also { it.emails += original }
 
     /** An account with the alias [ALIAS], on which the original arrived. */
@@ -63,9 +73,12 @@ class ComposeViewModelTest {
         fake: FakeJmapServer,
         intent: ComposeIntent = ComposeIntent.New,
         restored: ComposeRestore? = null,
+        sendWait: Duration? = null,
     ): ComposeViewModel {
         val client = fake.client()
-        return track(ComposeViewModel(ComposeRepository(client, MailboxRepository(client), KeyedTextResolver), intent, restored))
+        val compose = ComposeRepository(client, MailboxRepository(client), KeyedTextResolver)
+        val outbox = TestOutbox(client, compose).also { outboxes += it }
+        return track(ComposeViewModel(compose, outbox.outbox, intent, restored, sendWait))
     }
 
     private suspend fun ComposeViewModel.editing() = state.first { it is ComposeUiState.Editing } as ComposeUiState.Editing
@@ -105,6 +118,71 @@ class ComposeViewModelTest {
             val email = fake.emails.single { it.id == fake.submissions.single().emailId }
             assertEquals(setOf("sent"), email.mailboxIds)
             assertEquals(listOf("dan@example.test", "eve@example.test"), email.to)
+        }
+
+    @Test
+    fun `sending queues the message and shows sent once the sender confirms`() =
+        runViewModelTest {
+            val fake = server()
+            val vm = viewModel(fake)
+            vm.editing()
+            vm.edit { copy(to = "dan@example.test", subject = "Hi", body = "hello") }
+
+            vm.send()
+
+            assertEquals(ComposeUiState.Sent, vm.settled())
+            assertIs<OutboxState.Sent>(store.list().items.single().state)
+            assertEquals(1, fake.submissions.size)
+        }
+
+    @Test
+    fun `pressing send twice queues one message`() =
+        runViewModelTest {
+            val fake = server()
+            val vm = viewModel(fake)
+            vm.editing()
+            vm.edit { copy(to = "dan@example.test", subject = "Hi", body = "hello") }
+
+            vm.send()
+            vm.send()
+
+            assertEquals(ComposeUiState.Sent, vm.settled())
+            assertEquals(1, store.list().items.size)
+            assertEquals(1, fake.submissions.size)
+        }
+
+    @Test
+    fun `a response lost after the server sent leaves the message for the user to decide and sends no second copy`() =
+        runViewModelTest {
+            val fake = server()
+            val vm = viewModel(fake)
+            vm.editing()
+            vm.edit { copy(to = "dan@example.test", subject = "Hi", body = "hello") }
+            vm.idle()
+            fake.loseResponses = 1
+
+            vm.send()
+            assertEquals(ComposeUiState.Queued(needsDecision = true), vm.settled())
+            vm.send()
+
+            assertEquals(1, fake.submissions.size)
+            assertEquals(OutboxState.Unconfirmed, store.list().items.single().state)
+        }
+
+    @Test
+    fun `a send that outlasts the wait closes as queued and keeps going`() =
+        runViewModelTest {
+            val fake = server()
+            val vm = viewModel(fake, sendWait = 1.seconds)
+            vm.editing()
+            vm.edit { copy(to = "dan@example.test", subject = "Hi", body = "hello") }
+            vm.idle()
+            fake.gate = CompletableDeferred()
+
+            vm.send()
+
+            assertEquals(ComposeUiState.Queued(needsDecision = false), vm.settled())
+            fake.gate?.complete(Unit)
         }
 
     @Test
@@ -197,6 +275,7 @@ class ComposeViewModelTest {
             assertEquals(false, editing.sending)
             assertEquals(uiText(Res.string.compose_not_sent, UiText.FromServer("submission refused")), editing.error)
             assertTrue(fake.submissions.isEmpty())
+            assertEquals(emptyList(), store.list().items)
         }
 
     @Test

@@ -75,6 +75,8 @@ import com.verdenroz.corvid.feature.compose.resources.compose_from
 import com.verdenroz.corvid.feature.compose.resources.compose_from_change
 import com.verdenroz.corvid.feature.compose.resources.compose_message
 import com.verdenroz.corvid.feature.compose.resources.compose_not_saved
+import com.verdenroz.corvid.feature.compose.resources.compose_queued
+import com.verdenroz.corvid.feature.compose.resources.compose_queued_unconfirmed
 import com.verdenroz.corvid.feature.compose.resources.compose_retry_save
 import com.verdenroz.corvid.feature.compose.resources.compose_send
 import com.verdenroz.corvid.feature.compose.resources.compose_subject
@@ -131,6 +133,8 @@ fun ComposeScreen(
             is ComposeUiState.Loading -> LoadingPane()
             is ComposeUiState.Sent -> LaunchedEffect(Unit) { onClose() }
             is ComposeUiState.Failed -> QuietPane(current.message.asString())
+            is ComposeUiState.Queued ->
+                QuietPane(stringResource(if (current.needsDecision) Res.string.compose_queued_unconfirmed else Res.string.compose_queued))
             is ComposeUiState.Editing -> {
                 if (current.confirmingDiscard) {
                     DiscardQuestion(

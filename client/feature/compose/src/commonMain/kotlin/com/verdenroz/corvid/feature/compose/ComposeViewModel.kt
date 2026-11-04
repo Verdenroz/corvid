@@ -8,12 +8,15 @@ import com.verdenroz.corvid.core.data.Contact
 import com.verdenroz.corvid.core.data.DRAFTS
 import com.verdenroz.corvid.core.data.DraftSaveResult
 import com.verdenroz.corvid.core.data.PickedFile
-import com.verdenroz.corvid.core.data.SendResult
 import com.verdenroz.corvid.core.data.SendUnavailable
 import com.verdenroz.corvid.core.data.StartResult
 import com.verdenroz.corvid.core.data.UploadResult
 import com.verdenroz.corvid.core.data.fileSize
 import com.verdenroz.corvid.core.data.matching
+import com.verdenroz.corvid.core.data.outbox.Drained
+import com.verdenroz.corvid.core.data.outbox.ItemResult
+import com.verdenroz.corvid.core.data.outbox.Outbox
+import com.verdenroz.corvid.core.data.outbox.RejectionCategory
 import com.verdenroz.corvid.core.data.userMessage
 import com.verdenroz.corvid.core.jmap.JmapException
 import com.verdenroz.corvid.core.model.Attachment
@@ -42,7 +45,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.IOException
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -51,8 +56,10 @@ import kotlin.time.Duration.Companion.seconds
  */
 class ComposeViewModel(
     private val composeRepository: ComposeRepository,
+    private val outbox: Outbox,
     private val intent: ComposeIntent,
     private val restored: ComposeRestore? = null,
+    private val sendWait: Duration? = SEND_WAIT,
 ) : ViewModel() {
     private val _state = MutableStateFlow<ComposeUiState>(ComposeUiState.Loading)
     val state: StateFlow<ComposeUiState> = _state
@@ -262,20 +269,26 @@ class ComposeViewModel(
         pendingSave?.cancel()
         _state.value = current.copy(sending = true, error = null)
         launchToEnd {
-            try {
-                persist(sending = true)?.let { return@launchToEnd fail(it) }
-                val draftId = checkNotNull((_state.value as ComposeUiState.Editing).draftId)
-                when (val result = composeRepository.send(draftId, draft.from)) {
-                    is SendResult.Sent -> _state.value = ComposeUiState.Sent
-                    is SendResult.Rejected -> fail(UiText.FromServer(result.reason))
-                    is AliasGone -> fail(result.message())
-                    is SendUnavailable -> fail(result.message())
+            val id = saves.withLock { outbox.enqueue(draft, (_state.value as ComposeUiState.Editing).draftId) }
+            when (val result = drainWithin()?.firstOrNull { it.id == id }?.result) {
+                is ItemResult.Sent -> _state.value = ComposeUiState.Sent
+                is ItemResult.Rejected -> {
+                    outbox.discard(id)
+                    fail(result.message())
+                    persist(forceFirst = true)
                 }
-            } catch (e: JmapException) {
-                fail(e.userMessage())
+                else -> _state.value = ComposeUiState.Queued(needsDecision = result is ItemResult.Unconfirmed)
             }
         }
     }
+
+    /** Null when the wait ran out, which leaves the send running. A null [sendWait] never gives up, since a test's virtual clock would. */
+    private suspend fun drainWithin(): List<Drained>? =
+        if (sendWait == null) {
+            outbox.drain()
+        } else {
+            withTimeoutOrNull(sendWait) { outbox.drain() }
+        }
 
     private fun scheduleSave() {
         pendingSave?.cancel()
@@ -291,11 +304,11 @@ class ComposeViewModel(
     }
 
     /** Brings the server draft in line with the form; returns why it could not, or null. */
-    private suspend fun persist(sending: Boolean = false): UiText? =
+    private suspend fun persist(forceFirst: Boolean = false): UiText? =
         saves.withLock {
             val current = _state.value as? ComposeUiState.Editing ?: return null
-            val unsent = sending && current.draftId == null
-            if (discarded || (current.form == current.stored && !unsent)) return null
+            val unsent = forceFirst && current.draftId == null
+            if (discarded || current.sending || (current.form == current.stored && !unsent)) return null
             val form = current.form
             val failure =
                 try {
@@ -334,11 +347,15 @@ class ComposeViewModel(
 }
 
 private val AUTOSAVE_DELAY = 2.seconds
+private val SEND_WAIT = 10.seconds
 private const val SUGGESTION_LIMIT = 6
 
 private class Typing(val field: RecipientField, val caret: Int)
 
 private fun ComposeForm.isBlank() = listOf(to, cc, bcc, subject, body).all { it.isBlank() } && attachments.isEmpty()
+
+private fun ItemResult.Rejected.message() =
+    if (category == RejectionCategory.AliasGone) uiText(Res.string.compose_alias_gone, reason) else UiText.FromServer(reason)
 
 private fun AliasGone.message() = uiText(Res.string.compose_alias_gone, email)
 

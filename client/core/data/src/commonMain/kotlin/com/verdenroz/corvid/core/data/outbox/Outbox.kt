@@ -20,6 +20,8 @@ class Outbox(
 
     suspend fun drain(): List<Drained> = scope.async { sender.drain() }.await()
 
+    suspend fun discard(id: String): Boolean = scope.async { sender.discard(id) }.await()
+
     fun drainSoon() {
         scope.launch { sender.drain() }
     }
