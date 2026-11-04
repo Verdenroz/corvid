@@ -28,7 +28,7 @@ private val MESSAGE =
                 from = "alias@mail.test",
             ),
         replacesDraftId = "d9",
-        messageId = "<m1@mail.test>",
+        messageId = "m1@mail.test",
         keyword = "corvid-outbox-m1",
         createdAt = 1234,
     )

@@ -136,6 +136,9 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
     /** Fails every EmailSubmission `create` with `notCreated`, as a rejected sender or recipient would. */
     var refuseSubmission: Boolean = false
 
+    /** The next this-many JMAP API requests are applied in full, then fail as unreachable before the client reads the answer. */
+    var loseResponses: Int = 0
+
     /** While set, a JMAP API request waits on it before it is answered, as a slow server would. */
     var gate: CompletableDeferred<Unit>? = null
 
@@ -182,7 +185,12 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
             path.endsWith("/jmap/session") -> sessionResponse()
             path.endsWith("/jmap/api/") -> {
                 gate?.await()
-                state.withLock { apiResponse(request) }
+                state.withLock { apiResponse(request) }.also {
+                    if (loseResponses > 0) {
+                        loseResponses--
+                        throw IOException("simulated lost response")
+                    }
+                }
             }
             path.startsWith("/jmap/upload/") -> state.withLock { uploadResponse(request) }
             path.startsWith("/jmap/download/") -> downloadResponse(path)
@@ -865,6 +873,7 @@ private fun JsonObject.toFakeEmail(
         id = id,
         threadId = id,
         mailboxIds = getValue("mailboxIds").jsonObject.keys,
+        messageId = ids("messageId"),
         subject = get("subject")?.jsonPrimitive?.contentOrNull,
         from = addresses("from").firstOrNull(),
         receivedAt = "2024-01-01T00:00:00Z",

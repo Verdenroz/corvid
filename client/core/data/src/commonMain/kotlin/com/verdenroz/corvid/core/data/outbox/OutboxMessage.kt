@@ -7,8 +7,8 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * Everything a send needs, fixed when it is queued. [messageId] and [keyword] name the message on
- * the server, so a retry can find what an earlier attempt created.
+ * Everything a send needs, fixed when it is queued. [messageId], without angle brackets, and
+ * [keyword] name the message on the server, so a retry can find what an earlier attempt created.
  */
 data class OutboxMessage(
     val draft: Draft,
