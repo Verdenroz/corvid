@@ -1,0 +1,122 @@
+package com.verdenroz.corvid.core.data.outbox
+
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.Json
+import java.io.File
+import java.io.FileOutputStream
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+
+private const val STATE_SCHEMA = 1
+private const val MESSAGE_SUFFIX = ".msg"
+private const val STATE_SUFFIX = ".state"
+private const val QUARANTINE_SUFFIX = ".bad"
+
+@Serializable
+private class StateFile(
+    val schema: Int,
+    val key: String,
+    val createdAt: Long,
+    val attempt: Int,
+    val state: OutboxState,
+)
+
+/**
+ * One directory of `<id>.msg` (an immutable sealed message) and `<id>.state` (its progress, in
+ * plaintext). A file that cannot be read is renamed to `.bad` and reported as an [OutboxFault],
+ * never treated as an empty outbox. Only one store holds a directory at a time.
+ */
+class OutboxStore private constructor(private val directory: File, private val lock: OutboxLock) : AutoCloseable {
+    fun enqueue(
+        id: String,
+        message: SealedMessage,
+        createdAt: Long,
+    ): OutboxItem {
+        writeAtomically(file(id, MESSAGE_SUFFIX), encodeEnvelope(message))
+        return OutboxItem(id, createdAt, 0, message.keyFingerprint, OutboxState.Queued).also(::save)
+    }
+
+    fun save(item: OutboxItem) {
+        val record = StateFile(STATE_SCHEMA, item.keyFingerprint, item.createdAt, item.attempt, item.state)
+        writeAtomically(file(item.id, STATE_SUFFIX), Json.encodeToString(StateFile.serializer(), record).toByteArray())
+    }
+
+    /** Oldest first. */
+    fun list(): OutboxListing {
+        val read = directory.listFiles { file -> file.name.endsWith(STATE_SUFFIX) }.orEmpty().map { readState(it) }
+        return OutboxListing(
+            items = read.filterIsInstance<StateRead.Item>().map { it.item }.sortedWith(compareBy({ it.createdAt }, { it.id })),
+            faults = read.filterIsInstance<StateRead.Faulty>().map { it.fault },
+        )
+    }
+
+    fun readMessage(id: String): MessageRead {
+        val file = file(id, MESSAGE_SUFFIX)
+        if (!file.exists()) return MessageRead.Missing
+        return when (val read = decodeEnvelope(file.readBytes())) {
+            is EnvelopeRead.Valid -> MessageRead.Found(read.message)
+            is EnvelopeRead.Corrupt -> MessageRead.Faulty(OutboxFault.Corrupt(id, quarantine(file)))
+            is EnvelopeRead.Foreign -> MessageRead.Faulty(OutboxFault.ForeignSchema(id, quarantine(file), read.found))
+        }
+    }
+
+    /** Drops the message body and keeps a tombstone naming only the server's copy. */
+    fun finish(item: OutboxItem) {
+        save(item)
+        file(item.id, MESSAGE_SUFFIX).delete()
+    }
+
+    override fun close() = lock.close()
+
+    private fun readState(file: File): StateRead {
+        val id = file.name.removeSuffix(STATE_SUFFIX)
+        val record =
+            try {
+                Json.decodeFromString(StateFile.serializer(), file.readText())
+            } catch (_: SerializationException) {
+                return StateRead.Faulty(OutboxFault.Corrupt(id, quarantine(file)))
+            }
+        if (record.schema != STATE_SCHEMA) {
+            return StateRead.Faulty(OutboxFault.ForeignSchema(id, quarantine(file), record.schema.toString()))
+        }
+        return StateRead.Item(OutboxItem(id, record.createdAt, record.attempt, record.key, record.state))
+    }
+
+    private fun quarantine(file: File): String {
+        val renamed = File(file.parentFile, file.name + QUARANTINE_SUFFIX)
+        Files.move(file.toPath(), renamed.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        return renamed.name
+    }
+
+    private fun file(
+        id: String,
+        suffix: String,
+    ) = File(directory, id + suffix)
+
+    private fun writeAtomically(
+        target: File,
+        bytes: ByteArray,
+    ) {
+        val temp = File(directory, target.name + ".tmp")
+        FileOutputStream(temp).use {
+            it.write(bytes)
+            it.fd.sync()
+        }
+        Files.move(temp.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+    }
+
+    private sealed interface StateRead {
+        class Item(val item: OutboxItem) : StateRead
+
+        class Faulty(val fault: OutboxFault) : StateRead
+    }
+
+    companion object {
+        /** Null while another store holds [directory]. */
+        fun open(directory: File): OutboxStore? {
+            directory.mkdirs()
+            return OutboxLock.acquire(directory)?.let { OutboxStore(directory, it) }
+        }
+    }
+}
