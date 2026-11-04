@@ -53,6 +53,18 @@ private class Rig {
         state: OutboxState,
     ) = store.save(item(id).copy(state = state))
 
+    fun copy(
+        id: String,
+        mailbox: String,
+        keywords: Set<String>,
+    ) {
+        fake.emails += FakeEmail(id, id, setOf(mailbox), "hello", null, "2024-01-01T00:00:00Z", keywords)
+    }
+
+    fun enqueueUnreadable(id: String) {
+        store.enqueue(id, OutboxSealer.sealPayload(id, "{".toByteArray(), OutboxSealer.keyFor(DEVICE_KEY)), createdAt = 1)
+    }
+
     fun stripOutboxKeywords() =
         fake.emails.replaceAll { email -> email.copy(keywords = email.keywords.filterNot { it.startsWith("corvid-outbox-") }.toSet()) }
 }
@@ -256,12 +268,188 @@ class OutboxSenderTest {
         runTest {
             val rig = Rig()
             val bad = "bad"
-            rig.store.enqueue(bad, OutboxSealer.sealPayload(bad, "{".toByteArray(), OutboxSealer.keyFor(DEVICE_KEY)), createdAt = 1)
+            rig.enqueueUnreadable(bad)
             val good = rig.queue.enqueue(draft(), null)
 
             val drained = rig.sender().drain()
 
             assertEquals(listOf(Drained(bad, ItemResult.Unreadable), Drained(good, ItemResult.Sent)), drained)
+        }
+
+    @Test
+    fun `a handshake failure before the send was written is deferred and the item stays queued`() =
+        runTest {
+            val rig = Rig()
+            val id = rig.queue.enqueue(draft(), null)
+            val sender = rig.sender()
+            rig.fake.tlsFailure = true
+
+            assertEquals(listOf(Drained(id, ItemResult.Deferred)), sender.drain())
+
+            assertEquals(OutboxState.Queued, rig.item(id).state)
+            assertEquals(0, rig.item(id).attempt)
+        }
+
+    @Test
+    fun `a tls failure inside the session after the send is unconfirmed and the probe resolves it`() =
+        runTest {
+            val rig = Rig()
+            val id = rig.queue.enqueue(draft(), null)
+            val sender = rig.sender()
+            rig.fake.loseResponses = 1
+            rig.fake.loseResponsesAsTls = true
+
+            assertEquals(listOf(Drained(id, ItemResult.Unconfirmed(transportFailed = true))), sender.drain())
+            assertEquals(listOf(Drained(id, ItemResult.Sent)), sender.drain())
+
+            assertEquals(1, rig.fake.submissions.size)
+        }
+
+    @Test
+    fun `an unconfirmed message whose probe is refused stays unconfirmed and is later resolved by the probe`() =
+        runTest {
+            val rig = Rig()
+            val id = rig.queue.enqueue(draft(), null)
+            val sender = rig.sender()
+            rig.fake.loseResponses = 1
+            sender.drain()
+            rig.fake.malformedApiResponse = true
+
+            assertEquals(listOf(Drained(id, ItemResult.Deferred)), sender.drain())
+            assertEquals(OutboxState.Unconfirmed, rig.item(id).state)
+            rig.fake.malformedApiResponse = false
+
+            assertEquals(listOf(Drained(id, ItemResult.Sent)), rig.sender().drain())
+            assertEquals(1, rig.fake.submissions.size)
+        }
+
+    @Test
+    fun `a message interrupted while recovering from an unconfirmed send is never created on an empty probe`() =
+        runTest {
+            val rig = Rig()
+            val id = rig.queue.enqueue(draft(), null)
+            rig.put(id, OutboxState.Unconfirmed)
+            val sender = rig.sender()
+            val gate = CompletableDeferred<Unit>()
+            rig.fake.gate = gate
+
+            val drained = async(Dispatchers.Default) { sender.drain() }
+            withContext(Dispatchers.Default) {
+                while (rig.item(id).state !is OutboxState.Submitting) delay(5)
+            }
+            assertEquals(OutboxState.Submitting(5_000, recovering = true), rig.item(id).state)
+            gate.complete(Unit)
+            drained.await()
+            rig.put(id, OutboxState.Submitting(5_000, recovering = true))
+
+            assertEquals(listOf(Drained(id, ItemResult.Unconfirmed(transportFailed = false))), rig.sender().drain())
+
+            assertEquals(emptyList(), rig.fake.emails)
+        }
+
+    @Test
+    fun `a sent copy filed in another mailbox is found and marked sent`() =
+        runTest {
+            val rig = Rig()
+            val id = rig.queue.enqueue(draft(), null)
+            val sender = rig.sender()
+            rig.fake.loseResponses = 1
+            sender.drain()
+            rig.fake.emails.replaceAll { it.copy(mailboxIds = setOf("archive")) }
+
+            assertEquals(listOf(Drained(id, ItemResult.Sent)), sender.drain())
+
+            assertEquals(OutboxState.Sent("sent1", 5_000), rig.item(id).state)
+            assertEquals(1, rig.fake.submissions.size)
+        }
+
+    @Test
+    fun `two sent copies of one message are marked sent without a second send`() =
+        runTest {
+            val rig = Rig()
+            val id = rig.queue.enqueue(draft(), null)
+            rig.put(id, OutboxState.Unconfirmed)
+            repeat(2) { rig.copy("c$it", "sent", setOf("corvid-outbox-$id")) }
+
+            assertEquals(listOf(Drained(id, ItemResult.Sent)), rig.sender().drain())
+
+            assertEquals(emptyList(), rig.fake.submissions)
+        }
+
+    @Test
+    fun `a staged copy beside a sent copy is ambiguous and the user can send again or discard`() =
+        runTest {
+            val rig = Rig()
+            val id = rig.queue.enqueue(draft(), null)
+            rig.put(id, OutboxState.Unconfirmed)
+            val mark = setOf("corvid-outbox-$id")
+            rig.copy("s", "sent", mark)
+            rig.copy("d", "drafts", mark + "\$draft")
+            val sender = rig.sender()
+
+            assertEquals(listOf(Drained(id, ItemResult.Unconfirmed(transportFailed = false))), sender.drain())
+            assertEquals(true, sender.discard(id))
+
+            assertEquals(emptyList(), rig.store.list().items)
+            assertEquals(MessageRead.Missing, rig.store.readMessage(id))
+        }
+
+    @Test
+    fun `a rejected or unreadable message can be discarded and a sent tombstone cannot`() =
+        runTest {
+            val rig = Rig()
+            val rejected = rig.queue.enqueue(draft(), null)
+            rig.put(rejected, OutboxState.Rejected(RejectionCategory.Refused))
+            val unreadable = "bad"
+            rig.enqueueUnreadable(unreadable)
+            val sent = rig.queue.enqueue(draft(), null)
+            rig.put(sent, OutboxState.Sent("e1", 1))
+            val queued = rig.queue.enqueue(draft(), null)
+            val sender = rig.sender()
+
+            assertEquals(listOf(true, true, false, false), listOf(rejected, unreadable, sent, queued).map { sender.discard(it) })
+            assertEquals(setOf(sent, queued), rig.store.list().items.map { it.id }.toSet())
+        }
+
+    @Test
+    fun `a transient method error on the submission leaves the staged draft for the retry to submit`() =
+        runTest {
+            val rig = Rig()
+            val id = rig.queue.enqueue(draft(), null)
+            val sender = rig.sender()
+            rig.fake.submissionServerFail = true
+
+            assertEquals(listOf(Drained(id, ItemResult.Deferred)), sender.drain())
+            assertEquals(OutboxState.Queued, rig.item(id).state)
+            assertEquals(setOf("drafts"), rig.fake.emails.single().mailboxIds)
+            rig.fake.submissionServerFail = false
+
+            assertEquals(listOf(Drained(id, ItemResult.Sent)), sender.drain())
+
+            assertEquals(1, rig.fake.emails.size)
+            assertEquals(1, rig.fake.submissions.size)
+        }
+
+    @Test
+    fun `a failed cleanup after a send is retried on the next drain`() =
+        runTest {
+            val rig = Rig()
+            rig.fake.emails += FakeEmail("old", "old", setOf("drafts"), "hello", null, "2024-01-01T00:00:00Z", setOf("\$draft"))
+            val id = rig.queue.enqueue(draft(), replacesDraftId = "old")
+            val sender = rig.sender()
+            rig.fake.apiRequestsBeforeRefusal = 1
+
+            assertEquals(listOf(Drained(id, ItemResult.Sent)), sender.drain())
+            val pending = rig.item(id).state as OutboxState.Sent
+            assertEquals(Tidy("corvid-outbox-$id", "old"), pending.tidy)
+            assertEquals(setOf("old", "sent1"), rig.fake.emails.map { it.id }.toSet())
+            rig.fake.apiRequestsBeforeRefusal = null
+
+            assertEquals(emptyList(), sender.drain())
+
+            assertEquals(OutboxState.Sent("sent1", 5_000), rig.item(id).state)
+            assertEquals(listOf("sent1"), rig.fake.emails.map { it.id })
+            assertEquals(setOf("\$seen"), rig.fake.emails.single().keywords)
         }
 
     @Test

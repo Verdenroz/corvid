@@ -25,9 +25,10 @@ sealed interface OutboxState {
     @SerialName("queued")
     data object Queued : OutboxState
 
+    /** [recovering] is set when an earlier attempt may have reached the server, so nothing is created until a probe shows it did not. */
     @Serializable
     @SerialName("submitting")
-    data class Submitting(val startedAt: Long) : OutboxState
+    data class Submitting(val startedAt: Long, val recovering: Boolean = false) : OutboxState
 
     @Serializable
     @SerialName("unconfirmed")
@@ -37,10 +38,15 @@ sealed interface OutboxState {
     @SerialName("rejected")
     data class Rejected(val category: RejectionCategory) : OutboxState
 
+    /** [tidy] is what is still to be cleaned off the server after the send, kept so a failed or interrupted cleanup is retried. */
     @Serializable
     @SerialName("sent")
-    data class Sent(val serverEmailId: String, val at: Long) : OutboxState
+    data class Sent(val serverEmailId: String, val at: Long, val tidy: Tidy? = null) : OutboxState
 }
+
+/** The send mark still on the sent copy and the draft this message replaced, each null once gone. */
+@Serializable
+data class Tidy(val keyword: String? = null, val replacesDraftId: String? = null)
 
 /** What the plaintext state file says about one message; it holds no recipients, subject or body. */
 data class OutboxItem(

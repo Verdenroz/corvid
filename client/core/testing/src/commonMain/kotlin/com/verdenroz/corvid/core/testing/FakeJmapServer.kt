@@ -38,6 +38,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import java.io.IOException
+import javax.net.ssl.SSLException
 import javax.net.ssl.SSLHandshakeException
 
 private const val ACCOUNT_ID = "u1"
@@ -139,6 +140,15 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
     /** The next this-many JMAP API requests are applied in full, then fail as unreachable before the client reads the answer. */
     var loseResponses: Int = 0
 
+    /** Makes a lost response fail as a TLS error, as a connection reset inside the session would. */
+    var loseResponsesAsTls: Boolean = false
+
+    /** Answers EmailSubmission/set with a `serverFail` method error, as a server that stumbled mid-request would. */
+    var submissionServerFail: Boolean = false
+
+    /** Lets this many JMAP API requests through, then refuses the rest with a 429 until it is cleared. */
+    var apiRequestsBeforeRefusal: Int? = null
+
     /** The next this-many JMAP API requests are refused with a 429 before anything is applied. */
     var tooManyApiRequests: Int = 0
 
@@ -193,17 +203,19 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
                 gate?.await()
                 when {
                     apiUnauthorized -> respond("", HttpStatusCode.Unauthorized)
-                    tooManyApiRequests > 0 -> {
-                        tooManyApiRequests--
+                    apiRequestsBeforeRefusal?.let { it <= 0 } == true || tooManyApiRequests > 0 -> {
+                        if (tooManyApiRequests > 0) tooManyApiRequests--
                         respond("", HttpStatusCode.TooManyRequests, headersOf(HttpHeaders.RetryAfter, listOf("1")))
                     }
-                    else ->
+                    else -> {
+                        apiRequestsBeforeRefusal = apiRequestsBeforeRefusal?.minus(1)
                         state.withLock { apiResponse(request) }.also {
                             if (loseResponses > 0) {
                                 loseResponses--
-                                throw IOException("simulated lost response")
+                                throw if (loseResponsesAsTls) SSLException("simulated reset") else IOException("simulated lost response")
                             }
                         }
+                    }
                 }
             }
             path.startsWith("/jmap/upload/") -> state.withLock { uploadResponse(request) }
@@ -346,7 +358,8 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
             "Thread/get" -> listOf(name to threadGet(arguments))
             "Identity/get" -> listOf(name to getResponse("i1", identities, arguments, FakeIdentity::id) { it.toJson() })
             "Email/set" -> listOf(name to emailSet(arguments, createdIds))
-            "EmailSubmission/set" -> submissionSet(arguments, createdIds)
+            "EmailSubmission/set" ->
+                if (submissionServerFail) listOf("error" to problem("serverFail", "simulated")) else submissionSet(arguments, createdIds)
             "FileNode/query" -> listOf(fileNodeQuery(arguments))
             "FileNode/get" -> listOf(name to fileNodeGet(arguments))
             "FileNode/set" -> listOf(name to fileNodeSet(arguments))

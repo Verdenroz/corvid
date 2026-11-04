@@ -288,11 +288,11 @@ internal fun JsonObject.toIdentity() =
         email = getValue("email").jsonPrimitive.content,
     )
 
-internal fun MethodOutcome.refusal(creationId: String): String? =
+private fun MethodOutcome.refusal(creationId: String): String? =
     when (this) {
         is MethodOutcome.Failure -> error.reason
         is MethodOutcome.Success -> result.setErrorReason("notCreated", creationId)
     }
 
-internal fun MethodOutcome.createdDraftId(): String =
+private fun MethodOutcome.createdDraftId(): String =
     (this as MethodOutcome.Success).result.getValue("created").jsonObject.getValue("draft").jsonObject.getValue("id").jsonPrimitive.content

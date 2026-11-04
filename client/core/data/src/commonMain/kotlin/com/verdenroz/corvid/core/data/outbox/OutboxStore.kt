@@ -71,6 +71,11 @@ class OutboxStore private constructor(private val directory: File, private val l
         file(item.id, MESSAGE_SUFFIX).delete()
     }
 
+    fun remove(id: String) {
+        file(id, MESSAGE_SUFFIX).delete()
+        file(id, STATE_SUFFIX).delete()
+    }
+
     override fun close() = lock.close()
 
     private fun readState(file: File): StateRead {
