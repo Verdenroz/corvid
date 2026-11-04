@@ -158,7 +158,7 @@ class OutboxSender(
                 )
             val outcomes =
                 try {
-                    jmapClient.call(calls)
+                    jmapClient.call(calls, singleAttempt = true)
                 } catch (e: JmapException) {
                     return settle(e.error, mayHaveSent = true)
                 }
@@ -174,7 +174,7 @@ class OutboxSender(
             val call = Invocation("EmailSubmission/set", submit(route.identity, emailId, route.draftsId, route.sentId), "c0")
             val outcome =
                 try {
-                    jmapClient.call(listOf(call)).getValue("c0")
+                    jmapClient.call(listOf(call), singleAttempt = true).getValue("c0")
                 } catch (e: JmapException) {
                     return settle(e.error, mayHaveSent = true)
                 }
