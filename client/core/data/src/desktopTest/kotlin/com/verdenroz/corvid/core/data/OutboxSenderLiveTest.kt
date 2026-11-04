@@ -120,7 +120,6 @@ class OutboxSenderLiveTest {
     }
 }
 
-/** Forwards bytes both ways and, once armed, closes the connection the instant the server starts to answer. */
 private class DroppingProxy(host: String, port: Int) : AutoCloseable {
     val dropNextResponse = AtomicBoolean(false)
     private val server = ServerSocket().apply { bind(InetSocketAddress("127.0.0.1", 0)) }

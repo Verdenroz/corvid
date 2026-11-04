@@ -20,7 +20,6 @@ import kotlin.test.assertTrue
 
 private val ECHO = listOf(Invocation("Core/echo", JsonObject(emptyMap()), "c0"))
 
-/** A raw socket server, since the behaviour under test is what the transport does when a connection is cut. */
 private class CuttingServer : AutoCloseable {
     private val socket = ServerSocket().apply { bind(InetSocketAddress("127.0.0.1", 0)) }
     val posts = AtomicInteger()

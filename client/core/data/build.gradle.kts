@@ -21,7 +21,7 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.tink.android)
         }
-        // tink and tink-android carry the same classes, so each target takes exactly one.
+        // tink and tink-android collide on one classpath, so each target takes exactly one.
         val desktopMain by getting {
             dependencies {
                 implementation(libs.tink)
