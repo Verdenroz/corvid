@@ -63,6 +63,13 @@ class OutboxSealerTest {
     }
 
     @Test
+    fun `a payload that decrypts but cannot be decoded is corrupt`() {
+        val sealed = OutboxSealer.sealPayload("m1", "not a message".toByteArray(), key)
+
+        assertEquals(OpenResult.Corrupt, OutboxSealer.open("m1", sealed, DEVICE_KEY))
+    }
+
+    @Test
     fun `a sealed message does not open under another id`() {
         val sealed = OutboxSealer.seal("m1", MESSAGE, key)
 

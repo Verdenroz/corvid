@@ -252,6 +252,19 @@ class OutboxSenderTest {
         }
 
     @Test
+    fun `an undecodable message does not block the ones behind it`() =
+        runTest {
+            val rig = Rig()
+            val bad = "bad"
+            rig.store.enqueue(bad, OutboxSealer.sealPayload(bad, "{".toByteArray(), OutboxSealer.keyFor(DEVICE_KEY)), createdAt = 1)
+            val good = rig.queue.enqueue(draft(), null)
+
+            val drained = rig.sender().drain()
+
+            assertEquals(listOf(Drained(bad, ItemResult.Unreadable), Drained(good, ItemResult.Sent)), drained)
+        }
+
+    @Test
     fun `a sign-out leaves the item exactly as it was`() =
         runTest {
             val rig = Rig()

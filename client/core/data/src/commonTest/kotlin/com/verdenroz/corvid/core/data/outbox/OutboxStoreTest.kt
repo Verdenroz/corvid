@@ -54,6 +54,7 @@ class OutboxStoreTest {
             assertTrue(listing.items.isEmpty())
             assertEquals(listOf<OutboxFault>(OutboxFault.Corrupt("a", "a.state.bad")), listing.faults)
             assertTrue(File(directory, "a.state.bad").exists())
+            assertTrue(File(directory, "a.msg.bad").exists())
             assertTrue(it.list().faults.isEmpty())
         }
     }
@@ -69,6 +70,20 @@ class OutboxStoreTest {
 
             assertTrue(listing.items.isEmpty())
             assertEquals(listOf<OutboxFault>(OutboxFault.ForeignSchema("a", "a.state.bad", "9")), listing.faults)
+        }
+    }
+
+    @Test
+    fun `a state file with a higher schema and an extra field is another schema and keeps its message paired`() {
+        store().use {
+            it.enqueue("a", sealed, createdAt = 10)
+            val text = File(directory, "a.state").readText().replace("\"schema\":1", "\"schema\":2,\"extra\":true")
+            File(directory, "a.state").writeText(text)
+
+            val listing = it.list()
+
+            assertEquals(listOf<OutboxFault>(OutboxFault.ForeignSchema("a", "a.state.bad", "2")), listing.faults)
+            assertEquals(setOf("a.state.bad", "a.msg.bad", ".lock"), directory.list().orEmpty().toSet())
         }
     }
 

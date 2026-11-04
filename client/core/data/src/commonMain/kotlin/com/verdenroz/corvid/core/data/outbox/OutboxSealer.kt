@@ -13,6 +13,7 @@ import com.google.crypto.tink.subtle.Hkdf
 import com.google.crypto.tink.subtle.X25519
 import com.google.crypto.tink.util.Bytes
 import com.google.crypto.tink.util.SecretBytes
+import kotlinx.serialization.SerializationException
 import java.security.GeneralSecurityException
 import java.security.MessageDigest
 import java.util.Base64
@@ -48,16 +49,22 @@ object OutboxSealer {
 
     fun keyFor(deviceKey: ByteArray): SealKey = SealKey(X25519.publicFromPrivate(privateKeyFor(deviceKey)))
 
-    /** The id is bound into the ciphertext, so a sealed file cannot be passed off under another id. */
     fun seal(
         id: String,
         message: OutboxMessage,
+        to: SealKey,
+    ): SealedMessage = sealPayload(id, message.encode(), to)
+
+    /** The id is bound into the ciphertext, so a sealed file cannot be passed off under another id. */
+    internal fun sealPayload(
+        id: String,
+        payload: ByteArray,
         to: SealKey,
     ): SealedMessage {
         val publicKey = HpkePublicKey.create(PARAMETERS, Bytes.copyFrom(to.publicKey), null)
         val handle = KeysetHandle.newBuilder().addEntry(KeysetHandle.importKey(publicKey).withRandomId().makePrimary()).build()
         val primitive = handle.getPrimitive(RegistryConfiguration.get(), HybridEncrypt::class.java)
-        return SealedMessage(to.fingerprint, primitive.encrypt(message.encode(), id.toByteArray()))
+        return SealedMessage(to.fingerprint, primitive.encrypt(payload, id.toByteArray()))
     }
 
     fun open(
@@ -75,6 +82,8 @@ object OutboxSealer {
         return try {
             OpenResult.Opened(decodeOutboxMessage(primitive.decrypt(sealed.bytes, id.toByteArray())))
         } catch (_: GeneralSecurityException) {
+            OpenResult.Corrupt
+        } catch (_: SerializationException) {
             OpenResult.Corrupt
         }
     }

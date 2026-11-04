@@ -3,6 +3,9 @@ package com.verdenroz.corvid.core.data.outbox
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.file.Files
@@ -25,7 +28,8 @@ private class StateFile(
 /**
  * One directory of `<id>.msg` (an immutable sealed message) and `<id>.state` (its progress, in
  * plaintext). A file that cannot be read is renamed to `.bad` and reported as an [OutboxFault],
- * never treated as an empty outbox. Only one store holds a directory at a time.
+ * never treated as an empty outbox; an unreadable state file takes its message with it. Only one
+ * store holds a directory at a time.
  */
 class OutboxStore private constructor(private val directory: File, private val lock: OutboxLock) : AutoCloseable {
     fun enqueue(
@@ -71,17 +75,37 @@ class OutboxStore private constructor(private val directory: File, private val l
 
     private fun readState(file: File): StateRead {
         val id = file.name.removeSuffix(STATE_SUFFIX)
+        val text = file.readText()
+        val schema = schemaOf(text)
         val record =
-            try {
-                Json.decodeFromString(StateFile.serializer(), file.readText())
-            } catch (_: SerializationException) {
-                return StateRead.Faulty(OutboxFault.Corrupt(id, quarantine(file)))
+            if (schema == STATE_SCHEMA) {
+                try {
+                    Json.decodeFromString(StateFile.serializer(), text)
+                } catch (_: SerializationException) {
+                    null
+                }
+            } else {
+                null
             }
-        if (record.schema != STATE_SCHEMA) {
-            return StateRead.Faulty(OutboxFault.ForeignSchema(id, quarantine(file), record.schema.toString()))
+        if (record == null) {
+            val fault =
+                if (schema == null || schema == STATE_SCHEMA) {
+                    OutboxFault.Corrupt(id, quarantine(file))
+                } else {
+                    OutboxFault.ForeignSchema(id, quarantine(file), schema.toString())
+                }
+            file(id, MESSAGE_SUFFIX).takeIf { it.exists() }?.let(::quarantine)
+            return StateRead.Faulty(fault)
         }
         return StateRead.Item(OutboxItem(id, record.createdAt, record.attempt, record.key, record.state))
     }
+
+    private fun schemaOf(text: String): Int? =
+        try {
+            Json.parseToJsonElement(text).jsonObject["schema"]?.jsonPrimitive?.intOrNull
+        } catch (_: IllegalArgumentException) {
+            null
+        }
 
     private fun quarantine(file: File): String {
         val renamed = File(file.parentFile, file.name + QUARANTINE_SUFFIX)
