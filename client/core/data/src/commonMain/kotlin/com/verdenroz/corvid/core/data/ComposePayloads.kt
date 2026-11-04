@@ -112,12 +112,15 @@ internal fun findByKeyword(keyword: String): List<Invocation> =
         ),
     )
 
-internal fun clearKeyword(
+/** Drops the send mark from the sent copy and destroys the draft this message replaced. */
+internal fun tidySent(
     emailId: String,
     keyword: String,
+    replacing: String?,
 ): JsonObject =
     buildJsonObject {
         putJsonObject("update") { putJsonObject(emailId) { put("keywords/$keyword", JsonNull) } }
+        replacing?.let { putJsonArray("destroy") { add(JsonPrimitive(it)) } }
     }
 
 internal val DRAFT_PROPERTIES =

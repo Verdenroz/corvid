@@ -139,6 +139,12 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
     /** The next this-many JMAP API requests are applied in full, then fail as unreachable before the client reads the answer. */
     var loseResponses: Int = 0
 
+    /** The next this-many JMAP API requests are refused with a 429 before anything is applied. */
+    var tooManyApiRequests: Int = 0
+
+    /** Answers every JMAP API request with a 401, while the session itself still opens. */
+    var apiUnauthorized: Boolean = false
+
     /** While set, a JMAP API request waits on it before it is answered, as a slow server would. */
     var gate: CompletableDeferred<Unit>? = null
 
@@ -185,11 +191,19 @@ class FakeJmapServer(private val dispatcher: CoroutineDispatcher? = null) {
             path.endsWith("/jmap/session") -> sessionResponse()
             path.endsWith("/jmap/api/") -> {
                 gate?.await()
-                state.withLock { apiResponse(request) }.also {
-                    if (loseResponses > 0) {
-                        loseResponses--
-                        throw IOException("simulated lost response")
+                when {
+                    apiUnauthorized -> respond("", HttpStatusCode.Unauthorized)
+                    tooManyApiRequests > 0 -> {
+                        tooManyApiRequests--
+                        respond("", HttpStatusCode.TooManyRequests, headersOf(HttpHeaders.RetryAfter, listOf("1")))
                     }
+                    else ->
+                        state.withLock { apiResponse(request) }.also {
+                            if (loseResponses > 0) {
+                                loseResponses--
+                                throw IOException("simulated lost response")
+                            }
+                        }
                 }
             }
             path.startsWith("/jmap/upload/") -> state.withLock { uploadResponse(request) }

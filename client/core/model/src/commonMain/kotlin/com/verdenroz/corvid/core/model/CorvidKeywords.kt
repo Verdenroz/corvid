@@ -10,6 +10,7 @@ object CorvidKeywords {
     const val RULE = "corvid-rule-"
     const val MODEL_LABEL = "corvid-llm-label-"
     const val MODEL = "corvid-llm-"
+    const val OUTBOX = "corvid-outbox-"
     const val SEEN = "\$seen"
     const val FLAGGED = "\$flagged"
     const val DRAFT = "\$draft"
@@ -31,13 +32,13 @@ object CorvidKeywords {
 
     /**
      * Who put a keyword on a message, for showing it as a label. Null for `$` flags and the
-     * model's own markers (`corvid-llm-done`), which are bookkeeping rather than labels.
+     * model's own markers (`corvid-llm-done`) and the outbox's send marks, which are bookkeeping rather than labels.
      */
     fun labelOf(keyword: String): Label? =
         when {
             keyword.startsWith('$') -> null
             keyword.startsWith(MODEL_LABEL) -> Label.Guess(keyword.removePrefix(MODEL_LABEL))
-            keyword.startsWith(MODEL) -> null
+            keyword.startsWith(MODEL) || keyword.startsWith(OUTBOX) -> null
             keyword.startsWith(RULE) -> Label.Rule(keyword.removePrefix(RULE))
             keyword.startsWith(NAMESPACE) -> Label.Labeler(keyword.removePrefix(NAMESPACE))
             else -> Label.Yours(keyword)
