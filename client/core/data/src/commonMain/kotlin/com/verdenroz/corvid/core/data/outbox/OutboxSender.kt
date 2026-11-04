@@ -104,10 +104,13 @@ class OutboxSender(
             drained
         }
 
-    /** The user's decision to send an [OutboxState.Unconfirmed] message again, accepting a possible duplicate. */
+    /**
+     * The user's decision to send an [OutboxState.Unconfirmed] message again, accepting a possible duplicate,
+     * or a [OutboxState.Rejected] one, which the server is known not to have sent.
+     */
     suspend fun resend(id: String) {
         mutex.withLock {
-            store.read(id)?.takeIf { it.state == OutboxState.Unconfirmed }
+            store.read(id)?.takeIf { it.state == OutboxState.Unconfirmed || it.state is OutboxState.Rejected }
                 ?.let { store.save(it.copy(state = OutboxState.Queued)) }
         }
     }

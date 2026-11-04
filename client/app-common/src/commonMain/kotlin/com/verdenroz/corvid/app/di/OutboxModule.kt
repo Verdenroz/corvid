@@ -27,6 +27,14 @@ val outboxModule =
                 OutboxQueue(get(), OutboxSealer.keyFor(device.key), device.domain)
             }
             scoped { OutboxSender(get(), get(), get(), get<UnlockedDevice>().key) }
-            scoped { Outbox(get(), get(), get(), CoroutineScope(SupervisorJob() + Dispatchers.IO)) }.onClose { it?.close() }
+            scoped {
+                Outbox(
+                    get(),
+                    get(),
+                    get(),
+                    get<UnlockedDevice>().key,
+                    CoroutineScope(SupervisorJob() + Dispatchers.IO),
+                )
+            }.onClose { it?.close() }
         }
     }

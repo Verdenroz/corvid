@@ -234,6 +234,22 @@ class OutboxSenderTest {
         }
 
     @Test
+    fun `a rejected message the user chooses to send again goes out once the server accepts it`() =
+        runTest {
+            val rig = Rig()
+            val id = rig.queue.enqueue(draft(), null)
+            val sender = rig.sender()
+            rig.fake.refuseSubmission = true
+
+            assertIs<ItemResult.Rejected>(sender.drain().single().result)
+            rig.fake.refuseSubmission = false
+            sender.resend(id)
+            assertEquals(listOf(Drained(id, ItemResult.Sent)), sender.drain())
+
+            assertEquals(1, rig.fake.submissions.size)
+        }
+
+    @Test
     fun `a 429 on the send leaves the item queued and a later drain sends it once`() =
         runTest {
             val rig = Rig()

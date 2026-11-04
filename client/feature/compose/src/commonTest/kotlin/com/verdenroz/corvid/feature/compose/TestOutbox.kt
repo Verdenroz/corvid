@@ -22,6 +22,7 @@ internal class TestOutbox(client: JmapClient, compose: ComposeRepository) : Auto
             store,
             OutboxQueue(store, OutboxSealer.keyFor(DEVICE_KEY), "example.test"),
             OutboxSender(store, client, compose, DEVICE_KEY),
+            DEVICE_KEY,
             CoroutineScope(SupervisorJob() + Dispatchers.Default),
         )
 
