@@ -71,6 +71,9 @@ class OutboxStore private constructor(private val directory: File, private val l
         }.orEmpty().forEach { it.delete() }
     }
 
+    /** Changes whenever the message file does, and is null while it is missing. */
+    fun messageStamp(id: String): String? = file(id, MESSAGE_SUFFIX).takeIf { it.exists() }?.let { "${it.lastModified()}:${it.length()}" }
+
     fun readMessage(id: String): MessageRead {
         val file = file(id, MESSAGE_SUFFIX)
         if (!file.exists()) return MessageRead.Missing
@@ -90,6 +93,7 @@ class OutboxStore private constructor(private val directory: File, private val l
     fun remove(id: String) {
         file(id, MESSAGE_SUFFIX).delete()
         file(id, STATE_SUFFIX).delete()
+        removeQuarantined(id)
     }
 
     override fun close() = lock.close()

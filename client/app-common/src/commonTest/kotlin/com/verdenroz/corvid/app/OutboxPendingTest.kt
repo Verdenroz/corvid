@@ -13,7 +13,7 @@ import kotlin.test.assertEquals
 private fun entry(
     state: OutboxState,
     contents: Contents? = Contents.Readable(Draft()),
-) = OutboxEntry(OutboxItem("id", 1, 0, "fp", state), contents, result = null)
+) = OutboxEntry(OutboxItem("id", 1, 0, "fp", state), contents)
 
 class OutboxPendingTest {
     @Test

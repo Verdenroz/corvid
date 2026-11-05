@@ -192,6 +192,18 @@ class OutboxViewModelTest {
         }
 
     @Test
+    fun `a discarded message whose server cleanup is pending is not listed`() =
+        runViewModelTest {
+            val rig = rig()
+            val id = rig.queue.enqueue(draft("Gone"), null)
+            rig.put(id, OutboxState.Sent("", Clock.System.now().toEpochMilliseconds(), Tidy(stagedKeyword = "corvid-outbox-$id")))
+            val vm = viewModel(rig)
+
+            vm.state.first { it.rows.isEmpty() }
+            assertEquals(listOf(id), rig.store.list().items.map { it.id })
+        }
+
+    @Test
     fun `a message sent within the day is listed with no text and an older one is not`() =
         runViewModelTest {
             val rig = rig()

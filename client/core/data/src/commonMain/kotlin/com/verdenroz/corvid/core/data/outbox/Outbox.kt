@@ -20,8 +20,9 @@ class Outbox(
     private val sender: OutboxSender,
     private val deviceKey: ByteArray,
     private val scope: CoroutineScope,
+    private val open: (String, SealedMessage, ByteArray) -> OpenResult = OutboxSealer::open,
 ) : AutoCloseable {
-    private val results = MutableStateFlow(emptyMap<String, ItemResult>())
+    private val opened = mutableMapOf<String, Pair<Opened, Contents>>()
     private val refreshes = Mutex()
     private val _entries = MutableStateFlow(emptyList<OutboxEntry>())
     val entries: StateFlow<List<OutboxEntry>> = _entries
@@ -44,10 +45,7 @@ class Outbox(
     suspend fun drain(): List<Drained> =
         onScope {
             refresh()
-            sender.drain().also { drained ->
-                results.value += drained.associate { it.id to it.result }
-                refresh()
-            }
+            sender.drain().also { refresh() }
         }
 
     fun drainSoon() {
@@ -84,15 +82,28 @@ class Outbox(
         store.close()
     }
 
-    private fun read(): List<OutboxEntry> = store.list().items.map { OutboxEntry(it, contents(it), results.value[it.id]) }
+    private fun read(): List<OutboxEntry> {
+        val items = store.list().items
+        opened.keys.retainAll(items.map { it.id }.toSet())
+        return items.map { OutboxEntry(it, contents(it)) }
+    }
 
+    /** Opening decrypts, so an item whose state and message file are unchanged keeps what it showed. */
     private fun contents(item: OutboxItem): Contents? {
         if (item.state is OutboxState.Sent) return null
+        val key = Opened(item.state, item.attempt, store.messageStamp(item.id))
+        opened[item.id]?.takeIf { it.first == key }?.let { return it.second }
+        return unseal(item).also { opened[item.id] = key to it }
+    }
+
+    private fun unseal(item: OutboxItem): Contents {
         val sealed = (store.readMessage(item.id) as? MessageRead.Found)?.message ?: return Contents.Unreadable
-        return when (val opened = OutboxSealer.open(item.id, sealed, deviceKey)) {
-            is OpenResult.Opened -> Contents.Readable(opened.message.draft)
+        return when (val result = open(item.id, sealed, deviceKey)) {
+            is OpenResult.Opened -> Contents.Readable(result.message.draft)
             is OpenResult.KeyMismatch -> Contents.SealedToOtherKey
             is OpenResult.Corrupt -> Contents.Unreadable
         }
     }
+
+    private data class Opened(val state: OutboxState, val attempt: Int, val messageStamp: String?)
 }

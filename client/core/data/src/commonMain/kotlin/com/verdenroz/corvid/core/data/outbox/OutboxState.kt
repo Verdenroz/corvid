@@ -44,9 +44,12 @@ sealed interface OutboxState {
     data class Sent(val serverEmailId: String, val at: Long, val tidy: Tidy? = null) : OutboxState
 }
 
-/** The send mark still on the sent copy and the draft this message replaced, each null once gone. */
+/**
+ * The send mark still on the sent copy and the draft this message replaced, each null once gone.
+ * [stagedKeyword] marks a discarded message whose staged server drafts are still to be deleted.
+ */
 @Serializable
-data class Tidy(val keyword: String? = null, val replacesDraftId: String? = null)
+data class Tidy(val keyword: String? = null, val replacesDraftId: String? = null, val stagedKeyword: String? = null)
 
 /** What the plaintext state file says about one message; it holds no recipients, subject or body. */
 data class OutboxItem(

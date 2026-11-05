@@ -14,12 +14,14 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 private val DEVICE_KEY = ByteArray(33) { (it * 7 + 1).toByte() }
@@ -461,17 +463,47 @@ class OutboxSenderTest {
         }
 
     @Test
-    fun `a rejected message is still discarded when the server cannot be reached`() =
+    fun `a rejected message discarded while the server is unreachable leaves a cleanup that a later drain finishes`() =
         runTest {
             val rig = Rig()
             val id = rig.queue.enqueue(draft(), null)
-            rig.put(id, OutboxState.Rejected(RejectionCategory.Refused))
             val sender = rig.sender()
+            rig.fake.refuseSubmission = true
+            assertIs<ItemResult.Rejected>(sender.drain().single().result)
             rig.fake.unreachable = true
 
             assertEquals(true, sender.discard(id))
 
+            assertEquals(MessageRead.Missing, rig.store.readMessage(id))
+            assertEquals(1, rig.fake.emails.size)
+            assertIs<OutboxState.Sent>(rig.item(id).state)
+            rig.fake.unreachable = false
+            assertEquals(emptyList(), sender.drain())
+
+            assertEquals(emptyList(), rig.fake.emails)
             assertEquals(emptyList(), rig.store.list().items)
+        }
+
+    @Test
+    fun `discarding a rejected message does not hold the sender while its cleanup waits on the server`() =
+        runTest {
+            val rig = Rig()
+            val rejected = rig.queue.enqueue(draft(), null)
+            val other = rig.queue.enqueue(draft(), null)
+            rig.put(rejected, OutboxState.Rejected(RejectionCategory.Refused))
+            rig.put(other, OutboxState.Unconfirmed)
+            val sender = rig.sender()
+            rig.fake.gate = CompletableDeferred()
+
+            withContext(Dispatchers.Default) {
+                val discarding = async { sender.discard(rejected) }
+                delay(300)
+                withTimeout(5.seconds) { sender.resend(other) }
+                rig.fake.gate?.complete(Unit)
+                discarding.await()
+            }
+
+            assertEquals(OutboxState.Queued, rig.item(other).state)
         }
 
     @Test

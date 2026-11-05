@@ -77,6 +77,20 @@ class OutboxStoreTest {
     }
 
     @Test
+    fun `removing an item also clears the quarantined files it left`() {
+        store().use {
+            it.enqueue("a", sealed, createdAt = 10)
+            File(directory, "a.msg").writeText("not an envelope")
+            assertIs<MessageRead.Faulty>(it.readMessage("a"))
+
+            it.remove("a")
+
+            assertTrue(directory.listFiles().orEmpty().none { file -> file.name.startsWith("a.") })
+            assertEquals(emptyList(), it.quarantined())
+        }
+    }
+
+    @Test
     fun `a state file from another schema is refused the same way`() {
         store().use {
             it.enqueue("a", sealed, createdAt = 10)

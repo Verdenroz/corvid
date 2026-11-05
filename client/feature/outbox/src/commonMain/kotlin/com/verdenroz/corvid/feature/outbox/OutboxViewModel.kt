@@ -99,7 +99,9 @@ class OutboxViewModel(
         state: OutboxState.Sent,
     ): OutboxRow? =
         OutboxRow(id, OutboxStatus.Sent, sentAt = Instant.fromEpochMilliseconds(state.at))
-            .takeIf { clock.now().toEpochMilliseconds() - state.at < SENT_SHOWN_FOR.inWholeMilliseconds }
+            .takeIf { state.tidy?.stagedKeyword == null && isRecent(state.at) }
+
+    private fun isRecent(at: Long) = clock.now().toEpochMilliseconds() - at < SENT_SHOWN_FOR.inWholeMilliseconds
 
     private fun readableRow(
         id: String,

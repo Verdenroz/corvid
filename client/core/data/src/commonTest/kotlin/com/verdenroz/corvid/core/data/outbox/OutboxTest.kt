@@ -24,11 +24,14 @@ private val DEVICE_KEY = ByteArray(33) { (it * 7 + 1).toByte() }
 private val DRAFT = Draft(to = listOf(EmailAddress(null, "bob@example.test")), subject = "hello", body = "hi")
 
 @OptIn(ExperimentalCoroutinesApi::class)
-private suspend fun TestScope.outbox(store: OutboxStore): Outbox {
+private suspend fun TestScope.outbox(
+    store: OutboxStore,
+    open: (String, SealedMessage, ByteArray) -> OpenResult = OutboxSealer::open,
+): Outbox {
     val client = FakeJmapServer().withSendableAccount().client()
     val sender = OutboxSender(store, client, ComposeRepository(client, MailboxRepository(client)), DEVICE_KEY)
     val queue = OutboxQueue(store, OutboxSealer.keyFor(DEVICE_KEY), "example.test")
-    return Outbox(store, queue, sender, DEVICE_KEY, CoroutineScope(StandardTestDispatcher(testScheduler)))
+    return Outbox(store, queue, sender, DEVICE_KEY, CoroutineScope(StandardTestDispatcher(testScheduler)), open)
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -60,6 +63,32 @@ class OutboxTest {
             assertEquals(id.await(), entry.item.id)
             assertEquals(Contents.Readable(DRAFT), entry.contents)
             assertIs<OutboxState.Queued>(entry.item.state)
+        }
+
+    @Test
+    fun `an unchanged message is opened once however often the entries refresh`() =
+        runTest {
+            var opens = 0
+            val item =
+                store.enqueue(
+                    "a",
+                    OutboxSealer.seal("a", OutboxMessage(DRAFT, null, "a@example.test", "k", 1), OutboxSealer.keyFor(DEVICE_KEY)),
+                    1,
+                )
+            val outbox = outbox(store) { id, sealed, key -> opens++.let { OutboxSealer.open(id, sealed, key) } }
+            runCurrent()
+
+            repeat(3) {
+                outbox.discardQuarantined("none")
+                runCurrent()
+            }
+            assertEquals(1, opens)
+            store.save(item.copy(state = OutboxState.Rejected(RejectionCategory.Refused)))
+            outbox.discardQuarantined("none")
+            runCurrent()
+
+            assertEquals(2, opens)
+            assertEquals(listOf(OutboxState.Rejected(RejectionCategory.Refused)), outbox.entries.value.map { it.item.state })
         }
 
     @Test

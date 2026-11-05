@@ -126,29 +126,39 @@ class OutboxSender(
      * server, since an unconfirmed message may already have been sent and discarding it forgets that it might have been.
      * Returns false for anything else, sent tombstones and readable queued messages included.
      */
-    suspend fun discard(id: String): Boolean =
-        mutex.withLock {
-            val item = store.read(id) ?: return@withLock false
-            val discardable =
-                when (item.state) {
-                    is OutboxState.Rejected, is OutboxState.Unconfirmed -> true
-                    is OutboxState.Sent -> false
-                    else -> open(item) is Opening.Failed
-                }
-            discardable.also {
-                if (it) {
-                    if (item.state is OutboxState.Rejected) removeStaged(id)
-                    store.remove(id)
+    suspend fun discard(id: String): Boolean {
+        val cleanup =
+            mutex.withLock {
+                val item = store.read(id) ?: return false
+                val discardable =
+                    when (item.state) {
+                        is OutboxState.Rejected, is OutboxState.Unconfirmed -> true
+                        is OutboxState.Sent -> false
+                        else -> open(item) is Opening.Failed
+                    }
+                if (!discardable) return false
+                if (item.state is OutboxState.Rejected) {
+                    item.copy(
+                        state = OutboxState.Sent("", clock.now().toEpochMilliseconds(), Tidy(stagedKeyword = CorvidKeywords.OUTBOX + id)),
+                    )
+                        .also(store::finish)
+                } else {
+                    null.also { store.remove(id) }
                 }
             }
-        }
+        cleanup?.let { tidy(it) }
+        return true
+    }
 
-    private suspend fun removeStaged(id: String) {
-        val drafts = bestEffort { compose.routeFor(null) as? Route.Ready }?.draftsId ?: return
-        val reply = bestEffort { jmapClient.call(findByKeyword(CorvidKeywords.OUTBOX + id)).getValue("read").resultOrThrow() } ?: return
-        reply.getValue("list").jsonArray.map { it.jsonObject }
+    /** True once no draft carrying [keyword] is left in Drafts. A copy that is not a draft any more was sent and stays. */
+    private suspend fun removeStaged(keyword: String): Boolean {
+        val drafts = bestEffort { compose.routeFor(null) as? Route.Ready }?.draftsId ?: return false
+        val reply = bestEffort { jmapClient.call(findByKeyword(keyword)).getValue("read").resultOrThrow() } ?: return false
+        return reply.getValue("list").jsonArray.map { it.jsonObject }
             .filter { it.isIn(drafts) && it.hasKeyword(CorvidKeywords.DRAFT) }
-            .forEach { staged -> bestEffort { jmapClient.callOne("Email/set", destroyEmail(staged.id())) } }
+            .map { it.id() }
+            .map { staged -> bestEffort { jmapClient.callOne("Email/set", destroyEmail(staged)) }?.destroyed(staged) == true }
+            .all { it }
     }
 
     private fun prune(items: List<OutboxItem>) {
@@ -182,6 +192,10 @@ class OutboxSender(
     private suspend fun tidy(item: OutboxItem) {
         val sent = item.state as OutboxState.Sent
         val pending = sent.tidy ?: return
+        pending.stagedKeyword?.let { keyword ->
+            if (removeStaged(keyword)) store.remove(item.id)
+            return
+        }
         val payload = tidySent(sent.serverEmailId, pending.keyword, pending.replacesDraftId)
         val reply = bestEffort { jmapClient.callOne("Email/set", payload) } ?: return
         val left =
