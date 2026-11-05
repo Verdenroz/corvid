@@ -1,0 +1,36 @@
+package com.verdenroz.corvid.app.shell
+
+import androidx.compose.foundation.clickable
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
+import com.verdenroz.corvid.app.OutboxPending
+import com.verdenroz.corvid.appcommon.resources.Res
+import com.verdenroz.corvid.appcommon.resources.outbox_banner
+import com.verdenroz.corvid.appcommon.resources.outbox_banner_attention
+import com.verdenroz.corvid.appcommon.resources.outbox_open
+import com.verdenroz.corvid.core.designsystem.focusRingInset
+import org.jetbrains.compose.resources.stringResource
+
+/** One line above the shell counting the messages not sent yet; the danger tone when one waits on the user. */
+@Composable
+internal fun OutboxBannerBar(
+    pending: OutboxPending,
+    onOpen: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val line = stringResource(if (pending.needsDecision) Res.string.outbox_banner_attention else Res.string.outbox_banner, pending.count)
+    ShellBannerBar(
+        tone = if (pending.needsDecision) BannerTone.Danger else BannerTone.Accent,
+        text = buildAnnotatedString { withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(line) } },
+        onDismiss = onDismiss,
+        modifier =
+            Modifier
+                .focusRingInset()
+                .clickable(onClickLabel = stringResource(Res.string.outbox_open), role = Role.Button, onClick = onOpen),
+    )
+}

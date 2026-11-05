@@ -60,6 +60,11 @@
     <string name="sidebar_toggle">Show or hide folder names</string>
     <string name="drawer_open">Open folders</string>
     <string name="place_unread">%1$s, %2$d unread</string>
+    <string name="place_waiting">%1$s, %2$d waiting</string>
+    <string name="tab_outbox">Outbox</string>
+    <string name="outbox_banner">Not sent yet: %1$d</string>
+    <string name="outbox_banner_attention">Not sent yet: %1$d. Some need your decision.</string>
+    <string name="outbox_open">Open outbox</string>
     <string name="tab_labels">Labels</string>
     <string name="tab_filters">Filters</string>
     <string name="write">Write</string>

@@ -42,8 +42,10 @@ import com.verdenroz.corvid.app.HomeTab
 import com.verdenroz.corvid.app.Route
 import com.verdenroz.corvid.appcommon.resources.Res
 import com.verdenroz.corvid.appcommon.resources.place_unread
+import com.verdenroz.corvid.appcommon.resources.place_waiting
 import com.verdenroz.corvid.appcommon.resources.settings_open
 import com.verdenroz.corvid.appcommon.resources.tab_filters
+import com.verdenroz.corvid.appcommon.resources.tab_outbox
 import com.verdenroz.corvid.appcommon.resources.write
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
@@ -51,6 +53,7 @@ import com.verdenroz.corvid.core.designsystem.component.CorvidIcons
 import com.verdenroz.corvid.core.designsystem.component.LabelTooltip
 import com.verdenroz.corvid.core.designsystem.component.drawIndicator
 import com.verdenroz.corvid.core.designsystem.focusRing
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
 private val EXPANDED_WIDTH = 232.dp
@@ -67,6 +70,8 @@ internal sealed interface SidebarPlace {
 
     data object Settings : SidebarPlace
 
+    data object Outbox : SidebarPlace
+
     data object Search : SidebarPlace
 }
 
@@ -81,6 +86,7 @@ internal fun sidebarPlace(
 ): SidebarPlace =
     when {
         top == Route.Filters -> SidebarPlace.Filters
+        top == Route.Outbox -> SidebarPlace.Outbox
         top == Route.Settings || top == Route.Notices || top == Route.ApproveDevice || top == Route.Passkeys || top == Route.Aliases ->
             SidebarPlace.Settings
         searching -> SidebarPlace.Search
@@ -94,6 +100,8 @@ internal data class Places(
     val onSelect: (HomeTab) -> Unit,
     val onFilters: () -> Unit,
     val onSettings: () -> Unit,
+    val outboxPending: Int,
+    val onOutbox: () -> Unit,
 )
 
 /** Folders first, then the views of who wrote, then Filters and Settings at the foot; [expanded] false draws icons alone. */
@@ -137,6 +145,18 @@ internal fun ColumnScope.PlaceList(
         }
     }
     SectionBreak()
+    if (places.outboxPending > 0 || place == SidebarPlace.Outbox) {
+        Item(
+            stringResource(Res.string.tab_outbox),
+            CorvidIcons.Send,
+            place == SidebarPlace.Outbox,
+            expanded,
+            places.outboxPending,
+            rowHeight,
+            Res.string.place_waiting,
+            places.onOutbox,
+        )
+    }
     Item(
         stringResource(Res.string.tab_filters),
         CorvidIcons.Filter,
@@ -144,7 +164,7 @@ internal fun ColumnScope.PlaceList(
         expanded,
         null,
         rowHeight,
-        places.onFilters,
+        onClick = places.onFilters,
     )
     Item(
         stringResource(Res.string.settings_open),
@@ -153,7 +173,7 @@ internal fun ColumnScope.PlaceList(
         expanded,
         null,
         rowHeight,
-        places.onSettings,
+        onClick = places.onSettings,
     )
 }
 
@@ -199,12 +219,13 @@ private fun Item(
     expanded: Boolean,
     count: Int?,
     rowHeight: Dp,
+    countLabel: StringResource = Res.string.place_unread,
     onClick: () -> Unit,
 ) {
     val colors = CorvidTheme.colors
     val ink = if (selected) colors.ink else colors.inkMuted
     val shown = count?.takeIf { it > 0 }
-    val railLabel = shown?.let { stringResource(Res.string.place_unread, title, it) } ?: title
+    val railLabel = shown?.let { stringResource(countLabel, title, it) } ?: title
     LabelTooltip(title, beside = true, enabled = !expanded) {
         Row(
             verticalAlignment = Alignment.CenterVertically,

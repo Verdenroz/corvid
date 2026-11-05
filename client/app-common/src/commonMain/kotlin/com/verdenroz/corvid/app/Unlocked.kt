@@ -92,6 +92,8 @@ import com.verdenroz.corvid.feature.mailbox.OvernightOffer
 import com.verdenroz.corvid.feature.mailbox.SearchScreen
 import com.verdenroz.corvid.feature.mailbox.SenderCard
 import com.verdenroz.corvid.feature.mailbox.SenderCardActions
+import com.verdenroz.corvid.feature.outbox.OutboxScreen
+import com.verdenroz.corvid.feature.outbox.OutboxViewModel
 import com.verdenroz.corvid.feature.settings.NoticesScreen
 import com.verdenroz.corvid.feature.settings.NoticesViewModel
 import kotlinx.coroutines.launch
@@ -118,6 +120,7 @@ internal fun UnlockedContent(
     val shell = remember(scope) { ShellViewModel(repository) }
     val notices = rememberNotices(scope)
     val updates = rememberAppUpdates(scope)
+    val outbox = rememberOutboxPending(scope)
     val ledgers = remember(repository) { Ledgers(repository) }
     DisposableEffect(ledgers) { onDispose { ledgers.clear() } }
     val models = remember(scope) { EntryModels() }
@@ -172,7 +175,7 @@ internal fun UnlockedContent(
         val topKeys = remember(navigator) { navigator::handleKey }
         ProvideWideLayout(wide) {
             CompositionLocalProvider(LocalTopEntryKeys provides topKeys) {
-                Shell(pages, shellState, key, searchInput, Banners(notices, updates), roomForSidebar = maxWidth >= SIDEBAR_EXPANDS)
+                Shell(pages, shellState, key, searchInput, Banners(notices, updates, outbox), roomForSidebar = maxWidth >= SIDEBAR_EXPANDS)
             }
         }
     }
@@ -182,6 +185,7 @@ internal fun UnlockedContent(
 private class Banners(
     val notices: Notices,
     val updates: AppUpdates,
+    val outbox: OutboxPending,
 )
 
 /** What every page on the stack is built from. */
@@ -220,6 +224,8 @@ private fun Shell(
             onSelect = navigator::openTab,
             onFilters = { navigator.open(Route.Filters) },
             onSettings = { navigator.open(Route.Settings) },
+            banners.outbox.count,
+            onOutbox = { navigator.open(Route.Outbox) },
         )
     val top = navigator.depth - 1
     val floats = wide && top > 0 && (route is Route.Sender || route is Route.Compose)
@@ -233,6 +239,7 @@ private fun Shell(
         ) {
             NoticesBanner(banners.notices, navigator)
             AppUpdatesBanner(banners.updates)
+            OutboxBanner(banners.outbox, navigator)
             if (wide) {
                 WideTopBar(
                     key,
@@ -410,6 +417,10 @@ private fun Page(
         is Route.ApproveDevice -> ApproveDevicePage(scope, navigator, models, entryKey)
         is Route.Passkeys -> PasskeysPage(scope, navigator, models, entryKey)
         is Route.Aliases -> AliasesPage(scope, navigator, models, entryKey)
+        is Route.Outbox -> {
+            val viewModel = models.of(entryKey, OutboxViewModel::class) { OutboxViewModel(scope.get<Outbox>()) }
+            OutboxScreen(viewModel, onBack = navigator::back)
+        }
         is Route.Notices -> {
             val viewModel = models.of(entryKey, NoticesViewModel::class) { NoticesViewModel(scope.get<NoticeRepository>()) }
             NoticesScreen(viewModel, onBack = navigator::back)

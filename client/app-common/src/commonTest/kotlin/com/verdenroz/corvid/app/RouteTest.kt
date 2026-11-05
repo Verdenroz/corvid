@@ -15,6 +15,7 @@ class RouteTest {
                 Route.Settings,
                 Route.Notices,
                 Route.Aliases,
+                Route.Outbox,
                 Route.Digest(),
                 Route.Digest("d7"),
                 Route.Reader("e1"),

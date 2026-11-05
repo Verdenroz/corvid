@@ -91,6 +91,8 @@ class NavDrawerTest {
                                 navigator::openTab,
                                 {},
                                 {},
+                                0,
+                                {},
                             ),
                     ) {
                         Home(
