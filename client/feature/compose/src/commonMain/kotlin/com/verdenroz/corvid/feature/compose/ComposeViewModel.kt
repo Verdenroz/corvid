@@ -36,6 +36,7 @@ import com.verdenroz.corvid.feature.compose.resources.compose_no_sent_mailbox
 import com.verdenroz.corvid.feature.compose.resources.compose_not_sent
 import com.verdenroz.corvid.feature.compose.resources.compose_not_uploaded
 import com.verdenroz.corvid.feature.compose.resources.compose_original_gone
+import com.verdenroz.corvid.feature.compose.resources.compose_outbox_held
 import com.verdenroz.corvid.feature.compose.resources.compose_too_large
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -56,7 +57,7 @@ import kotlin.time.Duration.Companion.seconds
  */
 class ComposeViewModel(
     private val composeRepository: ComposeRepository,
-    private val outbox: Outbox,
+    private val outbox: Outbox?,
     private val intent: ComposeIntent,
     private val restored: ComposeRestore? = null,
     private val sendWait: Duration? = SEND_WAIT,
@@ -266,11 +267,15 @@ class ComposeViewModel(
             _state.value = current.copy(error = uiText(Res.string.compose_add_recipient))
             return
         }
+        if (outbox == null) {
+            _state.value = current.copy(error = uiText(Res.string.compose_not_sent, uiText(Res.string.compose_outbox_held)))
+            return
+        }
         pendingSave?.cancel()
         _state.value = current.copy(sending = true, error = null)
         launchToEnd {
             val id = saves.withLock { outbox.enqueue(draft, (_state.value as ComposeUiState.Editing).draftId) }
-            when (val result = drainWithin()?.firstOrNull { it.id == id }?.result) {
+            when (val result = drainWithin(outbox)?.firstOrNull { it.id == id }?.result) {
                 is ItemResult.Sent -> _state.value = ComposeUiState.Sent
                 is ItemResult.Rejected -> {
                     outbox.discard(id)
@@ -283,7 +288,7 @@ class ComposeViewModel(
     }
 
     /** Null when the wait ran out, which leaves the send running. A null [sendWait] never gives up, since a test's virtual clock would. */
-    private suspend fun drainWithin(): List<Drained>? =
+    private suspend fun drainWithin(outbox: Outbox): List<Drained>? =
         if (sendWait == null) {
             outbox.drain()
         } else {

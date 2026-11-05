@@ -1,5 +1,6 @@
 package com.verdenroz.corvid.app.di
 
+import com.verdenroz.corvid.app.OutboxAccess
 import com.verdenroz.corvid.app.OutboxUnlock
 import com.verdenroz.corvid.app.UnlockedDevice
 import com.verdenroz.corvid.app.openOutbox
@@ -21,20 +22,15 @@ val outboxModule =
     module {
         factory { OutboxUnlock { scope, key, domain -> openOutbox(get<DevicePreferences>(), scope, key, domain) } }
         scope<UnlockedScopeMarker> {
-            scoped { checkNotNull(OutboxStore.open(get<OutboxDirectory>().path)) { "another process holds the outbox" } }
             scoped {
                 val device = get<UnlockedDevice>()
-                OutboxQueue(get(), OutboxSealer.keyFor(device.key), device.domain)
-            }
-            scoped { OutboxSender(get(), get(), get(), get<UnlockedDevice>().key) }
-            scoped {
-                Outbox(
-                    get(),
-                    get(),
-                    get(),
-                    get<UnlockedDevice>().key,
-                    CoroutineScope(SupervisorJob() + Dispatchers.IO),
-                )
-            }.onClose { it?.close() }
+                val outbox =
+                    OutboxStore.open(get<OutboxDirectory>().path)?.let { store ->
+                        val queue = OutboxQueue(store, OutboxSealer.keyFor(device.key), device.domain)
+                        val sender = OutboxSender(store, get(), get(), device.key)
+                        Outbox(store, queue, sender, device.key, CoroutineScope(SupervisorJob() + Dispatchers.IO))
+                    }
+                OutboxAccess(outbox)
+            }.onClose { it?.outbox?.close() }
         }
     }

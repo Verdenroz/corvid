@@ -68,7 +68,6 @@ import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.data.NoticeRepository
 import com.verdenroz.corvid.core.data.SenderRepository
 import com.verdenroz.corvid.core.data.SuggestedRules
-import com.verdenroz.corvid.core.data.outbox.Outbox
 import com.verdenroz.corvid.core.designsystem.CorvidFloating
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
@@ -404,7 +403,7 @@ private fun Page(
         is Route.Compose ->
             ComposeScreen(files, route.intent, onClose = navigator::back) { restore ->
                 models.of(entryKey, ComposeViewModel::class) {
-                    ComposeViewModel(scope.get<ComposeRepository>(), scope.get<Outbox>(), route.intent, restore)
+                    ComposeViewModel(scope.get<ComposeRepository>(), scope.get<OutboxAccess>().outbox, route.intent, restore)
                 }
             }
         is Route.Filters ->
@@ -418,7 +417,7 @@ private fun Page(
         is Route.Passkeys -> PasskeysPage(scope, navigator, models, entryKey)
         is Route.Aliases -> AliasesPage(scope, navigator, models, entryKey)
         is Route.Outbox -> {
-            val viewModel = models.of(entryKey, OutboxViewModel::class) { OutboxViewModel(scope.get<Outbox>()) }
+            val viewModel = models.of(entryKey, OutboxViewModel::class) { OutboxViewModel(checkNotNull(scope.get<OutboxAccess>().outbox)) }
             OutboxScreen(viewModel, onBack = navigator::back)
         }
         is Route.Notices -> {

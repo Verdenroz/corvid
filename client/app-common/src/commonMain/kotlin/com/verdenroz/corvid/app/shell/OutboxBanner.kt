@@ -12,6 +12,7 @@ import com.verdenroz.corvid.app.OutboxPending
 import com.verdenroz.corvid.appcommon.resources.Res
 import com.verdenroz.corvid.appcommon.resources.outbox_banner
 import com.verdenroz.corvid.appcommon.resources.outbox_banner_attention
+import com.verdenroz.corvid.appcommon.resources.outbox_banner_held
 import com.verdenroz.corvid.appcommon.resources.outbox_open
 import com.verdenroz.corvid.core.designsystem.focusRingInset
 import org.jetbrains.compose.resources.stringResource
@@ -23,9 +24,14 @@ internal fun OutboxBannerBar(
     onOpen: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val line = stringResource(if (pending.needsDecision) Res.string.outbox_banner_attention else Res.string.outbox_banner, pending.count)
+    val line =
+        when {
+            pending.heldElsewhere -> stringResource(Res.string.outbox_banner_held)
+            pending.needsDecision -> stringResource(Res.string.outbox_banner_attention, pending.count)
+            else -> stringResource(Res.string.outbox_banner, pending.count)
+        }
     ShellBannerBar(
-        tone = if (pending.needsDecision) BannerTone.Danger else BannerTone.Accent,
+        tone = if (pending.needsDecision || pending.heldElsewhere) BannerTone.Danger else BannerTone.Accent,
         text = buildAnnotatedString { withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(line) } },
         onDismiss = onDismiss,
         modifier =

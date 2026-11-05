@@ -18,6 +18,7 @@
     <string name="compose_not_sent">Not sent: %1$s</string>
     <string name="compose_queued">Waiting to send. It will go out as soon as it can, and the outbox shows where it stands.</string>
     <string name="compose_queued_unconfirmed">This message may already have been sent. Open the outbox to send it again or discard it.</string>
+    <string name="compose_outbox_held">Another Corvid window is using the outbox. Your text is kept.</string>
     <string name="compose_close">Close</string>
     <string name="compose_title_new">New message</string>
     <string name="compose_title_reply">Reply</string>

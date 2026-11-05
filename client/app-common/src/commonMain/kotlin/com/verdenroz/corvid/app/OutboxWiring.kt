@@ -17,8 +17,11 @@ import org.koin.core.scope.Scope
 internal data class OutboxPending(
     val count: Int,
     val needsDecision: Boolean,
+    val heldElsewhere: Boolean = false,
 ) {
     companion object {
+        val HeldElsewhere = OutboxPending(0, needsDecision = false, heldElsewhere = true)
+
         fun of(entries: List<OutboxEntry>): OutboxPending {
             val unsent = entries.filter { it.item.state !is OutboxState.Sent }
             val waitsOnUser = unsent.any { it.item.state.waitsOnUser || it.contents !is Contents.Readable }
@@ -32,7 +35,7 @@ private val OutboxState.waitsOnUser: Boolean
 
 @Composable
 internal fun rememberOutboxPending(scope: Scope): OutboxPending {
-    val outbox = remember(scope) { scope.get<Outbox>() }
+    val outbox = remember(scope) { scope.get<OutboxAccess>().outbox } ?: return OutboxPending.HeldElsewhere
     val entries by outbox.entries.collectAsState()
     return remember(entries) { OutboxPending.of(entries) }
 }
@@ -44,10 +47,10 @@ internal fun OutboxBanner(
     navigator: Navigator,
 ) {
     var dismissed by remember(pending) { mutableStateOf(false) }
-    if (pending.count == 0 || dismissed) return
+    if ((pending.count == 0 && !pending.heldElsewhere) || dismissed) return
     OutboxBannerBar(
         pending,
-        onOpen = { if (navigator.route != Route.Outbox) navigator.push(Route.Outbox) },
+        onOpen = { if (!pending.heldElsewhere && navigator.route != Route.Outbox) navigator.push(Route.Outbox) },
         onDismiss = { dismissed = true },
     )
 }

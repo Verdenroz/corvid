@@ -20,6 +20,8 @@ class Outbox(
     private val _entries = MutableStateFlow(read())
     val entries: StateFlow<List<OutboxEntry>> = _entries
 
+    fun shouldStoreKey(stored: String?): Boolean = OutboxSealer.shouldStoreKey(deviceKey, stored, store)
+
     fun enqueue(
         draft: Draft,
         replacesDraftId: String?,

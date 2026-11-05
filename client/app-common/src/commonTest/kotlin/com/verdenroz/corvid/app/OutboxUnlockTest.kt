@@ -28,6 +28,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.time.Duration.Companion.seconds
 
 private val FIRST_KEY = ByteArray(33) { (it * 7 + 1).toByte() }
@@ -70,7 +71,9 @@ private class Unlocking(scope: TestScope, val fake: FakeJmapServer = FakeJmapSer
 
     suspend fun storedKey() = preferences.outboxKey()
 
-    fun items() = holder.current().get<OutboxStore>().list().items
+    fun access() = holder.current().get<OutboxAccess>()
+
+    fun items() = access().outbox!!.entries.value.map { it.item }
 }
 
 private suspend fun until(condition: () -> Boolean) {
@@ -118,6 +121,19 @@ class OutboxUnlockTest {
             unlocking.unlock(SECOND_KEY)
 
             assertEquals(OutboxSealer.keyFor(FIRST_KEY).encoded(), unlocking.storedKey())
+        }
+
+    @Test
+    fun `unlocking while another process holds the outbox does not throw and leaves no outbox`() =
+        runTest {
+            val unlocking = unlocking()
+            val other = assertNotNull(OutboxStore.open(unlocking.directory))
+
+            unlocking.unlock(FIRST_KEY)
+
+            assertNull(unlocking.access().outbox)
+            assertNull(unlocking.storedKey())
+            other.close()
         }
 
     @Test

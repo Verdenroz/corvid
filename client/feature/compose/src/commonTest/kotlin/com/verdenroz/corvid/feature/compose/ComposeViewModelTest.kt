@@ -24,6 +24,7 @@ import com.verdenroz.corvid.feature.compose.resources.compose_draft_gone
 import com.verdenroz.corvid.feature.compose.resources.compose_no_identity
 import com.verdenroz.corvid.feature.compose.resources.compose_not_sent
 import com.verdenroz.corvid.feature.compose.resources.compose_original_gone
+import com.verdenroz.corvid.feature.compose.resources.compose_outbox_held
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -74,11 +75,12 @@ class ComposeViewModelTest {
         intent: ComposeIntent = ComposeIntent.New,
         restored: ComposeRestore? = null,
         sendWait: Duration? = null,
+        outboxHeld: Boolean = false,
     ): ComposeViewModel {
         val client = fake.client()
         val compose = ComposeRepository(client, MailboxRepository(client), KeyedTextResolver)
         val outbox = TestOutbox(client, compose).also { outboxes += it }
-        return track(ComposeViewModel(compose, outbox.outbox, intent, restored, sendWait))
+        return track(ComposeViewModel(compose, outbox.outbox.takeUnless { outboxHeld }, intent, restored, sendWait))
     }
 
     private suspend fun ComposeViewModel.editing() = state.first { it is ComposeUiState.Editing } as ComposeUiState.Editing
@@ -133,6 +135,24 @@ class ComposeViewModelTest {
             assertEquals(ComposeUiState.Sent, vm.settled())
             assertIs<OutboxState.Sent>(store.list().items.single().state)
             assertEquals(1, fake.submissions.size)
+        }
+
+    @Test
+    fun `sending while another window holds the outbox says so and keeps the form`() =
+        runViewModelTest {
+            val fake = server()
+            val vm = viewModel(fake, outboxHeld = true)
+            vm.editing()
+            vm.edit { copy(to = "dan@example.test", subject = "Hi", body = "hello") }
+            val typed = vm.editing().form
+
+            vm.send()
+
+            val editing = assertIs<ComposeUiState.Editing>(vm.state.value)
+            assertEquals(uiText(Res.string.compose_not_sent, uiText(Res.string.compose_outbox_held)), editing.error)
+            assertEquals(typed, editing.form)
+            assertEquals(false, editing.sending)
+            assertTrue(fake.submissions.isEmpty())
         }
 
     @Test
@@ -658,6 +678,7 @@ class ComposeViewModelTest {
             vm.send()
 
             assertIs<ComposeUiState.Editing>(vm.settled())
+            vm.idle()
             assertEquals(listOf("hello"), drafts(fake).map { it.body })
         }
 

@@ -2,7 +2,6 @@ package com.verdenroz.corvid.app
 
 import com.verdenroz.corvid.core.data.outbox.Outbox
 import com.verdenroz.corvid.core.data.outbox.OutboxSealer
-import com.verdenroz.corvid.core.data.outbox.OutboxStore
 import com.verdenroz.corvid.core.prefs.DevicePreferences
 import org.koin.core.scope.Scope
 
@@ -17,6 +16,9 @@ fun interface OutboxUnlock {
     )
 }
 
+/** The outbox of this unlock, or null while another process holds its directory. */
+class OutboxAccess(val outbox: Outbox?)
+
 /** Stores the seal key before anything can be queued, then sends what an earlier unlock left behind. */
 internal suspend fun openOutbox(
     preferences: DevicePreferences,
@@ -25,8 +27,7 @@ internal suspend fun openOutbox(
     domain: String,
 ) {
     scope.declare(UnlockedDevice(deviceKey, domain))
-    if (OutboxSealer.shouldStoreKey(deviceKey, preferences.outboxKey(), scope.get<OutboxStore>())) {
-        preferences.setOutboxKey(OutboxSealer.keyFor(deviceKey).encoded())
-    }
-    scope.get<Outbox>().drainSoon()
+    val outbox = scope.get<OutboxAccess>().outbox ?: return
+    if (outbox.shouldStoreKey(preferences.outboxKey())) preferences.setOutboxKey(OutboxSealer.keyFor(deviceKey).encoded())
+    outbox.drainSoon()
 }
