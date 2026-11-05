@@ -15,6 +15,8 @@ kotlin {
         val desktopTest by getting {
             dependencies {
                 implementation(libs.compose.ui.test)
+                implementation(libs.kotlinx.serialization.json)
+                implementation(projects.core.jmap)
             }
         }
     }
