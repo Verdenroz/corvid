@@ -45,7 +45,10 @@ fun main() {
             single<AppInstaller> { DesktopAppInstaller() }
             single<AttachmentFiles> { DesktopAttachmentFiles() }
         }
-    val koin = startKoin { modules(appModules + platformDiscoveryModule + platformPreferencesModule + platformOutboxDirectoryModule + notices) }.koin
+    val koin =
+        startKoin {
+            modules(appModules + platformDiscoveryModule + platformPreferencesModule + platformOutboxDirectoryModule + notices)
+        }.koin
     val presence = koin.get<AppPresence>()
     application {
         val windowState = rememberWindowState()
