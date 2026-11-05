@@ -71,7 +71,7 @@ private const val BASE_URL = "http://127.0.0.1:9999"
  */
 private suspend fun StateFlow<AppLockState>.awaitState(predicate: (AppLockState) -> Boolean): AppLockState = first(predicate)
 
-class FakeConnectivity(online: Boolean = true) : Connectivity {
+class FakeConnectivity(online: Boolean = true, override val eventDriven: Boolean = true) : Connectivity {
     private val _online = MutableStateFlow(online)
     override val online: StateFlow<Boolean> = _online
 
@@ -847,5 +847,25 @@ class AppLockViewModelTest {
             withContext(Dispatchers.Default) { }
 
             assertEquals(before, loops())
+        }
+
+    @Test
+    fun `a poll-based connectivity is not held while unlocked`() =
+        runTest(testDispatcher) {
+            var resumes = 0
+            val fake = FakeJmapServer()
+            val harness =
+                harness(
+                    backgroundScope,
+                    fake,
+                    outboxResume = OutboxResume { resumes++ },
+                    connectivity = FakeConnectivity(eventDriven = false),
+                )
+            harness.enrollAndUnlock("laptop-1", fake)
+
+            harness.connectivity.flap()
+            withContext(Dispatchers.Default) { }
+
+            assertEquals(0, resumes)
         }
 }

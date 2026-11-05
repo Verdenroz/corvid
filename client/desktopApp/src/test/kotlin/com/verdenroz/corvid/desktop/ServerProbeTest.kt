@@ -23,4 +23,10 @@ class ServerProbeTest {
     fun `it is true while there is no server to ask`() {
         assertTrue(runBlocking { ServerProbe { null }() })
     }
+
+    @Test
+    fun `a malformed server address reads as offline`() {
+        assertFalse(runBlocking { ServerProbe { "http://[bad host:99999" }() })
+        assertFalse(runBlocking { ServerProbe { "not a url" }() })
+    }
 }

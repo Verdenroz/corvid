@@ -182,6 +182,7 @@ class AppLockViewModel(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     private suspend fun drainWhenOnline() {
+        if (!connectivity.eventDriven) return
         _state.map { it is AppLockState.Unlocked }.distinctUntilChanged()
             .flatMapLatest { unlocked -> if (unlocked) connectivity.online.regained() else emptyFlow() }
             .collect { unlockedScopeHolder.openScope()?.let { outboxResume.resume(it) } }

@@ -37,9 +37,6 @@ import org.koin.compose.koinInject
 import org.koin.core.context.startKoin
 import org.koin.dsl.module
 import javax.imageio.ImageIO
-import kotlin.time.Duration.Companion.seconds
-
-private val POLL_INTERVAL = 15.seconds
 
 fun main() {
     val notifier = TrayNoticeNotifier()
@@ -53,7 +50,7 @@ fun main() {
             single<Connectivity> {
                 val tokens = get<TokenSource>()
                 val probe = ServerProbe { (tokens.state.value as? AuthState.SignedIn)?.server?.baseUrl }
-                PollingConnectivity(get(applicationScopeQualifier), POLL_INTERVAL, probe::invoke)
+                PollingConnectivity(get(applicationScopeQualifier), probe = probe::invoke)
             }
             single<AppInstaller> { DesktopAppInstaller() }
             single<AttachmentFiles> { DesktopAttachmentFiles() }
