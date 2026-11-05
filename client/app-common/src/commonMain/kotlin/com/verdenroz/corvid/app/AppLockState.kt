@@ -13,8 +13,11 @@ sealed interface AppLockState {
     /** Repositories live in the unlocked Koin scope, not here; [hosts] are the servers this session signed in to. */
     data class Unlocked(val hosts: AccountHosts) : AppLockState
 
-    /** The server or the key could not be reached; nothing is wiped, and it does not read as Revoked. */
-    data class Unreachable(val reason: UiText) : AppLockState
+    /**
+     * The server or the key could not be reached; nothing is wiped, and it does not read as Revoked.
+     * [keyDropped] is set when this session held the device key and lost it, which only the user may undo.
+     */
+    data class Unreachable(val reason: UiText, val keyDropped: Boolean = false) : AppLockState
 
     /** The server answered with a key this app cannot read; nothing is wiped, and it does not read as Revoked. */
     data object KeyDamaged : AppLockState

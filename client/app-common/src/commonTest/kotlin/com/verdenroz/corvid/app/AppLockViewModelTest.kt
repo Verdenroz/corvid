@@ -37,20 +37,25 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
 import org.koin.dsl.koinApplication
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 private const val BASE_URL = "http://127.0.0.1:9999"
@@ -66,8 +71,8 @@ private const val BASE_URL = "http://127.0.0.1:9999"
  */
 private suspend fun StateFlow<AppLockState>.awaitState(predicate: (AppLockState) -> Boolean): AppLockState = first(predicate)
 
-class FakeConnectivity(initial: Boolean = true) : Connectivity {
-    private val _online = MutableStateFlow(initial)
+class FakeConnectivity(online: Boolean = true) : Connectivity {
+    private val _online = MutableStateFlow(online)
     override val online: StateFlow<Boolean> = _online
 
     fun set(online: Boolean) {
@@ -159,7 +164,8 @@ class AppLockViewModelTest {
         store: InMemoryPreferencesStore = InMemoryPreferencesStore(),
         outboxUnlock: OutboxUnlock = OutboxUnlock { _, _, _ -> },
         outboxResume: OutboxResume = OutboxResume { },
-    ) = Harness(scope, fake, approveWithKey, store, outboxUnlock, outboxResume).also { harness = it }
+        connectivity: FakeConnectivity = FakeConnectivity(),
+    ) = Harness(scope, fake, approveWithKey, store, outboxUnlock, outboxResume, connectivity).also { harness = it }
 
     private suspend fun Harness.awaitSelfApprovalFailure(): EnrollmentRequest.Open {
         val failed =
@@ -618,6 +624,14 @@ class AppLockViewModelTest {
             assertIs<KeyState.Locked>(harness.keyHolder.state.value)
         }
 
+    // The mock engine answers on its own thread. Blocking keeps virtual time from running ahead while it does.
+    private fun TestScope.settle() {
+        repeat(10) {
+            Thread.sleep(50)
+            runCurrent()
+        }
+    }
+
     private suspend fun Harness.reachUnreachable(fake: FakeJmapServer) {
         fake.devices.unrouted = true
         signIn()
@@ -630,7 +644,7 @@ class AppLockViewModelTest {
     fun `the network returning while unreachable retries once`() =
         runTest(testDispatcher) {
             val fake = FakeJmapServer()
-            val harness = harness(backgroundScope, fake)
+            val harness = harness(backgroundScope, fake, connectivity = FakeConnectivity(online = false))
             harness.reachUnreachable(fake)
 
             fake.devices.unrouted = false
@@ -646,7 +660,7 @@ class AppLockViewModelTest {
     fun `a network that flaps while unreachable starts one retry`() =
         runTest(testDispatcher) {
             val fake = FakeJmapServer()
-            val harness = harness(backgroundScope, fake)
+            val harness = harness(backgroundScope, fake, connectivity = FakeConnectivity(online = false))
             harness.reachUnreachable(fake)
 
             fake.devices.unrouted = false
@@ -677,7 +691,7 @@ class AppLockViewModelTest {
     fun `the network returning waits while a message is being written`() =
         runTest(testDispatcher) {
             val fake = FakeJmapServer()
-            val harness = harness(backgroundScope, fake)
+            val harness = harness(backgroundScope, fake, connectivity = FakeConnectivity(online = false))
             harness.reachUnreachable(fake)
             harness.viewModel.writingOffline(true)
 
@@ -731,5 +745,107 @@ class AppLockViewModelTest {
             resumed.await()
 
             assertEquals(1, resumes)
+        }
+
+    @Test
+    fun `the network returning after a heartbeat dropped the key does not retry`() =
+        runTest(testDispatcher) {
+            val fake = FakeJmapServer()
+            val harness = harness(backgroundScope, fake)
+            harness.enrollAndUnlock("laptop-1", fake)
+            fake.unreachable = true
+            advanceTimeBy(61.seconds)
+            val unreachable = assertIs<AppLockState.Unreachable>(harness.viewModel.state.awaitState { it is AppLockState.Unreachable })
+            assertTrue(unreachable.keyDropped)
+
+            fake.unreachable = false
+            harness.connectivity.flap()
+            advanceTimeBy(10.minutes)
+
+            assertIs<AppLockState.Unreachable>(harness.viewModel.state.value)
+            assertIs<KeyState.Locked>(harness.keyHolder.state.value)
+        }
+
+    @Test
+    fun `the network returning after the first connect failed retries once`() =
+        runTest(testDispatcher) {
+            val fake = FakeJmapServer()
+            val harness = harness(backgroundScope, fake, connectivity = FakeConnectivity(online = false))
+            fake.unreachable = true
+            harness.signIn()
+            val unreachable = assertIs<AppLockState.Unreachable>(harness.viewModel.state.awaitState { it is AppLockState.Unreachable })
+            assertFalse(unreachable.keyDropped)
+
+            fake.unreachable = false
+            harness.connectivity.flap()
+
+            harness.viewModel.state.awaitState { it is AppLockState.Connecting && it.needsDeviceName }
+        }
+
+    @Test
+    fun `entering unreachable with the network already back retries once without waiting for an edge`() =
+        runTest(testDispatcher) {
+            val fake = FakeJmapServer()
+            val harness = harness(backgroundScope, fake)
+            val seen = mutableListOf<AppLockState>()
+            backgroundScope.launch { harness.viewModel.state.collect { seen += it } }
+            harness.reachUnreachable(fake)
+            val connecting = seen.count { it is AppLockState.Connecting }
+
+            fake.devices.unrouted = false
+            harness.viewModel.state.awaitState { it is AppLockState.NeedsEnrollment && it.request is EnrollmentRequest.Open }
+
+            assertEquals(listOf("laptop-1"), fake.devices.opened)
+            assertTrue(connecting >= 1)
+        }
+
+    @Test
+    fun `a failed automatic retry waits for the network to drop and return before another`() =
+        runTest(testDispatcher) {
+            val fake = FakeJmapServer()
+            val harness = harness(backgroundScope, fake)
+            val seen = mutableListOf<AppLockState>()
+            backgroundScope.launch { harness.viewModel.state.collect { seen += it } }
+            harness.reachUnreachable(fake)
+
+            harness.viewModel.state.awaitState { seen.count { state -> state is AppLockState.Unreachable } >= 2 }
+            advanceTimeBy(10.minutes)
+            settle()
+
+            val afterFirstUnreachable = seen.dropWhile { it !is AppLockState.Unreachable }
+            assertEquals(2, afterFirstUnreachable.count { it is AppLockState.Unreachable })
+        }
+
+    @Test
+    fun `a tap during an automatic retry does not start a second run`() =
+        runTest(testDispatcher) {
+            val fake = FakeJmapServer()
+            val harness = harness(backgroundScope, fake, connectivity = FakeConnectivity(online = false))
+            harness.reachUnreachable(fake)
+
+            fake.devices.unrouted = false
+            harness.connectivity.flap()
+            harness.viewModel.retry()
+            harness.viewModel.unlock()
+
+            harness.viewModel.state.awaitState { it is AppLockState.NeedsEnrollment && it.request is EnrollmentRequest.Open }
+            advanceTimeBy(10.seconds)
+            assertEquals(listOf("laptop-1"), fake.devices.opened)
+        }
+
+    @Test
+    fun `unlocking twice leaves one heartbeat loop`() =
+        runTest(testDispatcher) {
+            val fake = FakeJmapServer()
+            val harness = harness(backgroundScope, fake)
+            harness.enrollAndUnlock("laptop-1", fake)
+            val loops = { harness.viewModel.viewModelScope.coroutineContext.job.children.count { it.isActive } }
+            withContext(Dispatchers.Default) { }
+            val before = loops()
+
+            harness.keyHolder.unlock(ByteArray(33) { 9 })
+            withContext(Dispatchers.Default) { }
+
+            assertEquals(before, loops())
         }
 }
