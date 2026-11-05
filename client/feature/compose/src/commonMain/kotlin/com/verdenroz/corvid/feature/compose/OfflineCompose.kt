@@ -113,36 +113,29 @@ fun OfflineComposeScreen(
     onClose: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val finish = {
+        state.clear()
+        onClose()
+    }
     var confirmingDiscard by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().background(CorvidTheme.colors.surface)) {
         Bar(
             ComposeIntent.New,
             sending = state.sending || state.queued,
             onClose = {
-                if (state.hasText) {
-                    confirmingDiscard = true
-                } else {
-                    state.clear()
-                    onClose()
-                }
+                if (state.hasText) confirmingDiscard = true else finish()
             },
             onAttach = null,
             onSend = { scope.launch { state.send(onSend) } },
         )
         if (state.queued) {
-            Queued {
-                state.clear()
-                onClose()
-            }
+            Queued(finish)
             return@Column
         }
         if (confirmingDiscard) {
             DiscardQuestion(
                 stringResource(Res.string.compose_discard_question),
-                onConfirm = {
-                    state.clear()
-                    onClose()
-                },
+                onConfirm = finish,
                 onCancel = { confirmingDiscard = false },
             )
         }

@@ -44,6 +44,10 @@ sealed interface OutboxState {
     data class Sent(val serverEmailId: String, val at: Long, val tidy: Tidy? = null) : OutboxState
 }
 
+/** Unconfirmed and rejected messages stay put until the user resends or discards them. */
+val OutboxState.waitsOnUser: Boolean
+    get() = this == OutboxState.Unconfirmed || this is OutboxState.Rejected
+
 /**
  * The send mark still on the sent copy and the draft this message replaced, each null once gone.
  * [stagedKeyword] marks a discarded message whose staged server drafts are still to be deleted.

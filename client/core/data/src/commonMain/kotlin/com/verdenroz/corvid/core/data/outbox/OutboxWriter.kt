@@ -24,8 +24,8 @@ suspend fun waitingInOutbox(directory: File): OutboxWaiting? =
     withContext(Dispatchers.IO) {
         OutboxStore.withStore(directory) { store ->
             val unsent = store.list().items.map { it.state }.filter { it !is OutboxState.Sent }
-            val needDecision = unsent.count { it == OutboxState.Unconfirmed || it is OutboxState.Rejected }
-            OutboxWaiting(unsent.size - needDecision, needDecision)
+            val (needDecision, waiting) = unsent.partition { it.waitsOnUser }
+            OutboxWaiting(waiting.size, needDecision.size)
         }
     }
 
