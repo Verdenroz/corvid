@@ -7,8 +7,13 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
-/** One unlock's outbox. Sending runs on [scope], which closing cancels, so a caller that stops waiting does not interrupt a send. */
+/**
+ * One unlock's outbox. File access and sending run on [scope], which closing cancels, so a caller
+ * that stops waiting does not interrupt a send and none blocks on the disk. [entries] fills in once the first read is done.
+ */
 class Outbox(
     private val store: OutboxStore,
     private val queue: OutboxQueue,
@@ -17,49 +22,61 @@ class Outbox(
     private val scope: CoroutineScope,
 ) : AutoCloseable {
     private val results = MutableStateFlow(emptyMap<String, ItemResult>())
-    private val _entries = MutableStateFlow(read())
+    private val refreshes = Mutex()
+    private val _entries = MutableStateFlow(emptyList<OutboxEntry>())
     val entries: StateFlow<List<OutboxEntry>> = _entries
-    private val _quarantined = MutableStateFlow(store.quarantined())
+    private val _quarantined = MutableStateFlow(emptyList<String>())
 
     /** Ids of files the store refused to read; each can only be discarded. */
     val quarantined: StateFlow<List<String>> = _quarantined
 
-    fun shouldStoreKey(stored: String?): Boolean = OutboxSealer.shouldStoreKey(deviceKey, stored, store)
+    init {
+        scope.launch { refresh() }
+    }
 
-    fun enqueue(
+    suspend fun shouldStoreKey(stored: String?): Boolean = onScope { OutboxSealer.shouldStoreKey(deviceKey, stored, store) }
+
+    suspend fun enqueue(
         draft: Draft,
         replacesDraftId: String?,
-    ): String = queue.enqueue(draft, replacesDraftId).also { refresh() }
+    ): String = onScope { queue.enqueue(draft, replacesDraftId).also { refresh() } }
 
     suspend fun drain(): List<Drained> =
-        scope.async {
+        onScope {
             refresh()
             sender.drain().also { drained ->
                 results.value += drained.associate { it.id to it.result }
                 refresh()
             }
-        }.await()
+        }
 
     fun drainSoon() {
         scope.launch { drain() }
     }
 
     suspend fun resend(id: String) {
-        scope.async { sender.resend(id) }.await()
-        refresh()
+        onScope {
+            sender.resend(id)
+            refresh()
+        }
         drainSoon()
     }
 
-    suspend fun discard(id: String): Boolean = scope.async { sender.discard(id) }.await().also { refresh() }
+    suspend fun discard(id: String): Boolean = onScope { sender.discard(id).also { refresh() } }
 
-    suspend fun discardQuarantined(id: String) {
-        scope.async { store.removeQuarantined(id) }.await()
-        refresh()
-    }
+    suspend fun discardQuarantined(id: String) =
+        onScope {
+            store.removeQuarantined(id)
+            refresh()
+        }
 
-    private fun refresh() {
-        _entries.value = read()
-        _quarantined.value = store.quarantined()
+    private suspend fun <T> onScope(block: suspend () -> T): T = scope.async { block() }.await()
+
+    private suspend fun refresh() {
+        refreshes.withLock {
+            _entries.value = read()
+            _quarantined.value = store.quarantined()
+        }
     }
 
     override fun close() {
