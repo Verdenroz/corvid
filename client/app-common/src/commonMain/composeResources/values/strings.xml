@@ -65,6 +65,7 @@
     <string name="outbox_banner">Not sent yet: %1$d</string>
     <string name="outbox_banner_attention">Not sent yet: %1$d. Some need your decision.</string>
     <string name="outbox_banner_held">Another Corvid window is using the outbox</string>
+    <string name="outbox_banner_failed">The outbox could not be opened</string>
     <string name="outbox_open">Open outbox</string>
     <string name="tab_labels">Labels</string>
     <string name="tab_filters">Filters</string>

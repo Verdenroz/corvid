@@ -2,6 +2,7 @@ package com.verdenroz.corvid.feature.compose
 
 import com.verdenroz.corvid.core.data.ComposeRepository
 import com.verdenroz.corvid.core.data.MailboxRepository
+import com.verdenroz.corvid.core.data.outbox.OutboxAvailability
 import com.verdenroz.corvid.core.jmap.AuthLatch
 import com.verdenroz.corvid.core.jmap.JmapClient
 import com.verdenroz.corvid.core.jmap.callOne
@@ -45,7 +46,7 @@ class ComposeLiveTest {
             val client = JmapClient.connect(createJmapHttpClient(), AuthLatch(), checkNotNull(System.getenv("CORVID_LIVE_URL"))) { token }
             val compose = ComposeRepository(client, MailboxRepository(client), KeyedTextResolver)
             val outbox = TestOutbox(client, compose)
-            val vm = track(ComposeViewModel(compose, outbox.outbox, ComposeIntent.New, sendWait = null))
+            val vm = track(ComposeViewModel(compose, OutboxAvailability.Available(outbox.outbox), ComposeIntent.New, sendWait = null))
             vm.state.first { it is ComposeUiState.Editing }
             vm.edit { copy(to = address, subject = subject, body = "through the outbox") }
 

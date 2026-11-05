@@ -3,6 +3,7 @@ package com.verdenroz.corvid.feature.compose
 import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.core.data.ComposeRepository
 import com.verdenroz.corvid.core.data.MailboxRepository
+import com.verdenroz.corvid.core.data.outbox.OutboxAvailability
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.testing.FakeEmail
 import com.verdenroz.corvid.core.testing.FakeJmapServer
@@ -35,7 +36,7 @@ class ComposeSuggestionsTest {
     private suspend fun ViewModelTestScope.viewModel(fake: FakeJmapServer = server()): ComposeViewModel {
         val client = fake.client()
         val compose = ComposeRepository(client, MailboxRepository(client), KeyedTextResolver)
-        val vm = track(ComposeViewModel(compose, TestOutbox(client, compose).outbox, ComposeIntent.New))
+        val vm = track(ComposeViewModel(compose, OutboxAvailability.Available(TestOutbox(client, compose).outbox), ComposeIntent.New))
         vm.state.first { it is ComposeUiState.Editing }
         vm.idle()
         return vm

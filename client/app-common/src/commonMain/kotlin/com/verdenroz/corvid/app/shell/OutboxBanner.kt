@@ -12,12 +12,14 @@ import com.verdenroz.corvid.app.OutboxPending
 import com.verdenroz.corvid.appcommon.resources.Res
 import com.verdenroz.corvid.appcommon.resources.outbox_banner
 import com.verdenroz.corvid.appcommon.resources.outbox_banner_attention
+import com.verdenroz.corvid.appcommon.resources.outbox_banner_failed
 import com.verdenroz.corvid.appcommon.resources.outbox_banner_held
 import com.verdenroz.corvid.appcommon.resources.outbox_open
+import com.verdenroz.corvid.core.data.outbox.OutboxAvailability
 import com.verdenroz.corvid.core.designsystem.focusRingInset
 import org.jetbrains.compose.resources.stringResource
 
-internal fun OutboxPending.tone() = if (needsDecision || heldElsewhere) BannerTone.Danger else BannerTone.Accent
+internal fun OutboxPending.tone() = if (needsDecision || problem != null) BannerTone.Danger else BannerTone.Accent
 
 /** One line above the shell counting the messages not sent yet; the danger tone when one waits on the user. */
 @Composable
@@ -28,7 +30,8 @@ internal fun OutboxBannerBar(
 ) {
     val line =
         when {
-            pending.heldElsewhere -> stringResource(Res.string.outbox_banner_held)
+            pending.problem == OutboxAvailability.HeldElsewhere -> stringResource(Res.string.outbox_banner_held)
+            pending.problem != null -> stringResource(Res.string.outbox_banner_failed)
             pending.needsDecision -> stringResource(Res.string.outbox_banner_attention, pending.count)
             else -> stringResource(Res.string.outbox_banner, pending.count)
         }

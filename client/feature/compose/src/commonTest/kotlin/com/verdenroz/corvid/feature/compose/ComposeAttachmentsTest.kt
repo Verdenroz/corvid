@@ -5,6 +5,7 @@ import com.verdenroz.corvid.core.data.ComposeRepository
 import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.data.PickedFile
 import com.verdenroz.corvid.core.data.fileSize
+import com.verdenroz.corvid.core.data.outbox.OutboxAvailability
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.testing.FakeAttachment
 import com.verdenroz.corvid.core.testing.FakeEmail
@@ -48,7 +49,7 @@ class ComposeAttachmentsTest {
     ): ComposeViewModel {
         val client = fake.client()
         val compose = ComposeRepository(client, MailboxRepository(client), KeyedTextResolver)
-        return track(ComposeViewModel(compose, TestOutbox(client, compose).outbox, intent, sendWait = null))
+        return track(ComposeViewModel(compose, OutboxAvailability.Available(TestOutbox(client, compose).outbox), intent, sendWait = null))
     }
 
     private suspend fun ComposeViewModel.editing() = editingWhere { true }

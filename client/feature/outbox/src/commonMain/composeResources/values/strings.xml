@@ -4,6 +4,8 @@
     <string name="outbox_back">Back</string>
     <string name="outbox_detail">Messages you sent that have not gone out yet, or that need a decision from you.</string>
     <string name="outbox_empty">Nothing is waiting to be sent.</string>
+    <string name="outbox_held">Another Corvid window is using the outbox</string>
+    <string name="outbox_failed">The outbox could not be opened</string>
     <string name="outbox_message">message</string>
     <string name="outbox_to">To %1$s</string>
     <string name="outbox_no_subject">No subject</string>

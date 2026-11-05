@@ -4,6 +4,8 @@ import androidx.compose.runtime.saveable.SaverScope
 import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.core.data.ComposeRepository
 import com.verdenroz.corvid.core.data.MailboxRepository
+import com.verdenroz.corvid.core.data.outbox.Outbox
+import com.verdenroz.corvid.core.data.outbox.OutboxAvailability
 import com.verdenroz.corvid.core.data.outbox.OutboxState
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.testing.FakeEmail
@@ -75,12 +77,22 @@ class ComposeViewModelTest {
         intent: ComposeIntent = ComposeIntent.New,
         restored: ComposeRestore? = null,
         sendWait: Duration? = null,
-        outboxHeld: Boolean = false,
+        outboxAvailability: ((Outbox) -> OutboxAvailability)? = null,
     ): ComposeViewModel {
         val client = fake.client()
         val compose = ComposeRepository(client, MailboxRepository(client), KeyedTextResolver)
         val outbox = TestOutbox(client, compose).also { outboxes += it }
-        return track(ComposeViewModel(compose, outbox.outbox.takeUnless { outboxHeld }, intent, restored, sendWait))
+        return track(
+            ComposeViewModel(
+                compose,
+                outbox.outbox.let {
+                    outboxAvailability?.invoke(it) ?: OutboxAvailability.Available(it)
+                },
+                intent,
+                restored,
+                sendWait,
+            ),
+        )
     }
 
     private suspend fun ComposeViewModel.editing() = state.first { it is ComposeUiState.Editing } as ComposeUiState.Editing
@@ -141,7 +153,7 @@ class ComposeViewModelTest {
     fun `sending while another window holds the outbox says so and keeps the form`() =
         runViewModelTest {
             val fake = server()
-            val vm = viewModel(fake, outboxHeld = true)
+            val vm = viewModel(fake, outboxAvailability = { OutboxAvailability.HeldElsewhere })
             vm.editing()
             vm.edit { copy(to = "dan@example.test", subject = "Hi", body = "hello") }
             val typed = vm.editing().form

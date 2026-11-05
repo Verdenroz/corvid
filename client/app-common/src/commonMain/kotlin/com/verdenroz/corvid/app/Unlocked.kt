@@ -68,6 +68,7 @@ import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.data.NoticeRepository
 import com.verdenroz.corvid.core.data.SenderRepository
 import com.verdenroz.corvid.core.data.SuggestedRules
+import com.verdenroz.corvid.core.data.outbox.OutboxAvailability
 import com.verdenroz.corvid.core.designsystem.CorvidFloating
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
@@ -91,8 +92,6 @@ import com.verdenroz.corvid.feature.mailbox.OvernightOffer
 import com.verdenroz.corvid.feature.mailbox.SearchScreen
 import com.verdenroz.corvid.feature.mailbox.SenderCard
 import com.verdenroz.corvid.feature.mailbox.SenderCardActions
-import com.verdenroz.corvid.feature.outbox.OutboxScreen
-import com.verdenroz.corvid.feature.outbox.OutboxViewModel
 import com.verdenroz.corvid.feature.settings.NoticesScreen
 import com.verdenroz.corvid.feature.settings.NoticesViewModel
 import kotlinx.coroutines.launch
@@ -403,7 +402,12 @@ private fun Page(
         is Route.Compose ->
             ComposeScreen(files, route.intent, onClose = navigator::back) { restore ->
                 models.of(entryKey, ComposeViewModel::class) {
-                    ComposeViewModel(scope.get<ComposeRepository>(), scope.get<OutboxAccess>().outbox, route.intent, restore)
+                    ComposeViewModel(
+                        scope.get<ComposeRepository>(),
+                        scope.get<OutboxAccess>().availability.value ?: OutboxAvailability.Failed,
+                        route.intent,
+                        restore,
+                    )
                 }
             }
         is Route.Filters ->
@@ -416,10 +420,7 @@ private fun Page(
         is Route.ApproveDevice -> ApproveDevicePage(scope, navigator, models, entryKey)
         is Route.Passkeys -> PasskeysPage(scope, navigator, models, entryKey)
         is Route.Aliases -> AliasesPage(scope, navigator, models, entryKey)
-        is Route.Outbox -> {
-            val viewModel = models.of(entryKey, OutboxViewModel::class) { OutboxViewModel(checkNotNull(scope.get<OutboxAccess>().outbox)) }
-            OutboxScreen(viewModel, onBack = navigator::back)
-        }
+        is Route.Outbox -> OutboxPage(scope, navigator, models, entryKey)
         is Route.Notices -> {
             val viewModel = models.of(entryKey, NoticesViewModel::class) { NoticesViewModel(scope.get<NoticeRepository>()) }
             NoticesScreen(viewModel, onBack = navigator::back)

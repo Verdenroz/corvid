@@ -302,7 +302,10 @@ class AppLockViewModel(
                 reconnectPolicy.reset()
                 val scope = unlockedScopeHolder.open().also { it.declare(client) }
                 outboxUnlock.open(scope, keyState.key, hosts.server)
-                _state.value = AppLockState.Unlocked(hosts)
+                // A sign-out or a drop can land while the outbox opens; whichever it was has already set the state.
+                val current = accountHosts
+                if (jmapClient == null || current == null || keyHolder.state.value !is KeyState.Unlocked) return
+                _state.value = AppLockState.Unlocked(current)
                 heartbeatJob = viewModelScope.launch { heartbeatLoop() }
             }
             is KeyState.Locked -> {

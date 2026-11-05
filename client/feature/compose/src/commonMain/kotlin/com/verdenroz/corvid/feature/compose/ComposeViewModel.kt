@@ -16,6 +16,7 @@ import com.verdenroz.corvid.core.data.matching
 import com.verdenroz.corvid.core.data.outbox.Drained
 import com.verdenroz.corvid.core.data.outbox.ItemResult
 import com.verdenroz.corvid.core.data.outbox.Outbox
+import com.verdenroz.corvid.core.data.outbox.OutboxAvailability
 import com.verdenroz.corvid.core.data.outbox.RejectionCategory
 import com.verdenroz.corvid.core.data.userMessage
 import com.verdenroz.corvid.core.jmap.JmapException
@@ -36,6 +37,7 @@ import com.verdenroz.corvid.feature.compose.resources.compose_no_sent_mailbox
 import com.verdenroz.corvid.feature.compose.resources.compose_not_sent
 import com.verdenroz.corvid.feature.compose.resources.compose_not_uploaded
 import com.verdenroz.corvid.feature.compose.resources.compose_original_gone
+import com.verdenroz.corvid.feature.compose.resources.compose_outbox_failed
 import com.verdenroz.corvid.feature.compose.resources.compose_outbox_held
 import com.verdenroz.corvid.feature.compose.resources.compose_too_large
 import kotlinx.coroutines.Job
@@ -47,6 +49,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
+import org.jetbrains.compose.resources.StringResource
 import java.io.IOException
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -57,7 +60,7 @@ import kotlin.time.Duration.Companion.seconds
  */
 class ComposeViewModel(
     private val composeRepository: ComposeRepository,
-    private val outbox: Outbox?,
+    private val outboxAvailability: OutboxAvailability,
     private val intent: ComposeIntent,
     private val restored: ComposeRestore? = null,
     private val sendWait: Duration? = SEND_WAIT,
@@ -267,10 +270,12 @@ class ComposeViewModel(
             _state.value = current.copy(error = uiText(Res.string.compose_add_recipient))
             return
         }
-        if (outbox == null) {
-            _state.value = current.copy(error = uiText(Res.string.compose_not_sent, uiText(Res.string.compose_outbox_held)))
-            return
-        }
+        val outbox =
+            when (outboxAvailability) {
+                is OutboxAvailability.Available -> outboxAvailability.outbox
+                OutboxAvailability.HeldElsewhere -> return refuse(current, Res.string.compose_outbox_held)
+                OutboxAvailability.Failed -> return refuse(current, Res.string.compose_outbox_failed)
+            }
         pendingSave?.cancel()
         _state.value = current.copy(sending = true, error = null)
         launchToEnd {
@@ -285,6 +290,13 @@ class ComposeViewModel(
                 else -> _state.value = ComposeUiState.Queued(needsDecision = result is ItemResult.Unconfirmed)
             }
         }
+    }
+
+    private fun refuse(
+        current: ComposeUiState.Editing,
+        reason: StringResource,
+    ) {
+        _state.value = current.copy(error = uiText(Res.string.compose_not_sent, uiText(reason)))
     }
 
     /** Null when the wait ran out, which leaves the send running. A null [sendWait] never gives up, since a test's virtual clock would. */

@@ -7,6 +7,7 @@ import androidx.compose.ui.test.runComposeUiTest
 import com.verdenroz.corvid.app.shell.BannerTone
 import com.verdenroz.corvid.app.shell.OutboxBannerBar
 import com.verdenroz.corvid.app.shell.tone
+import com.verdenroz.corvid.core.data.outbox.OutboxAvailability
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -32,7 +33,11 @@ class OutboxBannerTest {
     @Test
     fun `an outbox held by another window says so`() =
         runComposeUiTest {
-            setContent { CorvidTheme(darkTheme = false) { OutboxBannerBar(OutboxPending.HeldElsewhere, {}, {}) } }
+            setContent {
+                CorvidTheme(
+                    darkTheme = false,
+                ) { OutboxBannerBar(OutboxPending.unavailable(OutboxAvailability.HeldElsewhere), {}, {}) }
+            }
 
             onNodeWithText("Another Corvid window is using the outbox").assertExists()
         }
@@ -52,6 +57,6 @@ class OutboxBannerTest {
     fun `the banner is calm while messages only wait on the network and urgent when one waits on the user or the outbox is held`() {
         assertEquals(BannerTone.Accent, OutboxPending(1, needsDecision = false).tone())
         assertEquals(BannerTone.Danger, OutboxPending(1, needsDecision = true).tone())
-        assertEquals(BannerTone.Danger, OutboxPending.HeldElsewhere.tone())
+        assertEquals(BannerTone.Danger, OutboxPending.unavailable(OutboxAvailability.HeldElsewhere).tone())
     }
 }

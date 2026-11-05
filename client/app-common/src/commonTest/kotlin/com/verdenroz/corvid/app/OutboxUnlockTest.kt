@@ -1,7 +1,10 @@
 package com.verdenroz.corvid.app
 
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
 import com.verdenroz.corvid.app.di.outboxModule
 import com.verdenroz.corvid.core.data.di.dataModule
+import com.verdenroz.corvid.core.data.outbox.OutboxAvailability
 import com.verdenroz.corvid.core.data.outbox.OutboxQueue
 import com.verdenroz.corvid.core.data.outbox.OutboxSealer
 import com.verdenroz.corvid.core.data.outbox.OutboxState
@@ -23,6 +26,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.koin.dsl.koinApplication
 import org.koin.dsl.module
+import java.io.IOException
 import kotlin.io.path.createTempDirectory
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -34,9 +38,17 @@ import kotlin.time.Duration.Companion.seconds
 private val FIRST_KEY = ByteArray(33) { (it * 7 + 1).toByte() }
 private val SECOND_KEY = ByteArray(33) { (it * 5 + 3).toByte() }
 
-private class Unlocking(scope: TestScope, val fake: FakeJmapServer = FakeJmapServer().withSendableAccount()) {
+private class FailingWrites(private val inner: DataStore<Preferences>) : DataStore<Preferences> by inner {
+    override suspend fun updateData(transform: suspend (t: Preferences) -> Preferences): Preferences = throw IOException("disk full")
+}
+
+private class Unlocking(
+    scope: TestScope,
+    val fake: FakeJmapServer = FakeJmapServer().withSendableAccount(),
+    store: DataStore<Preferences> = InMemoryPreferencesStore(),
+) {
     val directory = createTempDirectory().toFile()
-    val preferences = DevicePreferences(InMemoryPreferencesStore(), scope.backgroundScope, DeviceSettings())
+    val preferences = DevicePreferences(store, scope.backgroundScope, DeviceSettings())
     private val app =
         koinApplication {
             modules(
@@ -73,7 +85,7 @@ private class Unlocking(scope: TestScope, val fake: FakeJmapServer = FakeJmapSer
 
     fun access() = holder.current().get<OutboxAccess>()
 
-    fun items() = access().outbox!!.entries.value.map { it.item }
+    fun items() = (access().availability.value as OutboxAvailability.Available).outbox.entries.value.map { it.item }
 }
 
 private suspend fun until(condition: () -> Boolean) {
@@ -83,7 +95,10 @@ private suspend fun until(condition: () -> Boolean) {
 class OutboxUnlockTest {
     private val open = mutableListOf<Unlocking>()
 
-    private fun TestScope.unlocking() = Unlocking(this).also { open += it }
+    private fun TestScope.unlocking(store: DataStore<Preferences> = InMemoryPreferencesStore()) =
+        Unlocking(this, store = store).also {
+            open += it
+        }
 
     @AfterTest
     fun closeRigs() = open.forEach(Unlocking::close)
@@ -131,9 +146,19 @@ class OutboxUnlockTest {
 
             unlocking.unlock(FIRST_KEY)
 
-            assertNull(unlocking.access().outbox)
+            assertEquals(OutboxAvailability.HeldElsewhere, unlocking.access().availability.value)
             assertNull(unlocking.storedKey())
             other.close()
+        }
+
+    @Test
+    fun `a seal key that cannot be stored does not fail the unlock and leaves the outbox unavailable`() =
+        runTest {
+            val unlocking = unlocking(FailingWrites(InMemoryPreferencesStore()))
+
+            unlocking.unlock(FIRST_KEY)
+
+            assertEquals(OutboxAvailability.Failed, unlocking.access().availability.value)
         }
 
     @Test

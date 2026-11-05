@@ -8,19 +8,22 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.verdenroz.corvid.app.shell.OutboxBannerBar
 import com.verdenroz.corvid.core.data.outbox.Contents
-import com.verdenroz.corvid.core.data.outbox.Outbox
+import com.verdenroz.corvid.core.data.outbox.OutboxAvailability
 import com.verdenroz.corvid.core.data.outbox.OutboxEntry
 import com.verdenroz.corvid.core.data.outbox.OutboxState
+import com.verdenroz.corvid.feature.outbox.OutboxScreen
+import com.verdenroz.corvid.feature.outbox.OutboxUnavailableScreen
+import com.verdenroz.corvid.feature.outbox.OutboxViewModel
 import org.koin.core.scope.Scope
 
 /** [count] messages are not sent yet; [needsDecision] when any of them waits on the user rather than on the network. */
 internal data class OutboxPending(
     val count: Int,
     val needsDecision: Boolean,
-    val heldElsewhere: Boolean = false,
+    val problem: OutboxAvailability? = null,
 ) {
     companion object {
-        val HeldElsewhere = OutboxPending(0, needsDecision = false, heldElsewhere = true)
+        fun unavailable(problem: OutboxAvailability) = OutboxPending(0, needsDecision = false, problem = problem)
 
         fun of(
             entries: List<OutboxEntry>,
@@ -38,10 +41,33 @@ private val OutboxState.waitsOnUser: Boolean
 
 @Composable
 internal fun rememberOutboxPending(scope: Scope): OutboxPending {
-    val outbox = remember(scope) { scope.get<OutboxAccess>().outbox } ?: return OutboxPending.HeldElsewhere
+    val availability by remember(scope) { scope.get<OutboxAccess>().availability }.collectAsState()
+    val outbox =
+        when (val current = availability) {
+            null -> return OutboxPending(0, needsDecision = false)
+            is OutboxAvailability.Available -> current.outbox
+            else -> return OutboxPending.unavailable(current)
+        }
     val entries by outbox.entries.collectAsState()
     val quarantined by outbox.quarantined.collectAsState()
     return remember(entries, quarantined) { OutboxPending.of(entries, quarantined.size) }
+}
+
+@Composable
+internal fun OutboxPage(
+    scope: Scope,
+    navigator: Navigator,
+    models: EntryModels,
+    entryKey: String,
+) {
+    val availability by remember(scope) { scope.get<OutboxAccess>().availability }.collectAsState()
+    when (val current = availability) {
+        is OutboxAvailability.Available -> {
+            val viewModel = models.of(entryKey, OutboxViewModel::class) { OutboxViewModel(current.outbox) }
+            OutboxScreen(viewModel, onBack = navigator::back)
+        }
+        else -> OutboxUnavailableScreen(held = current == OutboxAvailability.HeldElsewhere, onBack = navigator::back)
+    }
 }
 
 /** Dismissing hides the banner until the count or the need for a decision changes. */
@@ -51,10 +77,10 @@ internal fun OutboxBanner(
     navigator: Navigator,
 ) {
     var dismissed by remember(pending) { mutableStateOf(false) }
-    if ((pending.count == 0 && !pending.heldElsewhere) || dismissed) return
+    if ((pending.count == 0 && pending.problem == null) || dismissed) return
     OutboxBannerBar(
         pending,
-        onOpen = { if (!pending.heldElsewhere && navigator.route != Route.Outbox) navigator.push(Route.Outbox) },
+        onOpen = { if (pending.problem == null && navigator.route != Route.Outbox) navigator.push(Route.Outbox) },
         onDismiss = { dismissed = true },
     )
 }
