@@ -174,6 +174,24 @@ class OutboxViewModelTest {
         }
 
     @Test
+    fun `a quarantined file is listed as cannot be opened and discarding it removes its files`() =
+        runViewModelTest {
+            val rig = rig()
+            val id = rig.queue.enqueue(draft("Secret"), null)
+            rig.directory.resolve("$id.state").writeText("{ not json")
+            val vm = viewModel(rig)
+
+            val row = vm.rows { it.rows.isNotEmpty() }.single()
+            assertEquals(OutboxStatus.CannotOpen, row.status)
+            assertTrue(row.quarantined && row.canDiscard && !row.canResend)
+            assertNull(row.subject)
+            vm.discard(id)
+
+            vm.rows { it.rows.isEmpty() }
+            assertEquals(emptyList(), rig.store.quarantined())
+        }
+
+    @Test
     fun `a message sent within the day is listed with no text and an older one is not`() =
         runViewModelTest {
             val rig = rig()

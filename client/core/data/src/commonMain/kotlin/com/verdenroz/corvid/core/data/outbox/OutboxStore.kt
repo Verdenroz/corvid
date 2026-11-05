@@ -56,6 +56,21 @@ class OutboxStore private constructor(private val directory: File, private val l
         )
     }
 
+    /** Ids whose files were quarantined and that have no live state file, which stay reported until removed. */
+    fun quarantined(): List<String> =
+        directory.listFiles { file -> file.name.endsWith(QUARANTINE_SUFFIX) }.orEmpty()
+            .map { it.name.substringBefore('.') }
+            .distinct()
+            .filterNot { file(it, STATE_SUFFIX).exists() }
+            .sorted()
+
+    fun removeQuarantined(id: String) {
+        directory.listFiles {
+                file ->
+            file.name.startsWith("$id.") && file.name.endsWith(QUARANTINE_SUFFIX)
+        }.orEmpty().forEach { it.delete() }
+    }
+
     fun readMessage(id: String): MessageRead {
         val file = file(id, MESSAGE_SUFFIX)
         if (!file.exists()) return MessageRead.Missing

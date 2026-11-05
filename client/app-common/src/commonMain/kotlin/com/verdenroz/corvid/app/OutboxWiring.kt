@@ -22,10 +22,13 @@ internal data class OutboxPending(
     companion object {
         val HeldElsewhere = OutboxPending(0, needsDecision = false, heldElsewhere = true)
 
-        fun of(entries: List<OutboxEntry>): OutboxPending {
+        fun of(
+            entries: List<OutboxEntry>,
+            quarantined: Int = 0,
+        ): OutboxPending {
             val unsent = entries.filter { it.item.state !is OutboxState.Sent }
-            val waitsOnUser = unsent.any { it.item.state.waitsOnUser || it.contents !is Contents.Readable }
-            return OutboxPending(unsent.size, waitsOnUser)
+            val waitsOnUser = quarantined > 0 || unsent.any { it.item.state.waitsOnUser || it.contents !is Contents.Readable }
+            return OutboxPending(unsent.size + quarantined, waitsOnUser)
         }
     }
 }
@@ -37,7 +40,8 @@ private val OutboxState.waitsOnUser: Boolean
 internal fun rememberOutboxPending(scope: Scope): OutboxPending {
     val outbox = remember(scope) { scope.get<OutboxAccess>().outbox } ?: return OutboxPending.HeldElsewhere
     val entries by outbox.entries.collectAsState()
-    return remember(entries) { OutboxPending.of(entries) }
+    val quarantined by outbox.quarantined.collectAsState()
+    return remember(entries, quarantined) { OutboxPending.of(entries, quarantined.size) }
 }
 
 /** Dismissing hides the banner until the count or the need for a decision changes. */

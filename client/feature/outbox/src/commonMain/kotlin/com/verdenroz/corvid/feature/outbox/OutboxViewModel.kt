@@ -32,6 +32,7 @@ data class OutboxRow(
     val mayHaveBeenSent: Boolean = false,
     val canResend: Boolean = false,
     val canDiscard: Boolean = false,
+    val quarantined: Boolean = false,
 )
 
 /** [confirming] is the row whose Discard is waiting on an answer. */
@@ -49,8 +50,8 @@ class OutboxViewModel(
     private val confirming = MutableStateFlow<String?>(null)
 
     val state: StateFlow<OutboxListState> =
-        combine(outbox.entries, confirming) { entries, confirming -> OutboxListState(entries.mapNotNull(::row), confirming) }
-            .stateIn(viewModelScope, SharingStarted.Eagerly, OutboxListState(outbox.entries.value.mapNotNull(::row)))
+        combine(outbox.entries, outbox.quarantined, confirming, ::listed)
+            .stateIn(viewModelScope, SharingStarted.Eagerly, listed(outbox.entries.value, outbox.quarantined.value, null))
 
     fun resend(id: String) {
         viewModelScope.launch { outbox.resend(id) }
@@ -68,8 +69,18 @@ class OutboxViewModel(
 
     fun discard(id: String) {
         confirming.value = null
-        viewModelScope.launch { outbox.discard(id) }
+        val quarantined = state.value.rows.any { it.id == id && it.quarantined }
+        viewModelScope.launch { if (quarantined) outbox.discardQuarantined(id) else outbox.discard(id) }
     }
+
+    private fun listed(
+        entries: List<OutboxEntry>,
+        quarantined: List<String>,
+        confirming: String?,
+    ) = OutboxListState(
+        entries.mapNotNull(::row) + quarantined.map { OutboxRow(it, OutboxStatus.CannotOpen, canDiscard = true, quarantined = true) },
+        confirming,
+    )
 
     private fun row(entry: OutboxEntry): OutboxRow? {
         val id = entry.item.id

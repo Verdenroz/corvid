@@ -19,6 +19,10 @@ class Outbox(
     private val results = MutableStateFlow(emptyMap<String, ItemResult>())
     private val _entries = MutableStateFlow(read())
     val entries: StateFlow<List<OutboxEntry>> = _entries
+    private val _quarantined = MutableStateFlow(store.quarantined())
+
+    /** Ids of files the store refused to read; each can only be discarded. */
+    val quarantined: StateFlow<List<String>> = _quarantined
 
     fun shouldStoreKey(stored: String?): Boolean = OutboxSealer.shouldStoreKey(deviceKey, stored, store)
 
@@ -48,8 +52,14 @@ class Outbox(
 
     suspend fun discard(id: String): Boolean = scope.async { sender.discard(id) }.await().also { refresh() }
 
+    suspend fun discardQuarantined(id: String) {
+        scope.async { store.removeQuarantined(id) }.await()
+        refresh()
+    }
+
     private fun refresh() {
         _entries.value = read()
+        _quarantined.value = store.quarantined()
     }
 
     override fun close() {

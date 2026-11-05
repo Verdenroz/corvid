@@ -51,6 +51,11 @@ class OutboxPendingTest {
     }
 
     @Test
+    fun `a quarantined file counts and needs a decision`() {
+        assertEquals(OutboxPending(1, needsDecision = true), OutboxPending.of(emptyList(), quarantined = 1))
+    }
+
+    @Test
     fun `a sent message is not pending`() {
         val sent = entry(OutboxState.Sent("e1", 1, Tidy()), contents = null)
 
