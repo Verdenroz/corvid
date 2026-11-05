@@ -2,6 +2,10 @@
 <resources>
     <string name="discard">Discard</string>
     <string name="keep_editing">Keep editing</string>
+    <string name="write_message">Write a message</string>
+    <string name="outbox_label">Outbox</string>
+    <string name="waiting_one">1 message waiting</string>
+    <string name="waiting_many">%1$d messages waiting</string>
     <string name="locked_title">Locked</string>
     <string name="locked_unlock">Unlock</string>
     <string name="revoked_title">Revoked</string>

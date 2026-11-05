@@ -26,6 +26,8 @@ fun LockedPane(
     droppedAt: String?,
     onUnlock: () -> Unit,
     modifier: Modifier = Modifier,
+    waiting: Int? = null,
+    onWrite: (() -> Unit)? = null,
 ) {
     val facts =
         listOfNotNull(
@@ -36,6 +38,7 @@ fun LockedPane(
                     droppedAt?.let { stringResource(Res.string.locked_device_dropped, name, it) } ?: name,
                 )
             },
+            waitingFact(waiting),
         )
     StatePane(
         stringResource(Res.string.locked_title),
@@ -45,5 +48,6 @@ fun LockedPane(
         drawEyeLine = true,
     ) {
         PrimaryButton(stringResource(Res.string.locked_unlock), onUnlock)
+        WriteAction(onWrite)
     }
 }

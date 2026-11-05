@@ -156,7 +156,7 @@ fun ComposeScreen(
 }
 
 @Composable
-private fun Bar(
+internal fun Bar(
     intent: ComposeIntent,
     sending: Boolean,
     onClose: () -> Unit,
@@ -333,7 +333,7 @@ private fun NotSaved(onRetry: () -> Unit) {
 }
 
 @Composable
-private fun Field(
+internal fun Field(
     label: String,
     value: String,
     onChange: (String) -> Unit,
@@ -356,7 +356,7 @@ private fun Field(
 }
 
 @Composable
-private fun Body(
+internal fun Body(
     value: String,
     onChange: (String) -> Unit,
 ) {

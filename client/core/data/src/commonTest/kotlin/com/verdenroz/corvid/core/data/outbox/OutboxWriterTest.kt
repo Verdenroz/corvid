@@ -115,6 +115,32 @@ class OutboxWriterTest {
         }
 
     @Test
+    fun `the waiting count needs no key and counts only messages not sent`() =
+        runTest {
+            val directory = createTempDirectory().toFile()
+            writer(directory).write(DRAFT)
+            writer(directory).write(DRAFT)
+            assertEquals(2, waitingInOutbox(directory))
+
+            val store = assertNotNull(OutboxStore.open(directory))
+            val sent = store.list().items.first()
+            store.finish(sent.copy(state = OutboxState.Sent("e1", 1)))
+            store.close()
+
+            assertEquals(1, waitingInOutbox(directory))
+        }
+
+    @Test
+    fun `the waiting count is unknown while another store holds the directory`() =
+        runTest {
+            val directory = createTempDirectory().toFile()
+            val held = assertNotNull(OutboxStore.open(directory))
+
+            assertEquals(null, waitingInOutbox(directory))
+            held.close()
+        }
+
+    @Test
     fun `the writer holds a public key and a directory and nothing that can open or send`() {
         val held = OutboxWriter::class.java.declaredFields.map { it.type }
         assertTrue(held.none { it == ByteArray::class.java || it == JmapClient::class.java }, held.toString())

@@ -1,5 +1,6 @@
 package com.verdenroz.corvid.app.di
 
+import com.verdenroz.corvid.app.OfflineOutbox
 import com.verdenroz.corvid.app.OutboxAccess
 import com.verdenroz.corvid.app.OutboxUnlock
 import com.verdenroz.corvid.app.UnlockedDevice
@@ -23,6 +24,7 @@ import org.koin.dsl.onClose
 
 val outboxModule =
     module {
+        single { OfflineOutbox(get(), get()) }
         factory { OutboxUnlock { scope, key, domain -> openOutbox(get<DevicePreferences>(), scope, key, domain) } }
         scope<UnlockedScopeMarker> {
             scoped {

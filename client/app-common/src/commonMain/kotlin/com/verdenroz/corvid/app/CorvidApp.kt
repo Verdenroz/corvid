@@ -44,6 +44,7 @@ private const val PANE_MILLIS = 150
 fun CorvidApp(
     viewModel: AppLockViewModel = koinViewModel(),
     preferences: DevicePreferences = koinInject(),
+    offlineOutbox: OfflineOutbox = koinInject(),
 ) {
     val state by viewModel.state.collectAsState()
     val settings by preferences.settings.collectAsState()
@@ -57,9 +58,11 @@ fun CorvidApp(
     CorvidTheme(darkTheme = dark) {
         Box(modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).background(CorvidTheme.colors.surface)) {
             val current = state
-            key(current::class) {
-                Arrive(if (current is AppLockState.Unlocked) UNLOCK_MILLIS else PANE_MILLIS) {
-                    GatePane(current, viewModel)
+            OfflineGate(current, viewModel.lockFacts.server, settings.outboxKey != null, offlineOutbox) { waiting, onWrite ->
+                key(current::class) {
+                    Arrive(if (current is AppLockState.Unlocked) UNLOCK_MILLIS else PANE_MILLIS) {
+                        GatePane(current, viewModel, waiting, onWrite)
+                    }
                 }
             }
         }
@@ -83,6 +86,8 @@ private fun Arrive(
 private fun GatePane(
     current: AppLockState,
     viewModel: AppLockViewModel,
+    waiting: Int?,
+    onWrite: (() -> Unit)?,
 ) {
     when (current) {
         is AppLockState.SignedOut -> SignInScreen()
@@ -103,10 +108,19 @@ private fun GatePane(
                 reason = current.reason,
                 onRetry = viewModel::retry,
                 onSignOut = viewModel::signOut,
+                waiting = waiting,
+                onWrite = onWrite,
             )
         is AppLockState.Locked -> {
             val facts = viewModel.lockFacts
-            LockedPane(facts.server, facts.device, facts.lockedAt?.let { droppedAt(it) }, onUnlock = viewModel::unlock)
+            LockedPane(
+                facts.server,
+                facts.device,
+                facts.lockedAt?.let { droppedAt(it) },
+                onUnlock = viewModel::unlock,
+                waiting = waiting,
+                onWrite = onWrite,
+            )
         }
         is AppLockState.DeviceApprovalOff -> DeviceApprovalOffPane(onAskAgain = viewModel::askAgain, onSignOut = viewModel::signOut)
         is AppLockState.KeyDamaged -> KeyDamagedPane(onRetry = viewModel::retry, onSignOut = viewModel::signOut)

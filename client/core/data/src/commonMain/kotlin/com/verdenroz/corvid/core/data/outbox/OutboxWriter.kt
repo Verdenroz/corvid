@@ -13,6 +13,12 @@ sealed interface WriteOutcome {
     data object HeldElsewhere : WriteOutcome
 }
 
+/** Messages in [directory] not yet sent, counted from state files alone; null while another store holds it. */
+suspend fun waitingInOutbox(directory: File): Int? =
+    withContext(Dispatchers.IO) {
+        OutboxStore.open(directory)?.use { store -> store.list().items.count { it.state !is OutboxState.Sent } }
+    }
+
 /**
  * Queues a message while the device key is not held. It knows only the public [key], so it can seal but never open,
  * and it opens the outbox directory for the length of one write.

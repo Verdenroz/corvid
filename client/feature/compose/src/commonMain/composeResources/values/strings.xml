@@ -23,6 +23,9 @@
     <string name="compose_outbox_unsaved">Could not save to the outbox. Your text is kept.</string>
     <string name="compose_outbox_held">Another Corvid window is using the outbox. Your text is kept.</string>
     <string name="compose_outbox_failed">The outbox could not be opened. Your text is kept.</string>
+    <string name="compose_offline_empty">Write something to send.</string>
+    <string name="compose_offline_queued">Saved. It will be sent once you unlock.</string>
+    <string name="compose_offline_done">Done</string>
     <string name="compose_close">Close</string>
     <string name="compose_title_new">New message</string>
     <string name="compose_title_reply">Reply</string>
