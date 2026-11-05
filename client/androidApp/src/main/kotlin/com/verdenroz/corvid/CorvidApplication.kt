@@ -15,6 +15,7 @@ import com.verdenroz.corvid.app.endPushOnSignOut
 import com.verdenroz.corvid.core.auth.AuthState
 import com.verdenroz.corvid.core.auth.Authenticator
 import com.verdenroz.corvid.core.auth.TokenSource
+import com.verdenroz.corvid.core.common.Connectivity
 import com.verdenroz.corvid.core.common.di.applicationScopeQualifier
 import com.verdenroz.corvid.core.data.AppInstaller
 import com.verdenroz.corvid.core.data.AttachmentFiles
@@ -43,6 +44,7 @@ class CorvidApplication : Application() {
                 single<NewMailNotifier> { AndroidNewMailNotifier(androidContext()) }
                 single { AndroidNotificationPermission(androidContext()) } bind NotificationPermission::class
                 single { AndroidAuthenticator() } bind Authenticator::class
+                single<Connectivity> { AndroidConnectivity(androidContext()) }
                 single<AppInstaller> { AndroidAppInstaller(androidContext()) }
                 single { AndroidBackgroundPush(androidContext()) } bind BackgroundPush::class
                 single { AndroidAttachmentFiles(androidContext()) } bind AttachmentFiles::class
