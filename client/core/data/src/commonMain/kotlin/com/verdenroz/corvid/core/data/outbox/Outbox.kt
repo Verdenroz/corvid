@@ -10,10 +10,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/**
- * One unlock's outbox. File access and sending run on [scope], which closing cancels, so a caller
- * that stops waiting does not interrupt a send and none blocks on the disk. [entries] fills in once the first read is done.
- */
+/** One unlock's outbox. File access and sending run on [scope], which closing cancels, so a caller that stops waiting leaves a send running. */
 class Outbox(
     private val store: OutboxStore,
     private val queue: OutboxQueue,
@@ -22,7 +19,7 @@ class Outbox(
     private val scope: CoroutineScope,
     private val open: (String, SealedMessage, ByteArray) -> OpenResult = OutboxSealer::open,
 ) : AutoCloseable {
-    private val opened = mutableMapOf<String, Pair<Opened, Contents>>()
+    private val opened = mutableMapOf<String, Cached>()
     private val refreshes = Mutex()
     private val _entries = MutableStateFlow(emptyList<OutboxEntry>())
     val entries: StateFlow<List<OutboxEntry>> = _entries
@@ -42,11 +39,7 @@ class Outbox(
         replacesDraftId: String?,
     ): String = onScope { queue.enqueue(draft, replacesDraftId).also { refresh() } }
 
-    suspend fun drain(): List<Drained> =
-        onScope {
-            refresh()
-            sender.drain().also { refresh() }
-        }
+    suspend fun drain(): List<Drained> = onScope { sender.drain().also { refresh() } }
 
     fun drainSoon() {
         scope.launch { drain() }
@@ -92,8 +85,8 @@ class Outbox(
     private fun contents(item: OutboxItem): Contents? {
         if (item.state is OutboxState.Sent) return null
         val key = Opened(item.state, item.attempt, store.messageStamp(item.id))
-        opened[item.id]?.takeIf { it.first == key }?.let { return it.second }
-        return unseal(item).also { opened[item.id] = key to it }
+        opened[item.id]?.takeIf { it.key == key }?.let { return it.contents }
+        return unseal(item).also { opened[item.id] = Cached(key, it) }
     }
 
     private fun unseal(item: OutboxItem): Contents {
@@ -106,4 +99,6 @@ class Outbox(
     }
 
     private data class Opened(val state: OutboxState, val attempt: Int, val messageStamp: String?)
+
+    private class Cached(val key: Opened, val contents: Contents)
 }

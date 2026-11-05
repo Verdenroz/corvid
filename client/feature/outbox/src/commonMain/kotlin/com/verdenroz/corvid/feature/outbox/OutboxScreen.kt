@@ -22,10 +22,12 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.verdenroz.corvid.core.data.outbox.RejectionCategory
+import com.verdenroz.corvid.core.data.stamp
 import com.verdenroz.corvid.core.designsystem.CorvidSpacing
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.designsystem.LocalWideLayout
 import com.verdenroz.corvid.core.designsystem.component.QuietLink
+import com.verdenroz.corvid.core.text.asString
 import com.verdenroz.corvid.core.ui.DiscardQuestion
 import com.verdenroz.corvid.core.ui.PageHeader
 import com.verdenroz.corvid.feature.outbox.resources.Res
@@ -60,8 +62,8 @@ import com.verdenroz.corvid.feature.outbox.resources.outbox_title
 import com.verdenroz.corvid.feature.outbox.resources.outbox_to
 import com.verdenroz.corvid.feature.outbox.resources.outbox_try_now
 import kotlinx.datetime.TimeZone
-import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
+import kotlin.time.Clock
 
 private val PAGE_WIDTH = 640.dp
 
@@ -148,8 +150,7 @@ private fun OutboxItemRow(
             )
         }
         row.sentAt?.let {
-            val at = it.toLocalDateTime(TimeZone.currentSystemDefault())
-            val time = "${at.date} ${at.hour.toString().padStart(2, '0')}:${at.minute.toString().padStart(2, '0')}"
+            val time = stamp(it, TimeZone.currentSystemDefault(), Clock.System.now()).asString()
             Text(stringResource(Res.string.outbox_sent_at, time), style = CorvidTheme.type.meta, color = CorvidTheme.colors.inkMuted)
         }
         row.detail()?.let { Text(stringResource(it), style = CorvidTheme.type.meta, color = CorvidTheme.colors.ink) }

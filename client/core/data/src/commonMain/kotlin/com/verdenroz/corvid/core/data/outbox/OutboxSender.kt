@@ -99,7 +99,7 @@ class OutboxSender(
         mutex.withLock {
             val items = store.list().items
             items.filter { (it.state as? OutboxState.Sent)?.tidy != null }.forEach { tidy(it) }
-            prune(store.list().items)
+            prune(items)
             val drained = mutableListOf<Drained>()
             for (item in items.filter { it.state.isPending }) {
                 val result = send(item)

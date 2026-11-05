@@ -65,10 +65,8 @@ class OutboxStore private constructor(private val directory: File, private val l
             .sorted()
 
     fun removeQuarantined(id: String) {
-        directory.listFiles {
-                file ->
-            file.name.startsWith("$id.") && file.name.endsWith(QUARANTINE_SUFFIX)
-        }.orEmpty().forEach { it.delete() }
+        val files = directory.listFiles { file -> file.name.startsWith("$id.") && file.name.endsWith(QUARANTINE_SUFFIX) }
+        files.orEmpty().forEach { it.delete() }
     }
 
     /** Changes whenever the message file does, and is null while it is missing. */
