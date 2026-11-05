@@ -35,7 +35,7 @@ import kotlinx.serialization.json.putJsonArray
 import kotlin.time.Clock
 
 /** Why this account cannot send at all, as opposed to a server refusing one message. */
-sealed interface SendUnavailable : StartResult, SendResult, DraftSaveResult {
+sealed interface SendUnavailable : StartResult, DraftSaveResult {
     data object NoIdentity : SendUnavailable
 
     data class NoMailbox(val role: String) : SendUnavailable
@@ -58,18 +58,11 @@ sealed interface DraftSaveResult {
     data class Rejected(val reason: String) : DraftSaveResult
 }
 
-sealed interface SendResult {
-    data object Sent : SendResult
-
-    /** The server refused the draft or its submission; nothing was delivered. */
-    data class Rejected(val reason: String) : SendResult
-}
-
 /**
  * The draft is from an alias that no longer has an identity, as happens once it is
  * disabled; it is never sent from the main address instead.
  */
-data class AliasGone(val email: String) : SendResult, DraftSaveResult
+data class AliasGone(val email: String) : DraftSaveResult
 
 internal sealed interface Route {
     data class Ready(val identity: Identity, val draftsId: String, val sentId: String) : Route
@@ -115,7 +108,7 @@ private inline fun <R> Loaded.fold(
  * removes its identity and enabling it again makes a new one. A message is always a
  * server draft before it is sent: [save] files it, [send] submits that draft
  * and moves it to Sent, so a refused submission leaves the draft in place. A
- * refusal comes back as [SendResult.Rejected] or [DraftSaveResult.Rejected] rather
+ * refusal comes back as [DraftSaveResult.Rejected] rather
  * than a thrown error: the caller keeps the text and shows why.
  */
 class ComposeRepository(
@@ -202,18 +195,6 @@ class ComposeRepository(
                 // A stray older draft is harmless; losing the new one is not.
             }
             DraftSaveResult.Saved(outcome.createdDraftId())
-        }
-
-    /** [from] is the saved draft's [Draft.from], which picks the identity the submission names. */
-    suspend fun send(
-        emailId: String,
-        from: String?,
-    ): SendResult =
-        load().fold({ it }) { sending ->
-            val identity = from?.let { sending.sendingAs(it) ?: return@fold AliasGone(it) } ?: sending.identity
-            val arguments = submit(identity, emailId, sending.draftsId, sending.sentId)
-            val outcome = jmapClient.call(listOf(Invocation("EmailSubmission/set", arguments, "c0"))).getValue("c0")
-            outcome.refusal("submission")?.let { SendResult.Rejected(it) } ?: SendResult.Sent
         }
 
     /** Where a message from [from] goes, for the outbox, which builds its own requests. */

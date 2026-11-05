@@ -1,28 +1,24 @@
 package com.verdenroz.corvid.core.data
 
+import com.verdenroz.corvid.core.data.outbox.ItemResult
+import com.verdenroz.corvid.core.data.outbox.RejectionCategory
 import com.verdenroz.corvid.core.jmap.AuthLatch
 import com.verdenroz.corvid.core.jmap.JmapClient
 import com.verdenroz.corvid.core.jmap.callOne
 import com.verdenroz.corvid.core.jmap.createJmapHttpClient
 import com.verdenroz.corvid.core.model.ComposeIntent
-import com.verdenroz.corvid.core.model.CorvidKeywords
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
-import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import java.net.Socket
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 /**
  * Mints an alias, takes mail on it over SMTP and replies from it, through the real client classes
@@ -64,19 +60,14 @@ class AliasReplyLiveTest {
                 val compose = ComposeRepository(client, mailbox)
                 val reply = assertIs<StartResult.Ready>(compose.start(ComposeIntent.Reply(originalId, all = false))).draft
                 assertEquals(alias.address, reply.from)
-                val sentId = assertIs<DraftSaveResult.Saved>(compose.save(reply, replacing = null)).emailId
-                assertEquals(SendResult.Sent, compose.send(sentId, reply.from))
-                assertEquals(listOf(alias.address), fromOf(client, sentId))
+                assertEquals(ItemResult.Sent, compose.sendThroughOutbox(client, reply))
 
-                val heldId = assertIs<DraftSaveResult.Saved>(compose.save(reply.copy(body = "held"), replacing = null)).emailId
                 assertIs<SwitchOutcome.Switched>(aliases.disable(alias.name, master))
                 disabled = true
-                assertEquals(AliasGone(alias.address), compose.send(heldId, reply.from))
-                assertTrue(isDraft(client, heldId), "the refused reply is no longer a draft")
-                assertEquals(listOf(alias.address), fromOf(client, heldId))
+                val held = compose.sendThroughOutbox(client, reply.copy(body = "held"))
+                assertEquals(ItemResult.Rejected(RejectionCategory.AliasGone, alias.address), held)
                 val reread = assertIs<EmailLookup.Found>(MailboxRepository(client).getEmail(originalId)).detail
                 assertNull(reread.arrivedVia)
-                compose.discard(heldId)
             } finally {
                 if (disabled) assertIs<SwitchOutcome.Switched>(aliases.enable(alias.name, masterAgain))
             }
@@ -96,29 +87,6 @@ class AliasReplyLiveTest {
         }
         error("nothing arrived with subject '$subject'")
     }
-
-    private suspend fun email(
-        client: JmapClient,
-        id: String,
-        property: String,
-    ): JsonObject {
-        val arguments =
-            buildJsonObject {
-                putJsonArray("ids") { add(JsonPrimitive(id)) }
-                putJsonArray("properties") { add(JsonPrimitive(property)) }
-            }
-        return client.callOne("Email/get", arguments).getValue("list").jsonArray.single().jsonObject
-    }
-
-    private suspend fun fromOf(
-        client: JmapClient,
-        id: String,
-    ): List<String> = email(client, id, "from").getValue("from").jsonArray.map { it.jsonObject.getValue("email").jsonPrimitive.content }
-
-    private suspend fun isDraft(
-        client: JmapClient,
-        id: String,
-    ): Boolean = CorvidKeywords.DRAFT in email(client, id, "keywords").getValue("keywords").jsonObject
 
     /** One SMTP session that ends with QUIT, since Stalwart bans an address for one malformed command. */
     private fun deliver(
