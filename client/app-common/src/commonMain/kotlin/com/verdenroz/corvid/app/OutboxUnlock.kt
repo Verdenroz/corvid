@@ -32,7 +32,7 @@ fun interface OutboxResume {
 /** Opens the outbox on [scope], which is an IO scope, so the directory and its lock are never touched by the caller. */
 class OutboxAccess(
     private val scope: CoroutineScope,
-    open: () -> OutboxAvailability,
+    open: suspend () -> OutboxAvailability,
 ) : AutoCloseable {
     private val _availability = MutableStateFlow<OutboxAvailability?>(null)
 
@@ -62,6 +62,7 @@ class OutboxAccess(
     override fun close() {
         scope.cancel()
         (_availability.value as? OutboxAvailability.Available)?.outbox?.close()
+        _availability.compareAndSet(null, OutboxAvailability.Failed)
     }
 }
 
@@ -85,5 +86,6 @@ internal suspend fun openOutbox(
 
 /** Sends what is queued on an unlocked scope whose outbox is already open. */
 internal suspend fun resumeOutbox(scope: Scope) {
+    if (scope.closed) return
     (scope.get<OutboxAccess>().await() as? OutboxAvailability.Available)?.outbox?.drainSoon()
 }

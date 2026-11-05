@@ -37,11 +37,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
-import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withContext
@@ -624,14 +622,6 @@ class AppLockViewModelTest {
             assertIs<KeyState.Locked>(harness.keyHolder.state.value)
         }
 
-    // The mock engine answers on its own thread. Blocking keeps virtual time from running ahead while it does.
-    private fun TestScope.settle() {
-        repeat(10) {
-            Thread.sleep(50)
-            runCurrent()
-        }
-    }
-
     private suspend fun Harness.reachUnreachable(fake: FakeJmapServer) {
         fake.devices.unrouted = true
         signIn()
@@ -808,9 +798,10 @@ class AppLockViewModelTest {
             backgroundScope.launch { harness.viewModel.state.collect { seen += it } }
             harness.reachUnreachable(fake)
 
-            harness.viewModel.state.awaitState { seen.count { state -> state is AppLockState.Unreachable } >= 2 }
+            var polls = 0
+            while (seen.count { it is AppLockState.Unreachable } < 2 && polls++ < 100) withContext(Dispatchers.Default) { delay(20) }
             advanceTimeBy(10.minutes)
-            settle()
+            withContext(Dispatchers.Default) { delay(300) }
 
             val afterFirstUnreachable = seen.dropWhile { it !is AppLockState.Unreachable }
             assertEquals(2, afterFirstUnreachable.count { it is AppLockState.Unreachable })
@@ -867,5 +858,28 @@ class AppLockViewModelTest {
             withContext(Dispatchers.Default) { }
 
             assertEquals(0, resumes)
+        }
+
+    @Test
+    fun `a drain that never finishes does not stop the next one`() =
+        runTest(testDispatcher) {
+            var calls = 0
+            val second = CompletableDeferred<Unit>()
+            val fake = FakeJmapServer()
+            val harness =
+                harness(
+                    backgroundScope,
+                    fake,
+                    outboxResume =
+                        OutboxResume {
+                            if (calls++ == 0) CompletableDeferred<Unit>().await() else second.complete(Unit)
+                        },
+                )
+            harness.enrollAndUnlock("laptop-1", fake)
+
+            harness.connectivity.flap()
+            harness.connectivity.flap()
+
+            second.await()
         }
 }

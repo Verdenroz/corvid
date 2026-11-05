@@ -22,7 +22,7 @@ data class OutboxWaiting(val waiting: Int, val needDecision: Int)
 /** What [directory] holds, counted from state files alone; null while another store holds it. */
 suspend fun waitingInOutbox(directory: File): OutboxWaiting? =
     withContext(Dispatchers.IO) {
-        OutboxStore.open(directory)?.use { store ->
+        OutboxStore.withStore(directory) { store ->
             val unsent = store.list().items.map { it.state }.filter { it !is OutboxState.Sent }
             val needDecision = unsent.count { it == OutboxState.Unconfirmed || it is OutboxState.Rejected }
             OutboxWaiting(unsent.size - needDecision, needDecision)
@@ -41,7 +41,7 @@ class OutboxWriter(
 ) {
     suspend fun write(draft: Draft): WriteOutcome =
         withContext(Dispatchers.IO) {
-            val store = OutboxStore.open(directory) ?: return@withContext WriteOutcome.HeldElsewhere
-            store.use { WriteOutcome.Queued(OutboxQueue(it, key, domain, clock).enqueue(draft, replacesDraftId = null)) }
+            val queued = OutboxStore.withStore(directory) { OutboxQueue(it, key, domain, clock).enqueue(draft, replacesDraftId = null) }
+            queued?.let { WriteOutcome.Queued(it) } ?: WriteOutcome.HeldElsewhere
         }
 }

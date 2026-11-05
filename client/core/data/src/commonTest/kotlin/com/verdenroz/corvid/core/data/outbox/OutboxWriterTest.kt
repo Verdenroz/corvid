@@ -8,6 +8,11 @@ import com.verdenroz.corvid.core.model.EmailAddress
 import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.client
 import com.verdenroz.corvid.core.testing.withSendableAccount
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import java.io.File
 import kotlin.io.path.createTempDirectory
@@ -171,4 +176,30 @@ class OutboxWriterTest {
             held.map { it.name }.sorted(),
         )
     }
+
+    @Test
+    fun `an unlock opening the outbox waits for a write in flight instead of finding it held`() =
+        runTest {
+            val directory = createTempDirectory().toFile()
+            val inside = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            val busy =
+                async(Dispatchers.IO) {
+                    OutboxStore.withStore(directory) {
+                        runBlocking {
+                            inside.complete(Unit)
+                            release.await()
+                        }
+                    }
+                }
+            inside.await()
+
+            val opening = async(Dispatchers.IO) { OutboxStore.openWhenFree(directory) }
+            delay(200)
+            assertFalse(opening.isCompleted)
+            release.complete(Unit)
+            busy.await()
+
+            assertNotNull(opening.await()).close()
+        }
 }

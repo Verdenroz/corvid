@@ -36,7 +36,7 @@ val outboxModule =
                 val client = get<JmapClient>()
                 val compose = get<ComposeRepository>()
                 OutboxAccess(CoroutineScope(SupervisorJob() + Dispatchers.IO)) {
-                    val store = OutboxStore.open(directory)
+                    val store = OutboxStore.openWhenFree(directory)
                     if (store == null) {
                         OutboxAvailability.HeldElsewhere
                     } else {

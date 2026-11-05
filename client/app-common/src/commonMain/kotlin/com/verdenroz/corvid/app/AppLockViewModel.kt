@@ -185,7 +185,7 @@ class AppLockViewModel(
         if (!connectivity.eventDriven) return
         _state.map { it is AppLockState.Unlocked }.distinctUntilChanged()
             .flatMapLatest { unlocked -> if (unlocked) connectivity.online.regained() else emptyFlow() }
-            .collect { unlockedScopeHolder.openScope()?.let { outboxResume.resume(it) } }
+            .collect { viewModelScope.launch { unlockedScopeHolder.openScope()?.let { outboxResume.resume(it) } } }
     }
 
     private suspend fun onAuthState(authState: AuthState) {
