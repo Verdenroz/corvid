@@ -44,6 +44,7 @@ internal fun OfflineGate(
     server: String?,
     canWrite: Boolean,
     outbox: OfflineOutbox,
+    onWriting: (Boolean) -> Unit,
     pane: @Composable (waiting: Int?, onWrite: (() -> Unit)?) -> Unit,
 ) {
     val form = remember { OfflineComposeState() }
@@ -57,6 +58,7 @@ internal fun OfflineGate(
             form.clear()
         }
     }
+    LaunchedEffect(writing) { onWriting(writing) }
     val waiting by produceState<Int?>(null, gated, written) { value = if (gated) outbox.waiting() else null }
     if (writing && gated && server != null) {
         OfflineComposeScreen(

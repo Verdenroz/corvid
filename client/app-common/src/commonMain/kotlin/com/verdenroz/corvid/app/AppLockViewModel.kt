@@ -13,6 +13,7 @@ import com.verdenroz.corvid.appcommon.resources.unreachable_server
 import com.verdenroz.corvid.appcommon.resources.unreachable_session
 import com.verdenroz.corvid.core.auth.AuthState
 import com.verdenroz.corvid.core.auth.TokenSource
+import com.verdenroz.corvid.core.common.Connectivity
 import com.verdenroz.corvid.core.data.catchingSignIn
 import com.verdenroz.corvid.core.domain.ApproveWithKey
 import com.verdenroz.corvid.core.jmap.AuthLatch
@@ -35,10 +36,21 @@ import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.uiText
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import kotlin.time.Clock
@@ -64,6 +76,8 @@ class AppLockViewModel(
     private val approveWithKey: ApproveWithKey,
     private val devicePreferences: DevicePreferences,
     private val outboxUnlock: OutboxUnlock,
+    private val outboxResume: OutboxResume,
+    private val connectivity: Connectivity,
 ) : ViewModel() {
     private val _state = MutableStateFlow<AppLockState>(AppLockState.SignedOut)
     val state: StateFlow<AppLockState> = _state
@@ -84,6 +98,15 @@ class AppLockViewModel(
             authLatch.tripped.collect { tripped -> if (tripped) keyHolder.drop() }
         }
         viewModelScope.launch { keyHolder.state.collect(::onKeyState) }
+        viewModelScope.launch { retryWhenOnline() }
+        viewModelScope.launch { drainWhenOnline() }
+    }
+
+    private val writingOffline = MutableStateFlow(false)
+
+    /** While a message is being written on the lock screen, a returning network does not retry and move the screen away. */
+    fun writingOffline(writing: Boolean) {
+        writingOffline.value = writing
     }
 
     /** What the locked screen can say for certain: whichever of these this session knows. */
@@ -126,6 +149,28 @@ class AppLockViewModel(
                 name != null -> resolveKey(name)
             }
         }
+    }
+
+    // One retry per outage: the flow ends after the first return, and a failed retry re-enters Unreachable
+    // with a fresh flow that waits for the network to drop and return again.
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private suspend fun retryWhenOnline() {
+        _state.map { it is AppLockState.Unreachable }.distinctUntilChanged()
+            .flatMapLatest { unreachable ->
+                if (unreachable) {
+                    connectivity.online.regained().take(1).onEach { writingOffline.first { writing -> !writing } }
+                } else {
+                    emptyFlow()
+                }
+            }
+            .collect { retry() }
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private suspend fun drainWhenOnline() {
+        _state.map { it is AppLockState.Unlocked }.distinctUntilChanged()
+            .flatMapLatest { unlocked -> if (unlocked) connectivity.online.regained() else emptyFlow() }
+            .collect { unlockedScopeHolder.openScope()?.let { outboxResume.resume(it) } }
     }
 
     private suspend fun onAuthState(authState: AuthState) {
@@ -344,6 +389,9 @@ class AppLockViewModel(
         keyHolder.drop()
     }
 }
+
+/** Each time the network comes back after a drop; the value current when collection starts is not a return. */
+private fun StateFlow<Boolean>.regained(): Flow<Boolean> = drop(1).filter { it }
 
 /** The signed-in server's hostname. */
 data class AccountHosts(

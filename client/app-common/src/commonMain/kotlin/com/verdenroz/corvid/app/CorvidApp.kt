@@ -58,7 +58,13 @@ fun CorvidApp(
     CorvidTheme(darkTheme = dark) {
         Box(modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).background(CorvidTheme.colors.surface)) {
             val current = state
-            OfflineGate(current, viewModel.lockFacts.server, settings.outboxKey != null, offlineOutbox) { waiting, onWrite ->
+            OfflineGate(
+                current,
+                viewModel.lockFacts.server,
+                settings.outboxKey != null,
+                offlineOutbox,
+                viewModel::writingOffline,
+            ) { waiting, onWrite ->
                 key(current::class) {
                     Arrive(if (current is AppLockState.Unlocked) UNLOCK_MILLIS else PANE_MILLIS) {
                         GatePane(current, viewModel, waiting, onWrite)

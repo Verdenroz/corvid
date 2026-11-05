@@ -58,7 +58,7 @@ class OfflineGateTest {
         canWrite: Boolean = true,
     ) = setContent {
         CorvidTheme(darkTheme = false) {
-            OfflineGate(state, "mail.example.test", canWrite, rig.outbox) { waiting, onWrite ->
+            OfflineGate(state, "mail.example.test", canWrite, rig.outbox, {}) { waiting, onWrite ->
                 when (state) {
                     is AppLockState.Unreachable -> UnreachablePane(state.reason, {}, {}, waiting = waiting, onWrite = onWrite)
                     else -> LockedPane("mail.example.test", "phone", null, onUnlock = {}, waiting = waiting, onWrite = onWrite)
@@ -132,7 +132,7 @@ class OfflineGateTest {
             var state: AppLockState by mutableStateOf(LOCKED)
             setContent {
                 CorvidTheme(darkTheme = false) {
-                    OfflineGate(state, "mail.example.test", true, rig.outbox) { _, onWrite ->
+                    OfflineGate(state, "mail.example.test", true, rig.outbox, {}) { _, onWrite ->
                         if (state == LOCKED) {
                             LockedPane(
                                 "mail.example.test",

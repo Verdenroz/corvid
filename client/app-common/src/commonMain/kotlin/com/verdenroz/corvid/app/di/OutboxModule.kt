@@ -2,9 +2,11 @@ package com.verdenroz.corvid.app.di
 
 import com.verdenroz.corvid.app.OfflineOutbox
 import com.verdenroz.corvid.app.OutboxAccess
+import com.verdenroz.corvid.app.OutboxResume
 import com.verdenroz.corvid.app.OutboxUnlock
 import com.verdenroz.corvid.app.UnlockedDevice
 import com.verdenroz.corvid.app.openOutbox
+import com.verdenroz.corvid.app.resumeOutbox
 import com.verdenroz.corvid.core.common.di.UnlockedScopeMarker
 import com.verdenroz.corvid.core.data.ComposeRepository
 import com.verdenroz.corvid.core.data.outbox.Outbox
@@ -26,6 +28,7 @@ val outboxModule =
     module {
         single { OfflineOutbox(get(), get()) }
         factory { OutboxUnlock { scope, key, domain -> openOutbox(get<DevicePreferences>(), scope, key, domain) } }
+        factory { OutboxResume(::resumeOutbox) }
         scope<UnlockedScopeMarker> {
             scoped {
                 val device = get<UnlockedDevice>()

@@ -8,6 +8,7 @@ import com.verdenroz.corvid.appcommon.resources.unreachable_key_unreachable
 import com.verdenroz.corvid.core.auth.AuthState
 import com.verdenroz.corvid.core.auth.PasskeyException
 import com.verdenroz.corvid.core.auth.TokenSource
+import com.verdenroz.corvid.core.common.Connectivity
 import com.verdenroz.corvid.core.data.userMessage
 import com.verdenroz.corvid.core.domain.ApproveWithKey
 import com.verdenroz.corvid.core.jmap.AuthLatch
@@ -30,6 +31,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.job
@@ -64,12 +66,32 @@ private const val BASE_URL = "http://127.0.0.1:9999"
  */
 private suspend fun StateFlow<AppLockState>.awaitState(predicate: (AppLockState) -> Boolean): AppLockState = first(predicate)
 
+class FakeConnectivity(initial: Boolean = true) : Connectivity {
+    private val _online = MutableStateFlow(initial)
+    override val online: StateFlow<Boolean> = _online
+
+    fun set(online: Boolean) {
+        _online.value = online
+    }
+
+    /** A drop and a return, each seen by collectors, since a state flow conflates changes made without a suspension. */
+    suspend fun flap() {
+        yield()
+        set(false)
+        yield()
+        set(true)
+        yield()
+    }
+}
+
 private class Harness(
     scope: CoroutineScope,
     fake: FakeJmapServer,
     approveWithKey: ApproveWithKey,
     store: InMemoryPreferencesStore = InMemoryPreferencesStore(),
     outboxUnlock: OutboxUnlock = OutboxUnlock { _, _, _ -> },
+    outboxResume: OutboxResume = OutboxResume { },
+    val connectivity: FakeConnectivity = FakeConnectivity(),
 ) {
     val devicePreferences = DevicePreferences(store, scope, DeviceSettings())
     val authLatch = AuthLatch()
@@ -85,6 +107,8 @@ private class Harness(
             approveWithKey = approveWithKey,
             devicePreferences = devicePreferences,
             outboxUnlock = outboxUnlock,
+            outboxResume = outboxResume,
+            connectivity = connectivity,
         )
 
     fun signIn() = tokenSource.adopt(authTokens(), ServerAddress(BASE_URL))
@@ -134,7 +158,8 @@ class AppLockViewModelTest {
         approveWithKey: ApproveWithKey = fakeApproveWithKey { fake.devices.masterToken },
         store: InMemoryPreferencesStore = InMemoryPreferencesStore(),
         outboxUnlock: OutboxUnlock = OutboxUnlock { _, _, _ -> },
-    ) = Harness(scope, fake, approveWithKey, store, outboxUnlock).also { harness = it }
+        outboxResume: OutboxResume = OutboxResume { },
+    ) = Harness(scope, fake, approveWithKey, store, outboxUnlock, outboxResume).also { harness = it }
 
     private suspend fun Harness.awaitSelfApprovalFailure(): EnrollmentRequest.Open {
         val failed =
@@ -591,5 +616,120 @@ class AppLockViewModelTest {
 
             assertEquals(uiText(Res.string.unreachable_heartbeat), unreachable.reason)
             assertIs<KeyState.Locked>(harness.keyHolder.state.value)
+        }
+
+    private suspend fun Harness.reachUnreachable(fake: FakeJmapServer) {
+        fake.devices.unrouted = true
+        signIn()
+        viewModel.state.awaitState { it is AppLockState.Connecting && it.needsDeviceName }
+        viewModel.submitDeviceName("laptop-1")
+        viewModel.state.awaitState { it is AppLockState.Unreachable }
+    }
+
+    @Test
+    fun `the network returning while unreachable retries once`() =
+        runTest(testDispatcher) {
+            val fake = FakeJmapServer()
+            val harness = harness(backgroundScope, fake)
+            harness.reachUnreachable(fake)
+
+            fake.devices.unrouted = false
+            harness.connectivity.flap()
+
+            harness.viewModel.state.awaitState { it is AppLockState.NeedsEnrollment && it.request is EnrollmentRequest.Open }
+            harness.connectivity.flap()
+            advanceTimeBy(10.seconds)
+            assertEquals(listOf("laptop-1"), fake.devices.opened)
+        }
+
+    @Test
+    fun `a network that flaps while unreachable starts one retry`() =
+        runTest(testDispatcher) {
+            val fake = FakeJmapServer()
+            val harness = harness(backgroundScope, fake)
+            harness.reachUnreachable(fake)
+
+            fake.devices.unrouted = false
+            repeat(4) { harness.connectivity.flap() }
+
+            harness.viewModel.state.awaitState { it is AppLockState.NeedsEnrollment && it.request is EnrollmentRequest.Open }
+            advanceTimeBy(10.seconds)
+            assertEquals(listOf("laptop-1"), fake.devices.opened)
+        }
+
+    @Test
+    fun `the network returning never unlocks from the lock pane`() =
+        runTest(testDispatcher) {
+            val fake = FakeJmapServer()
+            val harness = harness(backgroundScope, fake)
+            harness.enrollAndUnlock("laptop-1", fake)
+            harness.viewModel.lock()
+            harness.viewModel.state.awaitState { it is AppLockState.Locked }
+
+            harness.connectivity.flap()
+            advanceTimeBy(10.seconds)
+
+            assertIs<AppLockState.Locked>(harness.viewModel.state.value)
+            assertIs<KeyState.Locked>(harness.keyHolder.state.value)
+        }
+
+    @Test
+    fun `the network returning waits while a message is being written`() =
+        runTest(testDispatcher) {
+            val fake = FakeJmapServer()
+            val harness = harness(backgroundScope, fake)
+            harness.reachUnreachable(fake)
+            harness.viewModel.writingOffline(true)
+
+            fake.devices.unrouted = false
+            harness.connectivity.flap()
+            advanceTimeBy(10.seconds)
+            assertIs<AppLockState.Unreachable>(harness.viewModel.state.value)
+
+            harness.viewModel.writingOffline(false)
+            harness.viewModel.state.awaitState { it is AppLockState.NeedsEnrollment && it.request is EnrollmentRequest.Open }
+        }
+
+    @Test
+    fun `the network returning while unlocked sends the outbox`() =
+        runTest(testDispatcher) {
+            val resumed = CompletableDeferred<Unit>()
+            val fake = FakeJmapServer()
+            val harness = harness(backgroundScope, fake, outboxResume = OutboxResume { resumed.complete(Unit) })
+            harness.enrollAndUnlock("laptop-1", fake)
+
+            harness.connectivity.flap()
+
+            resumed.await()
+        }
+
+    @Test
+    fun `the network returning while locked does not send the outbox until it is unlocked again`() =
+        runTest(testDispatcher) {
+            var resumes = 0
+            val resumed = CompletableDeferred<Unit>()
+            val fake = FakeJmapServer()
+            val harness =
+                harness(
+                    backgroundScope,
+                    fake,
+                    outboxResume =
+                        OutboxResume {
+                            resumes++
+                            resumed.complete(Unit)
+                        },
+                )
+            harness.enrollAndUnlock("laptop-1", fake)
+            harness.viewModel.lock()
+            harness.viewModel.state.awaitState { it is AppLockState.Locked }
+            harness.connectivity.flap()
+            assertEquals(0, resumes)
+
+            harness.viewModel.unlock()
+            harness.viewModel.state.awaitState { it is AppLockState.Unlocked }
+            harness.connectivity.flap()
+            resumed.await()
+
+            assertEquals(1, resumes)
         }
 }
