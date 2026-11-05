@@ -39,11 +39,14 @@ private class Rig {
     val fake = FakeJmapServer().withSendableAccount()
     val queue = OutboxQueue(store, OutboxSealer.keyFor(DEVICE_KEY), "example.test", CLOCK)
 
-    suspend fun sender(deviceKey: ByteArray = DEVICE_KEY): OutboxSender {
+    suspend fun sender(
+        deviceKey: ByteArray = DEVICE_KEY,
+        clock: Clock = CLOCK,
+    ): OutboxSender {
         val client = fake.client()
         val compose = ComposeRepository(client, MailboxRepository(client))
         compose.routeFor(null)
-        return OutboxSender(store, client, compose, deviceKey, CLOCK)
+        return OutboxSender(store, client, compose, deviceKey, clock)
     }
 
     fun item(id: String) = store.list().items.single { it.id == id }
@@ -469,6 +472,32 @@ class OutboxSenderTest {
             assertEquals(true, sender.discard(id))
 
             assertEquals(emptyList(), rig.store.list().items)
+        }
+
+    @Test
+    fun `a drain removes sent tombstones older than a week once their cleanup is done`() =
+        runTest {
+            val rig = Rig()
+            val day = 24L * 60 * 60 * 1000
+            val now = Instant.fromEpochMilliseconds(30 * day)
+            val old = rig.queue.enqueue(draft(), null)
+            val recent = rig.queue.enqueue(draft(), null)
+            val untidy = rig.queue.enqueue(draft(), null)
+            rig.put(old, OutboxState.Sent("e1", now.toEpochMilliseconds() - 8 * day))
+            rig.put(recent, OutboxState.Sent("e2", now.toEpochMilliseconds() - 6 * day))
+            rig.put(untidy, OutboxState.Sent("e3", now.toEpochMilliseconds() - 8 * day, Tidy(keyword = "corvid-outbox-$untidy")))
+            val sender =
+                rig.sender(
+                    clock =
+                        object : Clock {
+                            override fun now() = now
+                        },
+                )
+            rig.fake.unreachable = true
+
+            sender.drain()
+
+            assertEquals(setOf(recent, untidy), rig.store.list().items.map { it.id }.toSet())
         }
 
     @Test

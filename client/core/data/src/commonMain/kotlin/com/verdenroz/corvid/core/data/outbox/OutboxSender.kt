@@ -25,6 +25,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import javax.net.ssl.SSLHandshakeException
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.days
 
 sealed interface ItemResult {
     data object Sent : ItemResult
@@ -49,6 +50,8 @@ sealed interface ItemResult {
 }
 
 data class Drained(val id: String, val result: ItemResult)
+
+private val TOMBSTONE_KEPT = 7.days
 
 private sealed interface Probe {
     data class Delivered(val emailId: String) : Probe
@@ -96,6 +99,7 @@ class OutboxSender(
         mutex.withLock {
             val items = store.list().items
             items.filter { (it.state as? OutboxState.Sent)?.tidy != null }.forEach { tidy(it) }
+            prune(store.list().items)
             val drained = mutableListOf<Drained>()
             for (item in items.filter { it.state.isPending }) {
                 val result = send(item)
@@ -145,6 +149,12 @@ class OutboxSender(
         reply.getValue("list").jsonArray.map { it.jsonObject }
             .filter { it.isIn(drafts) && it.hasKeyword(CorvidKeywords.DRAFT) }
             .forEach { staged -> bestEffort { jmapClient.callOne("Email/set", destroyEmail(staged.id())) } }
+    }
+
+    private fun prune(items: List<OutboxItem>) {
+        val cutoff = clock.now().toEpochMilliseconds() - TOMBSTONE_KEPT.inWholeMilliseconds
+        items.filter { (it.state as? OutboxState.Sent)?.let { sent -> sent.tidy == null && sent.at < cutoff } == true }
+            .forEach { store.remove(it.id) }
     }
 
     private fun open(item: OutboxItem): Opening {
