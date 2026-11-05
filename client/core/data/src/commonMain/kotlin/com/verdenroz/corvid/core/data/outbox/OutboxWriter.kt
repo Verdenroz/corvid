@@ -11,12 +11,22 @@ sealed interface WriteOutcome {
 
     /** Another process holds the outbox directory. */
     data object HeldElsewhere : WriteOutcome
+
+    /** No usable public key is stored yet, since the device has not unlocked once. */
+    data object NoKey : WriteOutcome
 }
 
-/** Messages in [directory] not yet sent, counted from state files alone; null while another store holds it. */
-suspend fun waitingInOutbox(directory: File): Int? =
+/** [waiting] messages will be sent on their own; [needDecision] wait on the user to send them again or discard them. */
+data class OutboxWaiting(val waiting: Int, val needDecision: Int)
+
+/** What [directory] holds, counted from state files alone; null while another store holds it. */
+suspend fun waitingInOutbox(directory: File): OutboxWaiting? =
     withContext(Dispatchers.IO) {
-        OutboxStore.open(directory)?.use { store -> store.list().items.count { it.state !is OutboxState.Sent } }
+        OutboxStore.open(directory)?.use { store ->
+            val unsent = store.list().items.map { it.state }.filter { it !is OutboxState.Sent }
+            val needDecision = unsent.count { it == OutboxState.Unconfirmed || it is OutboxState.Rejected }
+            OutboxWaiting(unsent.size - needDecision, needDecision)
+        }
     }
 
 /**

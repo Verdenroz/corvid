@@ -120,15 +120,37 @@ class OutboxWriterTest {
             val directory = createTempDirectory().toFile()
             writer(directory).write(DRAFT)
             writer(directory).write(DRAFT)
-            assertEquals(2, waitingInOutbox(directory))
+            assertEquals(OutboxWaiting(2, 0), waitingInOutbox(directory))
 
             val store = assertNotNull(OutboxStore.open(directory))
             val sent = store.list().items.first()
             store.finish(sent.copy(state = OutboxState.Sent("e1", 1)))
             store.close()
 
-            assertEquals(1, waitingInOutbox(directory))
+            assertEquals(OutboxWaiting(1, 0), waitingInOutbox(directory))
         }
+
+    @Test
+    fun `unconfirmed and rejected messages are counted as needing a decision, not waiting`() =
+        runTest {
+            val directory = createTempDirectory().toFile()
+            repeat(4) { writer(directory).write(DRAFT) }
+            val store = assertNotNull(OutboxStore.open(directory))
+            val items = store.list().items
+            store.save(items[0].copy(state = OutboxState.Unconfirmed))
+            store.save(items[1].copy(state = OutboxState.Rejected(RejectionCategory.Refused)))
+            store.save(items[2].copy(state = OutboxState.Submitting(1)))
+            store.close()
+
+            assertEquals(OutboxWaiting(waiting = 2, needDecision = 2), waitingInOutbox(directory))
+        }
+
+    @Test
+    fun `a stored key that is not a public key does not decode`() {
+        assertEquals(null, SealKey.decodeOrNull("not base64!"))
+        assertEquals(null, SealKey.decodeOrNull("AAAA"))
+        assertNotNull(SealKey.decodeOrNull(OutboxSealer.keyFor(DEVICE_KEY).encoded()))
+    }
 
     @Test
     fun `the waiting count is unknown while another store holds the directory`() =

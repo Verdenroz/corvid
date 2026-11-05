@@ -96,4 +96,17 @@ class OfflineWritingTest {
 
             onNodeWithText("2 messages waiting").assertExists()
         }
+
+    @Test
+    fun `messages that need a decision are counted apart from the waiting ones`() =
+        runComposeUiTest {
+            setContent {
+                CorvidTheme(darkTheme = false) {
+                    LockedPane("mail.example.test", "phone", null, onUnlock = {}, waiting = 1, needDecision = 2)
+                }
+            }
+
+            onNodeWithText("1 message waiting").assertExists()
+            onNodeWithText("2 messages need a decision").assertExists()
+        }
 }

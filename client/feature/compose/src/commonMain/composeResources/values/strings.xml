@@ -26,6 +26,7 @@
     <string name="compose_offline_empty">Write something to send.</string>
     <string name="compose_offline_queued">Saved. It will be sent once you unlock.</string>
     <string name="compose_offline_done">Done</string>
+    <string name="compose_offline_no_key">Cannot save: the app has no key yet. Unlock once first.</string>
     <string name="compose_close">Close</string>
     <string name="compose_title_new">New message</string>
     <string name="compose_title_reply">Reply</string>

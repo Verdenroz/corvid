@@ -27,6 +27,7 @@ fun LockedPane(
     onUnlock: () -> Unit,
     modifier: Modifier = Modifier,
     waiting: Int? = null,
+    needDecision: Int = 0,
     onWrite: (() -> Unit)? = null,
 ) {
     val facts =
@@ -38,13 +39,12 @@ fun LockedPane(
                     droppedAt?.let { stringResource(Res.string.locked_device_dropped, name, it) } ?: name,
                 )
             },
-            waitingFact(waiting),
         )
     StatePane(
         stringResource(Res.string.locked_title),
         modifier,
         detail = stringResource(Res.string.locked_detail),
-        facts = facts,
+        facts = facts + outboxFacts(waiting, needDecision),
         drawEyeLine = true,
     ) {
         PrimaryButton(stringResource(Res.string.locked_unlock), onUnlock)

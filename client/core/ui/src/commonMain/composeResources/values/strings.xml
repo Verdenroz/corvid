@@ -6,6 +6,8 @@
     <string name="outbox_label">Outbox</string>
     <string name="waiting_one">1 message waiting</string>
     <string name="waiting_many">%1$d messages waiting</string>
+    <string name="decision_one">1 message needs a decision</string>
+    <string name="decision_many">%1$d messages need a decision</string>
     <string name="locked_title">Locked</string>
     <string name="locked_unlock">Unlock</string>
     <string name="revoked_title">Revoked</string>

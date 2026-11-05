@@ -35,6 +35,7 @@ import com.verdenroz.corvid.feature.compose.resources.compose_discard_question
 import com.verdenroz.corvid.feature.compose.resources.compose_not_sent
 import com.verdenroz.corvid.feature.compose.resources.compose_offline_done
 import com.verdenroz.corvid.feature.compose.resources.compose_offline_empty
+import com.verdenroz.corvid.feature.compose.resources.compose_offline_no_key
 import com.verdenroz.corvid.feature.compose.resources.compose_offline_queued
 import com.verdenroz.corvid.feature.compose.resources.compose_outbox_held
 import com.verdenroz.corvid.feature.compose.resources.compose_outbox_unsaved
@@ -88,6 +89,7 @@ class OfflineComposeState {
                     queued = true
                 }
                 WriteOutcome.HeldElsewhere -> refuse(Res.string.compose_outbox_held)
+                WriteOutcome.NoKey -> error = uiText(Res.string.compose_offline_no_key)
             }
         } catch (_: IOException) {
             refuse(Res.string.compose_outbox_unsaved)
@@ -116,12 +118,22 @@ fun OfflineComposeScreen(
         Bar(
             ComposeIntent.New,
             sending = state.sending || state.queued,
-            onClose = { if (state.hasText) confirmingDiscard = true else onClose() },
+            onClose = {
+                if (state.hasText) {
+                    confirmingDiscard = true
+                } else {
+                    state.clear()
+                    onClose()
+                }
+            },
             onAttach = null,
             onSend = { scope.launch { state.send(onSend) } },
         )
         if (state.queued) {
-            Queued(onClose)
+            Queued {
+                state.clear()
+                onClose()
+            }
             return@Column
         }
         if (confirmingDiscard) {

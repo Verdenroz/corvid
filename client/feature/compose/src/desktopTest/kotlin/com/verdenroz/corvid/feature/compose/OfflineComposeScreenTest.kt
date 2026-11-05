@@ -136,4 +136,18 @@ class OfflineComposeScreenTest {
             assertTrue(state.hasText)
             assertFalse("secret" in registry.performSave().toString())
         }
+
+    @Test
+    fun `a missing key keeps the text and says to unlock once first`() =
+        runComposeUiTest {
+            val state = OfflineComposeState()
+            setContent { CorvidTheme(darkTheme = false) { OfflineComposeScreen(state, onSend = { WriteOutcome.NoKey }, onClose = {}) } }
+
+            onNode(hasSetTextAction() and hasText("To")).performTextInput("bob@example.test")
+            onNode(hasSetTextAction() and hasText("Message")).performTextInput("hi there")
+            onNodeWithText("Send").performClick()
+
+            onNodeWithText("Cannot save: the app has no key yet. Unlock once first.").assertExists()
+            assertEquals("hi there", state.body)
+        }
 }

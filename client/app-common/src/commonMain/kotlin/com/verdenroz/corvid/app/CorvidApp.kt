@@ -20,6 +20,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import com.verdenroz.corvid.core.data.clockTime
+import com.verdenroz.corvid.core.data.outbox.OutboxWaiting
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.prefs.DevicePreferences
 import com.verdenroz.corvid.core.prefs.ThemeChoice
@@ -61,13 +62,13 @@ fun CorvidApp(
             OfflineGate(
                 current,
                 viewModel.lockFacts.server,
-                settings.outboxKey != null,
+                settings.canWriteOffline(),
                 offlineOutbox,
                 viewModel::writingOffline,
-            ) { waiting, onWrite ->
+            ) { outboxWaiting, onWrite ->
                 key(current::class) {
                     Arrive(if (current is AppLockState.Unlocked) UNLOCK_MILLIS else PANE_MILLIS) {
-                        GatePane(current, viewModel, waiting, onWrite)
+                        GatePane(current, viewModel, outboxWaiting, onWrite)
                     }
                 }
             }
@@ -92,7 +93,7 @@ private fun Arrive(
 private fun GatePane(
     current: AppLockState,
     viewModel: AppLockViewModel,
-    waiting: Int?,
+    outboxWaiting: OutboxWaiting?,
     onWrite: (() -> Unit)?,
 ) {
     when (current) {
@@ -114,7 +115,8 @@ private fun GatePane(
                 reason = current.reason,
                 onRetry = viewModel::retry,
                 onSignOut = viewModel::signOut,
-                waiting = waiting,
+                waiting = outboxWaiting?.waiting,
+                needDecision = outboxWaiting?.needDecision ?: 0,
                 onWrite = onWrite,
             )
         is AppLockState.Locked -> {
@@ -124,7 +126,8 @@ private fun GatePane(
                 facts.device,
                 facts.lockedAt?.let { droppedAt(it) },
                 onUnlock = viewModel::unlock,
-                waiting = waiting,
+                waiting = outboxWaiting?.waiting,
+                needDecision = outboxWaiting?.needDecision ?: 0,
                 onWrite = onWrite,
             )
         }
