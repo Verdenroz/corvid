@@ -115,6 +115,8 @@ internal fun findByKeyword(keyword: String): List<Invocation> =
         ),
     )
 
+internal fun destroyEmail(emailId: String): JsonObject = buildJsonObject { putJsonArray("destroy") { add(JsonPrimitive(emailId)) } }
+
 /** Drops the send mark from the sent copy and destroys the draft this message replaced, whichever are still set. */
 internal fun tidySent(
     emailId: String,

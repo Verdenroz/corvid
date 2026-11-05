@@ -411,6 +411,67 @@ class OutboxSenderTest {
         }
 
     @Test
+    fun `discarding a rejected message also deletes the draft the server staged for it`() =
+        runTest {
+            val rig = Rig()
+            val id = rig.queue.enqueue(draft(), null)
+            val sender = rig.sender()
+            rig.fake.refuseSubmission = true
+            assertIs<ItemResult.Rejected>(sender.drain().single().result)
+            assertEquals(1, rig.fake.emails.size)
+
+            assertEquals(true, sender.discard(id))
+
+            assertEquals(emptyList(), rig.fake.emails)
+        }
+
+    @Test
+    fun `discarding a rejected message leaves a copy of its keyword that is no longer a draft`() =
+        runTest {
+            val rig = Rig()
+            val id = rig.queue.enqueue(draft(), null)
+            rig.put(id, OutboxState.Rejected(RejectionCategory.Refused))
+            rig.copy("s", "sent", setOf("corvid-outbox-$id"))
+            val sender = rig.sender()
+
+            assertEquals(true, sender.discard(id))
+
+            assertEquals(listOf("s"), rig.fake.emails.map { it.id })
+        }
+
+    @Test
+    fun `discarding an unconfirmed or unreadable message never calls the server`() =
+        runTest {
+            val rig = Rig()
+            val unconfirmed = rig.queue.enqueue(draft(), null)
+            rig.put(unconfirmed, OutboxState.Unconfirmed)
+            rig.copy("d", "drafts", setOf("corvid-outbox-$unconfirmed", "\$draft"))
+            rig.enqueueUnreadable("bad")
+            val sender = rig.sender()
+            val before = rig.fake.requestCount
+
+            assertEquals(true, sender.discard(unconfirmed))
+            assertEquals(true, sender.discard("bad"))
+
+            assertEquals(before, rig.fake.requestCount)
+            assertEquals(listOf("d"), rig.fake.emails.map { it.id })
+        }
+
+    @Test
+    fun `a rejected message is still discarded when the server cannot be reached`() =
+        runTest {
+            val rig = Rig()
+            val id = rig.queue.enqueue(draft(), null)
+            rig.put(id, OutboxState.Rejected(RejectionCategory.Refused))
+            val sender = rig.sender()
+            rig.fake.unreachable = true
+
+            assertEquals(true, sender.discard(id))
+
+            assertEquals(emptyList(), rig.store.list().items)
+        }
+
+    @Test
     fun `a rejected or unreadable message can be discarded and a sent tombstone cannot`() =
         runTest {
             val rig = Rig()

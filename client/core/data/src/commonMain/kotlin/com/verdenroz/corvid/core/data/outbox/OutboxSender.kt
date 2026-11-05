@@ -3,6 +3,7 @@ package com.verdenroz.corvid.core.data.outbox
 import com.verdenroz.corvid.core.data.ComposeRepository
 import com.verdenroz.corvid.core.data.Route
 import com.verdenroz.corvid.core.data.createEmail
+import com.verdenroz.corvid.core.data.destroyEmail
 import com.verdenroz.corvid.core.data.findByKeyword
 import com.verdenroz.corvid.core.data.submit
 import com.verdenroz.corvid.core.data.tidySent
@@ -117,7 +118,8 @@ class OutboxSender(
 
     /**
      * Deletes a message the user gives up on: one that was rejected, is unconfirmed or cannot be read.
-     * An unconfirmed message may already have been sent, and discarding it forgets that it might have been.
+     * A rejected message also loses the draft the server may have staged for it; the other two never touch the
+     * server, since an unconfirmed message may already have been sent and discarding it forgets that it might have been.
      * Returns false for anything else, sent tombstones and readable queued messages included.
      */
     suspend fun discard(id: String): Boolean =
@@ -129,8 +131,21 @@ class OutboxSender(
                     is OutboxState.Sent -> false
                     else -> open(item) is Opening.Failed
                 }
-            discardable.also { if (it) store.remove(id) }
+            discardable.also {
+                if (it) {
+                    if (item.state is OutboxState.Rejected) removeStaged(id)
+                    store.remove(id)
+                }
+            }
         }
+
+    private suspend fun removeStaged(id: String) {
+        val drafts = bestEffort { compose.routeFor(null) as? Route.Ready }?.draftsId ?: return
+        val reply = bestEffort { jmapClient.call(findByKeyword(CorvidKeywords.OUTBOX + id)).getValue("read").resultOrThrow() } ?: return
+        reply.getValue("list").jsonArray.map { it.jsonObject }
+            .filter { it.isIn(drafts) && it.hasKeyword(CorvidKeywords.DRAFT) }
+            .forEach { staged -> bestEffort { jmapClient.callOne("Email/set", destroyEmail(staged.id())) } }
+    }
 
     private fun open(item: OutboxItem): Opening {
         val sealed = (store.readMessage(item.id) as? MessageRead.Found)?.message ?: return Opening.Failed(ItemResult.Unreadable)
