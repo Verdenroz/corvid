@@ -16,6 +16,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -64,12 +65,33 @@ import org.jetbrains.compose.resources.stringResource
 
 private val PAGE_WIDTH = 640.dp
 
+class OutboxActions(
+    val tryNow: () -> Unit,
+    val resend: (String) -> Unit,
+    val askDiscard: (String) -> Unit,
+    val keep: () -> Unit,
+    val discard: (String) -> Unit,
+)
+
 @Composable
 fun OutboxScreen(
     viewModel: OutboxViewModel,
     onBack: () -> Unit,
 ) {
     val state by viewModel.state.collectAsState()
+    val actions =
+        remember(
+            viewModel,
+        ) { OutboxActions(viewModel::tryNow, viewModel::resend, viewModel::askDiscard, viewModel::keep, viewModel::discard) }
+    OutboxScreen(state, actions, onBack)
+}
+
+@Composable
+fun OutboxScreen(
+    state: OutboxListState,
+    actions: OutboxActions,
+    onBack: () -> Unit,
+) {
     val gutter = CorvidSpacing.gutter(LocalWideLayout.current)
     Column(Modifier.fillMaxSize().background(CorvidTheme.colors.surface)) {
         PageHeader(stringResource(Res.string.outbox_title), stringResource(Res.string.outbox_back), onBack)
@@ -89,11 +111,11 @@ fun OutboxScreen(
             if (state.rows.isEmpty()) {
                 item { Text(stringResource(Res.string.outbox_empty), style = CorvidTheme.type.body, color = CorvidTheme.colors.inkMuted) }
             } else {
-                if (state.waiting) item { QuietLink(stringResource(Res.string.outbox_try_now), viewModel::tryNow) }
+                if (state.waiting) item { QuietLink(stringResource(Res.string.outbox_try_now), actions.tryNow) }
                 item { HorizontalDivider(Modifier.widthIn(max = PAGE_WIDTH), color = CorvidTheme.colors.line) }
                 items(state.rows, key = { it.id }) { row ->
                     Column(Modifier.widthIn(max = PAGE_WIDTH)) {
-                        OutboxItemRow(row, state.confirming == row.id, viewModel)
+                        OutboxItemRow(row, state.confirming == row.id, actions)
                         HorizontalDivider(color = CorvidTheme.colors.line)
                     }
                 }
@@ -106,7 +128,7 @@ fun OutboxScreen(
 private fun OutboxItemRow(
     row: OutboxRow,
     confirming: Boolean,
-    viewModel: OutboxViewModel,
+    actions: OutboxActions,
 ) {
     val name = row.subject?.ifBlank { null } ?: row.recipients ?: stringResource(Res.string.outbox_message)
     Column(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -134,8 +156,8 @@ private fun OutboxItemRow(
         if (confirming) {
             DiscardQuestion(
                 stringResource(row.discardQuestion()),
-                { viewModel.discard(row.id) },
-                viewModel::keep,
+                { actions.discard(row.id) },
+                actions.keep,
                 confirmLabel = stringResource(Res.string.outbox_discard),
                 cancelLabel = stringResource(Res.string.outbox_keep),
             )
@@ -145,7 +167,7 @@ private fun OutboxItemRow(
                     val label = stringResource(Res.string.outbox_send_again_named, name)
                     QuietLink(
                         stringResource(Res.string.outbox_send_again),
-                        onClick = { viewModel.resend(row.id) },
+                        onClick = { actions.resend(row.id) },
                         modifier = Modifier.semantics { contentDescription = label },
                     )
                 }
@@ -153,7 +175,7 @@ private fun OutboxItemRow(
                     val label = stringResource(Res.string.outbox_discard_named, name)
                     QuietLink(
                         stringResource(Res.string.outbox_discard),
-                        onClick = { viewModel.askDiscard(row.id) },
+                        onClick = { actions.askDiscard(row.id) },
                         modifier = Modifier.semantics { contentDescription = label },
                     )
                 }

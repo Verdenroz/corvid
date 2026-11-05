@@ -12,5 +12,10 @@ kotlin {
         commonTest.dependencies {
             implementation(projects.core.testing)
         }
+        val desktopTest by getting {
+            dependencies {
+                implementation(libs.compose.ui.test)
+            }
+        }
     }
 }

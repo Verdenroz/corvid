@@ -17,6 +17,8 @@ import com.verdenroz.corvid.appcommon.resources.outbox_open
 import com.verdenroz.corvid.core.designsystem.focusRingInset
 import org.jetbrains.compose.resources.stringResource
 
+internal fun OutboxPending.tone() = if (needsDecision || heldElsewhere) BannerTone.Danger else BannerTone.Accent
+
 /** One line above the shell counting the messages not sent yet; the danger tone when one waits on the user. */
 @Composable
 internal fun OutboxBannerBar(
@@ -31,7 +33,7 @@ internal fun OutboxBannerBar(
             else -> stringResource(Res.string.outbox_banner, pending.count)
         }
     ShellBannerBar(
-        tone = if (pending.needsDecision || pending.heldElsewhere) BannerTone.Danger else BannerTone.Accent,
+        tone = pending.tone(),
         text = buildAnnotatedString { withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(line) } },
         onDismiss = onDismiss,
         modifier =
