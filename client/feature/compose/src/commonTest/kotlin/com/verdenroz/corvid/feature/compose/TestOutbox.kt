@@ -15,12 +15,17 @@ import kotlin.test.assertNotNull
 
 private val DEVICE_KEY = ByteArray(33) { (it * 7 + 1).toByte() }
 
-internal class TestOutbox(client: JmapClient, compose: ComposeRepository) : AutoCloseable {
-    val store = assertNotNull(OutboxStore.open(createTempDirectory().toFile()))
+internal class TestOutbox(
+    client: JmapClient,
+    compose: ComposeRepository,
+    sealedTo: ByteArray = DEVICE_KEY,
+) : AutoCloseable {
+    val directory = createTempDirectory().toFile()
+    val store = assertNotNull(OutboxStore.open(directory))
     val outbox =
         Outbox(
             store,
-            OutboxQueue(store, OutboxSealer.keyFor(DEVICE_KEY), "example.test"),
+            OutboxQueue(store, OutboxSealer.keyFor(sealedTo), "example.test"),
             OutboxSender(store, client, compose, DEVICE_KEY),
             DEVICE_KEY,
             CoroutineScope(SupervisorJob() + Dispatchers.Default),

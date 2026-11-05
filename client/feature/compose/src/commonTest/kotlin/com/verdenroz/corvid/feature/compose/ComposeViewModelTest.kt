@@ -4,6 +4,7 @@ import androidx.compose.runtime.saveable.SaverScope
 import androidx.lifecycle.viewModelScope
 import com.verdenroz.corvid.core.data.ComposeRepository
 import com.verdenroz.corvid.core.data.MailboxRepository
+import com.verdenroz.corvid.core.data.outbox.ItemResult
 import com.verdenroz.corvid.core.data.outbox.Outbox
 import com.verdenroz.corvid.core.data.outbox.OutboxAvailability
 import com.verdenroz.corvid.core.data.outbox.OutboxState
@@ -27,6 +28,7 @@ import com.verdenroz.corvid.feature.compose.resources.compose_no_identity
 import com.verdenroz.corvid.feature.compose.resources.compose_not_sent
 import com.verdenroz.corvid.feature.compose.resources.compose_original_gone
 import com.verdenroz.corvid.feature.compose.resources.compose_outbox_held
+import com.verdenroz.corvid.feature.compose.resources.compose_outbox_unsaved
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -78,10 +80,13 @@ class ComposeViewModelTest {
         restored: ComposeRestore? = null,
         sendWait: Duration? = null,
         outboxAvailability: ((Outbox) -> OutboxAvailability)? = null,
+        sealedTo: ByteArray? = null,
+        beforeUse: (TestOutbox) -> Unit = {},
     ): ComposeViewModel {
         val client = fake.client()
         val compose = ComposeRepository(client, MailboxRepository(client), KeyedTextResolver)
-        val outbox = TestOutbox(client, compose).also { outboxes += it }
+        val outbox = (sealedTo?.let { TestOutbox(client, compose, it) } ?: TestOutbox(client, compose)).also { outboxes += it }
+        beforeUse(outbox)
         return track(
             ComposeViewModel(
                 compose,
@@ -168,6 +173,62 @@ class ComposeViewModelTest {
         }
 
     @Test
+    fun `a message that cannot be saved to the outbox keeps the form and says so`() =
+        runViewModelTest {
+            val fake = server()
+            val vm = viewModel(fake, beforeUse = { it.directory.deleteRecursively() })
+            vm.editing()
+            vm.edit { copy(to = "dan@example.test", subject = "Hi", body = "hello") }
+            val typed = vm.editing().form
+
+            vm.send()
+
+            val editing = assertIs<ComposeUiState.Editing>(vm.settled())
+            assertEquals(uiText(Res.string.compose_not_sent, uiText(Res.string.compose_outbox_unsaved)), editing.error)
+            assertEquals(typed, editing.form)
+            assertTrue(fake.submissions.isEmpty())
+        }
+
+    @Test
+    fun `a sign-in that lapsed leaves the message saved and says to sign in again`() =
+        runViewModelTest {
+            val fake = server()
+            val vm = viewModel(fake)
+            vm.editing()
+            vm.edit { copy(to = "dan@example.test", subject = "Hi", body = "hello") }
+            vm.idle()
+            fake.apiUnauthorized = true
+
+            vm.send()
+
+            assertEquals(ComposeUiState.Queued(QueuedReason.SignInAgain), vm.settled())
+        }
+
+    @Test
+    fun `a message sealed to another key is saved but reported as one that cannot be opened`() =
+        runViewModelTest {
+            val fake = server()
+            val vm = viewModel(fake, sealedTo = ByteArray(33) { (it * 5 + 3).toByte() })
+            vm.editing()
+            vm.edit { copy(to = "dan@example.test", subject = "Hi", body = "hello") }
+
+            vm.send()
+
+            assertEquals(ComposeUiState.Queued(QueuedReason.CannotOpen), vm.settled())
+            assertTrue(fake.submissions.isEmpty())
+        }
+
+    @Test
+    fun `every outcome that does not send maps to the reason it waits`() {
+        assertEquals(QueuedReason.Waiting, null.queuedReason())
+        assertEquals(QueuedReason.Waiting, ItemResult.Deferred.queuedReason())
+        assertEquals(QueuedReason.NeedsDecision, ItemResult.Unconfirmed(transportFailed = true).queuedReason())
+        assertEquals(QueuedReason.SignInAgain, ItemResult.SignedOut.queuedReason())
+        assertEquals(QueuedReason.CannotOpen, ItemResult.KeyMismatch("fp").queuedReason())
+        assertEquals(QueuedReason.CannotOpen, ItemResult.Unreadable.queuedReason())
+    }
+
+    @Test
     fun `pressing send twice queues one message`() =
         runViewModelTest {
             val fake = server()
@@ -194,7 +255,7 @@ class ComposeViewModelTest {
             fake.loseResponses = 1
 
             vm.send()
-            assertEquals(ComposeUiState.Queued(needsDecision = true), vm.settled())
+            assertEquals(ComposeUiState.Queued(QueuedReason.NeedsDecision), vm.settled())
             vm.send()
 
             assertEquals(1, fake.submissions.size)
@@ -213,7 +274,7 @@ class ComposeViewModelTest {
 
             vm.send()
 
-            assertEquals(ComposeUiState.Queued(needsDecision = false), vm.settled())
+            assertEquals(ComposeUiState.Queued(QueuedReason.Waiting), vm.settled())
             fake.gate?.complete(Unit)
         }
 

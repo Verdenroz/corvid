@@ -39,6 +39,7 @@ import com.verdenroz.corvid.feature.compose.resources.compose_not_uploaded
 import com.verdenroz.corvid.feature.compose.resources.compose_original_gone
 import com.verdenroz.corvid.feature.compose.resources.compose_outbox_failed
 import com.verdenroz.corvid.feature.compose.resources.compose_outbox_held
+import com.verdenroz.corvid.feature.compose.resources.compose_outbox_unsaved
 import com.verdenroz.corvid.feature.compose.resources.compose_too_large
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -51,6 +52,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import org.jetbrains.compose.resources.StringResource
 import java.io.IOException
+import java.security.GeneralSecurityException
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -279,7 +281,14 @@ class ComposeViewModel(
         pendingSave?.cancel()
         _state.value = current.copy(sending = true, error = null)
         launchToEnd {
-            val id = saves.withLock { outbox.enqueue(draft, (_state.value as ComposeUiState.Editing).draftId) }
+            val id =
+                try {
+                    saves.withLock { outbox.enqueue(draft, (_state.value as ComposeUiState.Editing).draftId) }
+                } catch (_: IOException) {
+                    return@launchToEnd fail(uiText(Res.string.compose_outbox_unsaved))
+                } catch (_: GeneralSecurityException) {
+                    return@launchToEnd fail(uiText(Res.string.compose_outbox_unsaved))
+                }
             when (val result = drainWithin(outbox)?.firstOrNull { it.id == id }?.result) {
                 is ItemResult.Sent -> _state.value = ComposeUiState.Sent
                 is ItemResult.Rejected -> {
@@ -287,7 +296,7 @@ class ComposeViewModel(
                     fail(result.message())
                     persist(forceFirst = true)
                 }
-                else -> _state.value = ComposeUiState.Queued(needsDecision = result is ItemResult.Unconfirmed)
+                else -> _state.value = ComposeUiState.Queued(result.queuedReason())
             }
         }
     }
@@ -370,6 +379,15 @@ private const val SUGGESTION_LIMIT = 6
 private class Typing(val field: RecipientField, val caret: Int)
 
 private fun ComposeForm.isBlank() = listOf(to, cc, bcc, subject, body).all { it.isBlank() } && attachments.isEmpty()
+
+/** Why a message that did not go out yet is waiting; null means the drain gave no answer for it in time. */
+internal fun ItemResult?.queuedReason() =
+    when (this) {
+        is ItemResult.Unconfirmed -> QueuedReason.NeedsDecision
+        ItemResult.SignedOut -> QueuedReason.SignInAgain
+        is ItemResult.KeyMismatch, ItemResult.Unreadable -> QueuedReason.CannotOpen
+        else -> QueuedReason.Waiting
+    }
 
 private fun ItemResult.Rejected.message() =
     if (category == RejectionCategory.AliasGone) uiText(Res.string.compose_alias_gone, reason) else UiText.FromServer(reason)
