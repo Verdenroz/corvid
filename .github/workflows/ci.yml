@@ -15,7 +15,7 @@ jobs:
   # only when the change can affect them, and every job runs when this filter itself did not succeed.
   # The Rust tests read deploy/ and charts/, hence their paths.
   changes:
-    runs-on: [self-hosted, linux, x64, corvid]
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: read
@@ -59,7 +59,7 @@ jobs:
   rust:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.rust == 'true') }}
-    runs-on: [self-hosted, linux, x64, corvid]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -74,7 +74,7 @@ jobs:
   sentinel:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.deploy == 'true') }}
-    runs-on: [self-hosted, linux, x64, corvid]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -94,7 +94,7 @@ jobs:
   deploy:
     needs: [changes, sentinel]
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.deploy == 'true') }}
-    runs-on: [self-hosted, linux, x64, corvid]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -150,7 +150,7 @@ jobs:
   client:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.client == 'true') }}
-    runs-on: [self-hosted, linux, x64, corvid]
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: client
@@ -166,7 +166,7 @@ jobs:
   chart:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.chart == 'true') }}
-    runs-on: [self-hosted, linux, x64, corvid]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
