@@ -1,5 +1,7 @@
 package com.verdenroz.corvid.core.data.outbox
 
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
@@ -163,6 +165,17 @@ class OutboxStore private constructor(private val directory: File, private val l
     }
 
     companion object {
+        private val shortLived = Mutex()
+
+        /** Runs [block] on a store opened only for it, null while a long-lived store holds [directory]. */
+        suspend fun <T> withStore(
+            directory: File,
+            block: (OutboxStore) -> T,
+        ): T? = shortLived.withLock { open(directory)?.use(block) }
+
+        /** Opens [directory] once every [withStore] in this process has let go of it. */
+        suspend fun openWhenFree(directory: File): OutboxStore? = shortLived.withLock { open(directory) }
+
         /** Null while another store holds [directory]. */
         fun open(directory: File): OutboxStore? {
             directory.mkdirs()

@@ -29,6 +29,14 @@ class SealKey(val publicKey: ByteArray) {
 
     companion object {
         fun decode(encoded: String) = SealKey(Base64.getDecoder().decode(encoded))
+
+        /** Null for text that is not a public key of the right size. */
+        fun decodeOrNull(encoded: String): SealKey? =
+            try {
+                decode(encoded).takeIf { it.publicKey.size == KEY_BYTES }
+            } catch (_: IllegalArgumentException) {
+                null
+            }
     }
 }
 

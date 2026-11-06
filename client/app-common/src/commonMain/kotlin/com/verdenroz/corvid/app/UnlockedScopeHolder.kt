@@ -18,6 +18,9 @@ class UnlockedScopeHolder(private val koin: Koin) {
     /** The live scope; only the lock gate opens one, so a screen asking after a lock gets an error. */
     fun current(): Scope = checkNotNull(scope) { "the unlocked scope is closed" }
 
+    /** The live scope, or null once a lock has closed it. */
+    fun openScope(): Scope? = scope
+
     fun close() {
         scope?.close()
         scope = null

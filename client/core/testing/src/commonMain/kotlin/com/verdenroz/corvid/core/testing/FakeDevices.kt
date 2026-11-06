@@ -14,6 +14,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.random.Random
 
 /** One approval attempt as the server saw it: the master header and the daily bearer. */
@@ -83,6 +84,9 @@ class FakeDevices(private val blobs: MutableMap<String, ByteArray>) {
     /** Ids of blobs that live in the keys account and download from no other. */
     val keyBlobIds: MutableSet<String> = mutableSetOf()
 
+    /** Names of the device records looked up, whatever they were answered. */
+    val lookups: MutableList<String> = CopyOnWriteArrayList()
+
     val opened: MutableList<String> = mutableListOf()
     val approvals: MutableList<FakeApproval> = mutableListOf()
 
@@ -140,9 +144,10 @@ class FakeDevices(private val blobs: MutableMap<String, ByteArray>) {
                 headersOf(HttpHeaders.WWWAuthenticate, listOf("Bearer realm=\"Stalwart Server\"")),
             )
         }
+        val segments = request.url.encodedPath.removePrefix("/corvid/devices").trim('/').split("/").filter { it.isNotEmpty() }
+        if (segments.size == 1 && segments[0] != "requests" && request.method == HttpMethod.Get) lookups += segments[0]
         if (unrouted) return scope.respond("not found", HttpStatusCode.NotFound)
         if (off) return json(scope, HttpStatusCode.ServiceUnavailable, buildJsonObject { put("error", "devices_off") })
-        val segments = request.url.encodedPath.removePrefix("/corvid/devices").trim('/').split("/").filter { it.isNotEmpty() }
         return when {
             segments == listOf("requests") && request.method == HttpMethod.Post -> open(scope, request)
             segments == listOf("requests") && request.method == HttpMethod.Get -> pending(scope)

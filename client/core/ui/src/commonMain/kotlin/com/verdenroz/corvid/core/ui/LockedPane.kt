@@ -26,6 +26,9 @@ fun LockedPane(
     droppedAt: String?,
     onUnlock: () -> Unit,
     modifier: Modifier = Modifier,
+    waiting: Int? = null,
+    needDecision: Int = 0,
+    onWrite: (() -> Unit)? = null,
 ) {
     val facts =
         listOfNotNull(
@@ -41,9 +44,10 @@ fun LockedPane(
         stringResource(Res.string.locked_title),
         modifier,
         detail = stringResource(Res.string.locked_detail),
-        facts = facts,
+        facts = facts + outboxFacts(waiting, needDecision),
         drawEyeLine = true,
     ) {
         PrimaryButton(stringResource(Res.string.locked_unlock), onUnlock)
+        WriteAction(onWrite)
     }
 }

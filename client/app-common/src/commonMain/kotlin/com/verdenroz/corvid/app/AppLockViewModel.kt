@@ -13,6 +13,7 @@ import com.verdenroz.corvid.appcommon.resources.unreachable_server
 import com.verdenroz.corvid.appcommon.resources.unreachable_session
 import com.verdenroz.corvid.core.auth.AuthState
 import com.verdenroz.corvid.core.auth.TokenSource
+import com.verdenroz.corvid.core.common.Connectivity
 import com.verdenroz.corvid.core.data.catchingSignIn
 import com.verdenroz.corvid.core.domain.ApproveWithKey
 import com.verdenroz.corvid.core.jmap.AuthLatch
@@ -35,10 +36,23 @@ import com.verdenroz.corvid.core.text.UiText
 import com.verdenroz.corvid.core.text.uiText
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import kotlin.time.Clock
@@ -64,6 +78,8 @@ class AppLockViewModel(
     private val approveWithKey: ApproveWithKey,
     private val devicePreferences: DevicePreferences,
     private val outboxUnlock: OutboxUnlock,
+    private val outboxResume: OutboxResume,
+    private val connectivity: Connectivity,
 ) : ViewModel() {
     private val _state = MutableStateFlow<AppLockState>(AppLockState.SignedOut)
     val state: StateFlow<AppLockState> = _state
@@ -75,6 +91,8 @@ class AppLockViewModel(
     private var deviceName: String? = null
     private var hadKeyThisSession = false
     private var heartbeatJob: Job? = null
+    private var attempt: Job? = null
+    private var immediateRetryUsed = false
 
     init {
         viewModelScope.launch { tokenSource.state.collect(::onAuthState) }
@@ -84,6 +102,15 @@ class AppLockViewModel(
             authLatch.tripped.collect { tripped -> if (tripped) keyHolder.drop() }
         }
         viewModelScope.launch { keyHolder.state.collect(::onKeyState) }
+        viewModelScope.launch { retryWhenOnline() }
+        viewModelScope.launch { drainWhenOnline() }
+    }
+
+    private val writingOffline = MutableStateFlow(false)
+
+    /** While a message is being written on the lock screen, a returning network does not retry and move the screen away. */
+    fun writingOffline(writing: Boolean) {
+        writingOffline.value = writing
     }
 
     /** What the locked screen can say for certain: whichever of these this session knows. */
@@ -105,7 +132,13 @@ class AppLockViewModel(
     }
 
     fun unlock() {
-        deviceName?.let { name -> viewModelScope.launch { resolveKey(name) } }
+        deviceName?.let { name -> singleFlight { resolveKey(name) } }
+    }
+
+    /** A second call while one is running is dropped, so a tap and an automatic retry cannot both reconnect. */
+    private fun singleFlight(block: suspend () -> Unit) {
+        if (attempt?.isActive == true) return
+        attempt = viewModelScope.launch { block() }
     }
 
     fun lock() = keyHolder.drop()
@@ -119,13 +152,40 @@ class AppLockViewModel(
     fun retry() {
         val name = deviceName
         val current = tokenSource.state.value
-        viewModelScope.launch {
+        singleFlight {
             delay(reconnectPolicy.nextDelay())
             when {
                 jmapClient == null && current is AuthState.SignedIn -> connectToServer(current)
                 name != null -> resolveKey(name)
             }
         }
+    }
+
+    // Only an Unreachable that did not drop a held key retries by itself: once when it is entered with the
+    // network up, else when the network next returns. A failed retry waits for the network to drop and return.
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private suspend fun retryWhenOnline() {
+        _state.onEach { if (it.settled) immediateRetryUsed = false }
+            .map { it is AppLockState.Unreachable && !it.keyDropped }
+            .distinctUntilChanged()
+            .flatMapLatest { eligible -> if (eligible) networkReturn() else emptyFlow() }
+            .collect { retry() }
+    }
+
+    private fun networkReturn(): Flow<Unit> =
+        flow {
+            if (connectivity.online.value && !immediateRetryUsed) emit(Unit) else emitAll(connectivity.online.regained().map { })
+        }.take(1).onEach {
+            immediateRetryUsed = true
+            writingOffline.first { writing -> !writing }
+        }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private suspend fun drainWhenOnline() {
+        if (!connectivity.eventDriven) return
+        _state.map { it is AppLockState.Unlocked }.distinctUntilChanged()
+            .flatMapLatest { unlocked -> if (unlocked) connectivity.online.regained() else emptyFlow() }
+            .collect { viewModelScope.launch { unlockedScopeHolder.openScope()?.let { outboxResume.resume(it) } } }
     }
 
     private suspend fun onAuthState(authState: AuthState) {
@@ -185,7 +245,8 @@ class AppLockViewModel(
                 }
             is DeviceKeyLookup.Damaged -> _state.value = AppLockState.KeyDamaged
             is DeviceKeyLookup.ApprovalOff -> _state.value = AppLockState.DeviceApprovalOff
-            is DeviceKeyLookup.Unreachable -> _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_key_unreachable))
+            is DeviceKeyLookup.Unreachable ->
+                _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_key_unreachable), keyDropped = hadKeyThisSession)
         }
     }
 
@@ -306,6 +367,7 @@ class AppLockViewModel(
                 val current = accountHosts
                 if (jmapClient == null || current == null || keyHolder.state.value !is KeyState.Unlocked) return
                 _state.value = AppLockState.Unlocked(current)
+                heartbeatJob?.cancel()
                 heartbeatJob = viewModelScope.launch { heartbeatLoop() }
             }
             is KeyState.Locked -> {
@@ -340,10 +402,16 @@ class AppLockViewModel(
     // state, so this keeps the pane's "unreachable" message rather than
     // reading as though the user tapped Lock.
     private fun dropForUnreachableHeartbeat() {
-        _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_heartbeat))
+        _state.value = AppLockState.Unreachable(uiText(Res.string.unreachable_heartbeat), keyDropped = true)
         keyHolder.drop()
     }
 }
+
+private val AppLockState.settled: Boolean
+    get() = this is AppLockState.Unlocked || this is AppLockState.Locked || this is AppLockState.SignedOut
+
+/** Each time the network comes back after a drop; the value current when collection starts is not a return. */
+private fun StateFlow<Boolean>.regained(): Flow<Boolean> = drop(1).filter { it }
 
 /** The signed-in server's hostname. */
 data class AccountHosts(

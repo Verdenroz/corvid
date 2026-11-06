@@ -20,6 +20,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import com.verdenroz.corvid.core.data.clockTime
+import com.verdenroz.corvid.core.data.outbox.OutboxWaiting
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
 import com.verdenroz.corvid.core.prefs.DevicePreferences
 import com.verdenroz.corvid.core.prefs.ThemeChoice
@@ -44,6 +45,7 @@ private const val PANE_MILLIS = 150
 fun CorvidApp(
     viewModel: AppLockViewModel = koinViewModel(),
     preferences: DevicePreferences = koinInject(),
+    offlineOutbox: OfflineOutbox = koinInject(),
 ) {
     val state by viewModel.state.collectAsState()
     val settings by preferences.settings.collectAsState()
@@ -57,9 +59,17 @@ fun CorvidApp(
     CorvidTheme(darkTheme = dark) {
         Box(modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).background(CorvidTheme.colors.surface)) {
             val current = state
-            key(current::class) {
-                Arrive(if (current is AppLockState.Unlocked) UNLOCK_MILLIS else PANE_MILLIS) {
-                    GatePane(current, viewModel)
+            OfflineGate(
+                current,
+                viewModel.lockFacts.server,
+                settings.canWriteOffline(),
+                offlineOutbox,
+                viewModel::writingOffline,
+            ) { outboxWaiting, onWrite ->
+                key(current::class) {
+                    Arrive(if (current is AppLockState.Unlocked) UNLOCK_MILLIS else PANE_MILLIS) {
+                        GatePane(current, viewModel, outboxWaiting, onWrite)
+                    }
                 }
             }
         }
@@ -83,6 +93,8 @@ private fun Arrive(
 private fun GatePane(
     current: AppLockState,
     viewModel: AppLockViewModel,
+    outboxWaiting: OutboxWaiting?,
+    onWrite: (() -> Unit)?,
 ) {
     when (current) {
         is AppLockState.SignedOut -> SignInScreen()
@@ -103,10 +115,21 @@ private fun GatePane(
                 reason = current.reason,
                 onRetry = viewModel::retry,
                 onSignOut = viewModel::signOut,
+                waiting = outboxWaiting?.waiting,
+                needDecision = outboxWaiting?.needDecision ?: 0,
+                onWrite = onWrite,
             )
         is AppLockState.Locked -> {
             val facts = viewModel.lockFacts
-            LockedPane(facts.server, facts.device, facts.lockedAt?.let { droppedAt(it) }, onUnlock = viewModel::unlock)
+            LockedPane(
+                facts.server,
+                facts.device,
+                facts.lockedAt?.let { droppedAt(it) },
+                onUnlock = viewModel::unlock,
+                waiting = outboxWaiting?.waiting,
+                needDecision = outboxWaiting?.needDecision ?: 0,
+                onWrite = onWrite,
+            )
         }
         is AppLockState.DeviceApprovalOff -> DeviceApprovalOffPane(onAskAgain = viewModel::askAgain, onSignOut = viewModel::signOut)
         is AppLockState.KeyDamaged -> KeyDamagedPane(onRetry = viewModel::retry, onSignOut = viewModel::signOut)

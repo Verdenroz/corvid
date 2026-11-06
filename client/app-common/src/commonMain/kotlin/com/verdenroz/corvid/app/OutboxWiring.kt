@@ -11,6 +11,7 @@ import com.verdenroz.corvid.core.data.outbox.Contents
 import com.verdenroz.corvid.core.data.outbox.OutboxAvailability
 import com.verdenroz.corvid.core.data.outbox.OutboxEntry
 import com.verdenroz.corvid.core.data.outbox.OutboxState
+import com.verdenroz.corvid.core.data.outbox.waitsOnUser
 import com.verdenroz.corvid.feature.outbox.OutboxScreen
 import com.verdenroz.corvid.feature.outbox.OutboxUnavailableScreen
 import com.verdenroz.corvid.feature.outbox.OutboxViewModel
@@ -35,9 +36,6 @@ internal data class OutboxPending(
         }
     }
 }
-
-private val OutboxState.waitsOnUser: Boolean
-    get() = this == OutboxState.Unconfirmed || this is OutboxState.Rejected
 
 @Composable
 internal fun rememberOutboxPending(scope: Scope): OutboxPending {

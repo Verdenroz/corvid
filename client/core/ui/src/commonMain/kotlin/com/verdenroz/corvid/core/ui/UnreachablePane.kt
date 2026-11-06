@@ -22,13 +22,18 @@ fun UnreachablePane(
     onRetry: () -> Unit,
     onSignOut: () -> Unit,
     modifier: Modifier = Modifier,
+    waiting: Int? = null,
+    needDecision: Int = 0,
+    onWrite: (() -> Unit)? = null,
 ) {
     StatePane(
         stringResource(Res.string.unreachable_title),
         modifier,
         detail = stringResource(Res.string.unreachable_detail, reason.asString()),
+        facts = outboxFacts(waiting, needDecision),
         onSignOut = onSignOut,
     ) {
         PillButton(stringResource(Res.string.try_again), null, onRetry)
+        WriteAction(onWrite)
     }
 }

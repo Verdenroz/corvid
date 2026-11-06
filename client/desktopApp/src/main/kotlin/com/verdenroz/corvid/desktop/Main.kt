@@ -20,9 +20,14 @@ import com.verdenroz.corvid.app.NoticeNotifier
 import com.verdenroz.corvid.app.NotificationPermission
 import com.verdenroz.corvid.app.SecurityKeyDialog
 import com.verdenroz.corvid.app.di.appModules
+import com.verdenroz.corvid.core.auth.AuthState
 import com.verdenroz.corvid.core.auth.Authenticator
 import com.verdenroz.corvid.core.auth.DesktopAuthenticator
 import com.verdenroz.corvid.core.auth.SecurityKeyPrompt
+import com.verdenroz.corvid.core.auth.TokenSource
+import com.verdenroz.corvid.core.common.Connectivity
+import com.verdenroz.corvid.core.common.PollingConnectivity
+import com.verdenroz.corvid.core.common.di.applicationScopeQualifier
 import com.verdenroz.corvid.core.data.AppInstaller
 import com.verdenroz.corvid.core.data.AttachmentFiles
 import com.verdenroz.corvid.core.discovery.platformDiscoveryModule
@@ -42,6 +47,11 @@ fun main() {
             single<NewMailNotifier> { notifier }
             single<NotificationPermission> { NoPermissionNeeded }
             single<Authenticator> { DesktopAuthenticator(keyPrompt) }
+            single<Connectivity> {
+                val tokens = get<TokenSource>()
+                val probe = ServerProbe { (tokens.state.value as? AuthState.SignedIn)?.server?.baseUrl }
+                PollingConnectivity(get(applicationScopeQualifier), probe = probe::invoke)
+            }
             single<AppInstaller> { DesktopAppInstaller() }
             single<AttachmentFiles> { DesktopAttachmentFiles() }
         }
