@@ -372,12 +372,17 @@ async fn forget(state: Shared, id: String) -> Result<(), StatusCode> {
 async fn read(
     State(state): State<Shared>,
     Path(name): Path<String>,
-) -> Result<Json<Approved>, StatusCode> {
+) -> Result<Json<Approved>, (StatusCode, Json<Off>)> {
     state
         .devices
         .read(|devices| devices.approved.get(&name).map(|device| device.key.clone()))
         .map(Json)
-        .ok_or(StatusCode::NOT_FOUND)
+        .ok_or((
+            StatusCode::NOT_FOUND,
+            Json(Off {
+                error: "unknown_device",
+            }),
+        ))
 }
 
 /// How the host removes a device's key. Caddy does not route it, but every container in the pod

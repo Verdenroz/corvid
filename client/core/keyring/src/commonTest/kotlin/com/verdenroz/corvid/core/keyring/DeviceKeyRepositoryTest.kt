@@ -2,6 +2,7 @@ package com.verdenroz.corvid.core.keyring
 
 import com.verdenroz.corvid.core.jmap.AuthLatch
 import com.verdenroz.corvid.core.jmap.JmapClient
+import com.verdenroz.corvid.core.jmap.JmapError
 import com.verdenroz.corvid.core.jmap.createJmapHttpClient
 import com.verdenroz.corvid.core.testing.FakeFileNode
 import com.verdenroz.corvid.core.testing.FakeJmapServer
@@ -51,6 +52,18 @@ class DeviceKeyRepositoryTest {
             fake.devices.revoke("laptop-1")
 
             assertIs<DeviceKeyLookup.Missing>(repository(fake).fetch("laptop-1"))
+        }
+
+    @Test
+    fun `a bare 404 is unreachable, not a missing device`() =
+        runTest {
+            val fake = FakeJmapServer()
+            fake.devices.enroll("laptop-1")
+            fake.devices.unrouted = true
+
+            val lookup = assertIs<DeviceKeyLookup.Unreachable>(repository(fake).fetch("laptop-1"))
+
+            assertEquals(JmapError.Server(404), lookup.error)
         }
 
     @Test

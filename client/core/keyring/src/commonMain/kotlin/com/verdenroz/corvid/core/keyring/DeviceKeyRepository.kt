@@ -13,7 +13,7 @@ val DEVICE_NAME_PATTERN = Regex("[a-z0-9-]{1,32}")
 
 internal const val DEVICES_PATH = "/corvid/devices"
 
-/** A 404 is the sentinel's own answer for an unknown name; a 503 may mean approval is off. */
+/** A 404 may be the sentinel's answer for an unknown name or the web tier's own; a 503 may mean approval is off. */
 internal val DEVICES_PASS_THROUGH = setOf(HttpStatusCode.NotFound, HttpStatusCode.ServiceUnavailable)
 
 /** True for the sentinel's answer on a host without a section the route needs; any other 503 is the server failing. */
@@ -22,6 +22,9 @@ internal fun WebReply.approvalOff(vararg off: String = arrayOf("devices_off")): 
     if (body?.get("error")?.jsonPrimitive?.contentOrNull in off) return true
     throw JmapException(JmapError.Server(status.value))
 }
+
+private fun WebReply.unknownDevice() =
+    status == HttpStatusCode.NotFound && body?.get("error")?.jsonPrimitive?.contentOrNull == "unknown_device"
 
 private const val KEY_VERSION: Byte = 1
 private const val KEY_LENGTH = 32
@@ -52,7 +55,10 @@ class DeviceKeyRepository(private val jmapClient: JmapClient) {
         try {
             val reply = jmapClient.webSend(HttpMethod.Get, "$DEVICES_PATH/$deviceName", passThrough = DEVICES_PASS_THROUGH)
             if (reply.approvalOff()) return DeviceKeyLookup.ApprovalOff
-            val record = reply.body.takeIf { reply.status == HttpStatusCode.OK } ?: return DeviceKeyLookup.Missing
+            if (reply.unknownDevice()) return DeviceKeyLookup.Missing
+            val record =
+                reply.body.takeIf { reply.status == HttpStatusCode.OK }
+                    ?: throw JmapException(JmapError.Server(reply.status.value))
             val accountId = record["accountId"]?.jsonPrimitive?.contentOrNull
             val blobId = record["blobId"]?.jsonPrimitive?.contentOrNull
             if (accountId == null || blobId == null) {

@@ -523,7 +523,12 @@ async fn an_unapproved_name_has_no_record() {
     let rig = rig().await;
     rig.request("phone").await;
 
-    assert_eq!(rig.record("phone").await.status(), 404);
+    let missing = rig.record("phone").await;
+    assert_eq!(missing.status(), 404);
+    assert_eq!(
+        missing.json::<Value>().await.unwrap(),
+        json!({"error": "unknown_device"})
+    );
 }
 
 #[tokio::test]

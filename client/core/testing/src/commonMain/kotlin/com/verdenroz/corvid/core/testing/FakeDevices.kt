@@ -232,7 +232,12 @@ class FakeDevices(private val blobs: MutableMap<String, ByteArray>) {
     private fun record(
         scope: MockRequestHandleScope,
         name: String,
-    ): HttpResponseData = records[name]?.let { json(scope, HttpStatusCode.OK, it) } ?: scope.respond("not found", HttpStatusCode.NotFound)
+    ): HttpResponseData =
+        json(
+            scope,
+            if (name in records) HttpStatusCode.OK else HttpStatusCode.NotFound,
+            records[name] ?: buildJsonObject { put("error", "unknown_device") },
+        )
 
     private fun kinds(
         scope: MockRequestHandleScope,

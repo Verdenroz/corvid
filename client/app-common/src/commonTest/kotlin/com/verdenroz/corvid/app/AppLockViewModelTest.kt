@@ -5,7 +5,6 @@ import com.verdenroz.corvid.appcommon.resources.Res
 import com.verdenroz.corvid.appcommon.resources.enroll_self_failed_not_accepted
 import com.verdenroz.corvid.appcommon.resources.unreachable_heartbeat
 import com.verdenroz.corvid.appcommon.resources.unreachable_key_unreachable
-import com.verdenroz.corvid.appcommon.resources.unreachable_request_failed
 import com.verdenroz.corvid.core.auth.AuthState
 import com.verdenroz.corvid.core.auth.PasskeyException
 import com.verdenroz.corvid.core.auth.TokenSource
@@ -289,7 +288,7 @@ class AppLockViewModelTest {
             harness.viewModel.submitDeviceName("laptop-1")
             val unreachable = assertIs<AppLockState.Unreachable>(harness.viewModel.state.awaitState { it is AppLockState.Unreachable })
 
-            assertEquals(uiText(Res.string.unreachable_request_failed), unreachable.reason)
+            assertEquals(uiText(Res.string.unreachable_key_unreachable), unreachable.reason)
         }
 
     @Test
@@ -492,6 +491,23 @@ class AppLockViewModelTest {
             harness.viewModel.state.awaitState { it is AppLockState.Revoked }
 
             assertIs<AuthState.SignedOut>(harness.tokenSource.state.value)
+        }
+
+    @Test
+    fun `a bare 404 for a key this session already held is unreachable and stays signed in`() =
+        runTest(testDispatcher) {
+            val fake = FakeJmapServer()
+            val harness = harness(backgroundScope, fake)
+            harness.enrollAndUnlock("laptop-1", fake)
+            harness.keyHolder.drop()
+            harness.viewModel.state.awaitState { it is AppLockState.Locked }
+
+            fake.devices.unrouted = true
+            harness.viewModel.unlock()
+            val unreachable = assertIs<AppLockState.Unreachable>(harness.viewModel.state.awaitState { it is AppLockState.Unreachable })
+
+            assertEquals(uiText(Res.string.unreachable_key_unreachable), unreachable.reason)
+            assertIs<AuthState.SignedIn>(harness.tokenSource.state.value)
         }
 
     @Test
