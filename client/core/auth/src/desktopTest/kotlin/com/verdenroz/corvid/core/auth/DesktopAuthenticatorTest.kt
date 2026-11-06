@@ -101,11 +101,18 @@ class DesktopAuthenticatorTest {
     fun `making a passkey asks the PIN, then the touch, and gives the key the hash of the client data it returns`() =
         runTest {
             val seen = typing(prompt, "1234")
+            val make = key.onMake
+            var shownDuringMake: KeyPromptState? = null
+            key.onMake = { pin ->
+                shownDuringMake = prompt.state.value
+                make(pin)
+            }
 
             val response = signedResponse(authenticator().create(SERVER, CREATION))
 
             assertEquals(listOf<String?>("1234"), key.pins)
-            assertEquals(listOf(KeyPromptState.Pin(false), KeyPromptState.Touch), seen.filter { it != KeyPromptState.Idle })
+            assertEquals(KeyPromptState.Pin(false), seen.first { it != KeyPromptState.Idle })
+            assertEquals(KeyPromptState.Touch, shownDuringMake)
             assertEquals(KeyPromptState.Idle, prompt.state.value)
             val clientData = String(decodeBase64Url(response.getValue("clientDataJSON").jsonPrimitive.content))
             assertContentEquals(sha256(clientData), key.hashes.single())
