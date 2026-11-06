@@ -98,33 +98,3 @@ leaves the APK unsigned when any is missing.
 
 Keep the keystore and its password backed up offline. Android accepts an update only from the
 same signing key, so losing it means every install must be removed and installed again.
-
-## CI on a self-hosted runner
-
-`ci.yml` and `image.yml` run on a self-hosted runner labelled `[self-hosted, linux, x64, corvid]`.
-`scripts/ci-runner.sh up` builds the runner image (GitHub's runner on Ubuntu, plus the compiler
-and shellcheck), registers one runner to this repository with a fresh token from `gh`, and starts
-it. `status` shows the unit, the container and what GitHub reports; `down` removes the container,
-and `down --purge` also deregisters the runner and deletes its state. Jobs queue behind the one
-runner.
-
-It needs docker, a `gh` login with admin on the repository, and the Android SDK at
-`~/Android/Sdk` (or `ANDROID_HOME`). The container gets the docker socket, so image builds use the
-host daemon, and a job can mount any path under `~/.local/share/corvid-ci/work`, which is mounted
-at the same path on both sides. The SDK is mounted read-only. The registration token is used once;
-the runner's credentials live in the `corvid-ci-home` volume.
-
-The container shares the host's network, because `caddy.test.sh` and `auth.test.sh` start
-containers with `--network host` and reach them on `127.0.0.1`. They bind 8080, 11333 and 18443
-plus Stalwart's listeners, so the deploy job fails with a bind error if the machine already holds
-one of them. A main push publishes its image only when no other job failed, so after that error
-the registry keeps the previous build: free the port and rerun the failed jobs.
-
-A user unit, `corvid-ci-runner.service`, starts the container at boot. Docker's own restart policy
-is not enough where the daemon is socket-activated, since it stays down after a reboot until
-something connects.
-
-!!! warning
-    Jobs run as the host user with the docker socket, which is root on the machine. Run workflows
-    only from branches you trust, and never enable this on a repository that takes pull requests
-    from forks.
