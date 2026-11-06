@@ -9,3 +9,5 @@ pub use answer::{Answer, tally};
 pub use estimate::{Answers, Asked, Estimate, Measured, reweight};
 pub use redact::{Identity, redact};
 pub use stratum::{Stratum, is_unseen, of as stratum_of};
+
+compile_error!("soothfast label bot e2e probe: this pull request must never merge");
