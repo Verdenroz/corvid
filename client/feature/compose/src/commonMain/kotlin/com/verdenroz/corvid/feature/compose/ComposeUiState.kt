@@ -78,6 +78,8 @@ val ComposeRestoreSaver: Saver<ComposeRestore?, List<String>> =
         },
     )
 
+enum class QueuedReason { Waiting, NeedsDecision, SignInAgain, CannotOpen }
+
 sealed interface ComposeUiState {
     data object Loading : ComposeUiState
 
@@ -110,4 +112,7 @@ sealed interface ComposeUiState {
     ) : ComposeUiState
 
     data object Sent : ComposeUiState
+
+    /** The message is in the outbox and not yet sent, for [reason]. */
+    data class Queued(val reason: QueuedReason) : ComposeUiState
 }

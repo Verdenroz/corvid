@@ -23,6 +23,7 @@ import com.verdenroz.corvid.core.testing.FakeJmapServer
 import com.verdenroz.corvid.core.testing.InMemoryPreferencesStore
 import com.verdenroz.corvid.core.testing.authTokens
 import com.verdenroz.corvid.core.text.uiText
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -39,6 +40,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.yield
 import org.koin.dsl.koinApplication
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -67,6 +69,7 @@ private class Harness(
     fake: FakeJmapServer,
     approveWithKey: ApproveWithKey,
     store: InMemoryPreferencesStore = InMemoryPreferencesStore(),
+    outboxUnlock: OutboxUnlock = OutboxUnlock { _, _, _ -> },
 ) {
     val devicePreferences = DevicePreferences(store, scope, DeviceSettings())
     val authLatch = AuthLatch()
@@ -81,6 +84,7 @@ private class Harness(
             unlockedScopeHolder = UnlockedScopeHolder(koinApplication {}.koin),
             approveWithKey = approveWithKey,
             devicePreferences = devicePreferences,
+            outboxUnlock = outboxUnlock,
         )
 
     fun signIn() = tokenSource.adopt(authTokens(), ServerAddress(BASE_URL))
@@ -129,7 +133,8 @@ class AppLockViewModelTest {
         fake: FakeJmapServer,
         approveWithKey: ApproveWithKey = fakeApproveWithKey { fake.devices.masterToken },
         store: InMemoryPreferencesStore = InMemoryPreferencesStore(),
-    ) = Harness(scope, fake, approveWithKey, store).also { harness = it }
+        outboxUnlock: OutboxUnlock = OutboxUnlock { _, _, _ -> },
+    ) = Harness(scope, fake, approveWithKey, store, outboxUnlock).also { harness = it }
 
     private suspend fun Harness.awaitSelfApprovalFailure(): EnrollmentRequest.Open {
         val failed =
@@ -524,6 +529,36 @@ class AppLockViewModelTest {
             harness.viewModel.state.awaitState { it is AppLockState.DeviceApprovalOff }
 
             assertIs<AuthState.SignedIn>(harness.tokenSource.state.value)
+        }
+
+    @Test
+    fun `a sign-out while the outbox opens is not overwritten by the unlock`() =
+        runTest(testDispatcher) {
+            val fake = FakeJmapServer()
+            val entered = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            val harness =
+                harness(
+                    backgroundScope,
+                    fake,
+                    outboxUnlock =
+                        OutboxUnlock { _, _, _ ->
+                            entered.complete(Unit)
+                            release.await()
+                        },
+                )
+            val request = harness.requestKey("laptop-1")
+            fake.devices.approveElsewhere(request.id)
+            harness.watch()
+            delay(POLL)
+            entered.await()
+
+            harness.viewModel.signOut()
+            harness.viewModel.state.awaitState { it is AppLockState.SignedOut }
+            release.complete(Unit)
+            yield()
+
+            assertIs<AppLockState.SignedOut>(harness.viewModel.state.value)
         }
 
     @Test

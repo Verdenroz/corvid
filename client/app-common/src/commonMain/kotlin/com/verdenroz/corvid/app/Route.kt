@@ -45,6 +45,9 @@ sealed interface Route {
     @Serializable
     data object Aliases : Route
 
+    @Serializable
+    data object Outbox : Route
+
     /** The card for one sender; a side sheet when wide, a page when narrow. */
     @Serializable
     data class Sender(val address: String) : Route

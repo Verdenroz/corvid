@@ -1,5 +1,7 @@
 package com.verdenroz.corvid.core.data
 
+import com.verdenroz.corvid.core.data.outbox.ItemResult
+import com.verdenroz.corvid.core.data.outbox.RejectionCategory
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.model.Draft
 import com.verdenroz.corvid.core.model.EmailAddress
@@ -54,14 +56,6 @@ private suspend fun repositories(fake: FakeJmapServer): Pair<MailboxRepository, 
     return mailboxes to ComposeRepository(client, mailboxes, KeyedTextResolver, TimeZone.UTC)
 }
 
-private suspend fun ComposeRepository.sendNew(draft: Draft): SendResult =
-    when (val saved = save(draft, replacing = null)) {
-        is DraftSaveResult.Saved -> send(saved.emailId, draft.from)
-        is DraftSaveResult.Rejected -> SendResult.Rejected(saved.reason)
-        is AliasGone -> saved
-        is SendUnavailable -> saved
-    }
-
 private const val ALIAS = "shop.abcd2345@example.test"
 
 private class AliasRig(val fake: FakeJmapServer, val compose: ComposeRepository, val aliases: AliasRepository) {
@@ -113,9 +107,9 @@ class ComposeRepositoryTest {
             val fake = server()
             val (_, compose) = repositories(fake)
 
-            val result = compose.sendNew(Draft(to = listOf(EmailAddress(null, "dan@example.test")), subject = "Hi", body = "hello"))
+            val result = compose.sendNew(fake, Draft(to = listOf(EmailAddress(null, "dan@example.test")), subject = "Hi", body = "hello"))
 
-            assertEquals(SendResult.Sent, result)
+            assertEquals(ItemResult.Sent, result)
             val submission = fake.submissions.single()
             assertEquals("i1", submission.identityId)
             val email = fake.emails.single { it.id == submission.emailId }
@@ -133,7 +127,7 @@ class ComposeRepositoryTest {
             val (_, compose) = repositories(fake)
 
             val draft = assertIs<StartResult.Ready>(compose.start(ComposeIntent.Reply("orig", all = false))).draft
-            compose.sendNew(draft)
+            compose.sendNew(fake, draft)
 
             val email = fake.emails.single { it.id == fake.submissions.single().emailId }
             assertEquals(listOf("m1@example.test"), email.inReplyTo)
@@ -183,7 +177,7 @@ class ComposeRepositoryTest {
             val fake = server()
             val (_, compose) = repositories(fake)
 
-            compose.sendNew(Draft(to = listOf(EmailAddress(null, "dan@example.test")), body = "hello"))
+            compose.sendNew(fake, Draft(to = listOf(EmailAddress(null, "dan@example.test")), body = "hello"))
 
             assertEquals(setOf("\$seen"), fake.emails.single { it.id == fake.submissions.single().emailId }.keywords)
         }
@@ -267,7 +261,7 @@ class ComposeRepositoryTest {
             )
             val (_, compose) = repositories(fake)
 
-            compose.sendNew(Draft(to = listOf(EmailAddress(null, "dan@example.test")), body = "hello"))
+            compose.sendNew(fake, Draft(to = listOf(EmailAddress(null, "dan@example.test")), body = "hello"))
 
             assertEquals("i1", fake.submissions.single().identityId)
         }
@@ -280,7 +274,7 @@ class ComposeRepositoryTest {
             fake.identities += FakeIdentity(id = "i0", email = "postmaster@example.test")
             val (_, compose) = repositories(fake)
 
-            assertEquals(SendUnavailable.NoIdentity, compose.sendNew(Draft()))
+            assertIs<ItemResult.Rejected>(compose.sendNew(fake, Draft()))
             assertTrue(fake.submissions.isEmpty())
         }
 
@@ -305,10 +299,10 @@ class ComposeRepositoryTest {
             fake.mailboxes -= sent
             val (_, compose) = repositories(fake)
 
-            assertEquals(SendUnavailable.NoMailbox("sent"), compose.sendNew(Draft()))
+            assertIs<ItemResult.Rejected>(compose.sendNew(fake, Draft()))
 
             fake.mailboxes += sent
-            assertEquals(SendResult.Sent, compose.sendNew(Draft(to = listOf(EmailAddress(null, "dan@example.test")))))
+            assertEquals(ItemResult.Sent, compose.sendNew(fake, Draft(to = listOf(EmailAddress(null, "dan@example.test")))))
         }
 
     @Test
@@ -318,13 +312,13 @@ class ComposeRepositoryTest {
             fake.refuseSubmission = true
             val (_, compose) = repositories(fake)
 
-            val result = compose.sendNew(Draft(to = listOf(EmailAddress(null, "dan@example.test")), body = "hello"))
+            val result = compose.sendNew(fake, Draft(to = listOf(EmailAddress(null, "dan@example.test")), body = "hello"))
 
-            assertEquals(SendResult.Rejected("submission refused"), result)
+            assertEquals(ItemResult.Rejected(RejectionCategory.Refused, "submission refused"), result)
             assertTrue(fake.submissions.isEmpty())
             val kept = fake.emails.single { it.id != "orig" }
             assertEquals(setOf("drafts"), kept.mailboxIds)
-            assertEquals(setOf("\$draft", "\$seen"), kept.keywords)
+            assertTrue("\$draft" in kept.keywords)
         }
 
     @Test
@@ -414,19 +408,6 @@ class ComposeRepositoryTest {
         }
 
     @Test
-    fun `sending moves the saved draft to sent without leaving a draft behind`() =
-        runTest {
-            val fake = server()
-            val (_, compose) = repositories(fake)
-            val saved = assertIs<DraftSaveResult.Saved>(compose.save(Draft(to = dan, body = "hello"), replacing = null))
-
-            assertEquals(SendResult.Sent, compose.send(saved.emailId, from = null))
-
-            assertEquals(saved.emailId, fake.submissions.single().emailId)
-            assertTrue(fake.emails.none { "\$draft" in it.keywords })
-        }
-
-    @Test
     fun `a refused save leaves the previous draft on the server`() =
         runTest {
             val fake = server()
@@ -467,7 +448,7 @@ class ComposeRepositoryTest {
             val rig = aliasRig()
             val reply = rig.reply()
 
-            assertEquals(SendResult.Sent, rig.compose.sendNew(reply))
+            assertEquals(ItemResult.Sent, rig.compose.sendNew(rig.fake, reply))
 
             assertEquals(ALIAS, reply.from)
             val submission = rig.fake.submissions.single()
@@ -480,7 +461,7 @@ class ComposeRepositoryTest {
         runTest {
             val rig = aliasRig(deliveredTo = ALIAS.uppercase())
 
-            assertEquals(SendResult.Sent, rig.compose.sendNew(rig.reply()))
+            assertEquals(ItemResult.Sent, rig.compose.sendNew(rig.fake, rig.reply()))
 
             assertEquals(rig.aliasIdentityId(), rig.fake.submissions.single().identityId)
         }
@@ -499,7 +480,7 @@ class ComposeRepositoryTest {
         runTest {
             val rig = aliasRig()
 
-            assertEquals(SendResult.Sent, rig.compose.sendNew(rig.reply().copy(from = null)))
+            assertEquals(ItemResult.Sent, rig.compose.sendNew(rig.fake, rig.reply().copy(from = null)))
 
             val submission = rig.fake.submissions.single()
             assertEquals("i1", submission.identityId)
@@ -512,7 +493,7 @@ class ComposeRepositoryTest {
             val fake = server()
             val (_, compose) = repositories(fake)
 
-            assertEquals(SendResult.Sent, compose.sendNew(Draft(to = dan, from = OWN.uppercase())))
+            assertEquals(ItemResult.Sent, compose.sendNew(fake, Draft(to = dan, from = OWN.uppercase())))
 
             assertEquals("i1", fake.submissions.single().identityId)
         }
@@ -526,7 +507,7 @@ class ComposeRepositoryTest {
             val reply = rig.reply()
 
             assertEquals(ALIAS, reply.from)
-            assertEquals(AliasGone(ALIAS), rig.compose.sendNew(reply))
+            assertEquals(ItemResult.Rejected(RejectionCategory.AliasGone, ALIAS), rig.compose.sendNew(rig.fake, reply))
             assertTrue(rig.fake.submissions.isEmpty())
         }
 
@@ -546,7 +527,7 @@ class ComposeRepositoryTest {
 
             assertIs<SwitchOutcome.Switched>(rig.aliases.disable("shop.abcd2345", "master-token"))
 
-            assertEquals(AliasGone(ALIAS), rig.compose.send(saved.emailId, reply.from))
+            assertEquals(ItemResult.Rejected(RejectionCategory.AliasGone, ALIAS), rig.compose.sendNew(rig.fake, reply))
             assertEquals(AliasGone(ALIAS), rig.compose.save(reply.copy(body = "edited"), replacing = saved.emailId))
             assertTrue(rig.fake.submissions.isEmpty())
             assertEquals(listOf(saved.emailId), rig.fake.emails.filter { "\$draft" in it.keywords }.map { it.id })
@@ -561,7 +542,7 @@ class ComposeRepositoryTest {
             assertIs<SwitchOutcome.Switched>(rig.aliases.disable("shop.abcd2345", "master-token"))
             assertIs<SwitchOutcome.Switched>(rig.aliases.enable("shop.abcd2345", "master-token"))
 
-            assertEquals(SendResult.Sent, rig.compose.sendNew(reply))
+            assertEquals(ItemResult.Sent, rig.compose.sendNew(rig.fake, reply))
 
             assertNotEquals(before, rig.aliasIdentityId())
             assertEquals(rig.aliasIdentityId(), rig.fake.submissions.single().identityId)

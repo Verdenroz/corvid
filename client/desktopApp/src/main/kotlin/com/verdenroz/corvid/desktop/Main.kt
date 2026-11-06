@@ -26,6 +26,7 @@ import com.verdenroz.corvid.core.auth.SecurityKeyPrompt
 import com.verdenroz.corvid.core.data.AppInstaller
 import com.verdenroz.corvid.core.data.AttachmentFiles
 import com.verdenroz.corvid.core.discovery.platformDiscoveryModule
+import com.verdenroz.corvid.core.prefs.platformOutboxDirectoryModule
 import com.verdenroz.corvid.core.prefs.platformPreferencesModule
 import org.koin.compose.koinInject
 import org.koin.core.context.startKoin
@@ -44,7 +45,10 @@ fun main() {
             single<AppInstaller> { DesktopAppInstaller() }
             single<AttachmentFiles> { DesktopAttachmentFiles() }
         }
-    val koin = startKoin { modules(appModules + platformDiscoveryModule + platformPreferencesModule + notices) }.koin
+    val koin =
+        startKoin {
+            modules(appModules + platformDiscoveryModule + platformPreferencesModule + platformOutboxDirectoryModule + notices)
+        }.koin
     val presence = koin.get<AppPresence>()
     application {
         val windowState = rememberWindowState()

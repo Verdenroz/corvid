@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="outbox_title">Outbox</string>
+    <string name="outbox_back">Back</string>
+    <string name="outbox_detail">Messages you sent that have not gone out yet, or that need a decision from you.</string>
+    <string name="outbox_empty">Nothing is waiting to be sent.</string>
+    <string name="outbox_held">Another Corvid window is using the outbox</string>
+    <string name="outbox_failed">The outbox could not be opened</string>
+    <string name="outbox_message">message</string>
+    <string name="outbox_to">To %1$s</string>
+    <string name="outbox_no_subject">No subject</string>
+    <string name="outbox_status_waiting">Waiting to send</string>
+    <string name="outbox_status_sending">Sending</string>
+    <string name="outbox_status_decision">Needs your decision</string>
+    <string name="outbox_status_not_sent">Not sent</string>
+    <string name="outbox_status_cannot_open">Cannot be opened</string>
+    <string name="outbox_status_sent">Sent recently</string>
+    <string name="outbox_sent_at">Sent %1$s</string>
+    <string name="outbox_decision_detail">This message may or may not have been sent. Send it again only if it did not arrive.</string>
+    <string name="outbox_cannot_open_detail">The saved copy is damaged, so its contents cannot be shown or sent.</string>
+    <string name="outbox_previous_key_detail">It was sealed to a previous key, so this device cannot open it.</string>
+    <string name="outbox_reason_refused">The server refused it.</string>
+    <string name="outbox_reason_forbidden">This account is not allowed to send it.</string>
+    <string name="outbox_reason_invalid">The server could not use it.</string>
+    <string name="outbox_reason_alias_gone">The alias it was written from is turned off.</string>
+    <string name="outbox_try_now">Try now</string>
+    <string name="outbox_send_again">Send again</string>
+    <string name="outbox_send_again_named">Send again: %1$s</string>
+    <string name="outbox_discard">Discard</string>
+    <string name="outbox_discard_named">Discard: %1$s</string>
+    <string name="outbox_keep">Keep</string>
+    <string name="outbox_discard_question">Discard this message?</string>
+    <string name="outbox_discard_question_maybe_sent">Discard this message? It may already have been sent.</string>
+    <string name="outbox_discard_question_unopenable">Discard this message? It cannot be opened.</string>
+</resources>

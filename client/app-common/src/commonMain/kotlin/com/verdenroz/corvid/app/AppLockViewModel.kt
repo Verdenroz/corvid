@@ -63,6 +63,7 @@ class AppLockViewModel(
     private val unlockedScopeHolder: UnlockedScopeHolder,
     private val approveWithKey: ApproveWithKey,
     private val devicePreferences: DevicePreferences,
+    private val outboxUnlock: OutboxUnlock,
 ) : ViewModel() {
     private val _state = MutableStateFlow<AppLockState>(AppLockState.SignedOut)
     val state: StateFlow<AppLockState> = _state
@@ -287,7 +288,7 @@ class AppLockViewModel(
         }
     }
 
-    private fun onKeyState(keyState: KeyState) {
+    private suspend fun onKeyState(keyState: KeyState) {
         when (keyState) {
             is KeyState.Unlocked -> {
                 // A sign-out can land between the key unlocking and this collector
@@ -299,8 +300,12 @@ class AppLockViewModel(
                     return
                 }
                 reconnectPolicy.reset()
-                unlockedScopeHolder.open().declare(client)
-                _state.value = AppLockState.Unlocked(hosts)
+                val scope = unlockedScopeHolder.open().also { it.declare(client) }
+                outboxUnlock.open(scope, keyState.key, hosts.server)
+                // A sign-out or a drop can land while the outbox opens; whichever it was has already set the state.
+                val current = accountHosts
+                if (jmapClient == null || current == null || keyHolder.state.value !is KeyState.Unlocked) return
+                _state.value = AppLockState.Unlocked(current)
                 heartbeatJob = viewModelScope.launch { heartbeatLoop() }
             }
             is KeyState.Locked -> {

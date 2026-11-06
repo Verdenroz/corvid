@@ -68,6 +68,7 @@ import com.verdenroz.corvid.core.data.MailboxRepository
 import com.verdenroz.corvid.core.data.NoticeRepository
 import com.verdenroz.corvid.core.data.SenderRepository
 import com.verdenroz.corvid.core.data.SuggestedRules
+import com.verdenroz.corvid.core.data.outbox.OutboxAvailability
 import com.verdenroz.corvid.core.designsystem.CorvidFloating
 import com.verdenroz.corvid.core.designsystem.CorvidShape
 import com.verdenroz.corvid.core.designsystem.CorvidTheme
@@ -117,6 +118,7 @@ internal fun UnlockedContent(
     val shell = remember(scope) { ShellViewModel(repository) }
     val notices = rememberNotices(scope)
     val updates = rememberAppUpdates(scope)
+    val outbox = rememberOutboxPending(scope)
     val ledgers = remember(repository) { Ledgers(repository) }
     DisposableEffect(ledgers) { onDispose { ledgers.clear() } }
     val models = remember(scope) { EntryModels() }
@@ -171,7 +173,7 @@ internal fun UnlockedContent(
         val topKeys = remember(navigator) { navigator::handleKey }
         ProvideWideLayout(wide) {
             CompositionLocalProvider(LocalTopEntryKeys provides topKeys) {
-                Shell(pages, shellState, key, searchInput, Banners(notices, updates), roomForSidebar = maxWidth >= SIDEBAR_EXPANDS)
+                Shell(pages, shellState, key, searchInput, Banners(notices, updates, outbox), roomForSidebar = maxWidth >= SIDEBAR_EXPANDS)
             }
         }
     }
@@ -181,6 +183,7 @@ internal fun UnlockedContent(
 private class Banners(
     val notices: Notices,
     val updates: AppUpdates,
+    val outbox: OutboxPending,
 )
 
 /** What every page on the stack is built from. */
@@ -219,6 +222,8 @@ private fun Shell(
             onSelect = navigator::openTab,
             onFilters = { navigator.open(Route.Filters) },
             onSettings = { navigator.open(Route.Settings) },
+            banners.outbox.count,
+            onOutbox = { navigator.open(Route.Outbox) },
         )
     val top = navigator.depth - 1
     val floats = wide && top > 0 && (route is Route.Sender || route is Route.Compose)
@@ -232,6 +237,7 @@ private fun Shell(
         ) {
             NoticesBanner(banners.notices, navigator)
             AppUpdatesBanner(banners.updates)
+            OutboxBanner(banners.outbox, navigator)
             if (wide) {
                 WideTopBar(
                     key,
@@ -395,7 +401,14 @@ private fun Page(
             )
         is Route.Compose ->
             ComposeScreen(files, route.intent, onClose = navigator::back) { restore ->
-                models.of(entryKey, ComposeViewModel::class) { ComposeViewModel(scope.get<ComposeRepository>(), route.intent, restore) }
+                models.of(entryKey, ComposeViewModel::class) {
+                    ComposeViewModel(
+                        scope.get<ComposeRepository>(),
+                        scope.get<OutboxAccess>().availability.value ?: OutboxAvailability.Failed,
+                        route.intent,
+                        restore,
+                    )
+                }
             }
         is Route.Filters ->
             FiltersScreen(onBack = navigator::back) { draft ->
@@ -407,6 +420,7 @@ private fun Page(
         is Route.ApproveDevice -> ApproveDevicePage(scope, navigator, models, entryKey)
         is Route.Passkeys -> PasskeysPage(scope, navigator, models, entryKey)
         is Route.Aliases -> AliasesPage(scope, navigator, models, entryKey)
+        is Route.Outbox -> OutboxPage(scope, navigator, models, entryKey)
         is Route.Notices -> {
             val viewModel = models.of(entryKey, NoticesViewModel::class) { NoticesViewModel(scope.get<NoticeRepository>()) }
             NoticesScreen(viewModel, onBack = navigator::back)

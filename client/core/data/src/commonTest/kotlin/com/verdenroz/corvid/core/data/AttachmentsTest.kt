@@ -1,5 +1,6 @@
 package com.verdenroz.corvid.core.data
 
+import com.verdenroz.corvid.core.data.outbox.ItemResult
 import com.verdenroz.corvid.core.model.Attachment
 import com.verdenroz.corvid.core.model.ComposeIntent
 import com.verdenroz.corvid.core.model.Draft
@@ -114,8 +115,7 @@ class AttachmentsTest {
             val uploaded = assertIs<UploadResult.Uploaded>(compose.upload(picked("notes.txt", bytes))).attachment
             val draft = Draft(to = listOf(EmailAddress(null, "dan@example.test")), body = "see attached", attachments = listOf(uploaded))
 
-            val saved = assertIs<DraftSaveResult.Saved>(compose.save(draft, replacing = null))
-            assertEquals(SendResult.Sent, compose.send(saved.emailId, from = null))
+            assertEquals(ItemResult.Sent, compose.sendNew(fake, draft))
 
             val sent = fake.emails.single { it.id == fake.submissions.single().emailId }
             assertEquals(listOf(FakeAttachment(uploaded.blobId, "notes.txt", "text/plain", 7)), sent.attachments)

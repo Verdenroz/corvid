@@ -14,12 +14,14 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 private val DEVICE_KEY = ByteArray(33) { (it * 7 + 1).toByte() }
@@ -39,11 +41,14 @@ private class Rig {
     val fake = FakeJmapServer().withSendableAccount()
     val queue = OutboxQueue(store, OutboxSealer.keyFor(DEVICE_KEY), "example.test", CLOCK)
 
-    suspend fun sender(deviceKey: ByteArray = DEVICE_KEY): OutboxSender {
+    suspend fun sender(
+        deviceKey: ByteArray = DEVICE_KEY,
+        clock: Clock = CLOCK,
+    ): OutboxSender {
         val client = fake.client()
         val compose = ComposeRepository(client, MailboxRepository(client))
         compose.routeFor(null)
-        return OutboxSender(store, client, compose, deviceKey, CLOCK)
+        return OutboxSender(store, client, compose, deviceKey, clock)
     }
 
     fun item(id: String) = store.list().items.single { it.id == id }
@@ -234,6 +239,22 @@ class OutboxSenderTest {
         }
 
     @Test
+    fun `a rejected message the user chooses to send again goes out once the server accepts it`() =
+        runTest {
+            val rig = Rig()
+            val id = rig.queue.enqueue(draft(), null)
+            val sender = rig.sender()
+            rig.fake.refuseSubmission = true
+
+            assertIs<ItemResult.Rejected>(sender.drain().single().result)
+            rig.fake.refuseSubmission = false
+            sender.resend(id)
+            assertEquals(listOf(Drained(id, ItemResult.Sent)), sender.drain())
+
+            assertEquals(1, rig.fake.submissions.size)
+        }
+
+    @Test
     fun `a 429 on the send leaves the item queued and a later drain sends it once`() =
         runTest {
             val rig = Rig()
@@ -392,6 +413,123 @@ class OutboxSenderTest {
 
             assertEquals(emptyList(), rig.store.list().items)
             assertEquals(MessageRead.Missing, rig.store.readMessage(id))
+        }
+
+    @Test
+    fun `discarding a rejected message also deletes the draft the server staged for it`() =
+        runTest {
+            val rig = Rig()
+            val id = rig.queue.enqueue(draft(), null)
+            val sender = rig.sender()
+            rig.fake.refuseSubmission = true
+            assertIs<ItemResult.Rejected>(sender.drain().single().result)
+            assertEquals(1, rig.fake.emails.size)
+
+            assertEquals(true, sender.discard(id))
+
+            assertEquals(emptyList(), rig.fake.emails)
+        }
+
+    @Test
+    fun `discarding a rejected message leaves a copy of its keyword that is no longer a draft`() =
+        runTest {
+            val rig = Rig()
+            val id = rig.queue.enqueue(draft(), null)
+            rig.put(id, OutboxState.Rejected(RejectionCategory.Refused))
+            rig.copy("s", "sent", setOf("corvid-outbox-$id"))
+            val sender = rig.sender()
+
+            assertEquals(true, sender.discard(id))
+
+            assertEquals(listOf("s"), rig.fake.emails.map { it.id })
+        }
+
+    @Test
+    fun `discarding an unconfirmed or unreadable message never calls the server`() =
+        runTest {
+            val rig = Rig()
+            val unconfirmed = rig.queue.enqueue(draft(), null)
+            rig.put(unconfirmed, OutboxState.Unconfirmed)
+            rig.copy("d", "drafts", setOf("corvid-outbox-$unconfirmed", "\$draft"))
+            rig.enqueueUnreadable("bad")
+            val sender = rig.sender()
+            val before = rig.fake.requestCount
+
+            assertEquals(true, sender.discard(unconfirmed))
+            assertEquals(true, sender.discard("bad"))
+
+            assertEquals(before, rig.fake.requestCount)
+            assertEquals(listOf("d"), rig.fake.emails.map { it.id })
+        }
+
+    @Test
+    fun `a rejected message discarded while the server is unreachable leaves a cleanup that a later drain finishes`() =
+        runTest {
+            val rig = Rig()
+            val id = rig.queue.enqueue(draft(), null)
+            val sender = rig.sender()
+            rig.fake.refuseSubmission = true
+            assertIs<ItemResult.Rejected>(sender.drain().single().result)
+            rig.fake.unreachable = true
+
+            assertEquals(true, sender.discard(id))
+
+            assertEquals(MessageRead.Missing, rig.store.readMessage(id))
+            assertEquals(1, rig.fake.emails.size)
+            assertIs<OutboxState.Sent>(rig.item(id).state)
+            rig.fake.unreachable = false
+            assertEquals(emptyList(), sender.drain())
+
+            assertEquals(emptyList(), rig.fake.emails)
+            assertEquals(emptyList(), rig.store.list().items)
+        }
+
+    @Test
+    fun `discarding a rejected message does not hold the sender while its cleanup waits on the server`() =
+        runTest {
+            val rig = Rig()
+            val rejected = rig.queue.enqueue(draft(), null)
+            val other = rig.queue.enqueue(draft(), null)
+            rig.put(rejected, OutboxState.Rejected(RejectionCategory.Refused))
+            rig.put(other, OutboxState.Unconfirmed)
+            val sender = rig.sender()
+            rig.fake.gate = CompletableDeferred()
+
+            withContext(Dispatchers.Default) {
+                val discarding = async { sender.discard(rejected) }
+                delay(300)
+                withTimeout(5.seconds) { sender.resend(other) }
+                rig.fake.gate?.complete(Unit)
+                discarding.await()
+            }
+
+            assertEquals(OutboxState.Queued, rig.item(other).state)
+        }
+
+    @Test
+    fun `a drain removes sent tombstones older than a week once their cleanup is done`() =
+        runTest {
+            val rig = Rig()
+            val day = 24L * 60 * 60 * 1000
+            val now = Instant.fromEpochMilliseconds(30 * day)
+            val old = rig.queue.enqueue(draft(), null)
+            val recent = rig.queue.enqueue(draft(), null)
+            val untidy = rig.queue.enqueue(draft(), null)
+            rig.put(old, OutboxState.Sent("e1", now.toEpochMilliseconds() - 8 * day))
+            rig.put(recent, OutboxState.Sent("e2", now.toEpochMilliseconds() - 6 * day))
+            rig.put(untidy, OutboxState.Sent("e3", now.toEpochMilliseconds() - 8 * day, Tidy(keyword = "corvid-outbox-$untidy")))
+            val sender =
+                rig.sender(
+                    clock =
+                        object : Clock {
+                            override fun now() = now
+                        },
+                )
+            rig.fake.unreachable = true
+
+            sender.drain()
+
+            assertEquals(setOf(recent, untidy), rig.store.list().items.map { it.id }.toSet())
         }
 
     @Test
