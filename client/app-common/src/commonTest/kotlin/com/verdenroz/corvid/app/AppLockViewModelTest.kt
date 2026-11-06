@@ -794,17 +794,13 @@ class AppLockViewModelTest {
         runTest(testDispatcher) {
             val fake = FakeJmapServer()
             val harness = harness(backgroundScope, fake)
-            val seen = mutableListOf<AppLockState>()
-            backgroundScope.launch { harness.viewModel.state.collect { seen += it } }
             harness.reachUnreachable(fake)
 
-            var polls = 0
-            while (seen.count { it is AppLockState.Unreachable } < 2 && polls++ < 100) withContext(Dispatchers.Default) { delay(20) }
+            while (fake.devices.lookups.size < 2) withContext(Dispatchers.Default) { delay(20) }
             advanceTimeBy(10.minutes)
             withContext(Dispatchers.Default) { delay(300) }
 
-            val afterFirstUnreachable = seen.dropWhile { it !is AppLockState.Unreachable }
-            assertEquals(2, afterFirstUnreachable.count { it is AppLockState.Unreachable })
+            assertEquals(listOf("laptop-1", "laptop-1"), fake.devices.lookups)
         }
 
     @Test
