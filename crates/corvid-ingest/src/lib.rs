@@ -43,13 +43,18 @@ pub const MODEL_OVERSIZED: &str = "corvid-llm-oversized";
 /// never read back as the user's.
 pub const RULE_NAMESPACE: &str = "corvid-rule-";
 
+/// Where a client marks a message it is sending, inside the labeler's namespace so it is never
+/// read back as the user's and never swept away as the prior's.
+pub const OUTBOX_NAMESPACE: &str = "corvid-outbox-";
+
 /// Whether the prior wrote this keyword, which is the only kind the poll may add or remove.
 ///
-/// Model and rule keywords share the prefix but belong to other writers.
+/// Model, rule and outbox keywords share the prefix but belong to other writers.
 pub fn is_prior_keyword(keyword: &str) -> bool {
     keyword.starts_with(NAMESPACE)
         && !keyword.starts_with(MODEL_NAMESPACE)
         && !keyword.starts_with(RULE_NAMESPACE)
+        && !keyword.starts_with(OUTBOX_NAMESPACE)
 }
 
 /// The keywords to write for a model's verdict, which always include the marker.

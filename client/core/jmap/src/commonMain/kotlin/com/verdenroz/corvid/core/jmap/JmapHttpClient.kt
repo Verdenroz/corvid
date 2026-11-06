@@ -5,9 +5,15 @@ import io.ktor.client.HttpClientConfig
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.api.createClientPlugin
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
+import okhttp3.ConnectionPool
+import okhttp3.Interceptor
+import okhttp3.MediaType
+import okhttp3.RequestBody
+import okio.BufferedSink
 
 val JmapJson =
     Json {
@@ -23,7 +29,7 @@ val JmapJson =
  * deliberately no `Auth` plugin: the bearer header is attached per call, so
  * the [AuthLatch] sees every 401 before Ktor would think to retry one.
  */
-fun HttpClientConfig<*>.applyJmapDefaults() {
+internal fun HttpClientConfig<*>.applyJmapDefaults() {
     expectSuccess = false
     followRedirects = false
     install(HttpTimeout) {
@@ -35,7 +41,51 @@ fun HttpClientConfig<*>.applyJmapDefaults() {
     }
 }
 
-fun createJmapHttpClient(engine: HttpClientEngine = OkHttp.create()): HttpClient =
-    HttpClient(engine) {
+fun createJmapHttpClient(engine: HttpClientEngine? = null): HttpClient =
+    HttpClient(engine ?: singleAttemptEngine()) {
         applyJmapDefaults()
+        if (engine != null) install(WithoutSingleAttemptHeader)
     }
+
+private val WithoutSingleAttemptHeader =
+    createClientPlugin("WithoutSingleAttemptHeader") {
+        onRequest { request, _ -> request.headers.remove(SINGLE_ATTEMPT_HEADER) }
+    }
+
+internal const val SINGLE_ATTEMPT_HEADER = "X-Corvid-Single-Attempt"
+
+private fun singleAttemptEngine(): HttpClientEngine {
+    val pool = ConnectionPool()
+    return OkHttp.create {
+        config { connectionPool(pool) }
+        addInterceptor(singleAttempts(pool))
+    }
+}
+
+/**
+ * OkHttp resends a request on a fresh connection when the old one drops mid-flight, unless its body
+ * is one-shot, and it resends on a stale pooled connection too. A request marked with
+ * [SINGLE_ATTEMPT_HEADER] is one the server may already have run and must not be sent twice: it gets
+ * a one-shot body, and idle pooled connections are evicted first so it does not start on a stale one.
+ * A connection with a stream in flight, such as a shared HTTP/2 connection, is not evicted and may
+ * carry it; if that breaks after the request is written, the request is not resent. The header never
+ * leaves the process: this interceptor strips it, and any other engine has it stripped before sending.
+ */
+private fun singleAttempts(pool: ConnectionPool) =
+    Interceptor { chain ->
+        val request = chain.request()
+        if (request.header(SINGLE_ATTEMPT_HEADER) == null) return@Interceptor chain.proceed(request)
+        pool.evictAll()
+        val marked = request.newBuilder().removeHeader(SINGLE_ATTEMPT_HEADER)
+        chain.proceed((request.body?.let { marked.method(request.method, OneShotBody(it)) } ?: marked).build())
+    }
+
+private class OneShotBody(private val body: RequestBody) : RequestBody() {
+    override fun contentType(): MediaType? = body.contentType()
+
+    override fun contentLength(): Long = body.contentLength()
+
+    override fun writeTo(sink: BufferedSink) = body.writeTo(sink)
+
+    override fun isOneShot(): Boolean = true
+}

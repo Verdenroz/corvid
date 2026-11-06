@@ -18,6 +18,15 @@ kotlin {
             implementation(libs.koin.core)
             implementation(libs.kotlinx.serialization.json)
         }
+        androidMain.dependencies {
+            implementation(libs.tink.android)
+        }
+        // tink and tink-android collide on one classpath, so each target takes exactly one.
+        val desktopMain by getting {
+            dependencies {
+                implementation(libs.tink)
+            }
+        }
         commonTest.dependencies {
             implementation(projects.core.testing)
         }
@@ -30,7 +39,8 @@ kotlin {
     }
 }
 
-// AliasReplyLiveTest reads this, so Gradle never reuses a rig run's result for a run without a rig.
+// The live tests read these, so Gradle never reuses a rig run's result for a run without a rig.
 tasks.withType<Test>().configureEach {
     inputs.property("aliasLive", providers.environmentVariable("CORVID_ALIAS_LIVE").orElse(""))
+    inputs.property("outboxLive", providers.environmentVariable("CORVID_OUTBOX_LIVE").orElse(""))
 }

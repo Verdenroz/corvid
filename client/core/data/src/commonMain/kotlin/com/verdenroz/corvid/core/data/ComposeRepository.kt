@@ -71,6 +71,14 @@ sealed interface SendResult {
  */
 data class AliasGone(val email: String) : SendResult, DraftSaveResult
 
+internal sealed interface Route {
+    data class Ready(val identity: Identity, val draftsId: String, val sentId: String) : Route
+
+    data class AliasMissing(val email: String) : Route
+
+    data class Unavailable(val reason: SendUnavailable) : Route
+}
+
 private sealed interface Loaded {
     data class Ready(val identity: Identity, val ownEmails: Set<String>, val draftsId: String, val sentId: String) : Loaded
 
@@ -206,6 +214,13 @@ class ComposeRepository(
             val arguments = submit(identity, emailId, sending.draftsId, sending.sentId)
             val outcome = jmapClient.call(listOf(Invocation("EmailSubmission/set", arguments, "c0"))).getValue("c0")
             outcome.refusal("submission")?.let { SendResult.Rejected(it) } ?: SendResult.Sent
+        }
+
+    /** Where a message from [from] goes, for the outbox, which builds its own requests. */
+    internal suspend fun routeFor(from: String?): Route =
+        load().fold({ Route.Unavailable(it) }) { sending ->
+            val identity = from?.let { sending.sendingAs(it) ?: return@fold Route.AliasMissing(it) } ?: sending.identity
+            Route.Ready(identity, sending.draftsId, sending.sentId)
         }
 
     /** People to suggest as recipients, best first. */

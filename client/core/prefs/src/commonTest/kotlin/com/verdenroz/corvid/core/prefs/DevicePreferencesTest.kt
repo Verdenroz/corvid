@@ -99,6 +99,20 @@ class DevicePreferencesTest {
         }
 
     @Test
+    fun `the outbox key starts absent and a newer one replaces it`() =
+        runTest {
+            val prefs = preferences()
+            runCurrent()
+            assertNull(prefs.settings.value.outboxKey)
+
+            prefs.setOutboxKey("first")
+            prefs.setOutboxKey("second")
+            runCurrent()
+
+            assertEquals("second", prefs.settings.value.outboxKey)
+        }
+
+    @Test
     fun `new mail notifications start on and stay off once turned off`() =
         runTest {
             val prefs = preferences()

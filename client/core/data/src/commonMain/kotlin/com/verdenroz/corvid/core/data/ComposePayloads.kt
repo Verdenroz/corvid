@@ -1,5 +1,7 @@
 package com.verdenroz.corvid.core.data
 
+import com.verdenroz.corvid.core.jmap.Invocation
+import com.verdenroz.corvid.core.jmap.resultReference
 import com.verdenroz.corvid.core.model.CorvidKeywords
 import com.verdenroz.corvid.core.model.Draft
 import com.verdenroz.corvid.core.model.EmailAddress
@@ -21,10 +23,13 @@ import kotlinx.serialization.json.putJsonObject
 
 private const val BODY_PART_ID = "body"
 
+/** [messageId] and [keyword], both set or both null, name the draft so a retry can find it again. */
 internal fun createEmail(
     identity: Identity,
     draft: Draft,
     draftsId: String,
+    messageId: String? = null,
+    keyword: String? = null,
 ): JsonObject =
     buildJsonObject {
         putJsonObject("create") {
@@ -33,7 +38,9 @@ internal fun createEmail(
                 putJsonObject("keywords") {
                     put(CorvidKeywords.DRAFT, true)
                     put(CorvidKeywords.SEEN, true)
+                    keyword?.let { put(it, true) }
                 }
+                messageId?.let { putJsonArray("messageId") { add(JsonPrimitive(it)) } }
                 putAddresses("from", listOf(EmailAddress(identity.name.ifEmpty { null }, identity.email)))
                 putAddresses("to", draft.to)
                 putAddresses("cc", draft.cc)
@@ -85,6 +92,38 @@ internal fun submit(
                 put("keywords/${CorvidKeywords.SEEN}", true)
             }
         }
+    }
+
+/** Finds the message marked [keyword] in any mailbox and reads where it is and what it is flagged as. */
+internal fun findByKeyword(keyword: String): List<Invocation> =
+    listOf(
+        Invocation(
+            "Email/query",
+            buildJsonObject { putJsonObject("filter") { put("hasKeyword", keyword) } },
+            "find",
+        ),
+        Invocation(
+            "Email/get",
+            buildJsonObject {
+                put("#ids", resultReference("find", "Email/query", "/ids"))
+                putJsonArray("properties") {
+                    add(JsonPrimitive("mailboxIds"))
+                    add(JsonPrimitive("keywords"))
+                }
+            },
+            "read",
+        ),
+    )
+
+/** Drops the send mark from the sent copy and destroys the draft this message replaced, whichever are still set. */
+internal fun tidySent(
+    emailId: String,
+    keyword: String?,
+    replacing: String?,
+): JsonObject =
+    buildJsonObject {
+        keyword?.let { putJsonObject("update") { putJsonObject(emailId) { put("keywords/$it", JsonNull) } } }
+        replacing?.let { putJsonArray("destroy") { add(JsonPrimitive(it)) } }
     }
 
 internal val DRAFT_PROPERTIES =

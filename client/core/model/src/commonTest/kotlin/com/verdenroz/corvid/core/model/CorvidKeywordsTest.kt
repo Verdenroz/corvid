@@ -38,8 +38,8 @@ class CorvidKeywordsTest {
     }
 
     @Test
-    fun `flags and the model's markers are not labels`() {
-        listOf("\$seen", "\$flagged", "corvid-llm-done", "corvid-llm-oversized").forEach {
+    fun `flags, the model's markers and the outbox's send marks are not labels`() {
+        listOf("\$seen", "\$flagged", "corvid-llm-done", "corvid-llm-oversized", "corvid-outbox-1f").forEach {
             assertEquals(null, CorvidKeywords.labelOf(it), it)
         }
     }

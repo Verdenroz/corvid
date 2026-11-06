@@ -82,10 +82,14 @@ class JmapClient private constructor(
      * Runs one batch of calls and matches each response back to its callId.
      * A method error inside the batch is [MethodOutcome.Failure] for that
      * one callId, not a thrown exception: the rest of the batch still ran.
+     * With [singleAttempt] the default transport never resends the request once it has begun to send it.
      */
-    suspend fun call(invocations: List<Invocation>): Map<String, MethodOutcome> {
+    suspend fun call(
+        invocations: List<Invocation>,
+        singleAttempt: Boolean = false,
+    ): Map<String, MethodOutcome> {
         val request = JmapRequest(using = REQUIRED_CAPABILITIES, methodCalls = invocations.map(::withAccountId))
-        val response = guardedPost(httpClient, authLatch, session.apiUrl, bearerToken, request)
+        val response = guardedPost(httpClient, authLatch, session.apiUrl, bearerToken, request, singleAttempt)
         val parsed =
             try {
                 response.body<JmapResponse>()
@@ -329,10 +333,12 @@ private suspend fun guardedPost(
     url: String,
     bearerToken: suspend () -> String?,
     body: JmapRequest,
+    singleAttempt: Boolean,
 ): HttpResponse =
     guarded(authLatch) {
         httpClient.post(url) {
             bearer(bearerToken)
+            if (singleAttempt) header(SINGLE_ATTEMPT_HEADER, "1")
             contentType(ContentType.Application.Json)
             setBody(body)
         }
