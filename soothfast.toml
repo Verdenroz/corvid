@@ -38,3 +38,6 @@ walltime = "hard"
 
 [test]
 ci = false
+
+[bot]
+labels = true
