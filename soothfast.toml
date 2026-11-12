@@ -41,3 +41,7 @@ ci = false
 
 [bot]
 labels = true
+
+# Publishes the guide from the soothfast workflow on a push to main.
+[ci]
+pages = true
