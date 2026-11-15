@@ -32,8 +32,8 @@ Initial release: 9 public items across 1 crates.
 
 | item | instructions | median | p99 | allocs | polls |
 |---|---:|---:|---:|---:|---:|
-| `corvid_rewrite::bench_rewrite_local_references` | 937122 | 90.21µs | 93.28µs | 1601 | n/a |
-| `corvid_rewrite::bench_rewrite_newsletter` | 2265480 | 165.70µs | 167.55µs | 2129 | n/a |
-| `corvid_rewrite::bench_rewrite_scaling` | 23398633 | 1.62ms | 1.66ms | 21129 | n/a |
-| `corvid_rewrite::bench_rewrite_tracking_pixels` | 814096 | 83.90µs | 114.39µs | 1217 | n/a |
+| `corvid_rewrite::bench_rewrite_local_references` | 939462 | 67.06µs | 71.90µs | 1601 | n/a |
+| `corvid_rewrite::bench_rewrite_newsletter` | 2265587 | 122.38µs | 127.53µs | 2129 | n/a |
+| `corvid_rewrite::bench_rewrite_scaling` | 23392873 | 1.20ms | 1.27ms | 21129 | n/a |
+| `corvid_rewrite::bench_rewrite_tracking_pixels` | 814096 | 61.27µs | 61.67µs | 1217 | n/a |
 
