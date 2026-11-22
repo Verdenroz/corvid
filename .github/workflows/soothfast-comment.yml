@@ -1,0 +1,23 @@
+name: soothfast-comment
+
+# Written by `cargo soothfast init`; `cargo soothfast init --check` reports drift.
+# Comments the verdict of a fork's pull request, whose own run cannot. The
+# trigger is safe here: nothing of the pull request is checked out and its
+# artifacts are only read as data.
+on: # zizmor: ignore[dangerous-triggers]
+  workflow_run:
+    workflows: [soothfast]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  comment:
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      pull-requests: write
+    uses: Verdenroz/soothfast/.github/workflows/comment.yml@2ae46646f150426bb2c18a8c27ff8e75c7e452c5
+    with:
+      soothfast_ref: "2ae46646f150426bb2c18a8c27ff8e75c7e452c5"
